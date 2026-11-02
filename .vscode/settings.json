@@ -18,5 +18,13 @@
     "**/release/**": true,
     "**/.next/**": true,
     "**/out/**": true
-  }
+  },
+  "editor.inlineSuggest.enabled": false,
+  "editor.suggest.preview": false,
+  "editor.formatOnSave": false,
+  "editor.codeActionsOnSave": {
+    "source.organizeImports": "never",
+    "source.fixAll": "never"
+  },
+  "editor.showUnused": false
 }

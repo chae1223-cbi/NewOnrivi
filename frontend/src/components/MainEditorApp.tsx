@@ -1,5 +1,6 @@
 /**
  * 프로그램명 : OnriviAuthor 
+// 🚨 @PATCH : **2026-11-02** — [비로그인 무단 에디터 진입 원천 차단] 웹 환경에서 로그인 세션이나 '체험하기' 플래그가 없는 경우 자동 게스트 모드 전환을 중단하고 로그인 화면(/login)으로 즉시 리다이렉트
 // 🚨 @PATCH : **2026-11-02** — [DB 접근 서버 API 일원화] 브라우저 직접 supabase.from(subscriptions, users)를 서버 API(/api/subscription/get, /api/user/check)로 전환하여 보안 강화 및 일관된 원트랜잭션 규칙 보장
 // 🚨 @PATCH : **2026-11-01** — [표 셀 줄바꿈 파괴 및 가로 늘어짐·텍스트 잘림 결함 완전 해결]:
 //             1) .custom-preview-container table 및 .onrivi-content-root table에 width: 100%, max-width: 100%, table-layout: fixed !important를 기본 부여하여 긴 파일 경로/영문 텍스트 포함 시 표가 찢어지거나 특정 열이 1글자 세로로 찌그러지는 현상 방지
@@ -2152,12 +2153,13 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     }
 
     if (!hasSession && !hasPayment && !hasLicense && !initialGuestCheck) {
-      console.log('[ONRIVI GUARD] No Auth Session / License found. Initiating Auto-Guest Mode!');
-      localStorage.setItem('onrivi_guest_mode', 'Y');
-      localStorage.setItem('onrivi_workspace_type', 'browser');
-      localStorage.removeItem('onrivi_guest_expired');
-      localStorage.removeItem('onrivi_guest_start_time');
-      localStorage.setItem('onrivi_guest_try_count', localStorage.getItem('onrivi_guest_try_count') || '0');
+      // 🛡️ [비로그인 무단 접근 차단]
+      // 데스크톱 앱(Electron)이 아닌 웹 브라우저 환경에서 로그인 아이디도 없고 체험하기 플래그도 없으면 진입 차단!
+      if (!(window as any).electronAPI) {
+        console.warn('[ONRIVI GUARD] 로그인 세션 또는 라이선스가 없습니다. 에디터 진입을 차단하고 로그인 화면으로 이동합니다.');
+        window.location.replace('/login?redirect=/editor');
+        return;
+      }
     }
 
     // 🛡️ [게스트 즉시 체험 모드 가드] 게스트 모드로 동작 시 라이선스 검증 스킵하고 활성화 처리

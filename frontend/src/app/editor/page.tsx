@@ -1,10 +1,11 @@
 // ====================================================================
 // 📊 [OMD-UI-EditorPage-0001] editor/page.tsx ➔ Page
 // 🎯 @KICK  : MainEditorApp을 SSR 비활성화(Client-side only) 및 청크 로드 실패 시 자동 복구 가드를 통해 안전하게 마운트하는 최상위 에디터 진입 라우트
-// 🛡️ @GUARD : Next.js 빌드/HMR 청크 불일치로 인한 ChunkLoadError 방어 및 1회 자동 새로고침 복구 가드
+// 🛡️ @GUARD : Next.js 빌드/HMR 청크 불일치 방어 및 비로그인 무단 에디터 직접 접근 차단 가드
+// 🚨 @PATCH : **2026-11-02** — [비로그인 무단 접근 원천 차단] 웹 환경에서 로그인 세션이나 '체험하기' 플래그가 없으면 에디터 진입을 차단하고 /login으로 즉시 리다이렉트
 // 🚨 @PATCH : **2026-09-11** — Modern Technical Editorial 디자인 시스템 적용 (Cobalt #1d4ed8, Inter / Plus Jakarta Sans)
 //             2026-09-03** — ChunkLoadError 자동 복구 리트라이 가드 추가 및 LDSG v5.0 로딩 스피너 UI 통일
-// 🔗 @CALLS : dynamic, MainEditorApp
+// 🔗 @CALLS : dynamic, MainEditorApp, supabase.auth, activateBrowserAccount
 // ====================================================================
 "use client";
 
@@ -63,12 +64,29 @@ export default function Page() {
       if (cancelled) return;
       if (error) throw error;
       owner = data.session?.user?.id || null;
+
+      // 🛡️ [비로그인 무단 접근 차단 가드]
+      // 데스크톱 앱(Electron)이 아닌 웹 브라우저 환경에서:
+      // 로그인 아이디(owner)가 없고, '체험하기'를 통한 게스트 모드(onrivi_guest_mode === 'Y')도 없다면
+      // 에디터 화면에 아예 들어오지 못하도록 로그인 화면(/login)으로 즉시 튕겨냅니다.
+      const isGuestMode = typeof window !== 'undefined' && localStorage.getItem('onrivi_guest_mode') === 'Y';
+      if (!owner && !isGuestMode) {
+        window.location.replace('/login?redirect=/editor');
+        return;
+      }
+
+      const effectiveAccount = owner || (isGuestMode ? 'guest' : null);
+      if (!effectiveAccount) {
+        window.location.replace('/login?redirect=/editor');
+        return;
+      }
+
       const previous = getBrowserAccountScope();
-      if (previous && previous !== (owner || 'guest')) {
+      if (previous && previous !== effectiveAccount) {
         window.location.reload();
         return;
       }
-      activateBrowserAccount(owner);
+      activateBrowserAccount(effectiveAccount);
       initialized = true;
       setReady(true);
     }).catch(() => {
