@@ -15,7 +15,7 @@ description: OnriviAuthor의 성공, 안내, 경고, 오류 등 모든 사용자
 - 소스 코드(컴포넌트, API 라우트, 핸들러 등) 내부에 임의의 한국어/영어 알림 문구 문자열 리터럴을 인라인으로 직접 작성하는 것을 엄격히 금지한다.
 - 모든 알림은 다음 단일 소스(SSoT) 상수 파일을 반드시 참조해야 한다:
   - 프론트엔드: `frontend/src/constants/messages.ts` (`SYSTEM_MESSAGES`)
-  - 백엔드: `functions/api/_messages.js` 및 `frontend/functions/api/_messages.js` (`API_MESSAGES`)
+  - 백엔드: `functions/api/_messages.js` (`API_MESSAGES`)
 - 문자열을 직접 타이핑하지 않고 `SYSTEM_MESSAGES.SUB_CANCEL_SUCCESS` 또는 `API_MESSAGES.SUB_CANCEL_SUCCESS`와 같이 상수 키를 호출하여 타입 안정성과 일관성을 유지한다.
 
 ### 2. 3-Tier 메시지 조립 표준
@@ -46,9 +46,9 @@ description: OnriviAuthor의 성공, 안내, 경고, 오류 등 모든 사용자
 
 ---
 
-## 5. 백엔드 `API_MESSAGES` 9대 도메인 표준 및 듀얼 파일 동기화
+## 5. 백엔드 `API_MESSAGES` 9대 도메인 표준 및 단일 원본 관리
 
-백엔드 메시지 상수는 `functions/api/_messages.js`와 `frontend/functions/api/_messages.js` 양쪽에 **100% 동기화(라인 2 경로 주석만 미러 경로로 지정)**하여 관리하며, 다음 9대 도메인으로 체계화하여 유지한다:
+백엔드 메시지 상수는 루트 `functions/api/_messages.js` 한 파일에서 관리하며, 다음 9대 도메인으로 체계화하여 유지한다:
 
 1. **전역 공통 (COMMON)**: `SUCCESS`, `INVALID_PARAMS`, `UNAUTHORIZED`, `FORBIDDEN`, `DATABASE_ERROR`, `NOT_FOUND`
 2. **구독 및 결제 (SUBSCRIPTION)**: `SUB_CANCEL_SUCCESS`, `SUB_NOT_FOUND`, `SUB_EXPIRED`, `TRIAL_ALREADY_USED`, `PAYMENT_FAILED`
@@ -67,5 +67,5 @@ description: OnriviAuthor의 성공, 안내, 경고, 오류 등 모든 사용자
 1. **상수 참조 여부**: 소스 코드에 문자열 리터럴 알림이 남아있지 않고 `SYSTEM_MESSAGES` / `API_MESSAGES` 상수를 임포트하여 사용하는가?
 2. **색상 및 템플릿 일치**: 4대 기능 색상 토큰 및 상황+가이드 구조를 준수하는가?
 3. **기술 정보 노출 차단**: 클라이언트 사용자 화면에 SQL 문이나 스택 트레이스 등 내부 기술 정보가 노출되지 않는가?
-4. **듀얼 파일 동기화 여부**: 백엔드 메시지 수정 시 `functions/api/_messages.js`와 `frontend/functions/api/_messages.js`에 모두 누락 없이 동일하게 반영되었는가?
+4. **단일 원본 여부**: 백엔드 메시지를 루트 `functions/api/_messages.js`에서만 관리하는가?
 5. **개발자 승인 이력**: 신규 추가/수정된 문구인 경우 개발자의 사전 승인을 거쳤는가?

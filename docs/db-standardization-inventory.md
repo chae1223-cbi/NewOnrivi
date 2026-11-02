@@ -1,5 +1,7 @@
 # DB 처리 방식 표준화 대상 목록
 
+> API 경로 분리는 [API 실행 경계](api-separation.md)를 현재 기준으로 따른다. 이 문서의 rontend/functions 미러 표기는 분리 이전 작업 이력이다.
+
 작성: 2026-11-01. 기준: `skills/onrivi-db-processing/SKILL.md`, `skills/onrivi-error-handling/SKILL.md`, `skills/onrivi-common-codes/SKILL.md`.
 
 ## 목표와 범위

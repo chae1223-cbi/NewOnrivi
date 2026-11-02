@@ -7,8 +7,8 @@
   "main": "main.js",
   "scripts": {
     "prepare": "husky",
-    "dev": "concurrently \"cd frontend && npm run dev\" \"cd backend && npm run dev\"",
-    "dev:r2": "cd frontend && npx wrangler pages dev ./out --compatibility-date=2026-06-23 --r2=R2_BUCKET --remote",
+    "dev": "concurrently \"cd frontend && npm run dev\" \"cd backend && npm run dev\" \"npm run dev:cloud-api\"",
+    "dev:cloud-api": "node scripts/dev-cloud-api.cjs",
     "electron": "electron .",
     "electron:prod": "set NODE_NO_WARNINGS=1&& set NO_SERVER=true&& electron .",
     "build:frontend": "cd frontend && npm install && npm run build:desktop",
@@ -32,7 +32,8 @@
     "lint-staged": "^16.2.7",
     "pg": "^8.22.0",
     "postgres": "^3.4.9",
-    "sharp": "^0.35.3"
+    "sharp": "^0.35.3",
+    "wrangler": "^4.110.0"
   },
   "build": {
     "appId": "com.onrivi.author",

@@ -7,7 +7,7 @@ description: OnriviAuthor의 API 예외 처리, 오류 응답, 로그, 사용자
 
 ## 서버 오류
 
-- 예기치 않은 서버 오류는 `functions/api/_server-error.js`의 `serverError(request, error, { source, stage, message })`를 사용한다. 미러 `frontend/functions/api/_server-error.js`도 동기화한다.
+- 예기치 않은 서버 오류는 `functions/api/_server-error.js`의 `serverError(request, error, { source, stage, message })`를 사용한다. 클라우드 오류 처리의 단일 원본은 루트 `functions/api/_server-error.js`다.
 - `source`는 실제 소스 파일 경로, `stage`는 실패한 처리 단계로 정적인 값을 지정한다. 오류 문자열이나 사용자 입력을 이 필드에 넣지 않는다.
 - 클라이언트에는 안전한 한국어 메시지, 안정적인 오류 코드, 요청 ID만 반환한다. 예외 원문, SQL, 스택, 연결 문자열, 토큰, 개인정보를 응답에 포함하지 않는다.
 - 인증·입력 오류와 예상 가능한 업무 거절은 적절한 HTTP 상태와 명시적 업무 코드로 처리한다. 예상 가능한 오류를 모두 500으로 바꾸지 않는다.

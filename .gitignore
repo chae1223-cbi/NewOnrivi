@@ -40,6 +40,7 @@ repomix-output.xml
 .env.development.local
 .env.test.local
 .env.production.local
+.dev.vars
 
 # SQLite 로컬 지식 DB 파일 절대 커밋/배포 금지
 *.db

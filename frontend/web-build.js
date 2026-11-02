@@ -1,23 +1,8 @@
 /**
  * web-build.js
- * 웹(Cloudflare Pages) 배포용 빌드 스크립트입니다.
- * Cloudflare Functions(frontend/functions)가 실제 API를 처리하므로,
- * Functions가 존재하지 않는 Next.js API 라우트(/api/admin, /api/cron)를
- * 빌드 대상에서 제외하여 정적 내보내기(output:export) 시 발생하는
- * NEXT_STATIC_GEN_BAILOUT 에러를 제거합니다.
- *
- * 🚨 @PATCH 2026-10-04: Next.js output:export 정적 빌드 시 신규/기존 API 라우트(create-file, create-folder, delete, rename, save 등)와의 dynamic=force-dynamic 충돌 에러를 원천 차단하기 위해, src/app/api/ 디렉토리 내의 모든 항목을 자동으로 스캔하여 빌드 시 임시 백업 및 제외하도록 개편
- * 🚨 @PATCH 2026-08-07: Cloudflare Pages는 wrangler.toml의 functions_directory 필드를
- * 지원하지 않으므로 무시됩니다 (빌드 로그에 WARNING 표시).
- * 대신 레포 루트의 /functions/ 디렉토리를 자동으로 탐지하여 배포합니다.
- * 따라서 frontend/functions/api/admin/ 에 있는 admin API Functions는
- * 빌드 전에 루트 functions/api/admin/ 으로 반드시 동기화되어야 합니다.
- *
- * 동작 순서:
- * 1. frontend/functions/api/admin/ → 루트 functions/api/admin/ 동기화 (신규)
- * 2. 제외 대상 라우트를 임시 이동 (_dev_backup/)
- * 3. next build 실행
- * 4. 임시 이동한 폴더 원위치 복원
+ * Cloudflare Pages 정적 웹 빌드. 배포 API 원본은 저장소 루트 functions/api입니다.
+ * Next 개발용 API는 정적 내보내기 동안 임시로 제외하고 빌드 후 복원합니다.
+ * 🚨 @PATCH : 2026-11-02 — Cloudflare API 미러 복사를 제거하고 루트 Functions를 단일 원본으로 확정
  */
 const { execSync } = require('child_process');
 const fs = require('fs');
@@ -29,23 +14,6 @@ require('dotenv').config({ path: path.join(__dirname, '.env.local'), override: f
 const APP_DIR = path.join(__dirname, 'src', 'app');
 const API_DIR = path.join(APP_DIR, 'api');
 const BACKUP_DIR = path.join(__dirname, '_dev_api_backup');
-
-// 🚨 @PATCH 2026-08-07: admin Functions를 루트 /functions/api/admin/ 으로 동기화
-// Cloudflare Pages는 functions_directory(wrangler.toml) 필드를 무시하고
-// 레포 루트의 /functions/ 디렉토리만 Functions로 배포합니다.
-// 따라서 admin Functions가 배포에 포함되려면 이 동기화가 필수입니다.
-const FRONTEND_FUNCS_SRC = path.join(__dirname, 'functions');
-const ROOT_FUNCS_DEST = path.join(__dirname, '..', 'functions');
-
-if (fs.existsSync(FRONTEND_FUNCS_SRC)) {
-  console.log('[web-build] Cloudflare Functions 전체를 루트 /functions/ 로 동기화합니다...');
-  // 주의: ROOT_FUNCS_DEST 전체를 rmSync하면 기존 Cloudflare API(device, license 등)가 모두 날아가므로 절대 삭제하면 안 됨!
-  if (!fs.existsSync(ROOT_FUNCS_DEST)) {
-    fs.mkdirSync(ROOT_FUNCS_DEST, { recursive: true });
-  }
-  fs.cpSync(FRONTEND_FUNCS_SRC, ROOT_FUNCS_DEST, { recursive: true, force: true });
-  console.log('  - 동기화 완료: /functions/ (병합 완료)');
-}
 
 // Cloudflare Pages 정적 내보내기(output: export) 빌드 시 Next.js는 동적 API 라우트 생성을 지원하지 않습니다.
 // 실제 서버 API는 Cloudflare Functions(/functions/api/)가 전담하므로,

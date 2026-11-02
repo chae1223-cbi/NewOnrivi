@@ -39,7 +39,9 @@ const sourceLocations = {
 // Browser-reported events are untrusted and distinct from server failures.
 const counts = new Map();
 export async function onRequestPost({request, env}) {
-  if (request.headers.get('origin') !== new URL(request.url).origin) return new Response(null, {status:403});
+  const origin = request.headers.get('origin');
+  const isLocalDev = origin && (origin.includes('localhost') || origin.includes('127.0.0.1'));
+  if (!isLocalDev && origin !== new URL(request.url).origin) return new Response(null, {status:403});
   const ip = request.headers.get('CF-Connecting-IP') || 'unknown';
   const now = Date.now();
   for (const [key, value] of counts) if (now-value.start > 60000) counts.delete(key);

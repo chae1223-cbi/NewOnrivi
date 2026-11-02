@@ -31,14 +31,13 @@ description: OnriviAuthor의 상태 코드, 요금제, 권한, 에러 코드 등
 
 ---
 
-## 4. 공통코드 추가 시 대상 파일 즉각 동기화 절차 (3대 표준 상수 파일)
+## 4. 공통코드 추가 시 대상 파일 즉각 동기화 절차 (2대 표준 상수 파일)
 
-개발자(사용자)의 명시적 승인을 득한 후, 공통코드는 DB에만 머무르지 않고 시스템 전역에서 즉시 참조될 수 있도록 **반드시 아래 3대 표준 상수 파일에 원자적으로 동시 반영**해야 한다:
+개발자(사용자)의 명시적 승인을 득한 후, 공통코드는 DB에만 머무르지 않고 시스템 전역에서 즉시 참조될 수 있도록 **반드시 아래 2대 표준 상수 파일에 원자적으로 동시 반영**해야 한다:
 
-### 🎯 동기화 대상 3대 파일
+### 🎯 동기화 대상 2대 파일
 1. **`functions/api/_db-codes.js`**: Cloudflare Pages Functions 프로덕션 런타임 상수
-2. **`frontend/functions/api/_db-codes.js`**: Functions 로컬 미러 상수 (1번 파일과 100% 동일 유지, 라인 2 경로 주석만 미러 경로로 지정)
-3. **`frontend/src/constants/dbCodes.ts`**: Next.js 프론트엔드 및 Node/TypeScript 런타임 상수 (`as const` 리터럴 타입 지원)
+2. **`frontend/src/constants/dbCodes.ts`**: Next.js 프론트엔드 및 Node/TypeScript 런타임 상수 (`as const` 리터럴 타입 지원)
 
 ### 📝 반영 규칙 및 절차
 1. **신규 그룹코드 발생 시**:
@@ -49,13 +48,12 @@ description: OnriviAuthor의 상태 코드, 요금제, 권한, 에러 코드 등
    - JavaScript 파일(`_db-codes.js`): `Object.freeze({ ... })` 불변 객체 유지
    - TypeScript 파일(`dbCodes.ts`): `as const` 불변 선언 유지
 3. **파일 최상단 `@PATCH` 이력 갱신**:
-   - [skills/onrivi-source-comments/SKILL.md](../onrivi-source-comments/SKILL.md)에 따라 3개 파일 최상단 주석에 당일 날짜와 추가된 코드 내역을 기록한다.
+   - [skills/onrivi-source-comments/SKILL.md](../onrivi-source-comments/SKILL.md)에 따라 2개 파일 최상단 주석에 당일 날짜와 추가된 코드 내역을 기록한다.
    - 예: `// 🚨 @PATCH : YYYY-MM-DD — [공통코드 추가] <GROUP_NAME> 그룹에 <CODE_VALUE> 코드 반영`
 4. **정합성 및 빌드 검증**:
    - 반영 후 즉시 다음 명령어들을 실행하여 정합성을 검증한다:
      ```bash
      node --check functions/api/_db-codes.js
-     node --check frontend/functions/api/_db-codes.js
      npm --prefix frontend run typecheck
      npm --prefix frontend run lint
      ```
@@ -67,5 +65,4 @@ description: OnriviAuthor의 상태 코드, 요금제, 권한, 에러 코드 등
 1. **공통코드 일치 여부**: 조회 및 갱신에 사용된 코드값이 DB `common_codes`의 대문자 규격과 일치하는가?
 2. **하드코딩 잔존 여부**: 소스 코드(IF문, 쿼리 파라미터, 응답 JSON)에 문자열 리터럴이 남아있지 않고 공통 상수를 임포트하여 참조하고 있는가?
 3. **신규 코드 승인 여부**: 새로 도입된 코드가 있을 경우, 개발자 사전 질문 및 승인 단계를 거쳤는가?
-4. **3대 표준 상수 파일 동기화 여부**: `functions/api/_db-codes.js`, `frontend/functions/api/_db-codes.js`, `frontend/src/constants/dbCodes.ts` 세 파일에 모두 누락 없이 동일하게 반영되었는가?
-5. **연계 스킬 검토**: DB 작업이 포함되면 `skills/onrivi-db-processing/SKILL.md`, 오류 코드를 다루면 `skills/onrivi-error-handling/SKILL.md`, 주석 관리는 `skills/onrivi-source-comments/SKILL.md`를 함께 준수한다.
+4. **연계 스킬 검토**: DB 작업이 포함되면 `skills/onrivi-db-processing/SKILL.md`, 오류 코드를 다루면 `skills/onrivi-error-handling/SKILL.md`, 주석 관리는 `skills/onrivi-source-comments/SKILL.md`를 함께 준수한다.

@@ -1,5 +1,6 @@
 /**
  * @type {import('next').NextConfig}
+ * 🚨 @PATCH : 2026-11-02 — 클라우드 업무 API를 로컬 Wrangler로 전달하고 PC 전용 API는 Next에서 유지
  * 🚨 @PATCH : **2026-10-02** — [프로덕션 소스맵 비활성화로 번들 다이어트]: productionBrowserSourceMaps를 false로 전환하여 빌드 산출물 용량 약 18MB 절감
  */
 // 💡 데스크탑(Electron) 빌드 시 NEXT_BUILD_TARGET=desktop 환경변수가 주입됩니다.
@@ -9,6 +10,21 @@ const isDesktopBuild = process.env.NEXT_BUILD_TARGET === 'desktop';
 const isDev = process.env.NODE_ENV === 'development';
 
 const nextConfig = {
+  // 로컬 Next 화면의 클라우드 API 요청은 배포와 같은 Pages Function으로 보낸다.
+  async rewrites() {
+    if (!isDev || isDesktopBuild) return [];
+    const cloudApiSegments = [
+      'admin', 'ai', 'beta', 'blog', 'client-log', 'common-codes', 'device',
+      'faqs', 'gdrive', 'help', 'license', 'password', 'plans', 'rpc',
+      'subscription', 'upload-image', 'user',
+    ];
+    return {
+      beforeFiles: cloudApiSegments.flatMap(segment => [
+        { source: `/api/${segment}`, destination: `http://127.0.0.1:8788/api/${segment}` },
+        { source: `/api/${segment}/:path*`, destination: `http://127.0.0.1:8788/api/${segment}/:path*` },
+      ]),
+    };
+  },
   // 웹 배포 빌드와 실행 중인 개발 서버가 같은 .next 파일을 덮어쓰지 않도록 분리한다.
   distDir: process.env.NEXT_BUILD_DIR || (isDev ? '.next-dev' : (isDesktopBuild ? '.next-desktop' : '.next-web-build')),
   ...(isDev && !isDesktopBuild ? {} : { output: 'export' }), // 개발 환경에서는 API 라우트 활성화를 위해 export 제외

@@ -12,7 +12,7 @@ description: OnriviAuthor의 서버 DB 접근, SQL, 트랜잭션, 데이터 변�
 ## 목표 방식
 
 - 서버가 `pg`로 PostgreSQL에 직접 접근한다. 동일 업무의 테이블 접근을 Supabase REST, RPC, `pg`에 분산하지 않는다. 기존 REST/RPC 코드를 변경할 때는 실제 호출자와 응답 계약을 확인한 후 PostgreSQL 방식으로 옮긴다.
-- DB 연결 문자열은 서버 환경에서만 읽는다. 기준 구현은 공통 모듈 `functions/api/_db.js`의 `withDbTransaction`(하위 호환 `withBlogTransaction` 지원)이며, 배포용 `functions/api`와 미러 `frontend/functions/api`의 변경 사항을 맞춘다. Hyperdrive는 연결 경로일 뿐, 업무별 DB 처리 방식 전환기가 아니다.
+- DB 연결 문자열은 서버 환경에서만 읽는다. 기준 구현은 공통 모듈 `functions/api/_db.js`의 `withDbTransaction`(하위 호환 `withBlogTransaction` 지원)이며, 클라우드 API는 루트 `functions/api`를 단일 원본으로 관리하며 로컬 Next API 중복 구현을 만들지 않는다. Hyperdrive는 연결 경로일 뿐, 업무별 DB 처리 방식 전환기가 아니다.
 - 업무 단위의 관련 조회·쓰기·감사 기록은 같은 PostgreSQL 연결과 단일 트랜잭션으로 처리한다. 중간 오류 시 전체 롤백하고 연결을 종료한다. 외부 API 호출이나 장시간 작업은 가능한 한 트랜잭션 시작 전에 끝낸다.
 - 동시 변경 가능성이 있으면 해당 사용자/대상 행 잠금, 제약조건, 영향 행 수 검증을 검토한다. 쓰기 결과를 확인하지 않은 채 성공 응답을 보내지 않는다.
 - SQL은 매개변수 바인딩을 사용한다. 테이블·열 이름을 요청 값에서 직접 조립하지 않는다. 코드값은 `.agents/AGENTS.md`의 대문자 규칙을 따른다.
