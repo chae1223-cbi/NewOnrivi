@@ -64,7 +64,8 @@ export async function handleDriveOAuth(request, env) {
   }
   const url = new URL(request.url), redirect = new URL(env.GOOGLE_DRIVE_REDIRECT_URI);
   const origin = redirect.origin, secure = redirect.protocol === 'https:';
-  if (url.origin !== origin) return json({ error: '인증 서버 주소가 설정과 다릅니다.' }, 400);
+  const isLocalDev = (url.hostname === '127.0.0.1' || url.hostname === 'localhost') && (redirect.hostname === 'localhost' || redirect.hostname === '127.0.0.1');
+  if (!isLocalDev && url.origin !== origin) return json({ error: '인증 서버 주소가 설정과 다릅니다.' }, 400);
   const route = url.pathname.replace(/^\/api\/gdrive\//, '');
   const requestCookies = cookies(request);
   try {
@@ -112,7 +113,9 @@ export async function handleDriveOAuth(request, env) {
     if (request.method !== 'POST') return json({ error: '지원하지 않는 요청입니다.' }, 405);
     // Cookie sessions require same-origin requests; desktop sessions use a bearer capability.
     const bearer = request.headers.get('Authorization')?.match(/^Bearer ([\w-]{43})$/)?.[1];
-    if (!bearer && request.headers.get('Origin') !== origin) return json({ error: '요청 출처가 올바르지 않습니다.' }, 403);
+    const reqOrigin = request.headers.get('Origin');
+    const isLocalOrigin = isLocalDev && reqOrigin && (reqOrigin.includes('localhost') || reqOrigin.includes('127.0.0.1'));
+    if (!bearer && !isLocalOrigin && reqOrigin !== origin) return json({ error: '요청 출처가 올바르지 않습니다.' }, 403);
     if (Number(request.headers.get('Content-Length') || 0) > 4096) return json({ error: '요청이 너무 큽니다.' }, 413);
     if (route === 'oauth/exchange') {
       const { ticket, verifier } = await request.json();

@@ -10,21 +10,25 @@ const isDesktopBuild = process.env.NEXT_BUILD_TARGET === 'desktop';
 const isDev = process.env.NODE_ENV === 'development';
 
 const nextConfig = {
-  // 로컬 Next 화면의 클라우드 API 요청은 배포와 같은 Pages Function으로 보낸다.
-  async rewrites() {
-    if (!isDev || isDesktopBuild) return [];
-    const cloudApiSegments = [
-      'admin', 'ai', 'beta', 'blog', 'client-log', 'common-codes', 'device',
-      'faqs', 'gdrive', 'help', 'license', 'password', 'plans', 'rpc',
-      'subscription', 'upload-image', 'user',
-    ];
-    return {
-      beforeFiles: cloudApiSegments.flatMap(segment => [
-        { source: `/api/${segment}`, destination: `http://127.0.0.1:8788/api/${segment}` },
-        { source: `/api/${segment}/:path*`, destination: `http://127.0.0.1:8788/api/${segment}/:path*` },
-      ]),
-    };
-  },
+  // 로컬 Next 개발 시에만 클라우드 API 요청을 Pages Function(Wrangler)으로 전달한다.
+  // 정적 내보내기(output: export) 빌드 시에는 rewrites 키 자체를 제외하여 불필요한 빌드 경고를 방지한다.
+  ...(isDev && !isDesktopBuild
+    ? {
+        async rewrites() {
+          const cloudApiSegments = [
+            'admin', 'ai', 'beta', 'blog', 'client-log', 'common-codes', 'device',
+            'faqs', 'gdrive', 'help', 'license', 'password', 'plans', 'rpc',
+            'subscription', 'upload-image', 'user',
+          ];
+          return {
+            beforeFiles: cloudApiSegments.flatMap(segment => [
+              { source: `/api/${segment}`, destination: `http://127.0.0.1:8788/api/${segment}` },
+              { source: `/api/${segment}/:path*`, destination: `http://127.0.0.1:8788/api/${segment}/:path*` },
+            ]),
+          };
+        },
+      }
+    : {}),
   // 웹 배포 빌드와 실행 중인 개발 서버가 같은 .next 파일을 덮어쓰지 않도록 분리한다.
   distDir: process.env.NEXT_BUILD_DIR || (isDev ? '.next-dev' : (isDesktopBuild ? '.next-desktop' : '.next-web-build')),
   ...(isDev && !isDesktopBuild ? {} : { output: 'export' }), // 개발 환경에서는 API 라우트 활성화를 위해 export 제외
