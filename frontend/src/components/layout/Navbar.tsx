@@ -2,6 +2,7 @@
 // 📊 [OMD-UI-Navbar-0020] Navbar ➔ Navbar
 // 🎯 @KICK  : 상단 고정식 내비게이션 바로, 테마 스위처와 Supabase Auth 로그인 유무에 따른 동적 버튼/사용자 이메일 노출 및 로그아웃 기능 지원
 // 🛡️ @GUARD : Supabase Auth 세션 상태를 실시간 감지하여 hydration 미스매치 방지 및 안전한 로그아웃 예외 처리
+// 🚨 @PATCH : **2026-11-02** — [체험하기 및 내비게이션 동작 로깅 연동] 즉시 체험하기 클릭, 게스트 체험판 시작, 로그아웃 이벤트에 reportClientLog 및 브라우저 콘솔 로깅 추가
 // 🚨 @PATCH : **2026-09-30** — [헤더 네비게이션 메뉴 명칭 및 순서 갱신]: 사용자 요청에 따라 '문서 결과'를 '문서작성Flow(#document-results)'로 변경하고 섹션 위치 스왑에 맞추어 메뉴 순서를 '문서작성Flow' ➔ '제품 소개'로 정돈
 // 🚨 @PATCH : **2026-09-30** — [로그아웃 방어 로직 강화]: 서버 세션 해제 실패나 세션 ID 누락 시에도 로컬 인증 세션(Supabase Auth & Session Storage)이 무조건 정상 정리되도록 2중 안전 가드 적용
 // 🚨 @PATCH : **2026-09-30** — [TransformationSection 제거에 따른 네비게이션 메뉴 현행화]: '활용 사례(#transformation)'를 '문서 결과(#document-results)'로 갱신
@@ -29,6 +30,7 @@ import { useRouter } from "next/navigation"; // useRouter : 페이지 이동
 import { supabase } from "@/lib/supabaseClient"; // supabase : 데이터베이스 연동
 import { clearAuthSessionStorage } from "@/lib/authSessionHelper";
 import { logoutCurrentWebSession } from "@/lib/logoutWebSession";
+import { reportClientLog } from "@/lib/clientLogs";
 import toast from 'react-hot-toast';
 
 // =====================================================================
@@ -65,6 +67,8 @@ export function Navbar({ content }: { content?: NavbarContent }) {
   const [isTryoutGuideOpen, setIsTryoutGuideOpen] = useState(false);
 
   const handleInstantTry = () => {
+    console.log('[Navbar] 즉시 체험하기 버튼 클릭 ➔ 안내 가이드 팝업 열림');
+    reportClientLog('상단 헤더 즉시 체험하기 클릭 - 안내 가이드 팝업 오픈', 'INFO', 'USER_NOTICE');
     setIsTryoutGuideOpen(true);
   };
 
@@ -124,6 +128,8 @@ export function Navbar({ content }: { content?: NavbarContent }) {
   // 로그아웃 처리
   // =====================================================================
   const handleLogout = async () => {
+    console.log('[Navbar] 사용자 로그아웃 처리 시작 (계정:', userEmail || '미인증', ')');
+    reportClientLog(`사용자 로그아웃 요청 (${userEmail || '알수없음'})`, 'INFO', 'LOGIN');
     try {
       try {
         await logoutCurrentWebSession();
@@ -385,6 +391,8 @@ export function Navbar({ content }: { content?: NavbarContent }) {
                             localStorage.setItem("onrivi_guest_try_count", "0");
                           }
                           
+                          console.log('[Navbar] 게스트 체험판 이용 승인 ➔ /editor 이동');
+                          reportClientLog('게스트 체험판 시작 승인 - /editor 이동', 'INFO', 'USER_NOTICE');
                           router.push("/editor");
                         }
                       }}
