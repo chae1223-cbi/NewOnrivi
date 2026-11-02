@@ -1,0 +1,22 @@
+{
+  "css.customData": [],
+  "css.lint.unknownAtRules": "ignore",
+  "files.exclude": {
+    "**/dist*/**": true,
+    "**/release/**": true,
+    "**/.next/**": true,
+    "**/out/**": true
+  },
+  "files.watcherExclude": {
+    "**/dist*/**": true,
+    "**/release/**": true,
+    "**/.next/**": true,
+    "**/out/**": true
+  },
+  "search.exclude": {
+    "**/dist*/**": true,
+    "**/release/**": true,
+    "**/.next/**": true,
+    "**/out/**": true
+  }
+}

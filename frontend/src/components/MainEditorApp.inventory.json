@@ -1,0 +1,756 @@
+[
+  {
+    "name": "getMdFiles",
+    "type": "function",
+    "line": 180,
+    "domain": "FILE",
+    "kick": "traverses FileNode tree to collect all .md files recursively",
+    "guard": "None",
+    "patch": "None",
+    "calls": []
+  },
+  {
+    "name": "fetchAllMdFiles",
+    "type": "function",
+    "line": 198,
+    "domain": "FILE",
+    "kick": "multi-platform async file tree scan: browser, local/electron, or cloud API",
+    "guard": "visited Set prevents infinite directory loop cycles",
+    "patch": "None",
+    "calls": ["getMdFiles", "fetch", "api.listDirectory"]
+  },
+  {
+    "name": "resolveRelativeImagePath",
+    "type": "function",
+    "line": 252,
+    "domain": "CORE",
+    "kick": "resolves relative markdown image paths to absolute, normalizing backslashes and ../.. segments",
+    "guard": "handles http/https/data/blob URIs, Windows drive letters, empty src",
+    "patch": "None",
+    "calls": []
+  },
+  {
+    "name": "getRelativePath",
+    "type": "function",
+    "line": 309,
+    "domain": "CORE",
+    "kick": "computes relative path between two files for wiki-style doc links",
+    "guard": "handles null fromPath, ensures relative result starts with ./ if not absolute",
+    "patch": "None",
+    "calls": []
+  },
+  {
+    "name": "MainEditorApp",
+    "type": "component",
+    "line": 338,
+    "domain": "CORE",
+    "kick": "control tower: orchestrates all global state, layout assembly, Monaco editor, preview, sidebar, menus",
+    "guard": "TDZ declaration ordering defense, IME composition lock, stale closure ref backups, race condition guards on mount",
+    "patch": "see detailed child entries below",
+    "calls": [
+      "useToast", "useEditorTabs", "useFileExplorer", "useEditorSettings", "useEditorHandlers",
+      "getMdFiles", "fetchAllMdFiles", "resolveRelativeImagePath", "getRelativePath",
+      "utilsEditorActions", "utilsPasteHandlers", "getSlashCommands", "preprocessMarkdownForPreview",
+      "saveSecureData", "loadSecureData", "idb", "getApiUrl"
+    ]
+  },
+  {
+    "name": "contentRef_sync",
+    "type": "useEffect",
+    "line": 344,
+    "domain": "EDIT",
+    "kick": "keeps contentRef.current in sync with content state for use in closures",
+    "guard": "prevents stale closure reading old content from ref",
+    "patch": "None",
+    "calls": []
+  },
+  {
+    "name": "loadUserProfiles",
+    "type": "useEffect",
+    "line": 417,
+    "domain": "CORE",
+    "kick": "loads user CSS profiles from platform storage (electronAPI or localStorage) on mount",
+    "guard": "filters out system profiles from user-stored data, merges legacy format migration",
+    "patch": "None",
+    "calls": ["api.readProfiles", "localStorage.getItem", "JSON.parse", "setProfiles"]
+  },
+  {
+    "name": "previewModeRef_sync",
+    "type": "useEffect",
+    "line": 461,
+    "domain": "EDIT",
+    "kick": "keeps previewModeRef.current in sync with previewMode state",
+    "guard": "prevents stale ref in event handlers and async callbacks",
+    "patch": "None",
+    "calls": []
+  },
+  {
+    "name": "helpContent_forces_preview",
+    "type": "useEffect",
+    "line": 466,
+    "domain": "EDIT",
+    "kick": "forces preview mode when help content is set, disables editor mount",
+    "guard": "prevents editor content collision with help overlay",
+    "patch": "None",
+    "calls": ["setPreviewModeRaw"]
+  },
+  {
+    "name": "pageViewInit",
+    "type": "useEffect",
+    "line": 491,
+    "domain": "CORE",
+    "kick": "restores isPageViewEnabled from localStorage on mount",
+    "guard": "None",
+    "patch": "currently disabled (commented setState) per product decision",
+    "calls": ["localStorage.getItem"]
+  },
+  {
+    "name": "handleTogglePageView",
+    "type": "useCallback",
+    "line": 501,
+    "domain": "CORE",
+    "kick": "toggles page view mode and persists preference to localStorage",
+    "guard": "None",
+    "patch": "None",
+    "calls": ["localStorage.setItem"]
+  },
+  {
+    "name": "tabMetadata_sync",
+    "type": "useEffect",
+    "line": 513,
+    "domain": "EDIT",
+    "kick": "syncs tab metadata (fileName, path, node) when current file info changes",
+    "guard": "None",
+    "patch": "None",
+    "calls": ["setTabs"]
+  },
+  {
+    "name": "searchOpen_sidebar_behavior",
+    "type": "useEffect",
+    "line": 531,
+    "domain": "EDIT",
+    "kick": "opens sidebar and switches to search tab when global search opens",
+    "guard": "resets sidebar tab to TOC when search closes (if still on search tab)",
+    "patch": "None",
+    "calls": ["setIsSidebarOpen", "setSidebarTab"]
+  },
+  {
+    "name": "loadFilesForDocLinkPicker",
+    "type": "useEffect",
+    "line": 564,
+    "domain": "FILE",
+    "kick": "loads all .md files when doc link picker opens, cleans state on close",
+    "guard": "resets all heading/file selection state when picker closes",
+    "patch": "None",
+    "calls": ["fetchAllMdFiles", "setAllMdFiles"]
+  },
+  {
+    "name": "initDeviceId",
+    "type": "useEffect",
+    "line": 591,
+    "domain": "AUTH",
+    "kick": "initializes device unique ID from electronAPI, chrome.storage, or localStorage fallback",
+    "guard": "handles out-of-order environments; generates crypto-random UUID if none exists",
+    "patch": "chrome.storage.sync used for addon cross-browser syncing",
+    "calls": ["api.getMachineId", "chrome.storage.sync.get/set", "crypto.randomUUID", "localStorage.getItem/setItem", "setDeviceId"]
+  },
+  {
+    "name": "loadAndVerifyLicense",
+    "type": "useEffect",
+    "line": 629,
+    "domain": "AUTH",
+    "kick": "loads license key from storage, verifies against Supabase DB, falls back to local trial period",
+    "guard": "offline grace period via encrypted cache (3 days), 14-day first-run guarantee, SHA-256 anonymous key generation fallback",
+    "patch": "crypto subtle fallback for anonymous key if DB unavailable",
+    "calls": ["api.loadLicenseFull", "chrome.storage.local.get", "supabase.from.license_activations.select", "crypto.subtle.digest", "saveSecureData", "loadSecureData", "setLicenseStatus", "setLicenseKey"]
+  },
+  {
+    "name": "supabaseRealtime_license",
+    "type": "useEffect",
+    "line": 784,
+    "domain": "PAY",
+    "kick": "subscribes to Supabase postgres_changes on license_activations for realtime activation, plus desktop protocol fallback",
+    "guard": "cleans up channel and listener on unmount; dedupes with device_uuid filter",
+    "patch": "desktop onLicenseActivated as backup for Electron environments",
+    "calls": ["supabase.channel", "supabase.from.software_licenses.select", "handleSuccessActivation", "showToast"]
+  },
+  {
+    "name": "handleSuccessActivation",
+    "type": "function",
+    "line": 840,
+    "domain": "AUTH",
+    "kick": "persists verified license activation to all storage layers after successful payment/activation",
+    "guard": "atomic setLicenseStatus + platform storage save (electronAPI, chrome.storage, localStorage)",
+    "patch": "None",
+    "calls": ["setLicenseStatus", "api.saveLicenseFull", "chrome.storage.local.set", "localStorage.setItem"]
+  },
+  {
+    "name": "toggleMergeNodeSelect",
+    "type": "function",
+    "line": 895,
+    "domain": "FILE",
+    "kick": "toggles a FileNode in/out of the merge selection list",
+    "guard": "deduplicates by path or name to avoid double-add",
+    "patch": "None",
+    "calls": ["setSelectedMergeNodes"]
+  },
+  {
+    "name": "handleOpenMergeModal",
+    "type": "function",
+    "line": 906,
+    "domain": "FILE",
+    "kick": "opens merge modal only when 2+ files are selected",
+    "guard": "validates minimum selection count (2) before opening modal",
+    "patch": "None",
+    "calls": ["showToast", "setIsMergeModalOpen"]
+  },
+  {
+    "name": "currentFileNodeRef_sync",
+    "type": "useEffect",
+    "line": 961,
+    "domain": "EDIT",
+    "kick": "syncs currentFileNodeRef for stale closure prevention in handlers",
+    "guard": "part of WBS CORE-02 state stale closure prevention system",
+    "patch": "None",
+    "calls": []
+  },
+  {
+    "name": "currentFileNameRef_sync",
+    "type": "useEffect",
+    "line": 962,
+    "domain": "EDIT",
+    "kick": "syncs currentFileNameRef for stale closure prevention in handlers",
+    "guard": "part of WBS CORE-02 stale closure prevention",
+    "patch": "None",
+    "calls": []
+  },
+  {
+    "name": "workspaceTypeRef_sync",
+    "type": "useEffect",
+    "line": 963,
+    "domain": "EDIT",
+    "kick": "syncs workspaceTypeRef for stale closure prevention in handlers",
+    "guard": "part of WBS CORE-02 stale closure prevention",
+    "patch": "None",
+    "calls": []
+  },
+  {
+    "name": "rootFolderRef_sync",
+    "type": "useEffect",
+    "line": 964,
+    "domain": "EDIT",
+    "kick": "syncs rootFolderRef for stale closure prevention in handlers",
+    "guard": "part of WBS CORE-02 stale closure prevention",
+    "patch": "None",
+    "calls": []
+  },
+  {
+    "name": "tabSizeRef_sync",
+    "type": "useEffect",
+    "line": 965,
+    "domain": "CORE",
+    "kick": "updates tabSizeRef from active CSS profile tabSize setting",
+    "guard": "None",
+    "patch": "None",
+    "calls": ["parseInt"]
+  },
+  {
+    "name": "setPreviewMode",
+    "type": "useCallback",
+    "line": 1015,
+    "domain": "EDIT",
+    "kick": "switches preview mode with editor content preservation, css-style welcome tab auto-creation, and help content guard",
+    "guard": "prevents mode change during css-style lock, forces editor content sync before transition, blocks helpContent override",
+    "patch": "100ms debounce drain before mode switch to prevent content loss; isEditorMountedRef atomic control",
+    "calls": ["editorRef.current.getValue", "setContent", "setPreviewModeRaw", "setHelpContent", "createNewTab", "switchTab", "clearTimeout"]
+  },
+  {
+    "name": "closeTab",
+    "type": "useCallback",
+    "line": 1057,
+    "domain": "EDIT",
+    "kick": "closes a tab with unsaved-changes confirmation, model disposal, and css-style mode auto-exit",
+    "guard": "stopPropagation on event, confirms on modified tabs, disposes Monaco model, switches to next tab or creates empty",
+    "patch": "None",
+    "calls": ["setTabs", "switchTab", "createNewTab", "setConfirmConfig", "tab.model.dispose"]
+  },
+  {
+    "name": "autoSaveRef_sync",
+    "type": "useEffect",
+    "line": 1150,
+    "domain": "EDIT",
+    "kick": "syncs autoSaveRef with autoSave state for stale closure prevention in auto-save logic",
+    "guard": "part of stale closure prevention system",
+    "patch": "None",
+    "calls": []
+  },
+  {
+    "name": "handleCheckboxToggle",
+    "type": "useCallback",
+    "line": 1168,
+    "domain": "CORE",
+    "kick": "syncs preview checkbox click back to editor model line content",
+    "guard": "guards with window.monaco existence, line bounds check, regex validation",
+    "patch": "None",
+    "calls": ["editor.getModel", "editor.pushUndoStop", "editor.executeEdits"]
+  },
+  {
+    "name": "updateDecorations",
+    "type": "useCallback",
+    "line": 1198,
+    "domain": "CORE",
+    "kick": "applies inline Monaco decorations for markdown syntax highlighting (headings, bold, italic, strikethrough)",
+    "guard": "skips if editor/window.monaco unavailable",
+    "patch": "None",
+    "calls": ["decorationsCollectionRef.current.set"]
+  },
+  {
+    "name": "previewWheelSync",
+    "type": "useEffect",
+    "line": 1305,
+    "domain": "EDIT",
+    "kick": "forwards mouse wheel events from preview area to editor scroll in split mode",
+    "guard": "e.preventDefault with passive:false to stop default scroll",
+    "patch": "None",
+    "calls": ["editor.setScrollTop"]
+  },
+  {
+    "name": "darkModeDOMClass",
+    "type": "useEffect",
+    "line": 1330,
+    "domain": "CORE",
+    "kick": "toggles 'dark' class on documentElement for Tailwind dark mode",
+    "guard": "only runs after mounted to avoid SSR mismatch",
+    "patch": "None",
+    "calls": ["document.documentElement.classList.add/remove"]
+  },
+  {
+    "name": "editorSettingsSync",
+    "type": "useEffect",
+    "line": 1340,
+    "domain": "EDIT",
+    "kick": "reapplies theme, font size, word wrap when settings or editor mount change",
+    "guard": "guards on mounted && isEditorReady to prevent race conditions",
+    "patch": "requestAnimationFrame layout() to fix jank after theme change",
+    "calls": ["monaco.editor.setTheme", "editor.updateOptions", "requestAnimationFrame"]
+  },
+  {
+    "name": "darkModePaletteSync",
+    "type": "useEffect",
+    "line": 1360,
+    "domain": "CORE",
+    "kick": "auto-switches theme palette when dark mode toggles to maintain visual consistency",
+    "guard": "checks THEME_MAP to determine if current palette matches dark/light mode",
+    "patch": "None",
+    "calls": ["setThemePalette"]
+  },
+  {
+    "name": "profilesSave",
+    "type": "useEffect",
+    "line": 1375,
+    "domain": "CORE",
+    "kick": "persists user CSS profiles to platform storage on every change",
+    "guard": "filters out system profiles before saving to avoid duplication",
+    "patch": "None",
+    "calls": ["api.saveProfiles", "localStorage.setItem"]
+  },
+  {
+    "name": "activeProfileSave",
+    "type": "useEffect",
+    "line": 1388,
+    "domain": "CORE",
+    "kick": "persists active CSS profile ID to localStorage",
+    "guard": "None",
+    "patch": "None",
+    "calls": ["localStorage.setItem"]
+  },
+  {
+    "name": "electronAPI_listeners",
+    "type": "useEffect",
+    "line": 1396,
+    "domain": "IO",
+    "kick": "registers Electron main process IPC listeners for file operations and external file open",
+    "guard": "removes listeners on cleanup, processes pending external file ref",
+    "patch": "pendingExternalFileRef defers file open until mount completes",
+    "calls": ["api.onNewFileRequested", "api.onSaveFileRequested", "api.onSaveFileAsRequested", "api.onReceiveFile", "openExternalFile", "handlers.newFile", "handlers.save", "handlers.saveAs"]
+  },
+  {
+    "name": "openExternalFile",
+    "type": "function",
+    "line": 1426,
+    "domain": "FILE",
+    "kick": "opens a file from OS-level double-click or command-line, creating tab with Monaco model",
+    "guard": "checks existing tabs for dedup, creates Monaco model with change listener, falls back to handleFileOpenByPath",
+    "patch": "None",
+    "calls": ["api.readFromPath", "switchTab", "monaco.editor.createModel", "setTabs", "setActiveTabId", "setContent", "setCurrentFileName", "setCurrentFileNode", "handleFileOpenByPath", "showToast"]
+  },
+  {
+    "name": "welcomeContentLoad",
+    "type": "useEffect",
+    "line": 1481,
+    "domain": "FILE",
+    "kick": "loads welcome content on first mount if no tabs exist and no external file pending",
+    "guard": "skips if pendingExternalFileRef is set (defer to file open)",
+    "patch": "None",
+    "calls": ["getWelcomeContent", "setTabs", "setActiveTabId", "setContent", "setCurrentFileName"]
+  },
+  {
+    "name": "dynamicTitleBar",
+    "type": "useEffect",
+    "line": 1524,
+    "domain": "EDIT",
+    "kick": "updates document.title with current file name for window tab identification",
+    "guard": "None",
+    "patch": "None",
+    "calls": []
+  },
+  {
+    "name": "previewHighlightLine",
+    "type": "useEffect",
+    "line": 1534,
+    "domain": "CORE",
+    "kick": "highlights preview line matching editor's activeLine in split mode",
+    "guard": "clears all highlights first to avoid duplicate, finds nearest lower data-line for unmatched positions",
+    "patch": "None",
+    "calls": ["element.classList.add/remove"]
+  },
+  {
+    "name": "postContentScrollCorrection",
+    "type": "useEffect",
+    "line": 1566,
+    "domain": "CORE",
+    "kick": "syncs preview scroll position to match editor cursor ratio after content change/parsing",
+    "guard": "computes viewport ratio from editor cursor and applies same ratio to preview scroll",
+    "patch": "isScrollingRef lock prevents scroll loop; requestAnimationFrame for timing accuracy",
+    "calls": ["requestAnimationFrame", "editor.getPosition", "editor.getTopForLineNumber", "editor.getScrollTop"]
+  },
+  {
+    "name": "handleMouseMove",
+    "type": "useCallback",
+    "line": 1612,
+    "domain": "EDIT",
+    "kick": "handles sidebar resize drag mousemove event",
+    "guard": "clamps width between 150-600px",
+    "patch": "None",
+    "calls": ["setSidebarWidth", "localStorage.setItem"]
+  },
+  {
+    "name": "stopResizing",
+    "type": "useCallback",
+    "line": 1623,
+    "domain": "EDIT",
+    "kick": "ends sidebar resize: removes listeners, restores cursor and user-select",
+    "guard": "None",
+    "patch": "None",
+    "calls": ["document.removeEventListener", "document.body.style.cursor/userSelect"]
+  },
+  {
+    "name": "startResizing",
+    "type": "useCallback",
+    "line": 1631,
+    "domain": "EDIT",
+    "kick": "initiates sidebar resize: adds listeners, sets col-resize cursor",
+    "guard": "None",
+    "patch": "None",
+    "calls": ["document.addEventListener", "document.body.style"]
+  },
+  {
+    "name": "saveStatusSync",
+    "type": "useEffect",
+    "line": 1645,
+    "domain": "FILE",
+    "kick": "compares content vs lastSavedContent to update save status and tab isModified flag",
+    "guard": "only runs when currentFileNode exists (not for new unsaved files)",
+    "patch": "None",
+    "calls": ["setSaveStatus", "setTabs"]
+  },
+  {
+    "name": "autoSave",
+    "type": "useEffect",
+    "line": 1657,
+    "domain": "FILE",
+    "kick": "auto-saves file after 5-second debounce when content changes and autoSave is enabled",
+    "guard": "skips if content is empty, preview mode is changing, or content unchanged; 5s debounce cleanup",
+    "patch": "None",
+    "calls": ["saveFile", "setSaveStatus", "setTimeout", "clearTimeout"]
+  },
+  {
+    "name": "insertAtCursor",
+    "type": "function",
+    "line": 1688,
+    "domain": "EDIT",
+    "kick": "delegates text insertion at cursor to utilsEditorActions",
+    "guard": "None",
+    "patch": "None",
+    "calls": ["utilsEditorActions.insertAtCursor"]
+  },
+  {
+    "name": "findLineNumberByHeading",
+    "type": "function",
+    "line": 1699,
+    "domain": "CORE",
+    "kick": "delegates heading line search to utilsEditorActions",
+    "guard": "None",
+    "patch": "None",
+    "calls": ["utilsEditorActions.findLineNumberByHeading"]
+  },
+  {
+    "name": "scrollToLine",
+    "type": "function",
+    "line": 1708,
+    "domain": "EDIT",
+    "kick": "delegates editor scroll-to-line to utilsEditorActions",
+    "guard": "None",
+    "patch": "None",
+    "calls": ["utilsEditorActions.scrollToLine"]
+  },
+  {
+    "name": "handlePreviewClick",
+    "type": "function",
+    "line": 1717,
+    "domain": "CORE",
+    "kick": "on preview click: scrolls editor to matching line, highlights line in preview",
+    "guard": "traverses DOM closest [data-line] to handle nested elements",
+    "patch": "None",
+    "calls": ["scrollToLine", "element.closest", "classList.add/remove"]
+  },
+  {
+    "name": "insertBlockTag",
+    "type": "function",
+    "line": 1744,
+    "domain": "EDIT",
+    "kick": "delegates block tag wrapping to utilsEditorActions",
+    "guard": "None",
+    "patch": "None",
+    "calls": ["utilsEditorActions.insertBlockTag"]
+  },
+  {
+    "name": "wrapSelection",
+    "type": "function",
+    "line": 1755,
+    "domain": "EDIT",
+    "kick": "delegates selection wrap/unwrap to utilsEditorActions",
+    "guard": "None",
+    "patch": "None",
+    "calls": ["utilsEditorActions.wrapSelection"]
+  },
+  {
+    "name": "insertLink",
+    "type": "function",
+    "line": 1759,
+    "domain": "EDIT",
+    "kick": "inserts markdown link at cursor, auto-selects URL placeholder text",
+    "guard": "uses lastSelectionRef if current selection is empty; handles both selected-text and empty cases",
+    "patch": "None",
+    "calls": ["editor.focus", "editor.getSelection", "editor.executeEdits", "editor.setSelection"]
+  },
+  {
+    "name": "insertTagLink",
+    "type": "function",
+    "line": 1812,
+    "domain": "EDIT",
+    "kick": "opens tag link picker for heading-based internal document anchors",
+    "guard": "None",
+    "patch": "None",
+    "calls": ["setShowTagLinkPicker"]
+  },
+  {
+    "name": "handleTagLinkSelect",
+    "type": "function",
+    "line": 1816,
+    "domain": "EDIT",
+    "kick": "inserts [[#heading|text]] tag link at cursor after heading selection",
+    "guard": "falls back to lastSelectionRef if current selection empty",
+    "patch": "None",
+    "calls": ["editor.focus", "editor.getSelection", "editor.executeEdits"]
+  },
+  {
+    "name": "readFileText",
+    "type": "function",
+    "line": 1853,
+    "domain": "FILE",
+    "kick": "reads file content from browser FileSystemHandle, local electronAPI, VFS, or cloud API",
+    "guard": "determines active mode based on path/handle presence; catches errors gracefully",
+    "patch": "None",
+    "calls": ["node.handle.getFile", "vfsReadFile", "api.readFromPath", "fetch"]
+  },
+  {
+    "name": "extractHeadings",
+    "type": "function",
+    "line": 1897,
+    "domain": "CORE",
+    "kick": "parses markdown text to extract heading text lines (H1-H6)",
+    "guard": "removes trailing # characters from heading text",
+    "patch": "None",
+    "calls": []
+  },
+  {
+    "name": "handleDocFileClick",
+    "type": "function",
+    "line": 1915,
+    "domain": "FILE",
+    "kick": "loads headings from a selected document file for doc link picker",
+    "guard": "sets loading state, clears headings on error",
+    "patch": "None",
+    "calls": ["readFileText", "extractHeadings", "setDocHeadings", "setIsHeadingLoading"]
+  },
+  {
+    "name": "handleDocLinkSelect",
+    "type": "function",
+    "line": 1930,
+    "domain": "EDIT",
+    "kick": "inserts [[relativePath#heading|text]] cross-document link at cursor",
+    "guard": "resets all picker state on completion; falls back to lastSelectionRef",
+    "patch": "None",
+    "calls": ["getRelativePath", "editor.focus", "editor.getSelection", "editor.executeEdits"]
+  },
+  {
+    "name": "parseHtmlTableToMarkdown",
+    "type": "function",
+    "line": 1972,
+    "domain": "EDIT",
+    "kick": "delegates HTML table to markdown conversion to paste handlers",
+    "guard": "None",
+    "patch": "None",
+    "calls": ["utilsPasteHandlers.parseHtmlTableToMarkdown"]
+  },
+  {
+    "name": "sanitizePastedText",
+    "type": "function",
+    "line": 1983,
+    "domain": "EDIT",
+    "kick": "delegates paste text sanitization to paste handlers",
+    "guard": "None",
+    "patch": "None",
+    "calls": ["utilsPasteHandlers.sanitizePastedText"]
+  },
+  {
+    "name": "fixMarkdownTable",
+    "type": "function",
+    "line": 1993,
+    "domain": "EDIT",
+    "kick": "delegates markdown table fix to paste handlers",
+    "guard": "None",
+    "patch": "None",
+    "calls": ["utilsPasteHandlers.fixMarkdownTable"]
+  },
+  {
+    "name": "handleEditorPaste",
+    "type": "function",
+    "line": 1997,
+    "domain": "EDIT",
+    "kick": "handles paste event: image upload, HTML table conversion, text sanitization",
+    "guard": "prevents default on image pastes, tries HTML table before plain text fallback",
+    "patch": "None",
+    "calls": ["fetch", "FileReader", "parseHtmlTableToMarkdown", "sanitizePastedText", "fixMarkdownTable", "insertAtCursor", "updateContent", "showToast"]
+  },
+  {
+    "name": "applyLinePrefix",
+    "type": "function",
+    "line": 2101,
+    "domain": "EDIT",
+    "kick": "applies ordered list / bullet / quote / checklist prefix to selected lines",
+    "guard": "calculates continuing ordered number from previous non-empty lines (max 10 back); handles nested quotes",
+    "patch": "forceTokenization after edits to trigger syntax highlight refresh",
+    "calls": ["editor.getSelection", "editor.executeEdits", "model.forceTokenization", "editor.layout"]
+  },
+  {
+    "name": "removePrefix",
+    "type": "function",
+    "line": 2213,
+    "domain": "EDIT",
+    "kick": "removes markdown formatting tags from selection: bold, italic, strikethrough, code, links, headings, lists",
+    "guard": "handles empty selection by expanding to full line; regex-based cleaning preserves leading whitespace",
+    "patch": "forceTokenization after edits to trigger syntax highlight refresh",
+    "calls": ["editor.getSelection", "editor.executeEdits", "model.forceTokenization", "editor.layout"]
+  },
+  {
+    "name": "processedContent_lineMap",
+    "type": "useMemo",
+    "line": 2281,
+    "domain": "CORE",
+    "kick": "preprocesses markdown content for preview and generates line mapping for scroll sync",
+    "guard": "None",
+    "patch": "None",
+    "calls": ["preprocessMarkdownForPreview"]
+  },
+  {
+    "name": "dynamicCssString",
+    "type": "useMemo",
+    "line": 2301,
+    "domain": "CORE",
+    "kick": "generates dynamic CSS from active CSS profile including typography, code blocks, tables, checkboxes, HR, dark mode overrides",
+    "guard": "returns empty string for default profile; dark mode overrides for blockquote, hr, color; skips font-size on h2-h6 (auto-calculated)",
+    "patch": "codeBlock nested border/background transparent override to prevent box-inside-box artifact",
+    "calls": []
+  },
+  {
+    "name": "quickWrap",
+    "type": "function",
+    "line": 2491,
+    "domain": "EDIT",
+    "kick": "quickly wraps selection or current line with heading/quote/code formatting",
+    "guard": "auto-selects entire line if no selection; Monaco guard checks",
+    "patch": "None",
+    "calls": ["wrapSelection", "applyLinePrefix", "insertBlockTag", "editor.focus"]
+  },
+  {
+    "name": "dispatchCommand",
+    "type": "useCallback",
+    "line": 2577,
+    "domain": "EDIT",
+    "kick": "unified command dispatcher routing EditorCommandType to handler methods with editor.focus guard",
+    "guard": "editor.focus() at entry to prevent browser focus loss; 50ms async forceTokenization after modal commands",
+    "patch": "50ms setTimeout for tokenization + layout to fix character overlap (WBS SYNC-02)",
+    "calls": [
+      "handlers.newFile/save/saveAs/exit/exportPDF/exportHTML/exportEPUB/exportPNG/openExport",
+      "handlers.zoomIn/zoomOut/undo/redo/find/replace/globalSearch/settings/about/help/license",
+      "handlers.toggleFloatingToolbar/cleanDoc/copyAll",
+      "handlers.bold/italic/inlineCode/underline/strikethrough/h1-h6/hr/orderedList/list/quote/check/removePrefix",
+      "handlers.link/taglink/doclink/image/video/now/map/table/quickTable/insertTableRow/deleteTableRow/code/chart/pageBreak/math",
+      "handlers.quickWrap",
+      "selectRootFolder", "setPreviewMode", "setIsToolbarOpen", "setIsSidebarOpen",
+      "setThemePalette", "setIsDarkMode"
+    ]
+  },
+  {
+    "name": "mapIdToCommandType",
+    "type": "useCallback",
+    "line": 2740,
+    "domain": "EDIT",
+    "kick": "maps toolbar item camelCase IDs to EditorCommandType UPPER_SNAKE_CASE with explicit override table",
+    "guard": "explicit map for mismatched IDs (divider→HR, clear→REMOVE_PREFIX, calendar→NOW); auto UPPER_SNAKE fallback",
+    "patch": "None",
+    "calls": []
+  },
+  {
+    "name": "hotkeyRegistration",
+    "type": "useEffect",
+    "line": 2791,
+    "domain": "EDIT",
+    "kick": "registers Monaco editor actions for all TOOLBAR_ITEMS with custom hotkeys including Ctrl+S/Ctrl+Shift+S",
+    "guard": "disposes previous disposables on rerun; parses keybinding strings to Monaco KeyMod/KeyCode",
+    "patch": "None",
+    "calls": ["TOOLBAR_ITEMS.forEach", "editor.addAction", "monaco.editor.defineTheme", "monaco.editor.setTheme", "updateDecorations", "handleEditorPaste"]
+  },
+  {
+    "name": "globalKeydownHandler",
+    "type": "useEffect",
+    "line": 2904,
+    "domain": "EDIT",
+    "kick": "global keyboard shortcut handler: blocks browser defaults for S/O, handles Escape for floating toolbar/tag picker, routes custom shortcuts",
+    "guard": "capture-phase listener; ignores events from form elements outside Monaco; IME 229 keyCode recovery; global-only shortcut detection before editor focus check",
+    "patch": "Ctrl+S/O browser default preventDefault for save/open dialogs; keyCode 229 IME composition recovery for Korean input",
+    "calls": ["dispatchCommand", "mapIdToCommandType", "setShowTagLinkPicker", "setFloatingToolbar"]
+  },
+  {
+    "name": "toc",
+    "type": "useMemo",
+    "line": 3051,
+    "domain": "CORE",
+    "kick": "generates table of contents from markdown headings, skipping code blocks",
+    "guard": "strips BOM character, detects code block fences to avoid false positives",
+    "patch": "None",
+    "calls": []
+  }
+]

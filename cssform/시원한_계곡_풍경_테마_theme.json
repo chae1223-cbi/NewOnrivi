@@ -1,0 +1,149 @@
+{
+  "id": "profile-1784161873133",
+  "name": "시원한 계곡 풍경 테마",
+  "pageStyle": {
+    "fontFamily": "\"Batang\", serif",
+    "fontSize": "16px",
+    "lineHeight": "1.8",
+    "letterSpacing": "-0.02em",
+    "backgroundColor": "#f0f8ff",
+    "paperSize": "a4",
+    "marginTop": "20mm",
+    "marginBottom": "20mm",
+    "marginLeft": "15mm",
+    "marginRight": "15mm",
+    "orientation": "portrait",
+    "headingSizeOffset": "2",
+    "tabSize": "4"
+  },
+  "rules": {
+    "h1": {
+      "color": "#005b96",
+      "font-weight": "800",
+      "border-bottom": "4px solid #87ceeb",
+      "padding-bottom": "10px",
+      "margin-top": "30px",
+      "margin-bottom": "15px",
+      "text-shadow": "1px 1px 2px rgba(0,0,0,0.05)"
+    },
+    "h2": {
+      "color": "#0077be",
+      "font-weight": "700",
+      "border-left": "6px solid #4db8ff",
+      "padding-left": "12px",
+      "margin-top": "25px",
+      "margin-bottom": "12px"
+    },
+    "h3": {
+      "color": "#0099cc",
+      "font-weight": "600",
+      "margin-top": "20px",
+      "margin-bottom": "10px"
+    },
+    "h4": {
+      "color": "#4682b4",
+      "font-weight": "600",
+      "margin-top": "18px",
+      "margin-bottom": "8px"
+    },
+    "h5": {
+      "text-align": "left",
+      "font-weight": "600",
+      "font-size": "12pt",
+      "margin-top": "10px",
+      "margin-bottom": "5px"
+    },
+    "h6": {
+      "text-align": "left",
+      "font-weight": "600",
+      "font-size": "11pt",
+      "margin-top": "10px",
+      "margin-bottom": "5px"
+    },
+    "p": {
+      "color": "#2c3e50",
+      "margin-bottom": "18px"
+    },
+    "strong": {
+      "color": "#005b96",
+      "font-weight": "700"
+    },
+    "em": {
+      "color": "#5f9ea0",
+      "font-style": "italic"
+    },
+    "u": {
+      "text-decoration-color": "#87ceeb"
+    },
+    "del": {
+      "text-decoration-color": "#9ca3af"
+    },
+    "ul": {
+      "color": "#34495e",
+      "padding-left": "20px"
+    },
+    "ol": {
+      "color": "#34495e",
+      "padding-left": "20px"
+    },
+    "li": {
+      "margin-bottom": "8px"
+    },
+    "taskList": {},
+    "hr": {
+      "border": "0",
+      "height": "1px",
+      "background-image": "linear-gradient(to right, transparent, #87ceeb, transparent)",
+      "margin": "30px 0"
+    },
+    "table": {
+      "border-collapse": "collapse",
+      "width": "100%",
+      "margin-bottom": "20px"
+    },
+    "th": {
+      "background-color": "#b3e5fc",
+      "color": "#005b96",
+      "padding": "10px",
+      "border-bottom": "2px solid #81d4fa"
+    },
+    "td": {
+      "padding": "10px",
+      "border-bottom": "1px solid #e0f2f1"
+    },
+    "blockquote": {
+      "border-left": "5px solid #b0e0e6",
+      "background-color": "#e0f7fa",
+      "padding": "15px 20px",
+      "color": "#006064",
+      "font-style": "italic",
+      "border-radius": "0 8px 8px 0"
+    },
+    "codeBlock": {
+      "background-color": "#e1f5fe",
+      "border": "1px solid #b3e5fc",
+      "border-radius": "4px",
+      "padding": "12px",
+      "font-family": "monospace"
+    },
+    "codeBlockTitle": {
+      "background-color": "#0f172a",
+      "color": "#94a3b8"
+    },
+    "a": {
+      "color": "#0288d1",
+      "text-decoration": "none",
+      "border-bottom": "1px dashed #0288d1"
+    },
+    "img": {
+      "border-radius": "12px",
+      "box-shadow": "0 4px 12px rgba(0,0,0,0.1)"
+    },
+    "code": {
+      "background-color": "#e1f5fe",
+      "color": "#0077be",
+      "padding": "2px 4px",
+      "border-radius": "3px"
+    }
+  }
+}

@@ -1,0 +1,32 @@
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const req=require('node:module').createRequire(path.resolve('frontend/package.json')),ts=req('typescript');
+const compile=source=>ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
+const api={};Function('exports',compile(fs.readFileSync('frontend/src/lib/importStartFolder.ts','utf8')))(api);
+const {importStartFolder}=api;
+const rootHandle={kind:'directory',name:'root'},subHandle={kind:'directory',name:'child'};
+const local={path:'D:/workspace',handle:rootHandle};
+assert.equal(importStartFolder(local,null,null,[]).localHandle,rootHandle);
+assert.equal(importStartFolder(local,null,null,[]).localPath,'D:/workspace');
+assert.equal(importStartFolder(local,{path:'D:/workspace/child',handle:subHandle},null,[]).localHandle,subHandle);
+assert.equal(importStartFolder(local,{path:'D:/workspace/child'},subHandle,[]).localPath,'D:/workspace/child');
+const root={type:'GDRIVE',id:'workspace',name:'작업장'},target={kind:'directory',driveId:'nested',name:'하위'};
+const files=[{kind:'directory',driveId:'parent',name:'상위',children:[target]}];
+const saved=[{id:'root',name:'내 드라이브'},{id:'workspace',name:'작업장'}];
+assert.deepEqual(importStartFolder(root,null,null,files,saved).drivePath,saved);
+assert.deepEqual(importStartFolder(root,target,null,files,saved).drivePath.map(f=>f.id),['root','workspace','parent','nested']);
+// Execute the real event listener: menu requests clear the previous context folder.
+const source=fs.readFileSync('frontend/src/components/LeftSidebar.tsx','utf8'),tree=ts.createSourceFile('sidebar.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+let listener,openExpression;
+function visit(n){if(ts.isVariableDeclaration(n)&&n.name.getText(tree)==='handleTriggerImport')listener=n.initializer.getText(tree);if(ts.isVariableDeclaration(n)&&n.name.getText(tree)==='openImportPicker')openExpression=n.initializer.arguments[0].getText(tree);ts.forEachChild(n,visit);}visit(tree);
+const nodeRef={current:target},parentRef={current:subHandle},sources=[];
+const handler=Function('isRestrictedUser','targetImportNodeRef','targetImportParentHandleRef','openImportPicker',compile('const handler='+listener+';')+'return handler;')(false,nodeRef,parentRef,source=>sources.push(source));
+handler({detail:{source:'local'}});assert.equal(nodeRef.current,null);assert.equal(parentRef.current,null);
+handler({detail:{node:target,parentHandle:subHandle}});assert.equal(nodeRef.current,target);assert.equal(parentRef.current,subHandle);
+let chosenPath,openedPath;
+const context={isRestrictedUser:false,isImporting:false,selectingImportRef:{current:false},setShowImportSource:()=>{},importStartFolder,targetImportNodeRef:{current:{path:'D:/workspace/child'}},targetImportParentHandleRef:{current:null},fileList:[],rootFolder:local,getSavedWorkspaceInfo:()=>null,window:{electronAPI:{chooseImportDocument:async start=>{chosenPath=start;return {path:start+'/input.txt',name:'input.txt'};},readTransferFile:async()=>new Uint8Array([65])}},chooseImportDestination:file=>openedPath=file.name,showToast:()=>{}};
+const open=Function(...Object.keys(context),compile('const open='+openExpression+';')+'return open;')(...Object.values(context));
+(async()=>{
+ await open('local');assert.equal(chosenPath,'D:/workspace/child');assert.equal(openedPath,'input.txt');
+ context.targetImportNodeRef.current=null;await open('local');assert.equal(chosenPath,'D:/workspace');
+ console.log('PASS: menu opens root; folder context preserves its target; browser handles, nested Drive breadcrumbs and desktop picker start paths');
+})().catch(error=>{console.error(error);process.exitCode=1;});

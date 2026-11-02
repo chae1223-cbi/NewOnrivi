@@ -1,0 +1,2494 @@
+@import url('https://cdn.jsdelivr.net/gh/joungkyun/font-d2coding/d2coding.css');
+@import url('https://fonts.googleapis.com/css2?family=Nanum+Gothic+Coding:wght@400;700&display=swap');
+
+/* 웹과 설치형 앱이 같은 글꼴 파일을 사용하도록 Pretendard를 로컬 정적 자산으로 제공한다. */
+@font-face {
+  font-family: 'Pretendard';
+  src: url('/fonts/pretendard/PretendardVariable.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 45 920;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Pretendard Variable';
+  src: url('/fonts/pretendard/PretendardVariable.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 45 920;
+  font-display: swap;
+}
+
+/* ===================================================================
+ * 🚨 @PATCH : **2026-10-26** — [확장 리스트(Loose List) 내부 p 및 .onrivi-line 인라인 일원화]:
+ *             li 내부 p 및 span.onrivi-line에 display: inline !important 및 width: auto를 지정하여 Loose List에서도 Tight List(쇼케이스)와 100% 동일하게 불릿/숫자 마커와 글자 간격이 밀착되도록 결함 해결
+ * 🚨 @PATCH : **2026-10-26** — [인용구 내부 리스트 과도한 들여쓰기(2.25rem/36px) 소거 및 --list-indent 동기화]:
+ *             인용구 내부 blockquote ul의 고정 패딩(2.25rem)을 var(--list-indent, 1.25rem)으로 정상화하여 불릿 마커와 본문 간 거대 공백 결함 해결
+ * 🚨 @PATCH : **2026-10-26** — [번들 웹폰트 OTS 파싱 오류(kern table, sfntVersion) 및 디코딩 실패 전면 해결]:
+ *             1) 학교안심 포스터/보드마카의 비정상 PostScript 바이너리 .woff2를 W3C 표준 규격의 정품 .woff 에셋으로 교체 복구
+ *             2) EBS주시경·더서클·이순신돋움 TTF 폰트 내 크롬 OTS 거부 원인인 비표준 Apple-format kern 테이블을 정제하여 브라우저 디코딩 100% 정상화
+ * 🚨 @PATCH : **2026-10-18** — [인용구(blockquote) 및 시험 문제 보기 상자 내부 줄 여백 콤팩트 규격화]:
+ *             인용구 내부 문단(p: 4px), 목록(ul/ol: 4px, li: 2px)의 불필요한 과대 마진을 콤팩트하게 밀착시켜 화면 및 인쇄 시 보기 상자 비대화 방지
+ * 🚨 @PATCH : **2026-10-15** — [슬래시 자동완성 팝업 서식 설명 열 왼쪽 정렬 통일]:
+ *             Monaco Suggest Widget의 서식 설명(.details-label / .right)이 우측 끝으로 밀려 우측 정렬되던 레이아웃을 flex-start 및 고정 열 너비(220px) 기반의 단정한 왼쪽 정렬(Left-align)로 전면 개편
+ * 🚨 @PATCH : **2026-10-15** — [화면 흔들림(Layout Shift & Scrollbar Jitter) 완전 해결]:
+ *             1) 에디터/데스크톱 뷰포트에서 html, body 너비·높이 100% 고정 및 overflow: hidden 강제 적용으로 17px 윈도우 스크롤바 생성/소멸에 의한 전체 화면 좌우 요동 원천 차단
+ *             2) scrollbar-gutter: stable 표준화로 어떤 동적 이벤트 발생 시에도 뷰포트 지오메트리 100% 불변 유지
+ * 🚨 @PATCH : **2026-10-13** — [나란히 보기 마크다운 영역 배경색 분리, 라인번호 거터 제거 및 읽기 전용 커서 숨김]: 문서 보기(#ffffff)와 경계가 구분되도록 마크다운 영역 배경을 분리하고, 라인번호 거터(.monaco-editor .margin, .line-numbers)와 읽기 전용 마크다운 영역(#onrivi-markdown-pane)의 입력 커서 바를 숨김 처리
+ * 🚨 @PATCH : **2026-10-10** — [탐색기(LeftSidebar) 스크롤바 폭 100% 확대(6px->12px) 및 시인성 강화]: 기존 6px 규격의 얇은 스크롤바 폭을 12px(100% 확대)로 확장하고, 은은한 트랙과 고대비 썸(Thumb) 및 호버 반응을 탑재한 .explorer-scrollbar 유틸리티 신설
+ * 🚨 @PATCH : **2026-10-02** — [이미지 드래그 앤 드롭 실시간 위치 가이드라인 및 드롭 타겟 라인 하이라이트 스타일 탑재]: 드래그 중인 이미지가 삽입될 행과 위치를 사용자가 마우스를 놓기 전에 100% 식별할 수 있도록 .onrivi-drop-line-highlight 스타일 추가
+ * 🚨 @PATCH : **2026-10-02** — [학교안심 폰트 WOFF2 포맷 일원화 및 구형 중복 파일 정리]: Hakgyoansim 폰트의 중복 TTF/OTF/WOFF를 제거하고 고압축 WOFF2로 일원화하여 시각적 품위를 100% 동일하게 유지하면서 패키징 용량 대폭 경량화
+ * 🚨 @PATCH : **2026-10-01** — [PDF 3·4·5페이지 섹션 시작 조판 최적화 및 제목+소개+미디어 원자적 결속]: H1~H6 바로 뒤의 소개 문단/목록이 이미지나 다이어그램으로 이어질 때 break-after: avoid를 연동하여 제목+소개+이미지가 다음 페이지 첫머리에서 온전히 함께 시작되도록 출판형 조판 완성
+ * 🚨 @PATCH : **2026-10-01** — [PDF Mermaid 다이어그램 컨테이너 분할 분리 및 이전 페이지 빈 박스 잔상 버그 완전 해결]: .not-prose, .not-prose > div, .mermaid-svg-container, .mermaid-block-container에 break-inside: avoid를 강제 적용하여 도표와 컨테이너가 한 덩어리로 온전히 다음 페이지로 넘어가도록 조판 완결
+ * 🚨 @PATCH : **2026-10-01** — [PDF/인쇄 시 과도한 빈 공간(하단 공백) 제거 및 이미지 축소/컨테이너 분할(Pagination) 정책 수립]: 제목 고아 방지(break-after: avoid), 컨테이너(section/article/div) break-inside: auto 적용, 대형 이미지 자동 축소(max-height: 190mm) 및 이미지-캡션 세트 결속으로 A4 페이지 하단 대형 공백 소거 완료
+ * 🚨 @PATCH : **2026-10-01** — [PDF/인쇄 시 과도한 빈 공간(하단 여백) 소거 및 자연스러운 문단 분할(Pagination) 정책 정립]: p, li, blockquote의 강제 break-inside: avoid를 auto로 전면 개편하고 orphans/widows: 2를 적용하여 긴 문단이 페이지 하단에서 통째로 밀리지 않고 자연스럽게 페이지를 넘어가도록 최적화
+ * 🚨 @PATCH : **2026-10-01** — [PDF/인쇄 시 긴 Mermaid 다이어그램 앞 빈 페이지(백지) 발생 방지]: .not-prose 강제 break-inside 해제 및 Mermaid SVG max-height(230mm) 제어로 인쇄 시 A4 1페이지 내 온전한 안착 보장
+ * 🚨 @PATCH : **2026-09-30** — [미리보기 내부 텍스트 검색 하이라이트 스타일 추가]: CSS.highlights(::highlight) 및 .preview-find-match 고대비 시인성 스타일 탑재
+ * 🚨 @PATCH : **2026-09-28** — [관리자 UI 디자인 시스템 통일]: DESIGN.md의 카드·버튼(Primary/Secondary/Danger)·입력·타이포그래피·상태 색상·모달 표면과 배경을 관리자 전용 범위에 적용
+ * 🚨 @PATCH : **2026-09-26** — [인용구(blockquote) 내부 중첩 리스트 들여쓰기 여백 보장]: 인용구 내부 중첩 리스트(ul ul, ol ol)가 상위 blockquote ul 패딩(2.25rem)에 묶여 일렬 정렬되던 문제를 차단하고 계층별 padding-left(1.5rem)를 보장하여 들여쓰기 위계 복원
+ * 🚨 @PATCH : **2026-09-25** — [영문 마크다운 태그 단어 쪼개짐 및 우측 잘림 방지]: .prose 및 .monaco-editor의 word-break: break-all을 word-break: normal 및 overflow-wrap: break-word로 수정하여 영문 단어 중간 분절 버그 원천 차단
+ * 🚨 @PATCH : **2026-09-25** — [에디터 글꼴 굵기(400/500/600/700) 정밀 시각화 보정]: D2Coding 폰트에 500/600 웨이트 파일이 없어 400과 동일하게 렌더링되던 W3C 매칭 결함을 .editor-weight-medium(0.22px) 및 .editor-weight-semibold(0.42px) 미세 획 보정으로 완벽 해결
+ * =================================================================== */
+
+/* ===================================================================
+ * 번들 임베드 웹폰트 모음
+ * public/fonts/ 에 직접 포함된 무료 배포 폰트들
+ * =================================================================== */
+
+/* ── 학교안심 글꼴 (경기도교육청 공식 배포, 고압축 WOFF2) ── */
+/* 기존 문서와 글꼴 선택창의 OTF 이름도 동일한 번들 파일로 연결한다. */
+@font-face {
+  font-family: '학교안심 포스터 OTF B';
+  src: url('/fonts/hakgyoansim/Hakgyoansim_PosterB.woff') format('woff');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: '학교안심 어항꾸미기 OTF B';
+  src: url('/fonts/hakgyoansim/Hakgyoansim_EohangkkumigiB.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: '학교안심 보드마카 OTF R';
+  src: url('/fonts/hakgyoansim/Hakgyoansim_BoardmarkerR.woff') format('woff');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: '학교안심 포스터 B';
+  src: url('/fonts/hakgyoansim/Hakgyoansim_PosterB.woff') format('woff');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: '학교안심 어항꾸미기 B';
+  src: url('/fonts/hakgyoansim/Hakgyoansim_EohangkkumigiB.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: '학교안심 붓펜M';
+  src: url('/fonts/hakgyoansim/HakgyoansimButpenM.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: '학교안심 보드마카 R';
+  src: url('/fonts/hakgyoansim/Hakgyoansim_BoardmarkerR.woff') format('woff');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ── 디자인하우스체 (designhouse) ── */
+
+@font-face {
+  font-family: '디자인하우스체';
+  src: url('/fonts/designhouse/designhouseLight.ttf') format('truetype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: '디자인하우스체';
+  src: url('/fonts/designhouse/designhouseBold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ── 더서클체 (TheCircle) ── */
+
+@font-face {
+  font-family: '더서클체';
+  src: url('/fonts/thecircle/TheCircleL.ttf') format('truetype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: '더서클체';
+  src: url('/fonts/thecircle/TheCircleM.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: '더서클체';
+  src: url('/fonts/thecircle/TheCircleB.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ── EBS 주시경체 ── */
+
+@font-face {
+  font-family: 'EBS 주시경체';
+  src: url('/fonts/ebs-jusigyeong/EBSJusigyeongL.ttf') format('truetype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'EBS 주시경체';
+  src: url('/fonts/ebs-jusigyeong/EBSJusigyeongM.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'EBS 주시경체';
+  src: url('/fonts/ebs-jusigyeong/EBSJusigyeongB.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ── EBS 훈민정음 새론 ── */
+
+@font-face {
+  font-family: 'EBS 훈민정음 새론';
+  src: url('/fonts/ebs-saeron/EBSSaeronL.ttf') format('truetype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'EBS 훈민정음 새론';
+  src: url('/fonts/ebs-saeron/EBSSaeronR.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'EBS 훈민정음 새론';
+  src: url('/fonts/ebs-saeron/EBSSaeronSB.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ── 이순신 돋움체 ── */
+
+@font-face {
+  font-family: '이순신 돋움체';
+  src: url('/fonts/yisunshin/YiSunShinDotumL.ttf') format('truetype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: '이순신 돋움체';
+  src: url('/fonts/yisunshin/YiSunShinDotumM.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: '이순신 돋움체';
+  src: url('/fonts/yisunshin/YiSunShinDotumB.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 💡 [ONRIVI-DS-SYSTEM-003 Modern Technical Editorial] 전역 텍스트 렌더링 & 가독성 엔진 최적화 */
+html, body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto, "Helvetica Neue", "Segoe UI", "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  letter-spacing: -0.012em;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+
+/* 🛡️ [화면 흔들림 및 윈도우 스크롤바 덜컹거림 완전 차단] */
+body:has(#onrivi-markdown-pane),
+body:has(.custom-preview-container),
+body:has(.preview-toolbar-root),
+html:has(#onrivi-markdown-pane),
+html:has(.custom-preview-container) {
+  overflow: hidden !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  width: 100vw !important;
+  max-width: 100vw !important;
+  scrollbar-gutter: stable;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: "Pretendard Variable", Pretendard, "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+}
+
+/* 강제 정렬 클래스 (사용자 서식 프로필의 !important 오버라이드용) */
+.custom-preview-container .force-align-left {
+  margin-left: 0 !important;
+  margin-right: auto !important;
+  display: block !important;
+}
+.custom-preview-container .force-align-center {
+  margin-left: auto !important;
+  margin-right: auto !important;
+  display: block !important;
+}
+.custom-preview-container .force-align-right {
+  margin-left: auto !important;
+  margin-right: 0 !important;
+  display: block !important;
+}
+
+/* ============================================================
+   Luminous Arctic Design System — Component Utilities
+   ============================================================ */
+@layer components {
+  /* Glass Panel — Level 1 */
+  .glass {
+    background: rgba(255,255,255,0.6);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.4);
+    box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.03), -4px -4px 10px rgba(255, 255, 255, 0.6);
+  }
+  /* Glass Panel — Level 2 (hover/active) */
+  .glass-hover {
+    background: rgba(255,255,255,0.9);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.6);
+    box-shadow: 6px 6px 15px rgba(99,102,241,0.1), -6px -6px 15px rgba(255,255,255,0.8);
+  }
+  /* Glass Card */
+  .glass-card {
+    background: rgba(255,255,255,0.6);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.4);
+    border-radius: 1.5rem;
+    box-shadow: 8px 8px 16px rgba(0, 0, 0, 0.04), -8px -8px 16px rgba(255, 255, 255, 0.8);
+    transition: background 0.2s, box-shadow 0.2s, transform 0.2s;
+  }
+  .glass-card:hover {
+    background: rgba(255,255,255,0.9);
+    box-shadow: 10px 10px 20px rgba(99, 102, 241, 0.12), -10px -10px 20px rgba(255, 255, 255, 0.9);
+  }
+  /* 💡 [ONRIVI-DS-SYSTEM-003 Modern Technical Editorial] 공통 UI 컴포넌트 */
+  /* Primary Button (Cobalt Authority #1d4ed8) */
+  .btn-primary {
+    background: #1d4ed8;
+    color: #ffffff;
+    border-radius: 8px;
+    font-family: "Pretendard Variable", Pretendard, Inter, -apple-system, sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    line-height: 20px;
+    padding: 0.5rem 1.25rem;
+    box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
+    transition: background-color 0.15s, box-shadow 0.15s, transform 0.1s;
+  }
+  .btn-primary:hover {
+    background-color: #1e40af;
+    box-shadow: 0 4px 12px rgba(29, 78, 216, 0.25);
+  }
+  .btn-primary:active { transform: scale(0.98); }
+
+  /* Secondary Button (Hairline Outline) */
+  .btn-secondary {
+    background: transparent;
+    color: #0f172a;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    font-family: "Pretendard Variable", Pretendard, Inter, -apple-system, sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    padding: 0.5rem 1.25rem;
+    transition: background-color 0.15s, border-color 0.15s, transform 0.1s;
+  }
+  .dark .btn-secondary {
+    color: #f8fafc;
+    border-color: #334155;
+  }
+  .btn-secondary:hover {
+    background-color: #f1f5f9;
+  }
+  .dark .btn-secondary:hover {
+    background-color: #1e293b;
+  }
+  .btn-secondary:active { transform: scale(0.98); }
+
+  /* Kinetic Button (Coral Conversion CTA #f97316) */
+  .btn-kinetic {
+    background: #f97316;
+    color: #ffffff;
+    border-radius: 8px;
+    font-family: "Pretendard Variable", Pretendard, Inter, -apple-system, sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    padding: 0.5rem 1.25rem;
+    transition: background-color 0.15s, box-shadow 0.15s, transform 0.1s;
+  }
+  .btn-kinetic:hover {
+    background-color: #ea580c;
+    box-shadow: 0 4px 12px rgba(249, 115, 22, 0.25);
+  }
+  .btn-kinetic:active { transform: scale(0.98); }
+
+  /* Ghost Button */
+  .btn-ghost {
+    background: transparent;
+    color: rgb(var(--on-surface));
+    border: none;
+    border-radius: 8px;
+    font-family: "Pretendard Variable", Pretendard, Inter, -apple-system, sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    padding: 0.5rem 1rem;
+    transition: background-color 0.15s, transform 0.1s;
+  }
+  .btn-ghost:hover {
+    background-color: rgba(15, 23, 42, 0.04);
+  }
+  .dark .btn-ghost:hover {
+    background-color: rgba(255, 255, 255, 0.06);
+  }
+  .btn-ghost:active { transform: scale(0.98); }
+
+  /* Badges & Category Chips (9999px Full Pill) */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    height: 22px;
+    padding: 0 0.5rem;
+    border-radius: 9999px;
+    background: #f1f5f9;
+    color: #475569;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: "Pretendard Variable", Pretendard, Inter, sans-serif;
+  }
+  .dark .chip {
+    background: #1e293b;
+    color: #cbd5e1;
+  }
+  .chip-ai {
+    background: #ccfbf1;
+    color: #0f766e;
+  }
+  .dark .chip-ai {
+    background: rgba(13, 148, 136, 0.2);
+    color: #5eead4;
+  }
+  .chip-active {
+    background: #ffedd5;
+    color: #c2410c;
+  }
+  .dark .chip-active {
+    background: rgba(249, 115, 22, 0.2);
+    color: #fdba74;
+  }
+  .chip-trust {
+    background: #dbeafe;
+    color: #1e40af;
+  }
+  .dark .chip-trust {
+    background: rgba(29, 78, 216, 0.2);
+    color: #93c5fd;
+  }
+
+  /* Input */
+  .input-arctic {
+    background: rgb(var(--surface-container));
+    border: 1px solid rgb(var(--outline-variant));
+    border-radius: 8px;
+    font-family: "Pretendard Variable", Pretendard, Inter, sans-serif;
+    font-size: 14px;
+    height: 40px;
+    padding: 0.5rem 0.75rem;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    color: rgb(var(--on-surface));
+  }
+  .input-arctic:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+  }
+
+  /* dark mode glass overrides */
+  .dark .glass,
+  .dark .glass-card {
+    background: rgba(15, 23, 42, 0.75);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+
+  /* 💡 [ONRIVI-DS-SYSTEM-003 Modern Technical Editorial] 모든 왼쪽 사이드바 공통 서피스 베이스 그라데이션 */
+  .bg-sidebar-luxury {
+    background: linear-gradient(180deg, #F8FAFC 0%, #F1F5F9 50%, #E2E8F0 100%);
+  }
+  .dark .bg-sidebar-luxury {
+    background: linear-gradient(180deg, #090D16 0%, #0F172A 50%, #1E293B 100%);
+  }
+
+  .tabular-nums, .tnum {
+    font-feature-settings: "tnum" 1;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+
+/* 💡 [ONRIVI-DS-SYSTEM-003 Modern Technical Editorial] Color Tokens */
+:root {
+  --foreground-rgb: 15, 23, 42;
+  --background-start-rgb: 248, 250, 252;
+  --background-end-rgb: 248, 250, 252;
+  --surface: 248 250 252;
+  --surface-container: 255 255 255;
+  --surface-container-lowest: 255 255 255;
+  --surface-container-low: 248 250 252;
+  --surface-container-high: 241 245 249;
+  --surface-container-highest: 226 232 240;
+  --surface-dim: 226 232 240;
+  --surface-bright: 255 255 255;
+  --primary: 29 78 216;
+  --on-primary: 255 255 255;
+  --primary-container: 219 234 254;
+  --on-primary-container: 30 64 175;
+  --on-surface: 15 23 42;
+  --on-surface-variant: 71 85 105;
+  --outline: 226 232 240;
+  --outline-variant: 203 213 225;
+  --error: 220 38 38;
+  --on-error: 255 255 255;
+  --secondary: 13 148 136;
+  --on-secondary: 255 255 255;
+  --secondary-container: 204 251 241;
+  --on-secondary-container: 15 118 110;
+  --tertiary: 249 115 22;
+  --on-tertiary: 255 255 255;
+  --tertiary-container: 255 237 213;
+  --on-tertiary-container: 194 65 12;
+}
+
+[class~="dark"] {
+  color-scheme: dark;
+  --foreground-rgb: 248, 250, 252;
+  --background-start-rgb: 9, 13, 22;
+  --background-end-rgb: 9, 13, 22;
+  --surface: 9 13 22;
+  --surface-container: 15 23 42;
+  --surface-container-lowest: 2 6 12;
+  --surface-container-low: 11 17 32;
+  --surface-container-high: 30 41 59;
+  --surface-container-highest: 51 65 85;
+  --surface-dim: 9 13 22;
+  --surface-bright: 51 65 85;
+  --primary: 37 99 235;
+  --on-primary: 255 255 255;
+  --primary-container: 30 58 138;
+  --on-primary-container: 219 234 254;
+  --on-surface: 248 250 252;
+  --on-surface-variant: 148 163 184;
+  --outline: 51 65 85;
+  --outline-variant: 71 85 105;
+  --error: 239 68 68;
+  --on-error: 255 255 255;
+  --secondary: 20 184 166;
+  --on-secondary: 255 255 255;
+  --secondary-container: 19 78 74;
+  --on-secondary-container: 204 251 241;
+  --tertiary: 251 146 60;
+  --on-tertiary: 255 255 255;
+  --tertiary-container: 124 45 18;
+  --on-tertiary-container: 255 237 213;
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: rgb(var(--background-start-rgb));
+}
+
+/* 💡 [ONRIVI-DS-SYSTEM-002 v4.1] Preview Container Scroll Stabilization */
+.custom-preview-container,
+.onrivi-preview-container {
+  overflow-anchor: auto !important;
+  scroll-behavior: auto !important;
+  padding-bottom: 80px !important;
+}
+
+.custom-preview-container *,
+.onrivi-preview-container * {
+  overflow-anchor: none;
+}
+
+/* The editing surface manages caret visibility. Browser anchoring must not
+   independently move the same viewport while its content is being typed. */
+.custom-preview-container:has(.visual-document-surface[contenteditable="true"]),
+.onrivi-preview-container:has(.visual-document-surface[contenteditable="true"]) {
+  overflow-anchor: none !important;
+}
+
+/* select 드롭다운 다크모드 강제 — option 팝업 레이어가 흰색으로 튀지 않도록 */
+.dark select,
+.dark option {
+  background-color: #1f1f23 !important;
+  color: #e3e2e6 !important;
+  border-color: #3f3f46 !important;
+}
+option {
+  text-align: left;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* 📊 [OMD-STYLE-globals-0001] globals.css ➔ @media print
+   🎯 @KICK  : OS 인쇄 모달(window.print()) 실행 시 전체 스크롤 전체 높이 출력 보장
+   🛡️ @GUARD : html, body, #__next 높이 및 overflow 강제 해제
+   🚨 @PATCH : **2026-09-24** — [표(Table) 서식 격리 및 미리보기 오염 원천 차단]: .prose table/th/td의 강제 둥근 모서리(8px), 외곽 테두리, 그림자(box-shadow), 마지막 행 하단선 제거 및 지브라 배경색이 미리보기 컨테이너(.custom-preview-container, .onrivi-content-root)를 침범하지 못하도록 격리
+   🚨 @PATCH : **2026-06-19** — OS 인쇄창에서 1페이지 잘림 버그 해결을 위해 html, body, #__next에 overflow:visible 및 height:auto 강제 적용; 미리보기 화면의 좌우 여백이 과도하게 벌어지는 문제를 막기 위해 .prose의 기본 max-width: 65ch 제한을 전역적으로 해제 */
+@media print {
+  html, body, #__next {
+    height: auto !important;
+    min-height: 100% !important;
+    overflow: visible !important;
+    overflow-y: visible !important;
+  }
+  nav, aside, header, footer, .no-print, :is(h1,h2,h3,h4,h5,h6)::after {
+    display: none !important;
+  }
+  main {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  .prose {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+  .custom-preview-container {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    flex: none !important;
+  }
+  .markdown-viewer-root {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  .markdown-viewer-root img,
+  .markdown-viewer-root video,
+  .markdown-viewer-root iframe,
+  .markdown-viewer-root .table-wrapper,
+  .markdown-viewer-root .table-wrapper-area {
+    max-width: 100% !important;
+  }
+}
+
+/* Monaco Find Widget 내부의 불필요한 풍선 도움말(hover tooltip) 억제 */
+/* ⚠️ .monaco-hover 전체 억제는 금지 — suggest-widget의 팝업 클릭이 막힘! */
+.monaco-editor .find-widget .monaco-hover {
+  display: none !important;
+}
+
+/* Monaco 내장 버튼의 title 속성 툴팁 억제 */
+.monaco-editor .find-widget [title] {
+  pointer-events: auto !important; /* 버튼 자체는 클릭 가능해야 함 */
+}
+
+/* 🔥 자동완성(Suggest Widget) 팝업 레이어 & 서식 설명(Detail) 열 왼쪽 정렬 통일 */
+.monaco-editor .suggest-widget,
+.suggest-widget {
+  z-index: 9999 !important;
+  pointer-events: auto !important;  /* 마우스 클릭이 자동완성 팝업에 정상 도달 */
+  min-width: 520px !important;
+}
+.monaco-editor .suggest-widget *,
+.suggest-widget * {
+  pointer-events: auto !important;
+}
+
+.monaco-editor .suggest-widget .monaco-list .monaco-list-row > .contents > .main,
+.suggest-widget .monaco-list .monaco-list-row > .contents > .main,
+.monaco-editor .suggest-widget .monaco-list-row .contents .main,
+.suggest-widget .monaco-list-row .contents .main {
+  display: flex !important;
+  justify-content: flex-start !important;
+  align-items: center !important;
+  gap: 0 !important;
+  width: 100% !important;
+}
+
+.monaco-editor .suggest-widget .monaco-list .monaco-list-row > .contents > .main > .left,
+.suggest-widget .monaco-list .monaco-list-row > .contents > .main > .left,
+.monaco-editor .suggest-widget .monaco-list-row .contents .main .left,
+.suggest-widget .monaco-list-row .contents .main .left {
+  flex: 0 0 220px !important;
+  width: 220px !important;
+  min-width: 220px !important;
+  max-width: 220px !important;
+  display: flex !important;
+  align-items: center !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.monaco-editor .suggest-widget .monaco-list .monaco-list-row > .contents > .main > .right,
+.suggest-widget .monaco-list .monaco-list-row > .contents > .main > .right,
+.monaco-editor .suggest-widget .monaco-list-row .contents .main .right,
+.suggest-widget .monaco-list-row .contents .main .right {
+  flex: 1 1 auto !important;
+  width: auto !important;
+  display: flex !important;
+  justify-content: flex-start !important;
+  align-items: center !important;
+  text-align: left !important;
+  margin-left: 14px !important;
+  max-width: none !important;
+  overflow: hidden !important;
+}
+
+.monaco-editor .suggest-widget .monaco-list .monaco-list-row > .contents > .main > .right > .details-label,
+.suggest-widget .monaco-list .monaco-list-row > .contents > .main > .right > .details-label,
+.monaco-editor .suggest-widget .monaco-list-row .contents .main .right .details-label,
+.suggest-widget .monaco-list-row .contents .main .right .details-label {
+  text-align: left !important;
+  margin-left: 0 !important;
+  width: 100% !important;
+  display: inline-block !important;
+  opacity: 0.7 !important;
+  white-space: nowrap !important;
+  text-overflow: ellipsis !important;
+}
+
+.monaco-editor .suggest-widget .monaco-list-row .contents .main .right .details-label .monaco-tokenized-source,
+.suggest-widget .monaco-list-row .contents .main .right .details-label .monaco-tokenized-source {
+  text-align: left !important;
+  display: inline-block !important;
+}
+
+/* 프리뷰 라인 클릭/동기화 하이라이트 효과 — 은은한 배경 하이라이트 (세로 바 제거) */
+.preview-highlight-line {
+  background-color: rgba(255, 152, 0, 0.07) !important;
+  border-left: 0 !important;
+  box-shadow: none !important;
+  transition: background-color 0.15s ease, outline 0.15s ease, box-shadow 0.15s ease;
+  border-radius: 4px;
+}
+
+/* 📝 문단 내 개별 텍스트 행 분리 래퍼 및 단독 하이라이트 */
+.onrivi-line {
+  display: block;
+  width: 100%;
+  min-height: 1.5em;
+  box-sizing: border-box;
+}
+.onrivi-line.preview-highlight-line {
+  background-color: rgba(255, 152, 0, 0.12) !important;
+  border-radius: 4px;
+}
+
+/* 💬 Alert 인용구(콜아웃) 태그와 본문 간격 최소화 */
+.onrivi-alert-title {
+  margin-bottom: var(--onrivi-alert-gap, 6px) !important;
+}
+.onrivi-alert-content > p:first-child {
+  margin-top: 0 !important;
+}
+.onrivi-alert-content > p:last-child {
+  margin-bottom: 0 !important;
+}
+
+/* 💻 코드블록 내부 행간 줄간격 콤팩트 규격화 (1.35배) */
+.codeblock-area pre,
+.codeblock-area pre code,
+.codeblock-area .onrivi-line,
+.codeblock-area .onrivi-line * {
+  line-height: 1.35 !important;
+  min-height: 0 !important;
+}
+
+/* 💻 코드블록 내부 행 하이라이트 — 다크/어두운 배경에서도 뚜렷하게 식별 가능한 고대비 코발트 블루 및 1px 아웃라인 */
+.dark .onrivi-line.preview-highlight-line {
+  background-color: rgba(251, 191, 36, 0.22) !important;
+  box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.5) !important;
+  border-radius: 4px;
+}
+.dark .codeblock-area .onrivi-line.preview-highlight-line,
+.dark pre .onrivi-line.preview-highlight-line {
+  background-color: rgba(59, 130, 246, 0.3) !important;
+  box-shadow: inset 0 0 0 1px rgba(96, 165, 250, 0.65) !important;
+  border-radius: 4px;
+}
+
+/* 🖼️ 미디어(이미지/지도/동영상/피규어) 블록 프리뷰 하이라이트 시 선명한 오렌지 아웃라인 링 지원 */
+figure.preview-highlight-line,
+div.preview-highlight-line:has(img, iframe, video),
+.map-embed-wrapper.preview-highlight-line {
+  outline: 2px solid rgba(245, 158, 11, 0.7) !important;
+  outline-offset: 3px;
+  background-color: rgba(245, 158, 11, 0.08) !important;
+}
+
+/* 📊 표(Table) 행 하이라이트 시 전체 셀 배경 강조 및 테두리 보정 */
+tr.preview-highlight-line {
+  background-color: rgba(245, 158, 11, 0.12) !important;
+  outline: 2px solid rgba(245, 158, 11, 0.5) !important;
+}
+tr.preview-highlight-line td,
+tr.preview-highlight-line th {
+  background-color: rgba(245, 158, 11, 0.08) !important;
+}
+
+/* 다크모드 프리뷰 하이라이트 대응 */
+.dark .preview-highlight-line {
+  background-color: rgba(255, 152, 0, 0.12) !important;
+  border-left: 0 !important;
+  box-shadow: none !important;
+}
+
+.dark figure.preview-highlight-line,
+.dark div.preview-highlight-line:has(img, iframe, video),
+.dark .map-embed-wrapper.preview-highlight-line {
+  outline: 2px solid rgba(251, 191, 36, 0.8) !important;
+  outline-offset: 3px;
+  background-color: rgba(251, 191, 36, 0.12) !important;
+}
+
+.dark tr.preview-highlight-line {
+  background-color: rgba(251, 191, 36, 0.18) !important;
+  outline: 2px solid rgba(251, 191, 36, 0.6) !important;
+}
+.dark tr.preview-highlight-line td,
+.dark tr.preview-highlight-line th {
+  background-color: rgba(251, 191, 36, 0.12) !important;
+}
+
+/* 🔍 검색 텍스트 단어 인라인 하이라이트 (CSS Custom Highlight API — Zero DOM Mutation) */
+::highlight(onrivi-search-text-highlight) {
+  background-color: #fde047 !important;
+  color: #854d0e !important;
+  text-decoration: underline 2px solid #eab308 !important;
+}
+
+.dark ::highlight(onrivi-search-text-highlight) {
+  background-color: #ca8a04 !important;
+  color: #fef08a !important;
+  text-decoration: underline 2px solid #fef08a !important;
+}
+
+mark.onrivi-search-text-highlight {
+  background-color: #fef08a !important;
+  color: #854d0e !important;
+  font-weight: 800 !important;
+  padding: 1px 4px !important;
+  border-radius: 4px !important;
+  box-shadow: 0 0 0 2px rgba(234, 179, 8, 0.8) !important;
+  display: inline !important;
+  transition: all 0.2s ease;
+}
+
+.dark mark.onrivi-search-text-highlight {
+  background-color: rgba(234, 179, 8, 0.4) !important;
+  color: #fef08a !important;
+  box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.9) !important;
+}
+
+/* 🎯 나란히 보기 마크다운 영역(#onrivi-markdown-pane)은 읽기 전용이므로 입력 커서 바를 숨기고 현재 행 하이라이트로만 위치를 표시 */
+#onrivi-markdown-pane .monaco-editor .cursors-layer .cursor {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+}
+
+/* 입력 중 본문 높이가 바뀌어도 브라우저가 스크롤 위치를 자동 보정하지 않게 하고, 하단 80px 여백을 확보합니다. */
+.custom-preview-container {
+  overflow-anchor: none !important;
+  scroll-behavior: auto !important;
+  padding-bottom: 80px; /* 마지막 줄 작성 시 치솟음 및 흰 화면 방어 여백 */
+}
+
+/* Monaco 에디터 현재 행 하이라이트 — 단정한 주황색 계열 */
+.monaco-editor .current-line {
+  background-color: #ff980015 !important;
+  border: none !important;
+}
+
+.monaco-editor .margin-view-overlays .current-line-margin {
+  background-color: #ff980022 !important;
+  border: none !important;
+}
+
+.vs-dark .monaco-editor .current-line {
+  background-color: #ff980026 !important;
+}
+
+.vs-dark .monaco-editor .margin-view-overlays .current-line-margin {
+  background-color: #ff980033 !important;
+}
+
+/* 현재 행 줄번호 주황색 강조 */
+.monaco-editor .current-line ~ .line-numbers.active-line-number {
+  color: #ff9800 !important;
+  font-weight: bold !important;
+}
+
+/* Monaco 에디터 선택영역 — 역방향/정방향 드래그 모두 일관된 남색 하이라이트로 강제 통일 */
+.monaco-editor .selected-text {
+  background-color: rgba(38, 132, 255, 0.3) !important;
+  border-radius: 2px !important;
+}
+
+.monaco-editor ::selection {
+  background: rgba(38, 132, 255, 0.4) !important;
+  color: inherit !important;
+}
+
+/* 스크롤바 숨기기 유틸리티 */
+.no-scrollbar::-webkit-scrollbar {
+  display: none !important;
+}
+.no-scrollbar {
+  -ms-overflow-style: none !important;  /* IE/Edge */
+  scrollbar-width: none !important;  /* Firefox */
+}
+
+/* 불투명 스크롤바 — 뒤에 글씨가 비치지 않도록 트랙 배경을 완전 불투명으로 처리 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+/* 편집 보기와 분할 모드 Monaco 에디터의 세로 스크롤바(16px)에 미리보기 단독 화면을 맞춘다. */
+.custom-preview-container:not(.no-scrollbar)::-webkit-scrollbar {
+  width: 16px;
+}
+::-webkit-scrollbar-track {
+  background: rgb(247, 249, 255) !important;
+  border-left: 1px solid rgba(0, 0, 0, 0.06);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.20) !important;
+  border-radius: 4px;
+  min-height: 40px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.30) !important;
+}
+.dark ::-webkit-scrollbar-track {
+  background: rgb(19, 19, 19) !important;
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18) !important;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28) !important;
+}
+
+/* 리스트 항목(li) 및 리스트 자체의 상하 간격을 대폭 축소하여 많은 글을 담을 수 있게 보정 */
+.prose ul, .prose ol {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+.prose li {
+  margin-top: 0.2em;
+  margin-bottom: 0.2em;
+}
+
+/* 리스트 아이템(li) 하위의 p 태그 마진 누적 폭발 차단 및 다중 문단 병합 방지:
+   loose list 파싱 시 각 li 안에 <p>가 생기면서 margin 0.45em이 중첩되어 높이가 폭발하는 현상을 막기 위해 margin을 0으로 압착.
+   단, 들여쓰기로 생성된 두 번째 문단부터는 병합되지 않고 줄바꿈되도록 display: block 유지 및 여백 추가 */
+.prose li p,
+.custom-preview-container li p,
+.onrivi-content-root li p {
+  display: inline !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  margin-left: 0 !important;
+  padding: 0 !important;
+}
+
+.prose li p .onrivi-line,
+.custom-preview-container li p .onrivi-line,
+.onrivi-content-root li p .onrivi-line {
+  display: inline !important;
+  width: auto !important;
+  min-height: 0 !important;
+}
+
+.prose li p + p,
+.custom-preview-container li p + p,
+.onrivi-content-root li p + p {
+  display: block !important;
+  margin-top: 0.45em !important;
+}
+
+/* 중첩 리스트 여백 2배 증폭 방지: 부모 패딩이 중첩되어 누적되는 현상 차단 */
+.prose ol ol, .prose ol ul, .prose ul ol, .prose ul ul,
+.prose li ol, .prose li ul {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  padding-left: 1rem !important; /* 16px로 더 타이트하게 압착 */
+}
+
+/* 빈 줄(br) 물리 높이 보장: whitespace collapsing으로 빈 줄이 압착 소멸되는 현상 방어 */
+.prose br {
+  display: inline !important; /* 블록에서 인라인으로 원상 복구 */
+  content: none !important;
+  margin-top: 0 !important; /* 🔒 엔터 1번에 빈 줄이 생기던 마진 버그 완전 소멸 */
+  height: auto !important;
+}
+
+
+/* 미리보기(Preview) 뷰어 패널 내부에 떠다니던 중복된 전체 복사(Copy All) 툴바 완벽 제거 */
+.notranslate .sticky.top-0.z-20 {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  z-index: -9999 !important;
+}
+
+/* 프리뷰 영역 내의 제목 태그 파란색 테마 적용 */
+.prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
+  color: #005bc1;
+}
+
+/* (프리뷰는 항상 라이트 유지) */
+
+/* 프리뷰 내의 iframe 플레이어 디자인 시스템 강화 (왼쪽 정렬, 둥근 모서리, 부드러운 그림자) */
+.prose iframe {
+  display: block;
+  margin: 1.5rem 0 !important;
+  border-radius: 12px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  max-width: 100%;
+}
+
+/* Tailwind Typography prose의 65ch 너비 제한 족쇄 해제 */
+.prose,
+.custom-preview-container .prose {
+  max-width: none !important;
+}
+
+/* 일반 본문 문단의 상하 여백 및 줄간격을 컴팩트하게 조정 (단정 개행 /n 1줄 실현) */
+.prose p {
+  margin-top: 0.45em !important;
+  margin-bottom: 0.45em !important;
+  line-height: 1.7 !important;
+}
+
+/* Tailwind Typography 플러그인의 blockquote 자동 따옴표(open-quote, close-quote) 억제 */
+.prose blockquote p:first-of-type::before,
+.prose blockquote p:last-of-type::after {
+  content: none !important;
+}
+
+/* Monaco WYSIWYG Decorations - 글자 가로 겹침 현상 방지 고정폭 리셋 */
+.monaco-h1-text,
+.monaco-h2-text,
+.monaco-h3-text,
+.monaco-h4-text,
+.monaco-h5-text,
+.monaco-h6-text,
+.monaco-bold-text,
+.monaco-italic-text,
+.monaco-strikethrough-text,
+.monaco-md-syntax {
+  display: inline !important;
+  font-size: inherit !important;
+}
+
+/* 모나코 에디터 내부의 폰트는 MainEditorApp.tsx의 JS option(fontFamily)에서 전적으로 제어하도록 위임. 
+   (CSS에서 !important로 강제하면 에디터의 글자 폭 계산 로직과 실제 렌더링 폰트가 어긋나서 드래그 선택 영역이 틀어지는 치명적 버그 발생) */
+
+/* 에디터 실시간 입력(IME 한글 조합) 시 브라우저 기본 textarea에 나타나는 원본 텍스트 잔상 투명화 */
+.monaco-editor textarea.inputarea {
+  color: transparent !important;
+  background: transparent !important;
+  font-family: 'D2CodingLigature', 'D2Coding', Consolas, monospace !important;
+  /*
+   * Monaco는 한글 IME 조합 중 자체 커서 레이어를 잠시 숨기고 inputarea의
+   * 네이티브 커서를 사용합니다. 이를 투명하게 만들면 첫 글자 조합 뒤 커서가
+   * 사라져 보이므로, 입력 텍스트만 숨기고 커서는 항상 보이게 둡니다.
+   */
+  caret-color: #38bdf8 !important; /* 🎯 사용자 명세: 밝은 스카이블루 */
+}
+
+.dark .monaco-editor textarea.inputarea,
+.vs-dark .monaco-editor textarea.inputarea {
+  caret-color: #38bdf8 !important; /* 🎯 사용자 명세: 밝은 스카이블루 */
+}
+
+/* ===================================================================
+ * 🏷️ [ONRIVI-HEADING-CONTRAST-001] 제목 태그(#) 및 제목 텍스트 고대비·선명화 스타일
+ * 모니터 난반사/어두운 조명에서도 흐릿하지 않고 즉각 식별되도록 획 굵기(Bold) 및 깊은 명도 보장
+ * =================================================================== */
+
+/* 1. 기본 및 라이트 테마 (vs / onrivi-light) */
+.monaco-md-syntax,
+.vs .monaco-md-syntax {
+  color: #1d4ed8 !important; /* 선명하고 깊이감 있는 코발트 블루 (기존 흐릿한 #60a5fa 대체) */
+  font-weight: 700 !important;
+  opacity: 1 !important;
+}
+
+.monaco-h1-text,
+.vs .monaco-h1-text {
+  color: #065f46 !important; /* 짙은 포레스트 에메랄드 */
+  font-weight: 700 !important;
+  text-decoration: underline !important;
+  text-underline-offset: 4px;
+}
+
+.monaco-h2-text,
+.vs .monaco-h2-text {
+  color: #047857 !important; /* 진하고 또렷한 딥 에메랄드 */
+  font-weight: 700 !important;
+}
+
+.monaco-h3-text,
+.vs .monaco-h3-text {
+  color: #0f766e !important; /* 기존 흐릿한 연두색(#34d399)을 완벽 퇴출한 짙고 선명한 딥 틸 */
+  font-weight: 700 !important;
+}
+
+.monaco-h4-text,
+.monaco-h5-text,
+.monaco-h6-text,
+.vs .monaco-h4-text,
+.vs .monaco-h5-text,
+.vs .monaco-h6-text {
+  color: #1e3a8a !important; /* 선명한 네이비 블루 */
+  font-weight: 600 !important;
+}
+
+.vs .monaco-bold-text { color: #1e293b !important; font-weight: 700 !important; background-color: rgba(59, 130, 246, 0.08) !important; }
+.vs .monaco-italic-text { text-decoration: underline dotted !important; color: #7c3aed !important; }
+
+/* 2. 다크 테마 (vs-dark / onrivi-dark / dark) */
+.vs-dark .monaco-md-syntax,
+.dark .monaco-md-syntax {
+  color: #38bdf8 !important; /* 어두운 배경에 최적화된 밝은 스카이블루 */
+  font-weight: 700 !important;
+  opacity: 1 !important;
+}
+
+.vs-dark .monaco-h1-text,
+.dark .monaco-h1-text {
+  color: #34d399 !important; /* 다크 배경에서 선명한 에메랄드 */
+  font-weight: 700 !important;
+  text-decoration: underline !important;
+  text-underline-offset: 4px;
+}
+
+.vs-dark .monaco-h2-text,
+.dark .monaco-h2-text {
+  color: #2dd4bf !important; /* 밝고 또렷한 틸 */
+  font-weight: 700 !important;
+}
+
+.vs-dark .monaco-h3-text,
+.dark .monaco-h3-text {
+  color: #67e8f9 !important; /* 밝은 시안 */
+  font-weight: 600 !important;
+}
+
+.vs-dark .monaco-h4-text,
+.vs-dark .monaco-h5-text,
+.vs-dark .monaco-h6-text,
+.dark .monaco-h4-text,
+.dark .monaco-h5-text,
+.dark .monaco-h6-text {
+  color: #93c5fd !important;
+  font-weight: 600 !important;
+}
+
+.vs-dark .monaco-bold-text,
+.dark .monaco-bold-text { color: #ffffff !important; font-weight: 700 !important; }
+.vs-dark .monaco-italic-text,
+.dark .monaco-italic-text { color: #ffffff !important; font-style: italic !important; }
+
+/* 3. 고대비 모드 (High Contrast Mode 활성화 시 순수 흑백/최대 명암비) */
+.editor-high-contrast .monaco-md-syntax {
+  color: #1d4ed8 !important;
+  font-weight: 800 !important;
+}
+.editor-high-contrast.vs .monaco-h1-text,
+.editor-high-contrast.vs .monaco-h2-text,
+.editor-high-contrast.vs .monaco-h3-text,
+.editor-high-contrast.vs .monaco-h4-text,
+.editor-high-contrast.vs .monaco-h5-text,
+.editor-high-contrast.vs .monaco-h6-text,
+.editor-high-contrast:not(.vs-dark) .monaco-h1-text,
+.editor-high-contrast:not(.vs-dark) .monaco-h2-text,
+.editor-high-contrast:not(.vs-dark) .monaco-h3-text,
+.editor-high-contrast:not(.vs-dark) .monaco-h4-text,
+.editor-high-contrast:not(.vs-dark) .monaco-h5-text,
+.editor-high-contrast:not(.vs-dark) .monaco-h6-text {
+  color: #000000 !important; /* 완전 흑색 */
+  font-weight: 800 !important;
+}
+
+.editor-high-contrast.vs-dark .monaco-md-syntax,
+.dark .editor-high-contrast .monaco-md-syntax {
+  color: #38bdf8 !important;
+  font-weight: 800 !important;
+}
+.editor-high-contrast.vs-dark .monaco-h1-text,
+.editor-high-contrast.vs-dark .monaco-h2-text,
+.editor-high-contrast.vs-dark .monaco-h3-text,
+.editor-high-contrast.vs-dark .monaco-h4-text,
+.editor-high-contrast.vs-dark .monaco-h5-text,
+.editor-high-contrast.vs-dark .monaco-h6-text,
+.dark .editor-high-contrast .monaco-h1-text,
+.dark .editor-high-contrast .monaco-h2-text,
+.dark .editor-high-contrast .monaco-h3-text,
+.dark .editor-high-contrast .monaco-h4-text,
+.dark .editor-high-contrast .monaco-h5-text,
+.dark .editor-high-contrast .monaco-h6-text {
+  color: #ffffff !important; /* 완전 백색 */
+  font-weight: 800 !important;
+}
+
+.monaco-strikethrough-text { text-decoration: line-through !important; }
+
+/* ===================================================================
+ * 🔤 [ONRIVI-FONT-WEIGHT-001] 에디터 글꼴 굵기(400/500/600/700) 정밀 시각화 보정
+ * D2Coding 등 400(Regular)과 700(Bold) 글리프만 존재하는 환경에서 500(Medium)과 600(SemiBold)이
+ * 400과 동일하게 렌더링되던 W3C 매칭 결함을 해결하기 위해 단계별 미세 획 두께 보정 적용
+ * =================================================================== */
+.editor-weight-normal .monaco-editor .view-line span {
+  -webkit-text-stroke: 0 !important;
+}
+
+/* 500 Medium: 400 글리프에 0.22px의 미세 스트로크를 부여하여 400보다 확실히 구분되는 선명한 Medium 실현 */
+.editor-weight-medium .monaco-editor .view-line span {
+  -webkit-text-stroke: 0.22px currentColor;
+  text-rendering: geometricPrecision;
+}
+
+/* 600 SemiBold: 700(Bold)의 과도한 뭉침 없이 500보다 한 단계 더 또렷하고 묵직한 최적의 세미볼드 구현 */
+.editor-weight-semibold .monaco-editor .view-line span {
+  -webkit-text-stroke: 0.42px currentColor;
+  text-rendering: geometricPrecision;
+}
+
+/* 700 Bold: D2Coding Bold 네이티브 글리프의 명확한 두께 유지 */
+.editor-weight-bold .monaco-editor .view-line span {
+  -webkit-text-stroke: 0.15px currentColor;
+  text-rendering: geometricPrecision;
+}
+
+/* 웹 편집기의 중립적인 회색 코드블록 표시를 데스크톱에도 동일하게 적용한다. */
+.monaco-editor .monaco-codeblock-line {
+  background-color: rgba(161, 161, 170, 0.10) !important;
+  box-shadow: none !important;
+  width: 100% !important;
+  left: 0 !important;
+}
+.monaco-editor.vs-dark .monaco-codeblock-line,
+.vs-dark .monaco-editor .monaco-codeblock-line,
+.dark .monaco-editor .monaco-codeblock-line,
+.onrivi-dark .monaco-editor .monaco-codeblock-line {
+  background-color: rgba(161, 161, 170, 0.12) !important;
+  box-shadow: none !important;
+}
+.monaco-editor .monaco-codeblock-gutter {
+  border-left: 0 !important;
+  box-sizing: border-box;
+}
+
+div.monaco-quote-line {
+  background-color: rgba(0, 0, 0, 0.02) !important;
+  width: 100% !important;
+  left: 0 !important;
+}
+.vs-dark div.monaco-quote-line,
+.dark div.monaco-quote-line,
+.onrivi-dark div.monaco-quote-line {
+  background-color: rgba(255, 255, 255, 0.03) !important;
+}
+
+div.monaco-table-line {
+  background-color: rgba(0, 0, 0, 0.025) !important;
+  width: 100% !important;
+  left: 0 !important;
+}
+.vs-dark div.monaco-table-line,
+.dark div.monaco-table-line,
+.onrivi-dark div.monaco-table-line {
+  background-color: rgba(255, 255, 255, 0.03) !important;
+}
+
+/* 💡 [드래그 앤 드롭 실시간 위치 가이드라인 및 드롭 타겟 라인 하이라이트] */
+.onrivi-drop-line-highlight {
+  background-color: rgba(29, 78, 216, 0.12) !important;
+  box-shadow: inset 0 2px 0 #1d4ed8, inset 0 -2px 0 #1d4ed8 !important;
+  border-radius: 2px !important;
+}
+.vs-dark .onrivi-drop-line-highlight,
+.dark .onrivi-drop-line-highlight,
+.onrivi-dark .onrivi-drop-line-highlight {
+  background-color: rgba(56, 189, 248, 0.18) !important;
+  box-shadow: inset 0 2px 0 #38bdf8, inset 0 -2px 0 #38bdf8 !important;
+}
+
+/* 🛡️ 태스크 리스트 아이템의 중복 불릿 기호 제거 및 여백 보정 */
+.prose li.task-list-item {
+  list-style-type: none !important;
+  padding-left: 0 !important;
+}
+.prose li.task-list-item::before {
+  content: none !important;
+}
+
+/* 🛡️ 태스크 리스트가 포함된 ul의 기본 padding-left 축소 및 정렬 보정 */
+.prose ul.contains-task-list {
+  padding-left: calc(var(--list-indent, 16px) * 0.5) !important; /* 최상위 태스크 리스트 패딩 보정 */
+}
+.prose li ul.contains-task-list {
+  padding-left: var(--list-indent, 16px) !important; /* 중첩된 태스크 리스트는 적절한 깊이의 들여쓰기 보장 */
+}
+
+/* 🛡️ 인용문(blockquote) 박스 내부의 시작과 끝 빈 여백 소거 및 콤팩트 규격화 */
+.prose blockquote p,
+.custom-preview-container blockquote p,
+.onrivi-content-root blockquote p {
+  margin-top: 0 !important;
+  margin-bottom: 4px !important;
+}
+.prose blockquote p:last-of-type,
+.custom-preview-container blockquote p:last-of-type,
+.onrivi-content-root blockquote p:last-of-type {
+  margin-bottom: 0 !important;
+}
+.prose blockquote ul,
+.custom-preview-container blockquote ul,
+.onrivi-content-root blockquote ul,
+.prose blockquote ol,
+.custom-preview-container blockquote ol,
+.onrivi-content-root blockquote ol {
+  margin-top: 4px !important;
+  margin-bottom: 4px !important;
+}
+.prose blockquote li,
+.custom-preview-container blockquote li,
+.onrivi-content-root blockquote li {
+  margin-bottom: 2px !important;
+}
+.prose blockquote li p,
+.custom-preview-container blockquote li p,
+.onrivi-content-root blockquote li p {
+  margin-top: 0 !important;
+  margin-bottom: 2px !important;
+}
+
+/* 📺 모든 멀티미디어(수식, 이미지, 비디오) 왼쪽 정렬 글로벌 보정 */
+.katex-display {
+  text-align: left !important;
+  margin: 1em 0 !important;
+}
+.katex-display > .katex {
+  text-align: left !important;
+  display: inline-block !important;
+}
+
+.prose img, .prose video {
+  display: block !important;
+  margin-left: 0 !important;
+  margin-right: auto !important;
+}
+
+/* 커스텀 스크롤바 유틸리티 (기존 GlobalSearch, FormulaModal, EmojiPicker, MergeModal에서 사용) */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 3px;
+}
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* 📂 [OMD-STYLE-EXPLORER-SCROLLBAR] 탐색기(LeftSidebar) 전용 스크롤바 폭 100% 확대 (6px -> 12px) 및 시인성 강화 */
+.explorer-scrollbar {
+  scrollbar-width: auto;
+  scrollbar-color: rgba(100, 116, 139, 0.45) transparent;
+}
+.dark .explorer-scrollbar {
+  scrollbar-color: rgba(148, 163, 184, 0.45) transparent;
+}
+.explorer-scrollbar::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+.explorer-scrollbar::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 6px;
+}
+.dark .explorer-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 6px;
+}
+.explorer-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.45);
+  border-radius: 6px;
+  transition: background-color 0.15s ease;
+}
+.explorer-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(71, 85, 105, 0.75);
+}
+.dark .explorer-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.45);
+  border-radius: 6px;
+}
+.dark .explorer-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(203, 213, 225, 0.75);
+}
+
+/* Monaco 폰트 렌더링 — D2CodingLigature 리가처 지원 및 자간 오차 방지 */
+.monaco-editor, .monaco-editor .view-lines, .monaco-editor .mtk {
+  font-variant-ligatures: normal !important;
+  letter-spacing: 0px !important;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased !important;
+}
+
+/* 볼드 텍스트 자간 고정 */
+.monaco-editor .mtkb,
+.monaco-editor .strong {
+  font-weight: 600 !important;
+  font-variant-ligatures: normal !important;
+}
+
+/* 이탤릭 텍스트 자간 고정 */
+.monaco-editor .monaco-editor-core .mtki,
+.monaco-editor .emphasis {
+  font-style: italic !important;
+  font-variant-ligatures: none !important;
+}
+
+/* 📊 마크다운 표(Table) 현대적 디자인 시스템 (미리보기 컨테이너 외부 웹 뷰어 기본값) */
+.prose:not(.custom-preview-container *):not(.onrivi-content-root *) table {
+  width: 100%;
+  border-collapse: separate; /* 둥근 모서리 적용을 위해 collapse 분리 */
+  border-spacing: 0;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.03), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
+}
+/* 래퍼 없는 단독 table인 경우에만 1.5rem 마진 적용, table-wrapper-area 내부에서는 래퍼가 마진을 전담 */
+.prose:not(:has(.table-wrapper-area)):not(.custom-preview-container *):not(.onrivi-content-root *) table {
+  margin: 1.5rem 0;
+}
+.table-wrapper-area > table {
+  margin: 0;
+}
+.dark .prose:not(.custom-preview-container *):not(.onrivi-content-root *) table {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+/* 💡 긴 영문 텍스트 단어 쪼개짐 방지 및 정상적인 단어 단위 줄바꿈 보장 */
+.prose,
+.prose p,
+.prose strong,
+.prose em,
+.prose span,
+.prose li,
+.prose a {
+  overflow-wrap: break-word !important;
+  word-break: normal !important;
+}
+
+/* 표 헤더 스타일 (미리보기 컨테이너 외부 기본값) */
+.prose:not(.custom-preview-container *):not(.onrivi-content-root *) th {
+  background-color: rgba(229, 231, 235, 0.95);
+  color: #111827;
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.15);
+  text-align: left;
+  vertical-align: middle;
+  word-break: keep-all;
+}
+.dark .prose:not(.custom-preview-container *):not(.onrivi-content-root *) th {
+  background-color: rgba(31, 41, 55, 0.95);
+  color: #f3f4f6;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+/* 표 바디 셀 스타일 (미리보기 컨테이너 외부 기본값) */
+.prose:not(.custom-preview-container *):not(.onrivi-content-root *) td {
+  padding: 12px 14px;
+  font-size: 0.875rem;
+  color: #4b5563;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  transition: background-color 0.15s ease;
+  vertical-align: middle;
+  word-break: keep-all;
+}
+
+/* 마지막 행 하단선 (미리보기 외부 기본값) */
+.prose:not(.custom-preview-container *):not(.onrivi-content-root *) tr:last-child td {
+  border-bottom: none;
+}
+
+/* 얼룩무늬 행 (미리보기 외부 기본값) */
+.prose:not(.custom-preview-container *):not(.onrivi-content-root *) tbody tr:nth-child(even) {
+  background-color: rgba(243, 244, 246, 0.6);
+}
+.dark .prose:not(.custom-preview-container *):not(.onrivi-content-root *) tbody tr:nth-child(even) {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+/* 마우스 호버 시 행 하이라이트 (미리보기 외부 기본값) */
+.prose:not(.custom-preview-container *):not(.onrivi-content-root *) tbody tr:hover {
+  background-color: rgba(59, 130, 246, 0.04);
+}
+.dark .prose:not(.custom-preview-container *):not(.onrivi-content-root *) tbody tr:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+/* 🔒 하단 클릭 시 에디터 내부의 뷰포트 컨테이너가 transform이나 margin으로 위로 밀려 올라가는 오작동 제어 */
+.monaco-editor .view-lines {
+  top: 0 !important; /* 💡 렌더링 라인 축의 절대 상단 영점을 0px로 강제 고정 */
+}
+
+/* 포커스가 들어왔을 때 외부 가상 스크롤 박스가 늘어나거나 수축하는 유동성 뒤틀림 원천 가드 */
+.monaco-editor-container {
+  overflow: hidden !important;
+  display: flex;
+  flex-direction: column;
+  height: 100% !important;
+}
+
+/* 🛡️ 인용구(blockquote) 내부에 목록(ul/ol)이 포함될 경우, 왼쪽 강조선과 목록 마커가 겹치지 않도록 충분한 패딩 안전거리 확보 */
+.custom-preview-container blockquote > ul,
+.custom-preview-container blockquote > ol,
+.custom-preview-container blockquote ul,
+.custom-preview-container blockquote ol {
+  padding-left: var(--list-indent, 1.25rem) !important;
+}
+
+/* 🛡️ 인용구 내부 중첩 목록: 상위 들여쓰기와 일치하는 단계별 들여쓰기 보장 */
+.custom-preview-container blockquote ul ul,
+.custom-preview-container blockquote ol ol,
+.custom-preview-container blockquote ul ol,
+.custom-preview-container blockquote ol ul {
+  padding-left: var(--list-indent, 1.25rem) !important;
+}
+
+/* 🛡️ 숫자 목록 간 물리적 여백 공간 확보: 파서 훼손 없이 안전한 CSS 마진 적용 */
+.custom-preview-container ul,
+.custom-preview-container ol {
+  margin-bottom: 0.4rem !important;
+}
+
+/* 🛡️ 리스트 내부 투명 빈 줄 아이템 (ul/ol 안에서 유일하게 합법적인 li 태그로 빈 행 구현) */
+.prose li.onrivi-empty-list-row,
+.prose ul > li.onrivi-empty-list-row,
+.prose ol > li.onrivi-empty-list-row,
+li.onrivi-empty-list-row {
+  list-style-type: none !important;
+  list-style: none !important;
+  height: 12px !important;
+  max-height: 12px !important;
+  line-height: 12px !important;
+  overflow: hidden !important;
+  background: transparent !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  pointer-events: none !important;
+}
+.prose li.onrivi-empty-list-row::before,
+.prose li.onrivi-empty-list-row::marker,
+li.onrivi-empty-list-row::before,
+li.onrivi-empty-list-row::marker {
+  content: none !important;
+  display: none !important;
+}
+
+/* 🛡️ 숫자 목록 텍스트 마킹 겹침 방지: num-list-item 클래스에 대해 기본 불릿 기호 및 브라우저 마커 완전 소거 */
+/* 핵심 전략: list-style-type: none + ::marker { content: '' + font-size: 0 } 이중 방어 */
+/* 부모 ol에 list-style-type이 !important로 선언되어도 자식 li.num-list-item에 전파되지 않도록 차단 */
+.prose ul > li.num-list-item,
+.prose ol > li.num-list-item,
+.custom-preview-container ul > li.num-list-item,
+.custom-preview-container ol > li.num-list-item,
+.custom-preview-container ul li.num-list-item,
+.custom-preview-container ol li.num-list-item,
+.custom-preview-container li.num-list-item,
+.prose li.num-list-item,
+li.num-list-item {
+  list-style-type: none !important;
+  list-style: none !important;
+  padding-left: 0 !important;
+}
+
+.prose ul > li.num-list-item::before,
+.prose ol > li.num-list-item::before,
+.custom-preview-container ul > li.num-list-item::before,
+.custom-preview-container ol > li.num-list-item::before,
+.custom-preview-container ul li.num-list-item::before,
+.custom-preview-container ol li.num-list-item::before,
+.custom-preview-container li.num-list-item::before,
+.prose li.num-list-item::before,
+li.num-list-item::before {
+  content: none !important;
+  display: none !important;
+}
+
+/* ::marker 완전 소거 — content: none 단독으로는 부모 ol의 list-style-type 상속을 막지 못하므로
+   content: '' (빈 문자열) + font-size: 0 + display: none 의 3중 방어를 사용합니다. */
+.prose ul > li.num-list-item::marker,
+.prose ol > li.num-list-item::marker,
+.custom-preview-container ul > li.num-list-item::marker,
+.custom-preview-container ol > li.num-list-item::marker,
+.custom-preview-container ul li.num-list-item::marker,
+.custom-preview-container ol li.num-list-item::marker,
+.custom-preview-container li.num-list-item::marker,
+li.num-list-item::marker {
+  content: '' !important;
+  font-size: 0 !important;
+  display: none !important;
+  width: 0 !important;
+}
+
+/* 🛡️ 리스트 및 문단 사이의 정밀 12px 스페이서 영역 */
+.onrivi-list-spacer,
+div.onrivi-list-spacer {
+  height: 12px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: block !important;
+  content: "" !important;
+  background: transparent !important;
+}
+
+/* 🛡️ 폰트 세이프티 가드: 사용자 PC에 존재하지 않는 폰트 명칭 오인으로 인한 레이아웃 깨짐을 방지하는 표준 폴백 스키마 */
+.custom-preview-container,
+.custom-preview-container * {
+  font-family: var(--page-font-family, inherit), 'Nanum Gothic Coding', 'NanumGothicCoding', 'Nanum Gothic', 'NanumGothic', '맑은 고딕', 'Malgun Gothic', 'Clear Sans', '돋움체', Dotum, 'Apple SD Gothic Neo', sans-serif;
+}
+
+/* 🚀 코드블록 내부 행간 겹침 진압 패치 */
+
+/* ❶ 일반 인라인 코드 및 소스코드 블록의 상속 오염 전면 차단 */
+.prose pre, 
+.prose code, 
+.prose .codeBlock,
+.prose pre code,
+.custom-preview-container pre,
+.custom-preview-container code,
+.custom-preview-container pre *,
+.custom-preview-container code * {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Monaco', 'Nanum Gothic Coding', 'D2Coding', '맑은 고딕', 'Malgun Gothic', monospace !important;
+  /* 🌟 [영점 회복]: 본문 줄간격 변수에 오염되지 않도록 개발자 폰트 규격에 맞는 고정 가드선 투입 */
+  line-height: 1.45 !important; 
+  letter-spacing: 0px !important; /* 고정폭 자간 유지 */
+}
+
+/* ❶-1 인라인 코드(pre 태그 내부에 있지 않은 code 태그)의 높이 및 수직 정렬 정밀 보정 */
+.prose :not(pre) > code,
+.custom-preview-container :not(pre) > code {
+  /* display: inline-block !important; -> 인라인 텍스트가 줄바꿈되지 않고 덩어리째 다음 줄로 넘어가는 현상(거대 공백 유발) 방지를 위해 제거 */
+  color: #2563eb; /* 서식에서 색상이 지정되지 않았을 때의 기본 파란색 (AI 가이드 반영) */
+  line-height: 1.45 !important;
+  padding: 1px 4.5px !important;
+  margin: 0 2px !important;
+  box-decoration-break: clone; /* 줄바꿈 시 배경색/패딩이 각 줄마다 예쁘게 적용되도록 설정 */
+  -webkit-box-decoration-break: clone;
+}
+
+/* ❷ 코드블록 내부에서 이중으로 발생하는 p 태그 마진 폭발 및 행간 진압 */
+.prose pre p,
+.prose .codeBlock p,
+.prose pre span,
+.custom-preview-container pre p,
+.custom-preview-container pre span {
+  margin-top: 0px !important;
+  margin-bottom: 0px !important;
+  /* 🌟 코드블록 내부의 모든 하위 문장 요소들도 1.6 배율로 강제 동기화 */
+  line-height: 1.45 !important; 
+  font-size: inherit !important;
+}
+
+/* ❸ 소스코드 상자 사방 숨통 패딩 확보 */
+.prose pre {
+  padding: 16px !important;
+  margin-top: 0px !important;
+  margin-bottom: 0px !important;
+  overflow-x: auto !important;
+}
+
+/* 💡 [수정] codeblock-area 내부의 pre 태그는 투명하게 처리하여 이중 박스 현상을 방지합니다. */
+.prose .codeblock-area pre {
+  background-color: transparent !important;
+  border: none !important;
+}
+
+/* 🛡️ [마크다운 에디터 라인 넘버 숨김 패치]
+   마크다운 영역에서 줄번호(line-numbers) 및 좌측 거터 여백(.margin)이 노출되지 않도록 숨김 처리합니다. */
+.monaco-editor .margin,
+.monaco-editor .line-numbers {
+  display: none !important;
+  width: 0 !important;
+  border: none !important;
+}
+
+/* 🛡️ [에디터 우측 본문 여백 패치]
+   본문 글자가 세로 스크롤바 영역 뒤로 넘어가거나 겹쳐서 가려지지 않도록 
+   에디터 본문 콘텐츠 렌더링 영역의 가로폭 자체를 16px 축소하여 우측에 안전 여백 통로를 확보합니다. */
+.monaco-editor .lines-content {
+  width: calc(100% - 16px) !important;
+}
+
+/* 📄 [자동 페이지 나누기 뷰어 전용 스타일] */
+.page-view-container {
+  width: 100% !important;
+  height: 100% !important;
+  background-color: #e4e4e7 !important; /* 라이트모드 회색 바탕 */
+  padding: 1.5rem !important;
+  overflow-y: auto !important;
+}
+
+.dark .page-view-container {
+  background-color: #18181b !important; /* 다크모드 회색 바탕 */
+}
+
+.page-view-paper {
+  background-color: #ffffff !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1) !important;
+  border: 1px solid rgba(0, 0, 0, 0.08) !important;
+  margin-bottom: 2rem !important;
+  box-sizing: border-box !important;
+  position: relative !important;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.dark .page-view-paper {
+  background-color: #09090b !important;
+  border: 1px solid rgba(255, 255, 255, 0.06) !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* 용지 페이지 번호 배지 */
+.page-view-badge {
+  position: absolute !important;
+  right: -55px !important;
+  top: 10px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  color: #71717a !important;
+  background-color: rgba(161, 161, 170, 0.10) !important;
+  border: 1px solid #e4e4e7 !important;
+  padding: 2px 8px !important;
+  border-radius: 9999px !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05) !important;
+  pointer-events: none !important;
+}
+
+.dark .page-view-badge {
+  color: #a1a1aa !important;
+  background-color: rgba(161, 161, 170, 0.12) !important;
+  border: 1px solid #3f3f46 !important;
+}
+
+/* 인쇄 모드 최적화: 인쇄 시에는 회색 바탕, 그림자, 마진을 제거하고 강제로 페이지를 나눕니다. */
+@media print {
+  .page-view-container {
+    background-color: transparent !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+  .page-view-paper {
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 !important;
+    page-break-after: always !important;
+    break-after: page !important;
+  }
+  .page-view-badge {
+    display: none !important;
+  }
+}
+
+/* 미리보기 및 인쇄 시 자연스러운 페이지 분할(Pagination) 보장: 문단/인용구/리스트는 auto 분할 허용하여 하단 거대 공백 차단 */
+.preview-page-sheet p,
+.preview-page-sheet li,
+.preview-page-sheet blockquote,
+.preview-page-sheet .prose p {
+  orphans: 2 !important;
+  widows: 2 !important;
+  break-inside: auto !important;
+}
+.preview-page-sheet figcaption {
+  break-inside: avoid !important;
+}
+.preview-page-sheet pre,
+.preview-page-sheet code,
+.preview-page-sheet .code-block,
+.preview-page-sheet pre > div,
+.preview-page-sheet .not-prose,
+.preview-page-sheet .not-prose > div {
+  overflow: visible !important;
+}
+.preview-page-sheet .not-prose > div > div:first-child {
+  break-after: avoid !important;
+}
+.preview-page-sheet img,
+.preview-page-sheet video,
+.preview-page-sheet iframe {
+  break-inside: avoid !important;
+}
+.preview-page-sheet h1,
+.preview-page-sheet h2,
+.preview-page-sheet h3,
+.preview-page-sheet h4,
+.preview-page-sheet h5,
+.preview-page-sheet h6 {
+  break-after: avoid !important;
+}
+.preview-page-sheet table {
+  break-inside: auto !important;
+}
+.preview-page-sheet tr {
+  break-inside: avoid !important;
+}
+.preview-page-sheet thead {
+  display: table-header-group !important;
+}
+.preview-page-sheet tfoot {
+  display: table-footer-group !important;
+}
+
+@media print {
+  html, body {
+    orphans: 2 !important;
+    widows: 2 !important;
+  }
+  p, li, .prose p {
+    orphans: 2 !important;
+    widows: 2 !important;
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+  ul, ol {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+  blockquote {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+  section,
+  article,
+  .page-break-container,
+  .markdown-viewer-root,
+  .custom-preview-container {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+  figcaption,
+  .onrivi-image-figure figcaption {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    display: block !important;
+    text-align: center !important;
+    margin-top: 6px !important;
+  }
+  pre, code, .code-block, pre > div, .not-prose, .not-prose > div {
+    overflow: visible !important;
+  }
+  .not-prose,
+  .not-prose > div,
+  .mermaid-svg-container,
+  .mermaid-block-container {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    overflow: visible !important;
+  }
+  .mermaid-svg-container svg,
+  .mermaid-block-container svg,
+  .not-prose svg {
+    max-height: 200mm !important;
+    max-width: 100% !important;
+    width: auto !important;
+    height: auto !important;
+    display: block !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  .not-prose > div > div:first-child {
+    break-after: avoid !important;
+  }
+  figure, .onrivi-image-figure {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    display: block !important;
+    margin: 1.2em auto !important;
+    text-align: center !important;
+  }
+  .onrivi-image-wrapper {
+    display: block !important;
+    margin: 0 auto !important;
+    max-width: 100% !important;
+    text-align: center !important;
+  }
+  figure img,
+  .onrivi-image-figure img,
+  .onrivi-image-wrapper img {
+    max-width: 100% !important;
+    max-height: 190mm !important;
+    width: auto !important;
+    height: auto !important;
+    object-fit: contain !important;
+    display: block !important;
+    margin: 0 auto !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  img, video, iframe {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+  /* [P1: Section 시작 위치 최적화] Heading 직후 소개 문단이 이미지/도표로 이어질 때 한 덩어리로 결속 */
+  h1 + p:has(+ figure),
+  h2 + p:has(+ figure),
+  h3 + p:has(+ figure),
+  h4 + p:has(+ figure),
+  h1 + p:has(+ .onrivi-image-figure),
+  h2 + p:has(+ .onrivi-image-figure),
+  h3 + p:has(+ .onrivi-image-figure),
+  h4 + p:has(+ .onrivi-image-figure),
+  h1 + p:has(+ .not-prose),
+  h2 + p:has(+ .not-prose),
+  h3 + p:has(+ .not-prose),
+  h4 + p:has(+ .not-prose),
+  h1 + ul:has(+ figure),
+  h2 + ul:has(+ figure),
+  h3 + ul:has(+ figure),
+  h4 + ul:has(+ figure),
+  h1 + ul:has(+ .onrivi-image-figure),
+  h2 + ul:has(+ .onrivi-image-figure),
+  h3 + ul:has(+ .onrivi-image-figure),
+  h4 + ul:has(+ .onrivi-image-figure) {
+    page-break-after: avoid !important;
+    break-after: avoid !important;
+  }
+  table {
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+  tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+  thead {
+    display: table-header-group !important;
+  }
+  tfoot {
+    display: table-footer-group !important;
+  }
+}
+
+/* 🖨️ [출판용 페이지 나누기] MergeModal 등에서 주입된 page-break 요소 처리 */
+@media print {
+  .page-break {
+    page-break-before: always !important;
+    break-before: page !important;
+    height: 0 !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    opacity: 0 !important;
+  }
+}
+
+@media screen {
+  hr.page-break {
+    display: block !important;
+    width: 100% !important;
+    height: 0 !important;
+    margin: 3rem 0 !important;
+    position: relative !important;
+    border: none !important;
+    border-top: 2px dashed #d1d5db !important;
+    background: transparent !important;
+    overflow: visible !important;
+  }
+  hr.page-break::before {
+    content: '✂️ Page Break';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #6b7280;
+    font-size: 0.85rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    padding: 4px 16px;
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 999px;
+    pointer-events: none;
+    white-space: nowrap;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  }
+  .dark hr.page-break {
+    border-top-color: #374151 !important;
+  }
+  .dark hr.page-break::before {
+    background: #1f2937;
+    border-color: #374151;
+    color: #9ca3af;
+  }
+}
+
+/* ====================================================================
+   📊 [OMD-STYLE-globals-0002] globals.css ➔ OMDLanding Styles
+   🎯 @KICK  : OMDLanding 전용 테마 변수, 자동완성 커스텀 및 타이핑 효과 추가
+   🛡️ @GUARD : 기존 에디터 스타일을 해치지 않고 하단에 안전하게 배치
+   🚨 @PATCH : **2026-06-21** — OMDLanding UI 이식에 필요한 CSS 변수 및 유틸리티 믹스인 패치
+   🔗 @CALLS : 없음
+   ==================================================================== */
+html {
+  transition: color-scheme 0.3s;
+}
+html.dark {
+  color-scheme: dark;
+}
+
+/* 도움말 실시간 테마 전환용 CSS 변수 정의 */
+:root {
+  --docs-h1-color: #1c1917;
+  --docs-h2-color: #1c1917;
+  --docs-h3-color: #292524;
+  --docs-h4-color: #44403c;
+  --docs-h5-color: #57534e;
+  --docs-h6-color: #78716c;
+  --docs-text-color: #1c1917;
+  --docs-text-muted: #44403c;
+  --docs-strong-color: #000000;
+  --docs-em-color: #44403c;
+  --docs-border-color: #1c1917;
+  --docs-h2-border-color: #1c1917;
+  --docs-blockquote-border: #78716c;
+  --docs-blockquote-bg: transparent;
+  --docs-codeblock-bg: #f5f5f4;
+  --docs-codeblock-border: #e7e5e4;
+  --docs-codeblock-title-bg: #e7e5e4;
+  --docs-code-bg: #f5f5f4;
+  --docs-code-color: #1c1917;
+  --docs-code-border: #cbd5e1;
+  --docs-table-border: #1c1917;
+  --docs-th-bg: #f5f5f4;
+  --docs-td-border: #e7e5e4;
+}
+
+html.dark {
+  --docs-h1-color: #f8fafc;
+  --docs-h2-color: #f8fafc;
+  --docs-h3-color: #f1f5f9;
+  --docs-h4-color: #e2e8f0;
+  --docs-h5-color: #cbd5e1;
+  --docs-h6-color: #94a3b8;
+  --docs-text-color: #cbd5e1;
+  --docs-text-muted: #cbd5e1;
+  --docs-strong-color: #ffffff;
+  --docs-em-color: #cbd5e1;
+  --docs-border-color: #334155;
+  --docs-h2-border-color: #6366f1;
+  --docs-blockquote-border: #6366f1;
+  --docs-blockquote-bg: rgba(30, 41, 59, 0.4);
+  --docs-codeblock-bg: #0f172a;
+  --docs-codeblock-border: #1e293b;
+  --docs-codeblock-title-bg: #1e293b;
+  --docs-code-bg: #1e293b;
+  --docs-code-color: #f43f5e;
+  --docs-code-border: #334155;
+  --docs-table-border: #475569;
+  --docs-th-bg: #1e293b;
+  --docs-td-border: #1e293b;
+}
+
+/* 데모 시뮬레이터 타이핑 커서 애니메이션 */
+@keyframes cursor-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.animate-cursor::after {
+  content: '|';
+  animation: cursor-blink 0.8s infinite;
+  color: #6366f1; /* indigo-500 */
+  font-weight: bold;
+  margin-left: 2px;
+}
+
+/* 브라우저 자동완성(Autofill) 시 배경색을 테마 입력창 배경색과 강제 일치시킵니다. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover, 
+input:-webkit-autofill:focus, 
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 30px #eff6ff inset !important; /* bg-blue-50 색상 */
+  -webkit-text-fill-color: #1b1b23 !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* 다크모드 브라우저 자동완성 배경색 처리 */
+.dark input:-webkit-autofill,
+.dark input:-webkit-autofill:hover, 
+.dark input:-webkit-autofill:focus, 
+.dark input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 30px #1f2937 inset !important; /* dark:bg-gray-800 색상 */
+  -webkit-text-fill-color: #f3f4f6 !important;
+}
+
+/* 인터넷 익스플로러, 엣지 브라우저 등에서 기본 제공하는 패스워드 마스크 해제(눈 아이콘) 및 텍스트 지우기 버튼 제거 */
+input::-ms-reveal,
+input::-ms-clear {
+  display: none;
+}
+
+/* ============================================================
+   Modern Technical Editorial Admin Scope (Light Mode)
+   ============================================================ */
+.admin-theme {
+  --admin-bg: #F8FAFC;
+  --admin-background: #F8FAFC;
+  --admin-surface-bright: #F1F5F9;
+  --admin-surface-low: #FFFFFF;
+  --admin-surface: #FFFFFF;
+  --admin-surface-high: #E2E8F0;
+  --admin-text: #0F172A;
+  --admin-text-muted: #475569;
+  --admin-primary: #1d4ed8;
+  --admin-primary-dim: #1e40af;
+  --admin-on-primary: #FFFFFF;
+  --admin-secondary: #0d9488;
+  --admin-on-secondary: #FFFFFF;
+  --admin-border: #E2E8F0;
+  --admin-border-light: #CBD5E1;
+  --admin-success: #059669;
+  --admin-warning: #d97706;
+  --admin-error: #dc2626;
+  --admin-on-error: #FFFFFF;
+
+  background-color: var(--admin-bg);
+  color: var(--admin-text);
+  color-scheme: light;
+  font-family: "Inter", "Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-weight: 400;
+}
+
+.admin-theme h1,
+.admin-theme h2,
+.admin-theme h3,
+.admin-theme .font-montserrat {
+  font-family: "Plus Jakarta Sans", "Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+}
+
+.admin-theme :is(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--admin-primary);
+  outline-offset: 2px;
+}
+
+.admin-theme :is(button, input, select, textarea) {
+  font-family: inherit;
+}
+
+.admin-theme :is(button, input, select, textarea):disabled {
+  cursor: not-allowed;
+}
+
+.admin-theme :is(table, .tabular-nums) {
+  font-variant-numeric: tabular-nums;
+}
+
+.admin-theme select option {
+  background-color: var(--admin-surface);
+  color: var(--admin-text);
+}
+
+/* 관리자 팝업의 반투명 배경을 같은 농도로 유지한다. */
+.admin-theme .fixed.inset-0.z-50:has(> .rounded-2xl),
+.admin-theme .fixed.inset-0.z-50:has(> .rounded-3xl),
+.admin-theme .fixed.inset-0.z-\[60\]:has(> .rounded-2xl) {
+  background-color: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(4px);
+}
+
+/* 관리자 탭마다 중복된 모달 셸은 동일한 Tier 2 높이와 16px 기하학으로 표시한다. */
+.admin-theme .fixed.inset-0.z-50 > :is(.rounded-2xl, .rounded-3xl, .admin-glass-card),
+.admin-theme .fixed.inset-0.z-\[60\] > :is(.rounded-2xl, .rounded-3xl, .admin-glass-card) {
+  border-radius: 16px;
+  border: 1px solid var(--admin-border-light);
+  box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 8px 10px -6px rgba(15, 23, 42, 0.04);
+}
+
+.admin-theme input[type="checkbox"],
+.admin-theme input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--admin-primary);
+}
+
+@layer components {
+  /* Cards & Containers */
+  .admin-glass-panel {
+    background: #FFFFFF;
+    border-right: 1px solid var(--admin-border);
+  }
+  
+  .admin-glass-card {
+    background: #FFFFFF;
+    border: 1px solid var(--admin-border);
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.02);
+  }
+
+  /* Ghost Inputs */
+  .admin-ghost-input {
+    background: #FFFFFF;
+    border: 1px solid #CBD5E1;
+    border-radius: 8px;
+    color: var(--admin-text);
+    font-weight: 500;
+    transition: all 0.2s;
+  }
+  .admin-ghost-input:focus {
+    outline: none;
+    border-color: var(--admin-primary);
+    box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+  }
+
+  /* Primary Button (Cobalt Authority) */
+  .admin-btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 40px;
+    padding: 8px 16px;
+    background: #1d4ed8;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 20px;
+    transition: all 0.15s ease-in-out;
+  }
+  .admin-btn-primary:hover {
+    background: #1e40af;
+    box-shadow: 0 4px 12px rgba(29, 78, 216, 0.2);
+  }
+  .admin-btn-primary:disabled {
+    opacity: 0.5;
+    box-shadow: none;
+  }
+
+  .admin-btn-secondary,
+  .admin-btn-danger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 40px;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 20px;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+  }
+
+  .admin-btn-secondary {
+    background: #fff;
+    border: 1px solid #cbd5e1;
+    color: #0f172a;
+  }
+  .admin-btn-secondary:hover:not(:disabled) {
+    background: #f1f5f9;
+  }
+
+  .admin-btn-danger {
+    background: #fff;
+    border: 1px solid #dc2626;
+    color: #b91c1c;
+  }
+  .admin-btn-danger:hover:not(:disabled) {
+    background: #fef2f2;
+  }
+  :is(.admin-btn-secondary, .admin-btn-danger):disabled {
+    opacity: 0.5;
+  }
+
+  @media (max-width: 767px) {
+    :is(.admin-btn-primary, .admin-btn-secondary, .admin-btn-danger) {
+      min-height: 44px;
+    }
+  }
+
+  /* Status Chips */
+  .admin-chip-emerald {
+    background: rgba(29, 78, 216, 0.1);
+    color: #1d4ed8;
+    border: 1px solid rgba(29, 78, 216, 0.25);
+    font-weight: 600;
+  }
+  .admin-chip-gold {
+    background: rgba(13, 148, 136, 0.12);
+    color: #0f766e;
+    border: 1px solid rgba(13, 148, 136, 0.3);
+    font-weight: 600;
+  }
+  .admin-chip-error {
+    background: rgba(220, 38, 38, 0.1);
+    color: #DC2626;
+    border: 1px solid rgba(220, 38, 38, 0.25);
+    font-weight: 600;
+  }
+}
+
+/* 🌟 선명하고 정갈한 폼 컨트롤 (Input, Select, Textarea) 글로벌 규칙 */
+.admin-theme input:not([type="checkbox"]):not([type="radio"]),
+.admin-theme select,
+.admin-theme textarea {
+  background-color: #FFFFFF !important;
+  border: 1px solid #CBD5E1 !important;
+  border-radius: 8px;
+  color: #0F172A !important;
+  font-size: 14px;
+  font-weight: 500 !important;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.04) !important;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out !important;
+}
+
+.admin-theme input:not([type="checkbox"]):not([type="radio"]):focus,
+.admin-theme select:focus,
+.admin-theme textarea:focus {
+  border-color: #2563eb !important;
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2) !important;
+  outline: none !important;
+}
+
+.admin-theme input::placeholder,
+.admin-theme textarea::placeholder {
+  color: #94A3B8 !important;
+  font-weight: 400 !important;
+}
+
+.admin-theme label {
+  color: #1E293B !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.01em;
+}
+
+/* 🌟 선명한 테이블 (Table) 경계 및 헤더 */
+.admin-theme table th,
+.admin-theme table thead th {
+  background-color: #F8FAFC !important;
+  color: #334155 !important;
+  font-weight: 600 !important;
+  border-bottom: 1.5px solid #E2E8F0 !important;
+}
+.admin-theme table td {
+  border-bottom: 1px solid #F1F5F9 !important;
+  color: #0F172A !important;
+}
+.admin-theme table tbody tr:hover {
+  background-color: #F8FAFC !important;
+}
+
+/* --- Unconditional Inherit Text Color for Code Blocks --- */
+.codeblock-area code,
+.codeblock-area code * {
+  color: inherit !important;
+}
+.dark .codeblock-area code,
+.dark .codeblock-area code * {
+  color: #ffffff !important;
+}
+
+/* ===================================================================
+ * 💡 [ONRIVI-EDITOR-WRAP-001] Monaco Editor 긴 영문 단어 줄바꿈 최적화 및 텍스트 렌더링 선명화
+ * 1) 단어가 길어도 단어 전체가 통째로 떨어지지 않고 한글처럼 글자 단위로 끝까지 채우고 다음 줄로 넘어가도록 보장
+ * 2) text-rendering: geometricPrecision 및 앤티앨리어싱으로 난반사/어두운 환경에서 글자 흐림 방지
+ * =================================================================== */
+.monaco-editor,
+.monaco-editor .view-line,
+.monaco-editor .view-lines,
+.monaco-editor .monaco-scrollable-element {
+  word-break: normal !important;
+  overflow-wrap: break-word !important;
+  text-rendering: geometricPrecision !important;
+  -webkit-font-smoothing: antialiased !important;
+  -moz-osx-font-smoothing: grayscale !important;
+}
+
+/* ===================================================================
+ * 🎨 서식 관리(CssStyleModal) 실시간 동기화 펄스 및 모듈 카드 포커스 스타일
+ * 🚨 @PATCH : **2026-09-24** — 실시간 서식 변경 요소 시각적 피드백 펄스(@keyframes onriviSyncPulse) 및 서식 카드 포커스 스타일 신설
+ * =================================================================== */
+@keyframes onriviSyncPulse {
+  0% {
+    outline: 2.5px solid rgba(29, 78, 216, 0.95);
+    outline-offset: 4px;
+    box-shadow: 0 0 18px rgba(29, 78, 216, 0.5);
+    background-color: rgba(29, 78, 216, 0.08);
+  }
+  50% {
+    outline: 2px solid rgba(29, 78, 216, 0.6);
+    outline-offset: 3px;
+    box-shadow: 0 0 12px rgba(29, 78, 216, 0.3);
+    background-color: rgba(29, 78, 216, 0.04);
+  }
+  100% {
+    outline: 2px solid transparent;
+    outline-offset: 0;
+    box-shadow: none;
+    background-color: transparent;
+  }
+}
+
+.onrivi-sync-pulse {
+  animation: onriviSyncPulse 1.4s ease-out forwards !important;
+  border-radius: 4px;
+}
+
+.onrivi-showcase-card {
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.onrivi-showcase-card-active {
+  border-color: rgba(29, 78, 216, 0.8) !important;
+  box-shadow: 0 0 0 2px rgba(29, 78, 216, 0.25), 0 10px 28px -4px rgba(29, 78, 216, 0.18) !important;
+}
+
+/* 🔍 미리보기(Preview) 내부 텍스트 검색 하이라이트 스타일 */
+::highlight(preview-search) {
+  background-color: rgba(251, 191, 36, 0.45);
+  color: inherit;
+}
+
+::highlight(preview-search-active) {
+  background-color: rgba(245, 158, 11, 0.95);
+  color: #000000;
+  outline: 2px solid rgba(217, 119, 6, 0.9);
+}
+
+.preview-find-match {
+  background-color: rgba(251, 191, 36, 0.45);
+  border-radius: 2px;
+}
+
+.preview-find-match-active {
+  background-color: rgba(245, 158, 11, 0.95) !important;
+  color: #000000 !important;
+  outline: 2px solid rgba(217, 119, 6, 0.9);
+  border-radius: 2px;
+}
+
+/* Only physical code rows reserve height; token spans remain inline. */
+.codeblock-area .onrivi-line { min-height: 1lh !important; }
+.codeblock-area .onrivi-line span { display: inline; padding: 0; }
+
+
+/* Media actions share one high-contrast style, independent of document themes. */
+.onrivi-media-control {
+  display:inline-flex; align-items:center; justify-content:center; gap:5px;
+  background:rgba(38,38,38,.92)!important; color:#fff!important;
+  border:1px solid rgba(255,255,255,.22)!important; border-radius:6px!important;
+  padding:4px 9px!important; font-size:12.5px!important; line-height:18px!important;
+  font-weight:600!important; font-family:inherit; white-space:nowrap;
+  box-shadow:0 2px 8px rgba(0,0,0,.18); cursor:pointer;
+}
+.onrivi-media-control:hover { background:#171717!important; }
+.onrivi-media-control:focus-visible { outline:2px solid #60a5fa; outline-offset:2px; }
+@media (hover:none) { .onrivi-media-actions-frame > [data-editor-controls] { opacity:1!important; } }
+@media print { .onrivi-media-control { display:none!important; } }
+/* Retired picturebook action row: never show its cached/legacy DOM. */
+.picturebook-scene-input > div.flex.flex-wrap.gap-2.my-2 {
+  display: none !important;
+}
+
+/* Manual page breaks stay editable/selectable and never become ordinary rules. */
+.onrivi-page-break { display:block; border-top:2px dashed #f97316; color:#c2410c; background:#fff7ed; text-align:center; font:12px/24px system-ui; margin:16px 0; min-height:24px; user-select:none; }
+.dark .onrivi-page-break { color:#fdba74; background:#431407; border-color:#fb923c; }
+/* This is a screen display preference; keep the marker in the document for export. */
+@media screen {
+  html:not([data-onrivi-page-guides="true"]) :is(.onrivi-page-break, [data-onrivi-page-break], hr.page-break) {
+    display: none !important;
+  }
+}
+@media print { .onrivi-page-break { break-before:page;page-break-before:always;height:0;min-height:0;margin:0;border:0;font-size:0;line-height:0; } }
+/* Explicit emphasis remains visible when an inline code profile sets defaults. */
+:is(.visual-document-surface,.onrivi-content-root) :is(strong,b) code { font-weight:inherit!important; }
+:is(.visual-document-surface,.onrivi-content-root) :is(em,i) code { font-style:inherit!important; }

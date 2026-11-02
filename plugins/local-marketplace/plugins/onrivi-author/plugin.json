@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "onrivi-author",
+  "version": "0.1.9",
+  "description": "대화에서 로컬 문서·서식을 관리하고 AI 템플릿을 조회·실행합니다.",
+  "author": { "name": "Onrivi Studio" },
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "온리비 어서",
+        "logo": "./assets/logo.png",
+        "composerIcon": "./assets/logo.png",
+        "shortDescription": "로컬 문서·서식·AI 템플릿",
+        "longDescription": "대화에서 로컬 마크다운 파일과 사용자 서식을 관리하고, 연결된 리소스 폴더의 AI 템플릿을 조회해 실행합니다.",
+        "developerName": "Onrivi Studio",
+        "category": "Productivity",
+        "defaultPrompt": "내 로컬 마크다운 문서를 읽고 수정해 줘."
+      }
+    }
+  }
+}

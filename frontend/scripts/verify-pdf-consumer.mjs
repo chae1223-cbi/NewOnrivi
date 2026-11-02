@@ -1,0 +1,47 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+import ts from 'typescript';
+import { JSDOM } from 'jsdom';
+import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { marked } from 'marked';
+const url=s=>'data:text/javascript;base64,'+Buffer.from(s).toString('base64');
+const compile=name=>ts.transpileModule(fs.readFileSync(new URL('../src/lib/'+name,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
+const layout=url(compile('pdfImportLayout.ts').replace('./pdfImportText',url(compile('pdfImportText.ts'))));
+const {pdfRuledTableBlocks}=await import(url(compile('pdfImportTables.ts').replace('./pdfImportLayout',layout)));
+const {serializePdfBlocks}=await import(layout);
+const {preprocessMarkdownForPreview}=await import(url(compile('editorUtils.ts')));
+const file=process.argv[2];
+assert(file,'Pass the source PDF');
+const pdf=await pdfjs.getDocument({data:new Uint8Array(fs.readFileSync(file))}).promise;
+let result='',tables=0,nested=0;
+for(let i=1;i<=pdf.numPages;i++) {
+ const page=await pdf.getPage(i), text=await page.getTextContent(), ops=await page.getOperatorList();
+ const blocks=pdfRuledTableBlocks(text.items,ops.fnArray,ops.argsArray,pdfjs.OPS);
+ const output=serializePdfBlocks(blocks.sort((a,b)=>b.y-a.y),true);
+ assert(!/\n\s*\n/.test(output),'No generated blank lines');
+ const doc=new JSDOM(marked.parse(output)).window.document;
+ tables+=doc.querySelectorAll('table').length; nested+=doc.querySelectorAll('table table').length;
+ // Every extracted non-folio character must survive reconstruction, including numbers.
+ const normalize=s=>s.replace(/\uf000/g,'↑').replace(/\s/g,'');
+ const original=normalize(text.items.map(r=>r.str||'').join('').replace(/[-–—]\s*\d+\s*[-–—]/g,''));
+ const actual=normalize(new JSDOM(output).window.document.body.textContent.replace(/^#{1,6} /gm,''));
+ const counts=s=>{const m=new Map();for(const c of s)m.set(c,(m.get(c)||0)+1);return m;};
+ const a=counts(actual);
+ for(const [c,n] of counts(original)) assert((a.get(c)||0)>=n,`Page ${i}: missing ${c} (${n} vs ${a.get(c)||0})`);
+ assert(!/^\s*[-–—]\s*\d+\s*[-–—]\s*$/m.test(output));
+ result+=output+'\n';
+}
+fs.mkdirSync('.tmp/pdf-consumer',{recursive:true});
+fs.writeFileSync('.tmp/pdf-consumer/imported.md',result);
+const preview=preprocessMarkdownForPreview(result);
+assert.equal(preview.text.split('\n').length,preview.lineMap.length);
+const rendered=marked.parse(preview.text);
+const previewDoc=new JSDOM(rendered).window.document;
+assert(previewDoc.querySelector('h2'),'Headings remain Markdown after HTML tables');
+assert(!previewDoc.body.textContent.includes('## ‘매트’'),'No literal heading syntax');
+assert(result.includes('↑')&&!result.includes('\uf000'),'Recovered increase arrows');
+assert(!result.includes('등의 2위'),'Sidebar does not interrupt prose');
+assert(result.indexOf('1,323건(2.4%)')<result.indexOf('1,171건(2.1%)'),'July panel precedes June panel');
+fs.writeFileSync('.tmp/pdf-consumer/result.html','<meta charset="utf-8"><style>body{width:900px;margin:25px;font:15px serif}table{border-collapse:collapse;width:100%}td,th{border:1px solid #888;padding:5px}p{line-height:1.5}</style>'+rendered);
+console.log(JSON.stringify({pages:pdf.numPages,tables,nested,characterRetention:'passed',panelOrder:'passed',previewBoundaries:'passed'}));
+await pdf.cleanup();

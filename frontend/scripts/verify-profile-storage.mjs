@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import ts from 'typescript';
+const source=fs.readFileSync(new URL('../src/lib/profileStorage.ts',import.meta.url),'utf8').replace(/import[\s\S]*?from ['"][^'"]+['"];\s*/g,'');
+const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+let mode='cloud',localWrites=0,driveContent;
+const exports={};const system=[{id:'system-1',name:'Default'}];
+const windowMock={electronAPI:{saveProfiles:async()=>{localWrites++;return {success:true};}}};
+new Function('exports','getResourceSettings','requireResourceSettings','SYSTEM_PROFILES','isSystemProfileId','window','localStorage','loadSecureData','idb','getSavedDriveToken','getSavedWorkspaceInfo','findDriveFile','readDriveFileContent','ensureDriveTextFile','saveDriveFileContent',compiled)(exports,()=>mode==='cloud'?{kind:'drive',path:'gdrive://selected'}:{kind:'local',path:'C:/resource'},()=>mode==='cloud'?{kind:'drive',path:'gdrive://selected'}:{kind:'local',path:'C:/resource'},system,id=>id==='system-1',windowMock,{getItem:key=>key==='workspaceType'?mode:null},()=>null,{get:async()=>null},()=> 'token',()=>({profilesFolderId:'cloud-profiles'}),async()=> 'file',async()=> '[]',async()=> 'file',async(token,id,content)=>{driveContent=JSON.parse(content);return true;});
+const user={id:'custom-1',name:'My style'};
+assert.equal(await exports.persistUserProfiles([system[0],user],'C:/old-resource'),true);
+assert.equal(localWrites,0);assert.deepEqual(driveContent,[system[0],user]);
+mode='local';assert.equal(await exports.persistUserProfiles([user],'C:/resource'),true);assert.equal(localWrites,1);
+console.log('PASS: cloud ignores stale local path and preserves default + user styles; local uses local storage');

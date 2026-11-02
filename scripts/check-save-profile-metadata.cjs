@@ -1,0 +1,17 @@
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const req=require('node:module').createRequire(path.resolve('frontend/package.json'));
+const exportsObject={};
+Function('exports',req('typescript').transpileModule(fs.readFileSync('frontend/src/lib/frontmatter.ts','utf8'),{compilerOptions:{module:1,target:7}}).outputText)(exportsObject);
+const {updateCssProfileInFrontmatter:update,extractFrontmatter:extract}=exportsObject;
+const source='## 가나다라 마바사 아자차카';
+assert.equal(update(source,'system-1','Onrivi 기본서식'),source,'background updates must not inject default metadata');
+const saved=update(source,'system-1','Onrivi 기본서식',{persistDefault:true});
+assert.equal(extract(saved).data.css_profile,'system-1');
+assert.equal(extract(saved).data.css_profile_name,'"Onrivi 기본서식"');
+assert.equal(extract(saved).content,source);
+assert.equal(update(saved,'system-1','Onrivi 기본서식',{persistDefault:true}),saved);
+assert.equal(update(saved,'system-1','Onrivi 기본서식'),saved,'autosave must stabilize after explicit save');
+const custom=update('---\ntitle: 내 문서\n---\n\n본문','custom','나만의 서식',{persistDefault:true});
+assert.equal(extract(custom).data.title,'내 문서');assert.equal(extract(custom).data.css_profile,'custom');
+assert.equal(update(custom,'custom','나만의 서식',{persistDefault:true}),custom);
+console.log('PASS: explicit save records default/custom style once; body and other metadata survive; background updates stabilize');

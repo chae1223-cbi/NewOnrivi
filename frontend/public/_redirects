@@ -1,0 +1,22 @@
+# ====================================================================
+# 📊 [OMD-SEO-Redirects-0001] Cloudflare Pages _redirects
+# 🎯 @KICK  : Google Search Console 404('찾을 수 없음') 검증 통과를 위한 구버전/삭제 URL 301 영구 리다이렉트 규칙
+# 🚨 @PATCH : 2026-10-28 — 초기 영문 블로그 슬러그 4종, 비공개/삭제 포스트 슬러그 및 Cloudflare 이메일 난독화(/cdn-cgi/*) 경로 301 리다이렉트 신설
+# ====================================================================
+
+# 1. Cloudflare 이메일 난독화 경로 404 방지
+/cdn-cgi/* / 301
+
+# 2. 초기 배포(구버전) 영문 블로그 슬러그 ➔ 블로그 메인(/blog)으로 301 영구 이동
+/blog/markdown-table-formatting-recovery-guide /blog 301
+/blog/korean-ime-composition-editor-bug-fix /blog 301
+/blog/onrivi-author-v2-local-first-release /blog 301
+/blog/latex-math-mermaid-diagram-guide /blog 301
+
+# 3. 삭제 또는 비공개 전환된 과거 자동번호 포스트 슬러그 ➔ 블로그 메인(/blog)으로 301 영구 이동
+/blog/post-000003 /blog 301
+/blog/post-000004 /blog 301
+/blog/post-000005 /blog 301
+/blog/post-000006 /blog 301
+/blog/post-000007 /blog 301
+/blog/post-000008 /blog 301

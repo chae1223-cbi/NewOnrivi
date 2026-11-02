@@ -1,0 +1,15 @@
+name = "onriviauthor"
+compatibility_date = "2026-06-23"
+compatibility_flags = [ "nodejs_compat" ]
+pages_build_output_dir = "./frontend/out"
+
+[build]
+# Cloudflare Pages Functions 디렉토리 (API 라우트 포함)
+
+[[r2_buckets]]
+binding = "R2_BUCKET"
+bucket_name = "onrivi-images"
+
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "b69b14ee883b477caf4e35b2a6d1205b"

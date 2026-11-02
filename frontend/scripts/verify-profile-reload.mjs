@@ -1,0 +1,17 @@
+import fs from 'node:fs';
+import ts from 'typescript';
+import assert from 'node:assert/strict';
+let token='existing',authCalls=0,success=true,toasts=[],states=[];
+globalThis.reloadMocks={getSavedDriveToken:()=>token,requestGoogleDriveAuth:async()=>{authCalls++;return 'renewed';},saveDriveToken:t=>{token=t;},setToast:t=>toasts.push(t),setIsReconnectingDrive:s=>states.push(s)};
+globalThis.CustomEvent=class {constructor(type,options){this.type=type;this.detail=options.detail;}};
+globalThis.window={dispatchEvent:event=>{setTimeout(()=>event.detail.resolve(success),5);}};
+const src=fs.readFileSync(new URL('../src/components/StyleManagerModal.tsx',import.meta.url),'utf8');
+const handler=src.slice(src.indexOf('  const handleReconnectDrive ='),src.indexOf('// 로컬스토리지 API 키',src.indexOf('  const handleReconnectDrive =')));
+const source='const {'+Object.keys(globalThis.reloadMocks).join(',')+'}=globalThis.reloadMocks;'+handler+'export {handleReconnectDrive};';
+const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
+const {handleReconnectDrive}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
+const pending=handleReconnectDrive();assert.deepEqual(states,[true]);assert.equal(toasts.length,0);await pending;
+assert.equal(authCalls,0);assert(toasts.at(-1).startsWith('✅'));assert.deepEqual(states,[true,false]);
+success=false;await handleReconnectDrive();assert.equal(authCalls,0);assert(toasts.at(-1).startsWith('⚠️'));
+token=null;success=true;await handleReconnectDrive();assert.equal(authCalls,1);assert(toasts.at(-1).startsWith('✅'));
+console.log('PASS: existing token skips OAuth, completion awaits read, failure is not success, missing token authenticates');

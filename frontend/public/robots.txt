@@ -1,0 +1,67 @@
+# ====================================================================
+# 📊 [OMD-SEO-Robots-0001] robots.txt
+# 🎯 @KICK  : 온리비 어서(Onrivi Author) 검색 엔진 및 AI 크롤러 접근 정책
+# 🚨 @PATCH : 2026-10-28 — [개별 AI 봇 블록 Disallow 규칙 동기화 및 비공개 인증 콜백 경로 차단 보강]: Google-Extended 등 개별 User-agent 선언 시 상단 Disallow가 초기화되는 표준 스펙 문제를 방어하기 위해 각 블록에 비공개 경로 Disallow 명시
+# 🚨 @PATCH : 2026-09-23 — [Cloudflare cdn-cgi 크롤링 차단 추가]: 이메일 난독화 보호 주소(/cdn-cgi/) 구글봇 색인 시도 원천 차단
+# 🚨 @PATCH : 2026-09-23 — [전체 검색 엔진 크롤러 허용 및 비공개 경로 제외]: 구글봇(Googlebot) 및 전체 검색엔진(User-agent: *)에 대한 기본 접근 허용, 비공개/편집기/API 경로(/admin, /editor, /api 등) 크롤링 차단 추가
+# ====================================================================
+
+# 1. 전체 검색 엔진 로봇 (구글, 네이버, 다음, 빙 등)
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /editor
+Disallow: /knowledge
+Disallow: /api/
+Disallow: /auth/
+Disallow: /reset-password
+Disallow: /cdn-cgi/
+
+# 2. 주요 생성형 AI 검색 로봇 허용 (비공개/시스템 경로 동일 제외)
+User-agent: GPTBot
+Allow: /
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /editor
+Disallow: /knowledge
+Disallow: /api/
+Disallow: /auth/
+Disallow: /reset-password
+Disallow: /cdn-cgi/
+
+User-agent: PerplexityBot
+Allow: /
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /editor
+Disallow: /knowledge
+Disallow: /api/
+Disallow: /auth/
+Disallow: /reset-password
+Disallow: /cdn-cgi/
+
+User-agent: Google-Extended
+Allow: /
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /editor
+Disallow: /knowledge
+Disallow: /api/
+Disallow: /auth/
+Disallow: /reset-password
+Disallow: /cdn-cgi/
+
+User-agent: ClaudeBot
+Allow: /
+Disallow: /admin
+Disallow: /dashboard
+Disallow: /editor
+Disallow: /knowledge
+Disallow: /api/
+Disallow: /auth/
+Disallow: /reset-password
+Disallow: /cdn-cgi/
+
+# 3. 사이트맵 위치 안내
+Sitemap: https://onrivi.com/sitemap.xml

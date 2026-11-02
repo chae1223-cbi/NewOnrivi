@@ -1,0 +1,138 @@
+{
+  "name": "onrivi-author",
+  "version": "1.0.1",
+  "description": "Onrivi Author - Web-based Markdown Editor",
+  "author": "Onrivi Studio",
+  "homepage": "https://onrivi.com",
+  "main": "main.js",
+  "scripts": {
+    "prepare": "husky",
+    "dev": "concurrently \"cd frontend && npm run dev\" \"cd backend && npm run dev\"",
+    "dev:r2": "cd frontend && npx wrangler pages dev ./out --compatibility-date=2026-06-23 --r2=R2_BUCKET --remote",
+    "electron": "electron .",
+    "electron:prod": "set NODE_NO_WARNINGS=1&& set NO_SERVER=true&& electron .",
+    "build:frontend": "cd frontend && npm install && npm run build:desktop",
+    "build:web": "cd frontend && npm install && npm run build",
+    "build": "npm run build:frontend",
+    "build:extension": "cd frontend && npm run build:extension",
+    "build:electron": "electron-builder --win",
+    "dist": "npm run build && npm run build:electron",
+    "deploy": "npm run build:web && npx wrangler pages deploy frontend/out --project-name onriviauthor"
+  },
+  "dependencies": {
+    "chokidar": "^5.0.0"
+  },
+  "devDependencies": {
+    "@supabase/supabase-js": "^2.108.2",
+    "concurrently": "^8.2.1",
+    "dotenv": "^16.6.1",
+    "electron": "^42.4.1",
+    "electron-builder": "^24.6.3",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7",
+    "pg": "^8.22.0",
+    "postgres": "^3.4.9",
+    "sharp": "^0.35.3"
+  },
+  "build": {
+    "appId": "com.onrivi.author",
+    "productName": "Onrivi Author",
+    "compression": "maximum",
+    "electronLanguages": [
+      "ko",
+      "en-US",
+      "en"
+    ],
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "perMachine": false,
+      "include": "build/installer.nsh"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "fileAssociations": [
+        {
+          "ext": "md",
+          "name": "Markdown Document",
+          "description": "온리비 어서 마크다운 문서",
+          "role": "Editor"
+        },
+        {
+          "ext": "markdown",
+          "name": "Markdown Document",
+          "description": "온리비 어서 마크다운 문서",
+          "role": "Editor"
+        }
+      ],
+      "protocols": [
+        {
+          "name": "Onrivi Author Protocol",
+          "schemes": [
+            "onriviauthor"
+          ]
+        }
+      ]
+    },
+    "files": [
+      "desktopInlineImages.js",
+      "desktopEmojiPicker.cjs",
+      "electron/gdriveOAuth.cjs",
+      "electron/inlineAI.cjs",
+      "frontend/src/lib/ai/wire.mjs",
+      "main.js",
+      "preload.js",
+      "frontend/out/**/*",
+      "!frontend/out/**/*.map",
+      "!frontend/out/**/*.js.map",
+      "!frontend/out/**/*.css.map",
+      "!frontend/out/users_image_*",
+      "!frontend/out/temp_*",
+      "!frontend/out/test_*",
+      "!frontend/out/hero.png",
+      "!frontend/out/onrivi_local_workspace.png",
+      "!frontend/out/hero-slides/**",
+      "!frontend/out/steps/**",
+      "!frontend/out/blog/**",
+      "!frontend/out/naver*.html",
+      "!frontend/out/robots.txt",
+      "!frontend/out/sitemap.xml",
+      "!frontend/out/temp_icon.png",
+      "!frontend/out/manifest.json",
+      "!frontend/out/_headers",
+      "!frontend/out/monaco-editor/min/vs/language/typescript/**",
+      "docs/**/*",
+      "plugins/onrivi-author/**/*",
+      "!frontend/node_modules/**/*",
+      "!**/__tests__/**",
+      "!**/*.test.*",
+      "!**/*.spec.*",
+      "!**/tests/**",
+      "!scratch/**",
+      "!scripts/patches/**",
+      "!*.log"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "plugins/onrivi-author/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "plugins/onrivi-author",
+        "to": "plugins/onrivi-author",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ]
+  }
+}

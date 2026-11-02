@@ -1,0 +1,18 @@
+const fs = require('node:fs'), assert = require('node:assert/strict');
+const source = fs.readFileSync('frontend/src/components/VisualDocumentEditor.tsx','utf8');
+const start = source.indexOf('    commandRef.current = bridge;');
+const end = source.indexOf('    // Commands read the current view state',start);
+assert.ok(start > 0 && end > start);
+const element = new EventTarget(), ref = { current: null };
+const body = () => 'body', scene = () => 'scene';
+const cleanup = Function('commandRef','host','bridge',source.slice(start,end))(ref,{current:element},body);
+assert.equal(ref.current,body);
+ref.current = scene;
+element.dispatchEvent(new Event('focusin'));
+assert.equal(ref.current,body,'body focus reclaims toolbar and shortcut routing');
+ref.current = scene;
+cleanup();
+assert.equal(ref.current,scene,'cleanup leaves the newer editor target intact');
+element.dispatchEvent(new Event('focusin'));
+assert.equal(ref.current,scene,'unmounted editor no longer steals commands');
+console.log('PASS: picturebook body focus restores command ownership and cleanup preserves other inputs');

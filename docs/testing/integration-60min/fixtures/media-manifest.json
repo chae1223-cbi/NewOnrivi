@@ -1,0 +1,22 @@
+[
+  {
+    "file": "assets/original/qa-photo.png",
+    "bytes": 3386,
+    "sha256": "fb9950917638d6c7ee0e299891dfdfc8480c4e926166e48cd4afd9b7cb84a479"
+  },
+  {
+    "file": "assets/replacement/qa-photo.png",
+    "bytes": 3445,
+    "sha256": "7d1db893767ed9c4fb68457a2c607c0bbc57987fee910efffb5c8c577bf7f68e"
+  },
+  {
+    "file": "assets/original/qa-video.webm",
+    "bytes": 21396,
+    "sha256": "47cca3fdc6d360524590b9896f59012adc3937427b712714e0348da5d54aed4d"
+  },
+  {
+    "file": "assets/replacement/qa-video.webm",
+    "bytes": 21682,
+    "sha256": "4c48bcc707decdf7b6714fe720f59390dac0a635d68124f352b22ef77d8b939e"
+  }
+]

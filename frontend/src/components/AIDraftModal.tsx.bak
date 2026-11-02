@@ -1,0 +1,726 @@
+﻿/**
+ * ?꾨줈洹몃옩紐?: OnriviAuthor 
+ * ?뚯씪紐?: AIDraftModal.tsx
+ * -----------------------------------------------------------------------
+ * 蹂寃쎈궡?? * -----------------------------------------------------------------------
+ * <2026.05.31> 理쒖큹?묒꽦
+ * ?묒꽦??: 梨꾨퀝?? * ?슚 @PATCH : **2026-07-20** ??AI 紐⑤떖李쎌쓽 '?꾨━??遺덈윭?ㅺ린' 諛?'?꾩옱 ?ㅼ젙 ??? ?앹뾽 ?쒕∼?ㅼ슫???몃? ?곸뿭(outside) ?대┃ ???먮룞?쇰줈 ?ロ엳?꾨줉 `useRef` 諛??대깽??由ъ뒪??handleClickOutside) 濡쒖쭅 異붽? ?곸슜
+ * -----------------------------------------------------------------------
+ */
+"use client";
+
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Sparkles, Wand2, Loader2, Check, Save, FolderOpen, Trash2, Copy, Paperclip } from 'lucide-react';
+import { useToast } from '@/components/ToastProvider';
+import { PROMPT_TEMPLATES, getPromptTemplate } from '@/lib/promptTemplates';
+import { generateDraftWithAIStream } from '@/lib/gemini';
+
+interface AIDraftModalProps {
+  onClose: () => void;
+  onApply: (content: string, action: 'insert' | 'replace' | 'append', scope: 'selection' | 'document' | 'none') => void;
+  geminiApiKey: string;
+  aiModelName: string;
+  editorContext?: {
+    selectedText: string;
+    fullText: string;
+  };
+  initialMode?: 'draft' | 'editorial';
+}
+
+interface AIPreset {
+  id: string;
+  name: string;
+  mode: 'draft' | 'editorial';
+  // Draft specific
+  domainId?: string;
+  docType?: string;
+  systemPrompt?: string;
+  userPrompt?: string;
+  // Editorial specific
+  editorialCommand?: string;
+  targetScope?: 'selection' | 'document' | 'none';
+}
+
+const DOMAIN_OPTIONS = Object.keys(PROMPT_TEMPLATES).map(domain => ({
+  id: domain,
+  label: domain,
+  docTypes: Object.keys(PROMPT_TEMPLATES[domain])
+}));
+
+const LOCAL_STORAGE_KEY = 'onrivi_ai_presets';
+
+export default function AIDraftModal({ 
+  onClose, 
+  onApply, 
+  geminiApiKey, 
+  aiModelName,
+  editorContext,
+  initialMode = 'draft'
+}: AIDraftModalProps) {
+  const { showToast } = useToast();
+  
+  const [mode, setMode] = useState<'draft' | 'editorial'>(initialMode);
+  const [presets, setPresets] = useState<AIPreset[]>([]);
+  const [showPresetDropdown, setShowPresetDropdown] = useState(false);
+  
+  // Preset Saving State
+  const [isSavingPreset, setIsSavingPreset] = useState(false);
+  const [presetNameInput, setPresetNameInput] = useState('');
+
+  // Draft Mode State
+  const [selectedDomainId, setSelectedDomainId] = useState(DOMAIN_OPTIONS[0].id);
+  const [selectedDocType, setSelectedDocType] = useState(DOMAIN_OPTIONS[0].docTypes[0]);
+  const [systemPrompt, setSystemPrompt] = useState('');
+  const [userPrompt, setUserPrompt] = useState('');
+
+  // Editorial Mode State
+  const [editorialCommand, setEditorialCommand] = useState('');
+  const [targetScope, setTargetScope] = useState<'selection' | 'document' | 'none'>('selection');
+
+  // Generation state
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [draftResult, setDraftResult] = useState('');
+  const [generationComplete, setGenerationComplete] = useState(false);
+  const [aiCopied, setAiCopied] = useState(false);
+  
+  // File Attachment State
+  const [attachedFileName, setAttachedFileName] = useState('');
+  const [attachedFileContent, setAttachedFileContent] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const previewRef = useRef<HTMLDivElement>(null);
+  const presetContainerRef = useRef<HTMLDivElement>(null);
+
+  // Click outside to close preset dropdowns
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (presetContainerRef.current && !presetContainerRef.current.contains(event.target as Node)) {
+        setShowPresetDropdown(false);
+        setIsSavingPreset(false);
+      }
+    };
+    if (showPresetDropdown || isSavingPreset) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showPresetDropdown, isSavingPreset]);
+
+  // Load presets on mount
+  useEffect(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (saved) {
+      try {
+        setPresets(JSON.parse(saved));
+      } catch(e) {
+        console.error('Failed to parse presets', e);
+      }
+    }
+  }, []);
+
+  // Set default targetScope if no selection
+  useEffect(() => {
+    if (!editorContext?.selectedText && targetScope === 'selection') {
+      setTargetScope('document');
+    }
+  }, [editorContext, targetScope]);
+
+  // Update prompts when domain or docType changes (Only for Draft mode)
+  useEffect(() => {
+    if (isGenerating || generationComplete || mode !== 'draft') return;
+    // Only auto-fill if the user hasn't loaded a preset that customized it
+    const template = getPromptTemplate(selectedDomainId, selectedDocType);
+    setSystemPrompt(template.systemPrompt);
+    setUserPrompt(template.userInputTemplate);
+  }, [selectedDomainId, selectedDocType, mode, isGenerating, generationComplete]);
+
+  // Auto-scroll the preview div as result streams in
+  useEffect(() => {
+    if (previewRef.current && isGenerating) {
+      previewRef.current.scrollTop = previewRef.current.scrollHeight;
+    }
+  }, [draftResult, isGenerating]);
+
+  const handleDomainChange = (domainId: string) => {
+    const domain = DOMAIN_OPTIONS.find(d => d.id === domainId) || DOMAIN_OPTIONS[0];
+    setSelectedDomainId(domain.id);
+    setSelectedDocType(domain.docTypes[0]);
+  };
+
+  const handleSavePresetClick = () => {
+    setIsSavingPreset(true);
+    setPresetNameInput('');
+    setShowPresetDropdown(false);
+  };
+
+  const handleConfirmSavePreset = () => {
+    if (!presetNameInput.trim()) {
+      showToast("?꾨━???대쫫???낅젰?댁＜?몄슂.", "warning");
+      return;
+    }
+
+    const newPreset: AIPreset = {
+      id: Date.now().toString(),
+      name: presetNameInput.trim(),
+      mode,
+      ...(mode === 'draft' ? {
+        domainId: selectedDomainId,
+        docType: selectedDocType,
+        systemPrompt,
+        userPrompt
+      } : {
+        editorialCommand,
+        targetScope
+      })
+    };
+
+    const updated = [...presets, newPreset];
+    setPresets(updated);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
+    showToast("?꾨━?뗭씠 ??λ릺?덉뒿?덈떎.", "success");
+    setIsSavingPreset(false);
+  };
+
+  const handleCancelSavePreset = () => {
+    setIsSavingPreset(false);
+    setPresetNameInput('');
+  };
+
+  const handleLoadPreset = (preset: AIPreset) => {
+    setMode(preset.mode);
+    if (preset.mode === 'draft') {
+      setSelectedDomainId(preset.domainId || DOMAIN_OPTIONS[0].id);
+      setSelectedDocType(preset.docType || DOMAIN_OPTIONS[0].docTypes[0]);
+      setSystemPrompt(preset.systemPrompt || '');
+      setUserPrompt(preset.userPrompt || '');
+    } else {
+      setEditorialCommand(preset.editorialCommand || '');
+      setTargetScope(preset.targetScope || 'none');
+    }
+    setShowPresetDropdown(false);
+    showToast("?꾨━?뗭쓣 遺덈윭?붿뒿?덈떎.", "success");
+  };
+
+  const handleDeletePreset = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    const updated = presets.filter(p => p.id !== id);
+    setPresets(updated);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
+  };
+
+  const handleFileAttach = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      setAttachedFileContent(text);
+      setAttachedFileName(file.name);
+      showToast(`${file.name} ?뚯씪??泥⑤??섏뿀?듬땲??`, "success");
+    };
+    reader.onerror = () => {
+      showToast("?뚯씪???쎈뒗 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎.", "error");
+    };
+    reader.readAsText(file);
+    
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handleRemoveAttachment = () => {
+    setAttachedFileName('');
+    setAttachedFileContent('');
+  };
+
+  const handleCopyResult = async () => {
+    try {
+      await navigator.clipboard.writeText(draftResult);
+      setAiCopied(true);
+      showToast("AI ?앹꽦 寃곌낵媛 ?대┰蹂대뱶??蹂듭궗?섏뿀?듬땲??", "success");
+      setTimeout(() => setAiCopied(false), 2000);
+    } catch (err) {
+      showToast("?대┰蹂대뱶 蹂듭궗 ?ㅽ뙣", "error");
+    }
+  };
+
+  const handleGenerate = async () => {
+    if (!geminiApiKey) {
+      showToast("?ㅼ젙?먯꽌 Gemini API ?ㅻ? 癒쇱? ?깅줉?댁＜?몄슂.", "warning");
+      onClose();
+      return;
+    }
+
+    let finalSystemPrompt = systemPrompt;
+    let finalUserPrompt = userPrompt;
+
+    if (mode === 'editorial') {
+      if (!editorialCommand.trim()) {
+        showToast("?먮뵒?좊━??紐낅졊???낅젰??二쇱꽭??", "warning");
+        return;
+      }
+      finalSystemPrompt = "You are a professional editorial assistant. Help the user edit or create document text based on their instructions. Return only the finalized text without markdown code blocks unless requested.";
+      
+      if (targetScope === 'selection' && editorContext?.selectedText) {
+        finalUserPrompt = `${editorialCommand}\n\n[????곸뿭 ?띿뒪??\n${editorContext.selectedText}`;
+      } else if (targetScope === 'document' && editorContext?.fullText) {
+        finalSystemPrompt = "You are a professional editorial assistant. Your task is to write a COMPLETELY NEW document based on the user's command. The provided existing document is ONLY a reference for output formatting (layout, lists, tables), style, tone, and structural format (like heading levels). Do NOT summarize or edit the existing document. Create brand new content that matches the user's command, but strictly mimics the output format, layout, form, and feeling of the reference document. Return only the finalized text without markdown code blocks unless requested.";
+        finalUserPrompt = `[??臾몄꽌 ?묒꽦 紐낅졊]\n${editorialCommand}\n\n[?ㅽ???援ъ“/異쒕젰?묒떇 李멸퀬??湲곗〈 臾몄꽌]\n${editorContext.fullText}\n\n?꾩쓽 '李멸퀬??湲곗〈 臾몄꽌'瑜??붿빟?섍굅???뺣━?섏? 留덉꽭?? ?대떦 臾몄꽌???ㅼ쭅 湲??異쒕젰 ?묒떇(?덉씠?꾩썐, ?? 紐⑸줉 援ъ“), 援ъ“(?쒕ぉ ?섏? ??, ?먮굦(?댁“, 臾몄껜)???뚯븙?섍린 ?꾪븳 '?쒓났 ?먮즺'??肉먯엯?덈떎. 諛섎뱶?????먮즺???ъ슜??異쒕젰 ?묒떇怨??ㅼ븻留ㅻ꼫 諛??쇨??깆쓣 ?묎컳???좎??섎㈃?? 留???'[??臾몄꽌 ?묒꽦 紐낅졊]'???곕씪 '?꾩쟾???덈줈??臾몄꽌'瑜?李쎌옉??二쇱꽭??`;
+      } else {
+        finalUserPrompt = editorialCommand;
+      }
+    } else {
+      if (!systemPrompt.trim()) {
+        showToast("?묒꽦 洹쒖튃(System Prompt)???낅젰??二쇱꽭??", "warning");
+        return;
+      }
+      if (!userPrompt.trim()) {
+        showToast("?낅젰 ?곗씠??User Input)瑜??묒꽦??二쇱꽭??", "warning");
+        return;
+      }
+    }
+
+    if (attachedFileContent) {
+      finalUserPrompt += `\n\n[泥⑤? 臾몄꽌 ?댁슜: ${attachedFileName}]\n${attachedFileContent}`;
+    }
+
+    setIsGenerating(true);
+    setGenerationComplete(false);
+    setDraftResult('');
+
+    try {
+      await generateDraftWithAIStream(
+        geminiApiKey,
+        aiModelName || 'gemini-1.5-flash',
+        finalSystemPrompt,
+        finalUserPrompt,
+        (chunkText) => {
+          setDraftResult(chunkText);
+        }
+      );
+      setGenerationComplete(true);
+      showToast('AI 湲 ?앹꽦???꾨즺?섏뿀?듬땲?? 寃곌낵瑜??뺤씤?댁＜?몄슂.', 'success');
+    } catch (e: any) {
+      showToast(`AI ?앹꽦 ?ㅽ뙣: ${e.message}`, 'error');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleApply = (action: 'insert' | 'replace' | 'append') => {
+    if (!draftResult.trim()) {
+      showToast("?앹꽦??寃곌낵媛 ?놁뒿?덈떎.", "warning");
+      return;
+    }
+    onApply(draftResult, action, targetScope);
+  };
+
+  const currentDomainObj = DOMAIN_OPTIONS.find(d => d.id === selectedDomainId) || DOMAIN_OPTIONS[0];
+
+  return (
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/40 backdrop-blur-sm" onMouseDown={onClose}>
+      <div
+        className="bg-white dark:bg-zinc-900 w-[1300px] max-w-[95vw] h-[750px] max-h-[90vh] rounded-2xl shadow-2xl flex flex-col border border-zinc-200 dark:border-zinc-700/50 transition-all duration-300 overflow-hidden"
+        onMouseDown={e => e.stopPropagation()}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.nativeEvent) {
+            e.nativeEvent.stopImmediatePropagation?.();
+          }
+        }}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-100 dark:border-zinc-800 shrink-0 bg-white dark:bg-zinc-900">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-[#8b5cf6] flex items-center justify-center shadow-sm">
+              <Sparkles className="w-5 h-5 text-white" />
+            </div>
+            <div className="flex flex-col">
+              <h2 className="text-[16px] font-bold text-[#8b5cf6]">
+                AI ?먮뵒?좊━???댁떆?ㅽ꽩??              </h2>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+                <span className="text-[12px] font-medium text-zinc-400">
+                  {isGenerating ? "AI媛 ?묒뾽???섑뻾?섍퀬 ?덉뒿?덈떎..." : "?묒뾽 以鍮??꾨즺"}
+                </span>
+              </div>
+            </div>
+          </div>
+          {!isGenerating && (
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
+        </div>
+
+        {/* Body (Side-by-side) */}
+        <div className="flex flex-1 overflow-hidden">
+          
+          {/* Left Column: Prompts */}
+          <div className="w-[600px] bg-slate-50 dark:bg-zinc-800/50 border-r border-zinc-100 dark:border-zinc-800 flex flex-col relative overflow-hidden">
+            
+            {/* Mode & Preset Top Bar */}
+            <div className="px-6 pt-5 pb-3 shrink-0 flex items-center justify-between z-10 relative">
+              <div className="flex bg-zinc-200/50 dark:bg-zinc-800 p-1 rounded-lg">
+                <button
+                  onClick={() => setMode('draft')}
+                  className={`px-3 py-1.5 text-[12px] font-bold rounded-md transition-colors ${
+                    mode === 'draft' ? 'bg-white dark:bg-zinc-700 text-zinc-800 dark:text-zinc-100 shadow-sm' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700'
+                  }`}
+                >
+                  珥덉븞 ?앹꽦
+                </button>
+                <button
+                  onClick={() => setMode('editorial')}
+                  className={`px-3 py-1.5 text-[12px] font-bold rounded-md transition-colors ${
+                    mode === 'editorial' ? 'bg-white dark:bg-zinc-700 text-zinc-800 dark:text-zinc-100 shadow-sm' : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700'
+                  }`}
+                >
+                  ?몄쭛 ?댁떆?ㅽ꽩??                </button>
+              </div>
+
+              <div ref={presetContainerRef} className="flex items-center gap-2 relative">
+                <button
+                  onClick={() => { setShowPresetDropdown(!showPresetDropdown); setIsSavingPreset(false); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-bold text-zinc-600 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-lg transition-colors"
+                >
+                  <FolderOpen className="w-3.5 h-3.5" />
+                  遺덈윭?ㅺ린
+                </button>
+                <button
+                  onClick={handleSavePresetClick}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-bold text-[#8b5cf6] hover:bg-purple-100 dark:hover:bg-[#8b5cf6]/10 rounded-lg transition-colors"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  ?꾩옱 ?ㅼ젙 ???                </button>
+
+                {/* Preset Saving Popover */}
+                {isSavingPreset && (
+                  <div className="absolute top-full right-0 mt-2 w-72 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl overflow-hidden z-50 p-4 flex flex-col gap-3">
+                    <span className="text-[12px] font-bold text-zinc-800 dark:text-zinc-200">???꾨━?????/span>
+                    <input 
+                      type="text" 
+                      value={presetNameInput}
+                      onChange={(e) => setPresetNameInput(e.target.value)}
+                      onKeyDown={(e) => { if(e.key === 'Enter') handleConfirmSavePreset(); if(e.key === 'Escape') handleCancelSavePreset(); }}
+                      placeholder="?꾨━???대쫫???낅젰?섏꽭??
+                      autoFocus
+                      className="w-full bg-slate-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 text-[12px] text-zinc-800 dark:text-zinc-200 focus:outline-none focus:border-purple-500"
+                    />
+                    <div className="flex items-center justify-end gap-2 mt-1">
+                      <button onClick={handleCancelSavePreset} className="px-3 py-1.5 text-[11px] font-bold text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded-md">痍⑥냼</button>
+                      <button onClick={handleConfirmSavePreset} className="px-3 py-1.5 text-[11px] font-bold text-white bg-[#8b5cf6] hover:bg-[#7c3aed] rounded-md shadow-sm">??ν븯湲?/button>
+                    </div>
+                  </div>
+                )}
+
+                {showPresetDropdown && (
+                  <div className="absolute top-full right-0 mt-2 w-64 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl shadow-xl overflow-hidden z-50">
+                    <div className="px-4 py-2 bg-slate-50 dark:bg-zinc-900 border-b border-zinc-100 dark:border-zinc-700">
+                      <span className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider">??λ맂 ?꾨━??/span>
+                    </div>
+                    <div className="max-h-60 overflow-y-auto">
+                      {presets.length === 0 ? (
+                        <div className="p-4 text-center text-zinc-400 text-[12px]">??λ맂 ?꾨━?뗭씠 ?놁뒿?덈떎.</div>
+                      ) : (
+                        presets.map(p => (
+                          <div key={p.id} className="flex items-center justify-between group hover:bg-zinc-50 dark:hover:bg-zinc-700/50 cursor-pointer border-b border-zinc-50 dark:border-zinc-700/50 last:border-0" onClick={() => handleLoadPreset(p)}>
+                            <div className="px-4 py-3 flex flex-col">
+                              <span className="text-[13px] font-bold text-zinc-800 dark:text-zinc-200">{p.name}</span>
+                              <span className="text-[10px] text-zinc-400 mt-0.5">{p.mode === 'draft' ? '珥덉븞 ?앹꽦' : '?몄쭛 ?댁떆?ㅽ꽩??}</span>
+                            </div>
+                            <button
+                              onClick={(e) => handleDeletePreset(e, p.id)}
+                              className="mr-3 p-1.5 text-zinc-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all rounded-md hover:bg-red-50 dark:hover:bg-red-500/10"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-col h-full overflow-y-auto custom-scrollbar px-6 pb-24 relative">
+              
+              <div className="flex flex-col gap-6">
+                
+                {mode === 'draft' ? (
+                  <>
+                    {/* Domain & DocType */}
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[11px] font-extrabold text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5 tracking-wider">
+                        臾몄꽌 ?좏삎 ?ㅼ젙 <span className="text-zinc-400 font-medium">(DOCUMENT TYPE)</span>
+                      </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <select
+                          value={selectedDomainId}
+                          onChange={(e) => handleDomainChange(e.target.value)}
+                          disabled={isGenerating}
+                          className="w-full bg-white dark:bg-zinc-900 border-2 border-transparent hover:border-[#e9d5ff] focus:border-[#a855f7] rounded-xl px-4 py-3 text-[12px] font-medium text-zinc-700 dark:text-zinc-200 focus:outline-none transition-colors shadow-sm disabled:opacity-50"
+                        >
+                          {DOMAIN_OPTIONS.map(d => (
+                            <option key={d.id} value={d.id}>{d.label}</option>
+                          ))}
+                        </select>
+                        <select
+                          value={selectedDocType}
+                          onChange={(e) => setSelectedDocType(e.target.value)}
+                          disabled={isGenerating}
+                          className="w-full bg-white dark:bg-zinc-900 border-2 border-transparent hover:border-[#e9d5ff] focus:border-[#a855f7] rounded-xl px-4 py-3 text-[12px] font-medium text-zinc-700 dark:text-zinc-200 focus:outline-none transition-colors shadow-sm disabled:opacity-50"
+                        >
+                          {currentDomainObj.docTypes.map(type => (
+                            <option key={type} value={type}>{type}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* System Prompt */}
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[11px] font-extrabold text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5 tracking-wider">
+                        AI ?묒꽦 洹쒖튃 <span className="text-zinc-400 font-medium">(SYSTEM PROMPT)</span>
+                      </label>
+                      <textarea
+                        value={systemPrompt}
+                        onChange={(e) => setSystemPrompt(e.target.value)}
+                        disabled={isGenerating}
+                        placeholder="AI?먭쾶 吏?쒗븷 ?묒꽦 ?먯튃怨??ㅼ븻留ㅻ꼫瑜??낅젰?섏꽭??"
+                        className="w-full bg-white dark:bg-zinc-900 border-2 border-transparent hover:border-[#e9d5ff] focus:border-[#a855f7] rounded-2xl p-4 text-[12px] text-zinc-700 dark:text-zinc-200 focus:outline-none transition-colors shadow-sm resize-none min-h-[200px] disabled:opacity-50 custom-scrollbar leading-relaxed"
+                      />
+                    </div>
+
+                    {/* User Prompt */}
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[11px] font-extrabold text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5 tracking-wider">
+                        ?낅젰 ?곗씠??<span className="text-zinc-400 font-medium">(USER INPUT)</span>
+                      </label>
+                      <textarea
+                        value={userPrompt}
+                        onChange={(e) => setUserPrompt(e.target.value)}
+                        disabled={isGenerating}
+                        placeholder="臾몄꽌 ?묒꽦???꾩슂???듭떖 ?곗씠?곕굹 ?ㅼ썙?쒕? ?묒떇??留욊쾶 湲곗엯??二쇱꽭??"
+                        className="w-full bg-white dark:bg-zinc-900 border-2 border-[#e9d5ff] dark:border-[#8b5cf6]/30 focus:border-[#a855f7] rounded-2xl p-4 text-[12px] text-zinc-800 dark:text-zinc-100 focus:outline-none transition-colors shadow-sm resize-none min-h-[160px] disabled:opacity-50 custom-scrollbar leading-relaxed"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {/* Editorial Mode Context Scope */}
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[11px] font-extrabold text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5 tracking-wider">
+                        而⑦뀓?ㅽ듃 踰붿쐞 <span className="text-zinc-400 font-medium">(CONTEXT SCOPE)</span>
+                      </label>
+                      <div className="flex bg-white dark:bg-zinc-900 p-1.5 rounded-xl border-2 border-transparent shadow-sm gap-1">
+                        <button
+                          onClick={() => setTargetScope('selection')}
+                          disabled={!editorContext?.selectedText}
+                          className={`flex-1 py-2 text-[12px] font-bold rounded-lg transition-all ${
+                            targetScope === 'selection'
+                              ? 'bg-purple-100 dark:bg-purple-900/30 text-[#8b5cf6]'
+                              : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300'
+                          } disabled:opacity-40 disabled:cursor-not-allowed`}
+                          title={editorContext?.selectedText ? `?좏깮??蹂몃Ц ?ъ슜` : '?먮뵒?곗뿉???띿뒪?몃? ?쒕옒洹명븳 ???ъ슜 媛??}
+                        >
+                          ?좏깮 ?곸뿭
+                        </button>
+                        <button
+                          onClick={() => setTargetScope('document')}
+                          className={`flex-1 py-2 text-[12px] font-bold rounded-lg transition-all ${
+                            targetScope === 'document'
+                              ? 'bg-purple-100 dark:bg-purple-900/30 text-[#8b5cf6]'
+                              : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300'
+                          }`}
+                        >
+                          臾몄꽌 ?꾩껜
+                        </button>
+                        <button
+                          onClick={() => setTargetScope('none')}
+                          className={`flex-1 py-2 text-[12px] font-bold rounded-lg transition-all ${
+                            targetScope === 'none'
+                              ? 'bg-purple-100 dark:bg-purple-900/30 text-[#8b5cf6]'
+                              : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300'
+                          }`}
+                        >
+                          ?ъ슜 ?덊븿 (?쇰컲 吏덈Ц)
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Editorial Command */}
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[11px] font-extrabold text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5 tracking-wider">
+                        ?먮뵒?좊━??紐낅졊 <span className="text-zinc-400 font-medium">(EDITORIAL COMMAND)</span>
+                      </label>
+                      <textarea
+                        value={editorialCommand}
+                        onChange={(e) => setEditorialCommand(e.target.value)}
+                        disabled={isGenerating}
+                        placeholder="AI?먭쾶 ?붿껌???몄쭛 紐낅졊?대굹 二쇱젣瑜??낅젰?섏꽭??.."
+                        className="w-full bg-white dark:bg-zinc-900 border-2 border-[#e9d5ff] dark:border-[#8b5cf6]/30 focus:border-[#a855f7] rounded-2xl p-4 text-[12px] text-zinc-800 dark:text-zinc-100 focus:outline-none transition-colors shadow-sm resize-none min-h-[350px] disabled:opacity-50 custom-scrollbar leading-relaxed"
+                      />
+                    </div>
+                  </>
+                )}
+                
+                {/* File Attachment UI (Shared between modes) */}
+                <div className="flex flex-col gap-2 mt-2">
+                  <label className="text-[11px] font-extrabold text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5 tracking-wider">
+                    臾몄꽌 泥⑤? <span className="text-zinc-400 font-medium">(ATTACHMENT)</span>
+                  </label>
+                  
+                  {attachedFileName ? (
+                    <div className="flex items-center justify-between bg-[#8b5cf6]/10 border border-[#8b5cf6]/30 px-3 py-2.5 rounded-xl">
+                      <div className="flex items-center gap-2 overflow-hidden">
+                        <Paperclip className="w-4 h-4 text-[#8b5cf6] shrink-0" />
+                        <span className="text-[12px] font-bold text-[#8b5cf6] truncate">{attachedFileName}</span>
+                      </div>
+                      <button onClick={handleRemoveAttachment} className="p-1 hover:bg-[#8b5cf6]/20 rounded-md text-[#8b5cf6] transition-colors shrink-0">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isGenerating}
+                      className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-zinc-200 dark:border-zinc-700/80 hover:border-[#8b5cf6]/50 hover:bg-[#8b5cf6]/5 rounded-xl py-3 text-[12px] font-bold text-zinc-500 dark:text-zinc-400 transition-colors disabled:opacity-50"
+                    >
+                      <Paperclip className="w-4 h-4" />
+                      李몄“???띿뒪??臾몄꽌(.md, .txt) 泥⑤??섍린
+                    </button>
+                  )}
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileAttach}
+                    accept=".txt,.md,.json,.csv"
+                    className="hidden"
+                  />
+                </div>
+
+              </div>
+
+            </div>
+
+            {/* Fixed Bottom Button */}
+            <div className="absolute bottom-6 left-6 right-6 z-10 bg-slate-50 dark:bg-zinc-800/50 pt-2">
+              <button
+                onClick={handleGenerate}
+                disabled={isGenerating}
+                className="w-full py-3.5 text-[14px] font-bold text-white bg-[#c4b5fd] hover:bg-[#a855f7] disabled:bg-[#ddd6fe] dark:disabled:bg-zinc-700 rounded-xl flex items-center justify-center gap-2 transition-colors shadow-sm"
+              >
+                {isGenerating ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    AI {mode === 'draft' ? '珥덉븞 ?앹꽦' : '?묒뾽 ?섑뻾'} 以?..
+                  </>
+                ) : generationComplete ? (
+                  <>
+                    <Sparkles className="w-5 h-5" />
+                    ?꾨＼?꾪듃 ?섏젙?섏뿬 ?ㅼ떆 ?ㅽ뻾
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-5 h-5" />
+                    AI {mode === 'draft' ? '珥덉븞 ?앹꽦' : '湲 ?앹꽦'} ?쒖옉
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Right Column: Result Preview */}
+          <div className="flex-1 bg-white dark:bg-zinc-900 flex flex-col relative overflow-hidden">
+            
+            {/* Right Pane Header */}
+            <div className="flex items-center justify-between px-8 py-5 shrink-0">
+              <h3 className="text-[11px] font-extrabold text-zinc-400 tracking-wider">
+                寃곌낵 誘몃━蹂닿린 <span className="font-medium">(OUTPUT PREVIEW)</span>
+              </h3>
+              
+              {/* Apply Buttons (Only visible when generated) */}
+              {generationComplete && !isGenerating && draftResult.trim() && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleCopyResult}
+                    className="px-4 py-1.5 text-[12px] font-bold text-zinc-600 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg transition-colors flex items-center gap-1.5 mr-2"
+                  >
+                    {aiCopied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                    {aiCopied ? '蹂듭궗?? : '寃곌낵 蹂듭궗'}
+                  </button>
+
+                  {mode === 'editorial' && targetScope !== 'none' && (
+                    <>
+                      <button
+                        onClick={() => handleApply('replace')}
+                        className="px-4 py-1.5 text-[12px] font-bold text-[#8b5cf6] border border-[#8b5cf6]/30 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded-lg transition-colors"
+                      >
+                        湲곗〈 ?댁슜 ??뼱?곌린
+                      </button>
+                      <button
+                        onClick={() => handleApply('append')}
+                        className="px-4 py-1.5 text-[12px] font-bold text-white bg-[#8b5cf6] hover:bg-[#7c3aed] rounded-lg transition-colors flex items-center gap-1.5"
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        蹂몃Ц ?꾨옒???댁뼱?곌린
+                      </button>
+                    </>
+                  )}
+                  {(mode === 'draft' || targetScope === 'none') && (
+                    <button
+                      onClick={() => handleApply('insert')}
+                      className="px-4 py-1.5 text-[12px] font-bold text-white bg-[#8b5cf6] hover:bg-[#7c3aed] rounded-lg transition-colors flex items-center gap-1.5"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      ?먮뵒?곗뿉 ?곸슜?섍린
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Right Pane Content */}
+            <div className="flex-1 overflow-hidden relative">
+              {(!isGenerating && !generationComplete && !draftResult) ? (
+                // Empty State
+                <div className="absolute inset-0 flex flex-col items-center justify-center pb-20">
+                  <div className="w-16 h-16 bg-[#faf5ff] dark:bg-[#8b5cf6]/10 rounded-[20px] flex items-center justify-center mb-5">
+                    <svg className="w-8 h-8 text-[#a855f7]" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8V7z" />
+                    </svg>
+                  </div>
+                  <h4 className="text-[15px] font-bold text-zinc-800 dark:text-zinc-200 mb-2">
+                    AI ?앹꽦???湲?以묒엯?덈떎
+                  </h4>
+                  <p className="text-[12px] text-zinc-500 dark:text-zinc-400 text-center leading-relaxed">
+                    醫뚯륫 ??뿉??紐⑤뱶瑜??좏깮?섍퀬 ?꾩슂???댁슜???낅젰????br/>
+                    ?섎떒??<span className="text-[#8b5cf6] font-bold">?쒖옉</span> 踰꾪듉???뚮윭二쇱꽭??
+                  </p>
+                </div>
+              ) : (
+                // Generating or Generated State
+                <div 
+                  ref={previewRef}
+                  className="absolute inset-0 px-8 pb-8 text-[13px] text-zinc-800 dark:text-zinc-200 whitespace-pre-wrap overflow-y-auto custom-scrollbar select-text"
+                  style={{ lineHeight: '1.8' }}
+                >
+                  {draftResult}
+                  {isGenerating && (
+                    <span className="inline-block w-2 h-4 ml-1 bg-[#8b5cf6] animate-pulse align-middle"></span>
+                  )}
+                </div>
+              )}
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

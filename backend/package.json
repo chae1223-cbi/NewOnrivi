@@ -1,0 +1,26 @@
+{
+  "name": "onrivi-author-backend",
+  "version": "1.0.0",
+  "description": "MiniMD Web Edition Backend",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "full": "concurrently \"npm run dev\" \"cd ../frontend && npm run dev\"",
+    "deploy": "npx hugo && wrangler deploy",
+    "preview": "npx hugo && wrangler dev"
+  },
+  "dependencies": {
+    "@getbrevo/brevo": "^5.0.4",
+    "@supabase/supabase-js": "^2.108.2",
+    "concurrently": "^8.2.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2",
+    "openai": "^6.38.0"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.22",
+    "wrangler": "^4.103.0"
+  }
+}

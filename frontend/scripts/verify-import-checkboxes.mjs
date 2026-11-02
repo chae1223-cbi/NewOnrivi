@@ -1,0 +1,18 @@
+import fs from 'node:fs';
+import ts from 'typescript';
+import assert from 'node:assert/strict';
+const code=ts.transpileModule(fs.readFileSync(new URL('../src/lib/importCheckboxes.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
+const {convertFormCheckboxes,importedCheckboxEdit}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
+let md=convertFormCheckboxes('| □예비창업자 □스타트업 |\n| ☑선택됨 ☒선택됨 |');
+assert.equal((md.match(/<input/g)||[]).length,4);
+assert.equal((md.match(/ checked/g)||[]).length,2);
+const edit=importedCheckboxEdit(md,'hwp-2',true);
+md=md.slice(0,edit.start)+edit.text+md.slice(edit.end);
+assert(md.includes('data-import-checkbox="hwp-2" aria-label="스타트업" checked'));
+assert(!md.includes('data-import-checkbox="hwp-1" aria-label="예비창업자" checked'));
+const undo=importedCheckboxEdit(md,'hwp-2',false);
+md=md.slice(0,undo.start)+undo.text+md.slice(undo.end);
+assert.equal((md.match(/ checked/g)||[]).length,2);
+assert.equal(importedCheckboxEdit(md,'missing',true),null);
+assert.equal(convertFormCheckboxes('□ 모집 개요\n□ 문 의 처'),'□ 모집 개요\n□ 문 의 처');
+console.log('PASS: inline table checkboxes preserve initial states and toggle only the selected item');

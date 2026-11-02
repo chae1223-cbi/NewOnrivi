@@ -1,0 +1,52 @@
+name: QA Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    defaults:
+      run:
+        working-directory: ./frontend
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20.x'
+        cache: 'npm'
+        cache-dependency-path: ./frontend/package-lock.json
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Type Check (TypeScript)
+      run: npx tsc --noEmit
+
+    - name: Run Unit Tests (Vitest)
+      run: npm run test -- --passWithNoTests
+
+    - name: Run E2E Tests (Playwright)
+      run: |
+        if [ -d "src/__tests__/e2e" ] && [ -n "$(ls -A src/__tests__/e2e 2>/dev/null)" ]; then
+          npx playwright install --with-deps
+          npm run test:e2e
+        else
+          echo "No E2E tests found, skipping Playwright."
+        fi
+      
+    - name: Upload Playwright Report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: playwright-report
+        path: ./frontend/playwright-report/
+        retention-days: 30
+        if-no-files-found: ignore

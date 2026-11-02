@@ -1,0 +1,14 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+import ts from 'typescript';
+import {JSDOM} from 'jsdom';
+globalThis.DOMParser=new JSDOM('').window.DOMParser;
+const code=ts.transpileModule(fs.readFileSync(new URL('../src/lib/importHtmlMarkdown.ts',import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
+const {importHtmlWithImages}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
+let calls=0;
+const html='<h2>제목</h2><img alt="첫 그림" src="data:image/png;base64,YWJj"><img src="data:image/png;base64,YWJj"><blockquote>인용</blockquote><img src="https://example.com/image.png">';
+const md=await importHtmlWithImages(html,async(base64,mime)=>{calls++;assert.equal(base64,'YWJj');assert.equal(mime,'image/png');return '/media/saved.png';});
+assert.equal(calls,1);assert(!md.includes('base64'));assert(md.includes('## 제목'));assert(md.includes('> 인용'));assert(md.includes('https://example.com/image.png'));assert.equal(md.match(/\/media\/saved.png/g).length,2);
+await assert.rejects(()=>importHtmlWithImages(html),/리소스 폴더/);
+await assert.rejects(()=>importHtmlWithImages(html,async()=>{throw new Error('save failed');}),/save failed/);
+console.log('PASS: embedded images externalized, duplicates reused, text/remote images preserved, save errors propagated');

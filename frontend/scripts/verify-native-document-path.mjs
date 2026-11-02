@@ -1,0 +1,14 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+import ts from 'typescript';
+const source = fs.readFileSync(new URL('../src/lib/nativeDocumentPath.ts', import.meta.url), 'utf8');
+const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext } }).outputText;
+const { resolveNativeDocumentPath: resolve } = await import(`data:text/javascript;base64,${Buffer.from(js).toString('base64')}`);
+assert.equal(resolve('프로그램별설치및삭제가이드.md', null), null);
+assert.equal(resolve('문서.md', { name: '작업장' }), null);
+assert.equal(resolve('문서.md', { name: 'GoogleDrive', type: 'GDRIVE' }), null);
+assert.equal(resolve('문서.md', { name: 'D:\\작업장' }), 'D:\\작업장/문서.md');
+assert.equal(resolve('D:\\작업장\\문서.md'), 'D:\\작업장\\문서.md');
+assert.equal(resolve('file:///C:/%EB%AC%B8%EC%84%9C.md'), 'C:/문서.md');
+assert.equal(resolve('\\\\server\\share\\문서.md'), '\\\\server\\share\\문서.md');
+console.log('Native document path: 7 checks passed');

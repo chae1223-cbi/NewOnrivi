@@ -1,0 +1,32 @@
+# Onrivi Author
+
+> Onrivi Author (온리비 어서)는 지식 근로자, IT 개발자, 테크니컬 라이터, 연구자를 위한 프리미엄 로컬 우선(Local-First) 마크다운 뷰어(Markdown Viewer) 및 마크다운 에디터(Markdown Edit/Editor) 플랫폼입니다.
+
+## Tagline
+"AI는 마크다운으로, 사람은 문서로" (AI in Markdown, Humans in Documents)
+
+## Core Problems Solved
+1. Input Glitch Elimination: 기존 마크다운 에디터(Markdown Edit)의 고질적인 한글 입력 오류 및 조합 깨짐 현상을 완벽하게 해결.
+2. Perfect Layout & Preview: KaTeX 수식, Mermaid 다이어그램, 코드 블록을 실시간 미리보기(Markdown Viewer)로 제공하며 PDF/EPUB 내보내기 시 깨짐 없이 인쇄소 품질로 즉시 사출.
+3. True Local-First Security: 인터넷이 차단된 완전한 폐쇄형/오프라인 환경에서도 모든 문서 작성 및 로컬 파일 관리 완벽 지원.
+4. Bring Your Own AI: 특정 AI 서비스에 종속되지 않고 사용자의 자체 AI API를 직접 연동하여 데이터 프라이버시 유지.
+5. RAG Data Preprocessing: 복잡한 비정형 문서(Word/PDF)를 AI가 가장 높은 정확도로 인식하는 구조화된 마크다운으로 전처리.
+
+## Key Technical Specifications
+- Frontend: Next.js 14 (App Router), TypeScript, Tailwind CSS, Monaco Editor
+- Desktop App: Electron (Windows), IPC Local File Access, Offline Native Operations
+- Rendering Pipeline: KaTeX (Math), Mermaid (Diagrams), JSON Formatting Profiles
+- Infrastructure: Cloudflare Pages, Cloudflare R2, Supabase Auth & PostgreSQL RPC
+
+## Target Audience
+- IT 개발자, 테크니컬 라이터, 연구자, 작가, 기업용 RAG AI 인프라 구축 팀, 마크다운 viewer 및 edit 툴을 찾는 사용자.
+
+## Business Model & Pricing
+- [계급 1] Reader: ₩0 (읽기 전용 마크다운 뷰어 모드)
+- [계급 2] Apprentice: ₩0 (14일 무제한 무료 체험)
+- [계급 3] Regular (월간): ₩3,000/월 (전체 웹/데스크탑 마크다운 에디터 기능 및 무제한 내보내기)
+- [계급 3] Regular (연간): ₩30,000/년 (16% 할인 적용, 2개월 무료)
+
+## Official Links & Resources
+- Website: https://onrivi.com
+- Publisher/Developer: Onrivi (CEO Chae Byeong-ik / 채병익)

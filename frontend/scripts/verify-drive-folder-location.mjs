@@ -1,0 +1,13 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+import ts from 'typescript';
+const source=fs.readFileSync(new URL('../src/lib/driveFolderLocation.ts',import.meta.url),'utf8');
+const code=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
+const {resolveDriveFolderLocation}=await import('data:text/javascript;base64,'+Buffer.from(code).toString('base64'));
+const folders={a:{name:'참조파일',parents:['b']},b:{name:'OnriviAuthor',parents:['root']},root:{name:'내 드라이브'}};
+let denied=false;
+globalThis.fetch=async url=>({ok:!denied,status:403,json:async()=>folders[new URL(url).pathname.split('/').pop()]});
+assert.equal(await resolveDriveFolderLocation('test','a'),'내 드라이브 / OnriviAuthor / 참조파일');
+denied=true;await assert.rejects(resolveDriveFolderLocation('test','a'),/403/);denied=false;
+folders.root.parents=['a'];await assert.rejects(resolveDriveFolderLocation('test','a'),/상위/);
+console.log('PASS: full ancestry, access failure, cyclic ancestry');

@@ -1,0 +1,47 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+import ts from 'typescript';
+import React from 'react';
+import {renderToStaticMarkup} from 'react-dom/server';
+import Markdown from 'react-markdown';
+import rehypeRaw from 'rehype-raw';
+import rehypeHighlight from 'rehype-highlight';
+import {JSDOM} from 'jsdom';
+import {createRequire} from 'node:module';
+import {pathToFileURL} from 'node:url';
+const require=createRequire(import.meta.url);
+const url=s=>'data:text/javascript;base64,'+Buffer.from(s).toString('base64');
+const compile=s=>ts.transpileModule(s,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.React}}).outputText;
+const read=f=>fs.readFileSync(new URL('../src/'+f,import.meta.url),'utf8');
+const {remarkCodeBlockMetadata}=await import(url(compile(read('lib/codeBlockMetadata.ts'))));
+const viewer=read('components/MarkdownViewer.tsx');
+const splitter=viewer.slice(viewer.indexOf('function splitChildrenIntoLines('),viewer.indexOf('\n/**',viewer.indexOf('function splitChildrenIntoLines(')));
+const block=viewer.slice(viewer.indexOf('function CodeBlock('),viewer.indexOf('\n// ====================================================================',viewer.indexOf('function CodeBlock(')));
+const text=viewer.slice(viewer.indexOf('const getTextFromChildren'),viewer.indexOf('\n/**',viewer.indexOf('const getTextFromChildren')));
+const imports=`import React, {useMemo,useState} from ${JSON.stringify(pathToFileURL(require.resolve('react')).href)};`;
+const {CodeBlock}=await import(url(compile(imports+'\nconst extractDataLine=()=>8;\n'+text+'\n'+splitter+'\n'+block+'\nexport {CodeBlock};')));
+globalThis.DOMParser=new JSDOM('').window.DOMParser;
+const {htmlToImportMarkdown}=await import(url(compile(read('lib/importHtmlMarkdown.ts'))));
+const {preprocessMarkdownForPreview}=await import(url(compile(read('lib/editorUtils.ts'))));
+const cases=[['추천 디렉토리 구조','commonMain/\n  └─ kotlin/'],['소스코드','fun FolderScreen()\n{\n    println("hello")\n}'],['kotlin title="전체 제목"','val x = 1\n\nval y = 2\n'],['가나다 라마','## include aaa\nvoid main () {\n    prinntf("11111"\\n\n    )\n}'],['','one line'],['','']];
+for(const [info,code] of cases) {
+ const original='```'+info+'\n'+code+'\n```';
+ const processed=preprocessMarkdownForPreview(original);
+ assert.equal(processed.text,original,'preprocessing must preserve code verbatim');
+ assert.deepEqual(processed.lineMap,original.split('\n').map((_,i)=>i+1));
+ const md=processed.text;
+ let raw, title;
+ const html=renderToStaticMarkup(React.createElement(Markdown,{remarkPlugins:[remarkCodeBlockMetadata],rehypePlugins:[rehypeRaw,rehypeHighlight],components:{pre:({children})=>React.createElement('div',null,children),code:({node,className,children,...props})=>{
+  raw=node.properties['data-code-text'] ?? node.properties.dataCodeText; title=node.properties['data-code-title'] ?? node.properties.dataCodeTitle;
+  return React.createElement(CodeBlock,{lang:node.properties['data-code-info'],rawInfo:info,title,code:raw,node,className,...props},children);
+ }}},md));
+ const doc=new JSDOM(html).window.document;
+ assert.equal(raw,code);
+ assert.equal(doc.querySelector('.codeblock-header-text').textContent,info.includes('title=')?'전체 제목':info||'코드');
+ const rows=[...doc.querySelectorAll('.onrivi-line')];
+ assert.equal(rows.length,Math.max(1,code.split('\n').length));
+ assert.equal(rows.map(row=>row.textContent.replace(/^\u200b$/,'')).join('\n'),code);
+ const restored=htmlToImportMarkdown(html);
+ assert(restored.includes('```'+info+'\n'+code+'\n```'),restored);
+}
+console.log('PASS: actual CodeBlock rendering, titles, 0/1/4 rows, intentional blank rows, token lines and HTML round-trip');

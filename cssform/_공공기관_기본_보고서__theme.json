@@ -1,0 +1,210 @@
+{
+  "id": "profile-1784462441034",
+  "name": "[공공기관 기본 보고서]",
+  "pageStyle": {
+    "fontFamily": "'KoPubDotum', 'Noto Sans KR', sans-serif",
+    "fontSize": "14px",
+    "lineHeight": "1.6",
+    "letterSpacing": "-0.02em",
+    "backgroundColor": "#ffffff",
+    "paperSize": "a4",
+    "marginTop": "25mm",
+    "marginBottom": "20mm",
+    "marginLeft": "15mm",
+    "marginRight": "15mm",
+    "orientation": "portrait",
+    "headingSizeOffset": "3",
+    "tabSize": "4",
+    "margins": {
+      "top": "20mm",
+      "bottom": "20mm",
+      "left": "25mm",
+      "right": "20mm"
+    }
+  },
+  "rules": {
+    "h1": {
+      "font-size": "28px",
+      "font-weight": "900",
+      "color": "#0058bc",
+      "border-left": "8px solid #0058bc",
+      "padding-left": "15px",
+      "margin-bottom": "24px"
+    },
+    "h2": {
+      "font-size": "22px",
+      "font-weight": "800",
+      "color": "#333333",
+      "border-bottom": "1px solid #dee2e6",
+      "padding-bottom": "8px",
+      "margin-top": "32px"
+    },
+    "h3": {
+      "text-align": "left",
+      "font-weight": "bold",
+      "font-size": "17px",
+      "margin-top": "20px",
+      "margin-bottom": "10px"
+    },
+    "h4": {
+      "text-align": "left",
+      "font-weight": "bold",
+      "font-size": "15px",
+      "margin-top": "16px",
+      "margin-bottom": "8px"
+    },
+    "h5": {
+      "text-align": "left",
+      "font-weight": "600",
+      "font-size": "14px",
+      "margin-top": "12px",
+      "margin-bottom": "6px"
+    },
+    "h6": {
+      "text-align": "left",
+      "font-weight": "600",
+      "font-size": "13px",
+      "margin-top": "10px",
+      "margin-bottom": "4px"
+    },
+    "p": {
+      "text-align": "justify",
+      "margin-top": "0px",
+      "margin-bottom": "10px",
+      "text-indent": "10px",
+      "line-height": "1.8",
+      "word-break": "keep-all"
+    },
+    "strong": {
+      "font-weight": "bold"
+    },
+    "em": {
+      "font-style": "italic"
+    },
+    "u": {},
+    "del": {
+      "text-decoration-color": "#9ca3af"
+    },
+    "ul": {
+      "padding-left": "24px",
+      "list-style-type": "disc"
+    },
+    "ol": {
+      "padding-left": "24px",
+      "list-style-type": "decimal"
+    },
+    "li": {
+      "margin-bottom": "4px",
+      "padding-inline-start": "6px"
+    },
+    "taskList": {},
+    "hr": {
+      "border-top-color": "#d1d5db"
+    },
+    "table": {
+      "width": "100%",
+      "border-collapse": "collapse",
+      "border-style": "solid",
+      "border-width": "1px",
+      "border-color": "#9ca3af",
+      "font-size": "13px"
+    },
+    "th": {
+      "background-color": "#f3f4f6",
+      "padding": "8px",
+      "border-style": "solid",
+      "border-width": "1px",
+      "border-color": "#9ca3af",
+      "font-weight": "bold"
+    },
+    "td": {
+      "padding": "6px 8px",
+      "border-style": "solid",
+      "border-width": "1px",
+      "border-color": "#9ca3af"
+    },
+    "blockquote": {
+      "border-left": "4px solid #0058bc",
+      "background-color": "#f8f9fa",
+      "padding": "16px",
+      "color": "#444444"
+    },
+    "codeBlock": {
+      "background-color": "#1e293b",
+      "color": "#e2e8f0",
+      "font-size": "13px",
+      "padding": "16px",
+      "border-radius": "6px"
+    },
+    "codeBlockTitle": {
+      "background-color": "#0f172a",
+      "color": "#94a3b8"
+    },
+    "a": {
+      "color": "#2563eb",
+      "text-decoration": "underline"
+    },
+    "img": {
+      "display": "block",
+      "margin-left": "auto",
+      "margin-right": "auto",
+      "width": "500px",
+      "margin-top": "20px",
+      "margin-bottom": "20px"
+    },
+    "code": {
+      "background-color": "#f1f5f9",
+      "color": "#2563eb",
+      "font-size": "0.85em",
+      "padding-top": "1px",
+      "padding-bottom": "1px",
+      "padding-left": "4px",
+      "padding-right": "4px",
+      "border-radius": "3px",
+      "line-height": "1"
+    },
+    "video": {
+      "width": "560px",
+      "height": "315px",
+      "display": "block",
+      "margin-left": "auto",
+      "margin-right": "auto",
+      "margin-top": "16px",
+      "margin-bottom": "16px"
+    },
+    "math": {
+      "color": "#0058bc",
+      "font-size": "15px",
+      "text-align": "center"
+    },
+    "map": {
+      "width": "600px",
+      "height": "450px",
+      "display": "block",
+      "margin-left": "auto",
+      "margin-right": "auto",
+      "margin-top": "16px",
+      "margin-bottom": "16px"
+    },
+    "footnote": {
+      "color": "#6b7280",
+      "font-size": "11px",
+      "line-height": "1.4",
+      "margin-top": "8px",
+      "margin-bottom": "8px"
+    }
+  },
+  "hrStructure": {
+    "borderTopStyle": "solid",
+    "borderTopWidth": "2px",
+    "marginTopBottom": "40px",
+    "lineWidth": "100%"
+  },
+  "checkboxStructure": {
+    "boxSize": "18px",
+    "checkedEffect": "dim-only",
+    "textGap": "12px",
+    "color": "#0058bc"
+  },
+  "description": "[공공기관 보고서]"
+}

@@ -1,0 +1,29 @@
+{
+    "project_name": "AutoBloggerV1",
+    "language": "ko",
+    "target_blog": "local_md", 
+    "post_root_dir": "./posts",
+    "db_path": "./blogger.db",
+  
+    "default_tone": "친근하지만 전문적인 설명형",
+    "default_length": "long",
+    "default_category": "투자/개발/일상",
+  
+    "topics": [
+      {
+        "id": "dev_life_001",
+        "keyword": "파이썬으로 자동매매 시스템 개발하는 과정",
+        "category": "개발/투자",
+        "tag_hint": ["파이썬", "자동매매", "퀀트", "개발일지"],
+        "target_audience": "개발자 겸 개인 투자자"
+      },
+      {
+        "id": "dev_life_002",
+        "keyword": "자동매매 만들다가 멘탈 관리하는 방법",
+        "category": "일상/멘탈",
+        "tag_hint": ["자동매매", "멘탈관리", "투자심리"],
+        "target_audience": "자동매매/코인/주식에 관심 있는 개인"
+      }
+    ]
+  }
+  

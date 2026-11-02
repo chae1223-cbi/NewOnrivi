@@ -1,0 +1,205 @@
+{
+  "id": "profile-1784461722609",
+  "name": "따뜻한 서정적 명조",
+  "pageStyle": {
+    "fontFamily": "'Noto Serif KR', serif",
+    "fontSize": "16px",
+    "lineHeight": "1.8",
+    "letterSpacing": "0.02em",
+    "backgroundColor": "#FAF6ED",
+    "paperSize": "a4",
+    "marginTop": "25mm",
+    "marginBottom": "20mm",
+    "marginLeft": "15mm",
+    "marginRight": "15mm",
+    "orientation": "portrait",
+    "headingSizeOffset": "3",
+    "tabSize": "4",
+    "margins": {
+      "top": "30mm",
+      "bottom": "30mm",
+      "left": "25mm",
+      "right": "25mm"
+    }
+  },
+  "rules": {
+    "h1": {
+      "font-size": "32px",
+      "font-weight": "700",
+      "color": "#4A3728",
+      "margin-bottom": "24px"
+    },
+    "h2": {
+      "font-size": "26px",
+      "font-weight": "700",
+      "color": "#5D4037",
+      "margin-top": "30px",
+      "margin-bottom": "18px",
+      "border-bottom": "1px solid #E0D7C6"
+    },
+    "h3": {
+      "font-size": "22px",
+      "font-weight": "600",
+      "color": "#5D4037",
+      "margin-top": "24px",
+      "margin-bottom": "12px"
+    },
+    "h4": {
+      "text-align": "left",
+      "font-weight": "bold",
+      "font-size": "15px",
+      "margin-top": "16px",
+      "margin-bottom": "8px"
+    },
+    "h5": {
+      "text-align": "left",
+      "font-weight": "600",
+      "font-size": "14px",
+      "margin-top": "12px",
+      "margin-bottom": "6px"
+    },
+    "h6": {
+      "text-align": "left",
+      "font-weight": "600",
+      "font-size": "13px",
+      "margin-top": "10px",
+      "margin-bottom": "4px"
+    },
+    "p": {
+      "margin-bottom": "1.8em",
+      "color": "#4A3728"
+    },
+    "strong": {
+      "font-weight": "bold"
+    },
+    "em": {
+      "font-style": "italic"
+    },
+    "u": {},
+    "del": {
+      "text-decoration-color": "#9ca3af"
+    },
+    "ul": {
+      "padding-left": "24px",
+      "color": "#4A3728",
+      "list-style-type": "disc"
+    },
+    "ol": {
+      "padding-left": "24px",
+      "color": "#4A3728",
+      "list-style-type": "decimal"
+    },
+    "li": {
+      "margin-bottom": "4px",
+      "padding-inline-start": "6px"
+    },
+    "taskList": {},
+    "hr": {
+      "border-top-color": "#d1d5db"
+    },
+    "table": {
+      "border-collapse": "collapse",
+      "width": "100%",
+      "margin-bottom": "20px"
+    },
+    "th": {
+      "background-color": "#F0EAE0",
+      "font-weight": "bold",
+      "border": "1px solid #DCD0C0",
+      "padding": "12px",
+      "color": "#4A3728"
+    },
+    "td": {
+      "border": "1px solid #DCD0C0",
+      "padding": "12px",
+      "color": "#4A3728"
+    },
+    "blockquote": {
+      "border-left": "3px solid #A68B6D",
+      "padding-left": "20px",
+      "margin-left": "0",
+      "margin-right": "0",
+      "color": "#6D5A4E",
+      "font-style": "italic",
+      "background-color": "rgba(166, 139, 109, 0.05)",
+      "padding-top": "10px",
+      "padding-bottom": "10px"
+    },
+    "codeBlock": {
+      "background-color": "#1e293b",
+      "color": "#e2e8f0",
+      "font-size": "13px",
+      "padding": "16px",
+      "border-radius": "6px"
+    },
+    "codeBlockTitle": {
+      "background-color": "#0f172a",
+      "color": "#94a3b8"
+    },
+    "a": {
+      "color": "#2563eb",
+      "text-decoration": "underline"
+    },
+    "img": {
+      "display": "block",
+      "margin-left": "auto",
+      "margin-right": "auto",
+      "width": "500px",
+      "margin-top": "20px",
+      "margin-bottom": "20px"
+    },
+    "code": {
+      "background-color": "#EAE0D5",
+      "color": "#8D6E63",
+      "padding": "2px 5px",
+      "border-radius": "3px",
+      "font-family": "monospace"
+    },
+    "video": {
+      "width": "560px",
+      "height": "315px",
+      "display": "block",
+      "margin-left": "auto",
+      "margin-right": "auto",
+      "margin-top": "16px",
+      "margin-bottom": "16px"
+    },
+    "math": {
+      "color": "#4A3728",
+      "font-size": "1.1em",
+      "text-align": "center",
+      "margin-top": "20px",
+      "margin-bottom": "20px"
+    },
+    "map": {
+      "width": "600px",
+      "height": "450px",
+      "display": "block",
+      "margin-left": "auto",
+      "margin-right": "auto",
+      "margin-top": "16px",
+      "margin-bottom": "16px"
+    },
+    "footnote": {
+      "color": "#6b7280",
+      "font-size": "11px",
+      "line-height": "1.4",
+      "margin-top": "8px",
+      "margin-bottom": "8px"
+    }
+  },
+  "hrStructure": {
+    "borderTopStyle": "solid",
+    "borderTopWidth": "1px",
+    "marginTopBottom": "40px",
+    "lineWidth": "80%",
+    "color": "#DCD0C0"
+  },
+  "checkboxStructure": {
+    "boxSize": "16px",
+    "checkedEffect": "dim-only",
+    "textGap": "10px",
+    "color": "#4A3728"
+  },
+  "description": "Noto Serif KR 명조체와 아이보리 배경이 조화로운 차분한 스타일"
+}

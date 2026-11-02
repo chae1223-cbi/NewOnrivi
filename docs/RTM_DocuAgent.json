@@ -1,0 +1,88 @@
+{
+  "project": "Onrivi Docu-Agent",
+  "version": "1.0.0",
+  "last_updated": "2026-05-16",
+  "requirements": [
+    {
+      "id": "REQ-S-01",
+      "category": "Design",
+      "name": "한 줄 요구사항 해석기",
+      "status": "Requirement Defined",
+      "design_docs": [],
+      "implementation": [],
+      "test_cases": []
+    },
+    {
+      "id": "REQ-S-02",
+      "category": "Design",
+      "name": "의미론적 설계 데이터 매핑",
+      "status": "Requirement Defined",
+      "design_docs": [],
+      "implementation": [],
+      "test_cases": []
+    },
+    {
+      "id": "REQ-S-03",
+      "category": "Design",
+      "name": "표준 포맷 내보내기",
+      "status": "Requirement Defined",
+      "design_docs": [],
+      "implementation": [],
+      "test_cases": []
+    },
+    {
+      "id": "REQ-T-01",
+      "category": "Test",
+      "name": "인수 테스트 시나리오 생성",
+      "status": "Requirement Defined",
+      "design_docs": [],
+      "implementation": [],
+      "test_cases": []
+    },
+    {
+      "id": "REQ-T-02",
+      "category": "Test",
+      "name": "API/DB 테스트 스니펫",
+      "status": "Requirement Defined",
+      "design_docs": [],
+      "implementation": [],
+      "test_cases": []
+    },
+    {
+      "id": "REQ-T-03",
+      "category": "Test",
+      "name": "역동기화 (Reverse Sync)",
+      "status": "Requirement Defined",
+      "design_docs": [],
+      "implementation": [],
+      "test_cases": []
+    },
+    {
+      "id": "REQ-D-01",
+      "category": "Deployment",
+      "name": "맞춤형 배포 가이드 생성",
+      "status": "Requirement Defined",
+      "design_docs": [],
+      "implementation": [],
+      "test_cases": []
+    },
+    {
+      "id": "REQ-D-02",
+      "category": "Deployment",
+      "name": "IaC 및 CI/CD 스크립트 제공",
+      "status": "Requirement Defined",
+      "design_docs": [],
+      "implementation": [],
+      "test_cases": []
+    },
+    {
+      "id": "REQ-D-03",
+      "category": "Deployment",
+      "name": "자동 릴리즈 노트 생성",
+      "status": "Requirement Defined",
+      "design_docs": [],
+      "implementation": [],
+      "test_cases": []
+    }
+  ]
+}

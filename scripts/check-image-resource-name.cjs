@@ -1,0 +1,22 @@
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const {createRequire}=require('node:module');
+const root=path.resolve(__dirname,'..');
+const req=createRequire(path.join(root,'frontend/package.json'));
+const ts=req('typescript');
+const source=fs.readFileSync(path.join(root,'frontend/src/lib/imageResourceName.ts'),'utf8');
+const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2020}}).outputText;
+const exported={exports:{}};Function('module','exports',compiled)(exported,exported.exports);
+const {imageResourceName,picturebookImageReference}=exported.exports;
+(async()=>{
+ const fixture=path.join(root,'docs/testing/integration-60min/fixtures/assets');
+ const first=new File([fs.readFileSync(path.join(fixture,'original/qa-photo.png'))],'image.png',{type:'image/png'});
+ const second=new File([fs.readFileSync(path.join(fixture,'replacement/qa-photo.png'))],'image.png',{type:'image/png'});
+ const a=await imageResourceName(first),b=await imageResourceName(second);
+ assert.notEqual(a,b);assert.match(a,/^img_[a-f0-9]{12}\.png$/);
+ assert.equal(await imageResourceName(new Blob([await first.arrayBuffer()],{type:'image/png'}),true),a);
+ assert.equal(await imageResourceName(new File([await first.arrayBuffer()],'my-photo.png',{type:'image/png'})),'my-photo.png');
+ assert.match(await imageResourceName(new Blob(['webp fixture'],{type:'image/webp'}),true),/\.webp$/);
+ const markdown=picturebookImageReference('media/'+b+'?driveId=QA&v=2','새 그림');
+ assert.ok(markdown.startsWith('![새 그림](<media/'+b));assert.ok(!markdown.includes(a));
+ console.log('PASS: different pasted pixels get different names; same image reuses name; real file names preserved; modal path/alt become valid image Markdown');
+})().catch(error=>{console.error(error);process.exitCode=1;});

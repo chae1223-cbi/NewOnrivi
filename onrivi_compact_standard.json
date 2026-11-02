@@ -1,0 +1,114 @@
+{
+  "name": "온리비 컴팩트 표준 서식 (칼정렬 & 미디어 완비)",
+  "pageStyle": {
+    "fontFamily": "inherit",
+    "fontSize": "15px",
+    "lineHeight": "1.65",
+    "letterSpacing": "-0.02em",
+    "marginTop": "20mm",
+    "marginBottom": "20mm",
+    "marginLeft": "20mm",
+    "marginRight": "20mm",
+    "orientation": "portrait",
+    "headingSizeOffset": "4"
+  },
+  "rules": {
+    "h1": {
+      "text-align": "left",
+      "font-weight": "bold",
+      "margin-top": "1.5rem",
+      "margin-bottom": "1rem"
+    },
+    "h2": {
+      "text-align": "left",
+      "font-weight": "bold",
+      "margin-top": "1.3rem",
+      "margin-bottom": "0.8rem"
+    },
+    "h3": {
+      "text-align": "left",
+      "font-weight": "bold",
+      "margin-top": "1rem",
+      "margin-bottom": "0.6rem"
+    },
+    "h4": {
+      "text-align": "left",
+      "font-weight": "600",
+      "margin-top": "0.8rem",
+      "margin-bottom": "0.5rem"
+    },
+    "h5": {
+      "text-align": "left",
+      "font-weight": "500",
+      "margin-top": "0.6rem",
+      "margin-bottom": "0.4rem"
+    },
+    "h6": {
+      "text-align": "left",
+      "font-weight": "500",
+      "margin-top": "0.5rem",
+      "margin-bottom": "0.3rem"
+    },
+    "p": {
+      "text-align": "left",
+      "margin-bottom": "6px",
+      "text-indent": "0px"
+    },
+    "strong": {},
+    "em": {},
+    "u": {},
+    "del": {},
+    "ul": {
+      "padding-left": "24px"
+    },
+    "ol": {
+      "padding-left": "24px"
+    },
+    "li": {
+      "margin-bottom": "2px",
+      "padding-inline-start": "6px"
+    },
+    "taskList": {},
+    "hr": {},
+    "table": {
+      "width": "100%",
+      "border-collapse": "collapse"
+    },
+    "th": {},
+    "td": {},
+    "blockquote": {
+      "border-left-width": "4px",
+      "border-left-style": "solid",
+      "padding": "12px",
+      "margin-top": "8px",
+      "margin-bottom": "8px"
+    },
+    "codeBlock": {},
+    "a": {},
+    "img": {},
+    "code": {
+      "background-color": "#eff6ff",
+      "color": "#2563eb",
+      "font-size": "0.9em",
+      "padding-top": "1px",
+      "padding-bottom": "1px",
+      "padding-left": "4px",
+      "padding-right": "4px",
+      "border-radius": "4px",
+      "border-width": "1px",
+      "border-style": "solid",
+      "border-color": "#bfdbfe",
+      "font-family": "Consolas, Monaco, monospace",
+      "line-height": "1"
+    },
+    "video": {
+      "max-width": "100%",
+      "margin": "16px auto",
+      "border-radius": "6px"
+    },
+    "math": {
+      "color": "#1e3a8a",
+      "font-size": "1.08em"
+    }
+  }
+}

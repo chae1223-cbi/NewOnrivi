@@ -1,0 +1,84 @@
+{
+  "BasicGuide": [
+    {
+      "category": "텍스트 구조화 (Structure)",
+      "items": [
+        { "name": "제목 1", "syntax": "# ", "example": "# 가장 큰 제목", "desc": "H1 크기의 제목 생성" },
+        { "name": "제목 2", "syntax": "## ", "example": "## 두 번째 크기 제목", "desc": "H2 크기의 제목 생성" },
+        { "name": "제목 3", "syntax": "### ", "example": "### 세 번째 크기 제목", "desc": "H3 크기의 제목 생성" },
+        { "name": "제목 4", "syntax": "#### ", "example": "#### 네 번째 크기 제목", "desc": "H4 크기의 제목 생성" },
+        { "name": "제목 5", "syntax": "##### ", "example": "##### 다섯 번째 크기 제목", "desc": "H5 크기의 제목 생성" },
+        { "name": "제목 6", "syntax": "###### ", "example": "###### 여섯 번째 크기 제목", "desc": "H6 크기의 제목 생성" },
+        { "name": "인용문", "syntax": "> ", "example": "> 인용할 문장 작성", "desc": "다른 글을 인용할 때 사용" },
+        { "name": "수평선", "syntax": "---", "example": "---", "desc": "문단을 나누는 가로줄 생성" }
+      ]
+    },
+    {
+      "category": "텍스트 서식 (Formatting)",
+      "items": [
+        { "name": "굵게 (Bold)", "syntax": "**텍스트**", "example": "**중요한 내용**", "desc": "텍스트를 굵게 강조" },
+        { "name": "기울임 (Italic)", "syntax": "*텍스트*", "example": "*기울임 강조*", "desc": "텍스트를 기울여 표시" },
+        { "name": "취소선 (Strikethrough)", "syntax": "~~텍스트~~", "example": "~~취소된 내용~~", "desc": "텍스트 중간에 줄을 그음" }
+      ]
+    },
+    {
+      "category": "목록화 (Lists)",
+      "items": [
+        { "name": "순서 없는 목록", "syntax": "- ", "example": "- 항목 1", "desc": "글머리 기호 목록 생성" },
+        { "name": "순서 있는 목록", "syntax": "1. ", "example": "1. 첫 번째 항목", "desc": "숫자가 붙는 목록 생성" },
+        { "name": "체크리스트", "syntax": "- [X] ", "example": "- [X] 할 일", "desc": "체크박스가 있는 할 일 목록" },
+        { "name": "미완료 체크리스트", "syntax": "- [ ] ", "example": "- [ ] 미완료", "desc": "체크 안 된 상태의 할 일" }
+      ]
+    },
+    {
+      "category": "미디어 및 연결 (Media & Links)",
+      "items": [
+        { "name": "링크", "syntax": "[텍스트](URL)", "example": "[구글](https://google.com)", "desc": "클릭 가능한 하이퍼링크 생성" },
+        { "name": "이미지", "syntax": "![대체텍스트](URL)", "example": "![로고이미지](/logo.png)", "desc": "이미지 파일 삽입" }
+      ]
+    },
+    {
+      "category": "코드 표현 (Code)",
+      "items": [
+        { "name": "인라인 코드", "syntax": "`코드`", "example": "`console.log()`", "desc": "문장 안에 짧은 코드 삽입" },
+        { "name": "코드 블록", "syntax": "```\n코드\n```", "example": "```javascript\nconst a = 1;\n```", "desc": "여러 줄의 코드 블록 삽입" }
+      ]
+    },
+    {
+      "category": "데이터 구조화 (Data)",
+      "items": [
+        { "name": "표 (Table)", "syntax": "| 열1 | 열2 |\n| --- | --- |\n| 내용1 | 내용2 |", "example": "| 이름 | 나이 |\n| --- | --- |\n| 홍길동 | 20 |", "desc": "데이터를 표 형태로 정리" }
+      ]
+    }
+  ],
+  "AdvancedGuide": [
+    {
+      "category": "수학 공식 (LaTeX Math)",
+      "items": [
+        { "name": "인라인 수식", "syntax": "$수식$", "example": "$E=mc^2$", "desc": "문장 내에 포함되는 수학 공식" },
+        { "name": "블록 수식", "syntax": "$$\n수식\n$$", "example": "$$\n\\sum_{i=1}^{n} i\n$$", "desc": "별도 문단으로 표시되는 수식 블록" }
+      ]
+    },
+    {
+      "category": "다이어그램 (Mermaid)",
+      "items": [
+        { "name": "흐름도 (Flowchart)", "syntax": "```mermaid\ngraph TD;\n  A-->B;\n```", "example": "```mermaid\ngraph TD;\n  시작-->끝;\n```", "desc": "코드 기반 다이어그램/흐름도 생성" }
+      ]
+    },
+    {
+      "category": "각주 (Footnotes)",
+      "items": [
+        { "name": "각주 참조", "syntax": "[^1]", "example": "본문 내용입니다.[^1]", "desc": "문장에 각주 번호 달기" },
+        { "name": "각주 설명", "syntax": "[^1]: 설명", "example": "[^1]: 각주에 대한 설명입니다.", "desc": "문서 하단에 각주 내용 작성" }
+      ]
+    },
+    {
+      "category": "특수 및 확장 요소 (Special & Escape)",
+      "items": [
+        { "name": "특수기호 이스케이프", "syntax": "\\기호", "example": "\\# 이것은 제목이 아닙니다", "desc": "마크다운 기호를 일반 텍스트로 표시" },
+        { "name": "지도 삽입", "syntax": "::map{lat=37.5, lng=127.0, zoom=15}::", "example": "::map{lat=37.5, lng=126.9, zoom=13}::", "desc": "Onrivi Author 전용 지도 위젯" },
+        { "name": "날짜/시간", "syntax": "CURRENT_TIME", "example": "2026-05-14 00:14", "desc": "현재 시간 스탬프 삽입" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,167 @@
+{
+  "name": "온리비 모던 테크 웹진 테마 (Onrivi Modern Tech Webzine Theme)",
+  "pageStyle": {
+    "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif",
+    "fontSize": "16px",
+    "lineHeight": "1.7",
+    "letterSpacing": "-0.015em",
+    "marginTop": "20mm",
+    "marginBottom": "20mm",
+    "marginLeft": "15mm",
+    "marginRight": "15mm",
+    "orientation": "portrait",
+    "headingSizeOffset": "4"
+  },
+  "rules": {
+    "h1": {
+      "text-align": "left",
+      "font-weight": "800",
+      "margin-top": "32px",
+      "margin-bottom": "16px",
+      "font-size": "28px",
+      "color": "#1e293b"
+    },
+    "h2": {
+      "text-align": "left",
+      "font-weight": "700",
+      "margin-top": "24px",
+      "margin-bottom": "12px",
+      "font-size": "24px",
+      "color": "#334155"
+    },
+    "h3": {
+      "text-align": "left",
+      "font-weight": "600",
+      "margin-top": "20px",
+      "margin-bottom": "8px",
+      "font-size": "20px",
+      "color": "#475569"
+    },
+    "h4": {
+      "text-align": "left",
+      "font-weight": "600",
+      "margin-top": "16px",
+      "margin-bottom": "6px",
+      "font-size": "18px",
+      "color": "#475569"
+    },
+    "h5": {
+      "text-align": "left",
+      "font-weight": "500",
+      "margin-top": "12px",
+      "margin-bottom": "4px",
+      "font-size": "16px"
+    },
+    "h6": {
+      "text-align": "left",
+      "font-weight": "500",
+      "margin-top": "12px",
+      "margin-bottom": "4px",
+      "font-size": "15px"
+    },
+    "p": {
+      "text-align": "left",
+      "margin-bottom": "8px",
+      "text-indent": "0px",
+      "color": "#334155"
+    },
+    "strong": {
+      "font-weight": "700"
+    },
+    "em": {
+      "font-style": "italic"
+    },
+    "u": {
+      "text-decoration": "underline"
+    },
+    "del": {
+      "text-decoration": "line-through"
+    },
+    "ul": {
+      "padding-left": "24px",
+      "margin-bottom": "8px"
+    },
+    "ol": {
+      "padding-left": "24px",
+      "margin-bottom": "8px"
+    },
+    "li": {
+      "margin-bottom": "4px",
+      "padding-inline-start": "6px"
+    },
+    "taskList": {},
+    "hr": {
+      "border": "0",
+      "border-top": "1px solid #e2e8f0",
+      "margin-top": "24px",
+      "margin-bottom": "24px"
+    },
+    "table": {
+      "width": "100%",
+      "border-collapse": "collapse",
+      "margin-top": "16px",
+      "margin-bottom": "16px"
+    },
+    "th": {
+      "background-color": "#f8fafc",
+      "border-bottom": "2px solid #e2e8f0",
+      "padding": "8px 12px",
+      "font-weight": "600",
+      "text-align": "left"
+    },
+    "td": {
+      "border-bottom": "1px solid #f1f5f9",
+      "padding": "8px 12px"
+    },
+    "blockquote": {
+      "border-left-width": "4px",
+      "border-left-style": "solid",
+      "border-left-color": "#cbd5e1",
+      "background-color": "#f8fafc",
+      "padding": "12px 16px",
+      "margin-top": "16px",
+      "margin-bottom": "16px",
+      "color": "#475569",
+      "border-radius": "0 4px 4px 0"
+    },
+    "codeBlock": {
+      "padding": "16px",
+      "border-radius": "8px",
+      "font-family": "Consolas, Monaco, monospace",
+      "font-size": "0.9em",
+      "line-height": "1.5",
+      "margin-top": "16px",
+      "margin-bottom": "16px"
+    },
+    "a": {
+      "color": "#2563eb",
+      "text-decoration": "underline"
+    },
+    "img": {
+      "max-width": "100%",
+      "border-radius": "8px",
+      "margin": "16px auto"
+    },
+    "code": {
+      "background-color": "#f1f5f9",
+      "color": "#e11d48",
+      "font-size": "0.9em",
+      "padding-top": "1px",
+      "padding-bottom": "1px",
+      "padding-left": "4px",
+      "padding-right": "4px",
+      "border-radius": "4px",
+      "line-height": "1",
+      "font-family": "Consolas, Monaco, monospace"
+    },
+    "video": {
+      "max-width": "100%",
+      "margin": "16px auto",
+      "border-radius": "8px"
+    },
+    "math": {
+      "color": "#1e3a8a",
+      "font-size": "1.08em"
+    }
+  }
+}

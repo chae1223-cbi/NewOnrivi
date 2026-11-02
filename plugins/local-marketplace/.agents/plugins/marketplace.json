@@ -1,0 +1,20 @@
+{
+  "name": "onrivi-local",
+  "interface": {
+    "displayName": "온리비 로컬 플러그인"
+  },
+  "plugins": [
+    {
+      "name": "onrivi-author",
+      "source": {
+        "source": "local",
+        "path": "./plugins/onrivi-author"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}
