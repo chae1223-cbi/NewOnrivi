@@ -3,6 +3,7 @@
 // ----------------------------------------------------------------------------------------
 // 1. 에디터 페이지가 떠 있는 동안 현재 인증된 사용자 식별자(account)는 고정됩니다.
 // 2. 계정이 변경되면 에디터 전체를 새로고침(Reload)하여 저장소 충돌 및 데이터 오염을 방지합니다.
+// 🚨 @PATCH : **2026-11-02** — [계정별 독립 IndexedDB 창고 분리 강화] 계정 미지정 시 공용 DB 폴백을 원천 차단하고 unauthenticated 격리 네임스페이스 적용 및 계정 전용 DB 삭제 헬퍼(deleteBrowserAccountDatabase) 추가
 // ========================================================================================
 
 /** 현재 에디터 세션에 활성화된 사용자 고유 식별자 (미로그인 시 'guest') */
@@ -64,11 +65,46 @@ export const getBrowserAccountScope = () => account;    // account (현재 접�
  * ========================================================================================
  * browserAccountDatabaseName
  * ----------------------------------------------------------------------------------------
- * 🎯 IndexedDB 로컬 데이터베이스 이름을 계정별로 분리하여 생성
+ * 🎯 IndexedDB 로컬 데이터베이스 이름을 계정별로 완벽히 분리하여 생성
+ *    공용 DB를 사용하지 않고 오직 해당 계정만의 독립된 DB 네임스페이스를 보장합니다.
+ * 📥 @param {string | null} [targetAccount] - 특정 계정 ID (미지정 시 현재 활성화된 account 사용)
  * 📤 @returns {string} 계정 전용 DB 이름 (예: 'onrivi-author-db:account:user_123')
  * ========================================================================================
  */
-export const browserAccountDatabaseName = () => account ? `onrivi-author-db:account:${account}` : 'onrivi-author-db';
+export const browserAccountDatabaseName = (targetAccount?: string | null): string => {
+  const effective = targetAccount || account;
+  if (effective) {
+    return `onrivi-author-db:account:${effective}`;
+  }
+  // 미인증/비로그인 시 게스트 모드 여부 확인
+  const isGuest = typeof window !== 'undefined' && localStorage.getItem('onrivi_guest_mode') === 'Y';
+  return isGuest ? 'onrivi-author-db:account:guest' : 'onrivi-author-db:account:unauthenticated';
+};
+
+/**
+ * ========================================================================================
+ * deleteBrowserAccountDatabase
+ * ----------------------------------------------------------------------------------------
+ * 🎯 특정 계정(또는 현재 계정)의 IndexedDB 전용 창고를 브라우저에서 영구 삭제
+ *    회원 탈퇴, 계정 데이터 초기화, 완전 로그아웃 시 로컬 데이터 찌꺼기를 정리하는 데 사용합니다.
+ * 📥 @param {string | null} [targetAccount] - 삭제할 계정 ID (미지정 시 현재 활성 계정)
+ * 📤 @returns {Promise<boolean>} 삭제 성공 여부
+ * ========================================================================================
+ */
+export async function deleteBrowserAccountDatabase(targetAccount?: string | null): Promise<boolean> {
+  if (typeof window === 'undefined' || !window.indexedDB) return false;
+  const dbName = browserAccountDatabaseName(targetAccount);
+  return new Promise((resolve) => {
+    try {
+      const req = indexedDB.deleteDatabase(dbName);
+      req.onsuccess = () => resolve(true);
+      req.onerror = () => resolve(false);
+      req.onblocked = () => resolve(false);
+    } catch {
+      resolve(false);
+    }
+  });
+}
 
 /**
  * ========================================================================================

@@ -10,6 +10,7 @@ import { msg } from './systemMessages';
 // 📊 [OMD-CORE-indexedDbHelper-0001 ✅ FIXED] indexedDbHelper.tsx ➔ idb
 // 🎯 @KICK  : IndexedDB 기반 key-value 저장 헬퍼 (get/set/del/clear)
 // 🛡️ @GUARD : onupgradeneeded 스토어 생성, objectStoreNames 존재 여부 체크
+// 🚨 @PATCH : **2026-11-02** — [계정별 독립 IndexedDB 창고 관리 강화] idb에 deleteDatabase 메서드를 추가하여 현재 활성 계정의 전용 데이터베이스를 안전하게 파기/초기화할 수 있도록 지원
 // 🚨 @PATCH : **2026-10-25** — [임시·테스트 전용 scratch 폴더 디렉토리 스캔 제외]: scanDirectory 및 scanDirectoryDeep 무시 목록에 'scratch' 추가
 // 🚨 @PATCH : **2026-10-03** — [FileNode 구글 드라이브 속성 확장]: driveId, driveFileId, id, size 선택적 필드 추가로 클라우드 드라이브 노드 타입 완전 지원
 // 🚨 @PATCH : **2026-09-30** — [문서 연결 내 폴더 링크 지원]: scanDirectoryDeep에 includeDirectories 옵션 추가하여 폴더 링크 생성을 위한 디렉토리 노드 수집 지원
@@ -68,6 +69,13 @@ export const idb = {
       clearReq.onerror = () => reject(clearReq.error);
     };
     req.onerror = () => reject(req.error);
+  }),
+  deleteDatabase: () => new Promise<void>((resolve, reject) => {
+    const dbName = browserAccountDatabaseName();
+    const req = indexedDB.deleteDatabase(dbName);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+    req.onblocked = () => reject(new Error('데이터베이스가 아직 다른 탭에서 사용 중입니다.'));
   })
 };
 

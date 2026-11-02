@@ -12,8 +12,8 @@
 // ====================================================================
 "use client";
 
-import { reportClientLog } from '@/lib/clientLogs';
-import React, { useState, useEffect } from "react";
+import { reportClientLog } from '@/lib/clientLogs';    // 알림 정보 생성
+import React, { useState, useEffect } from "react";    // 리엑트 라이브러리 , 리엑터의 기억상자(보관), 리엑터의 감시자(행동)
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import Link from "next/link";
