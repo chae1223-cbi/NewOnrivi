@@ -2,6 +2,7 @@
 // 📊 [OMD-AUTH-login-page-0001] page ➔ LoginPage
 // 🎯 @KICK  : Supabase Auth 기반 이메일/구글 소셜 로그인 및 마스킹 해제 기능 지원 로그인 화면
 // 🛡️ @GUARD : 이메일/비밀번호 빈 값 방지, Supabase 연동 검증 및 상용 계정 사전 검증
+// 🚨 @PATCH : **2026-11-02** — [로그인 파이프라인 주석 표준화 및 가독성 개편] 5단계 로그인 인증 흐름(사전검증 ➔ 비번인증 ➔ 유저동기화 ➔ 구독조회 ➔ 기기활성화) 상세 해설 주석 추가
 // 🚨 @PATCH : 2026-11-02 — [DB 접근 표준화 & Rule 9 준수] subscriptions 브라우저 직접 조회 및 임의 폴백 제거, /api/subscription/get 단일화
 // 🚨 @PATCH : **2026-09-16** — [로그인 시 세션 등록 기기 한도 초과 안내 콘솔 warn 전환]: 로그인 시 기기 한도 초과(EXCEED_MAX_DEVICES) 응답을 console.error 대신 console.warn으로 처리하여 정상 비즈니스 분기 시 콘솔 에러 오염 방지
 // 🚨 @PATCH : **2026-09-11** — Modern Technical Editorial 디자인 시스템 적용 (Cobalt #1d4ed8, Inter / Plus Jakarta Sans)
@@ -12,24 +13,30 @@
 // ====================================================================
 "use client";
 
-import { reportClientLog } from '@/lib/clientLogs';    // 알림 정보 생성
-import React, { useState, useEffect } from "react";    // 리엑트 라이브러리 , 리엑터의 기억상자(보관), 리엑터의 감시자(행동)
-import { Navbar } from "@/components/layout/Navbar";
-import { Footer } from "@/components/layout/Footer";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
-import { useToast } from "@/components/ToastProvider";
-import { Mail, Lock, Eye, EyeOff, ArrowRight, UserPlus, HelpCircle } from "lucide-react";
+// ========================================================================================
+// 📦 외부 라이브러리 및 내부 모듈 임포트
+// ========================================================================================
+import { reportClientLog } from '@/lib/clientLogs';                   // 중요 로그인 시도 및 성공/실패 원격 로깅 함수
+import React, { useState, useEffect } from "react";                   // 리액트 상태 관리(useState) 및 생명주기 훅(useEffect)
+import { Navbar } from "@/components/layout/Navbar";                  // 상단 글로벌 내비게이션 바 컴포넌트
+import { Footer } from "@/components/layout/Footer";                  // 하단 푸터 컴포넌트
+import Link from "next/link";                                         // 페이지 이동용 Next.js Link
+import { useRouter } from "next/navigation";                         // 프로그래밍 방식 화면 이동을 위한 라우터 훅
+import { supabase } from "@/lib/supabaseClient";                      // Supabase 인증(Auth) 클라이언트 인스턴스
+import { useToast } from "@/components/ToastProvider";                // 화면 알림 토스트 훅
+import { Mail, Lock, Eye, EyeOff, ArrowRight, UserPlus, HelpCircle } from "lucide-react"; // 아이콘 모음
 
 export default function LoginPage() {
-  const router = useRouter();
-  const { showToast } = useToast();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
+  // ── [1. 컴포넌트 내부 상태 정의] ───────────────────────────────────────────────────
+  const router = useRouter();                                         // 로그인 성공 후 페이지 이동을 위한 라우터
+  const { showToast } = useToast();                                   // 사용자에게 경고/성공 알림을 띄우는 토스트 함수
+  const [email, setEmail] = useState("");                             // 사용자가 입력한 이메일 주소
+  const [password, setPassword] = useState("");                       // 사용자가 입력한 비밀번호
+  const [showPassword, setShowPassword] = useState(false);           // 비밀번호 마스킹 해제(보기/숨기기) 토글 상태
+  const [loading, setLoading] = useState(false);                      // 로그인 진행 중 버튼 비활성화 및 스피너 상태
 
+  // ── [2. URL 쿼리 파라미터에서 이메일 자동 채우기] ─────────────────────────────────
+  // 예: /login?email=user@test.com 으로 접근 시 이메일 입력창에 자동 입력
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
@@ -38,9 +45,12 @@ export default function LoginPage() {
     }
   }, []);
 
-  // 로그인 폼 제출 처리
+  // ── [3. 이메일/비밀번호 로그인 폼 제출 처리] ───────────────────────────────────────
+  // 총 5단계 파이프라인: 입력검증 ➔ 사전DB검증 ➔ Supabase인증 ➔ 유저동기화 ➔ 라이선스체크
   const handleLoginSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+    e.preventDefault(); // 폼 기본 새로고침 동작 방지
+
+    // 0단계: 입력값 빈 값 검증
     if (!email.trim() || !password.trim()) {
       showToast("이메일과 비밀번호를 모두 입력해 주세요.", "warning");
       return;
@@ -50,7 +60,7 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // 0. users 상용 계정 사전 차단 검증
+      // 1단계: users DB 사전 확인 (탈퇴한 회원이거나 존재하지 않는 이메일인지 체크)
       const preUserRes = await fetch("/api/user/check", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -64,6 +74,7 @@ export default function LoginPage() {
         return;
       }
 
+      // 2단계: Supabase Auth 비밀번호 인증 요청
       const { error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password: password,
@@ -74,11 +85,11 @@ export default function LoginPage() {
       }
 
       reportClientLog('이메일 인증 성공', 'INFO', 'LOGIN');
-      // ==================================================================
-      // 로그인 성공 시 라이선스 상태 확인 후 분기 및 로컬 스토리지/세션 동기화
-      // ==================================================================
+
+      // 3단계: 로그인 성공 후 세션 사용자 정보 조회
       const { data: { user: loggedInUser } } = await supabase.auth.getUser();
       if (loggedInUser) {
+        // 계정 존재 여부 재확인
         const userCheckRes = await fetch("/api/user/check", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -93,7 +104,7 @@ export default function LoginPage() {
           return;
         }
 
-        // 1. users 동기화 및 14일 무료 체험(APPRENTICE) 자동 발급 보장
+        // 4단계: users 테이블 최신 동기화 및 14일 무료 체험(APPRENTICE) 자동 발급 보장
         const sessionToken = (await supabase.auth.getSession()).data.session?.access_token;
         if (sessionToken) {
           try {
@@ -112,7 +123,7 @@ export default function LoginPage() {
           }
         }
 
-        // 2. 활성 구독 및 라이선스 정보 조회 (RLS 우회를 위해 /api/subscription/get 우선 호출)
+        // 5단계: 활성 구독 및 라이선스 정보 조회 (/api/subscription/get)
         let subData: any = null;
         try {
           const subRes = await fetch("/api/subscription/get", {
@@ -130,12 +141,13 @@ export default function LoginPage() {
           console.warn("[LOGIN] /api/subscription/get error:", e);
         }
 
-        // /api/subscription/get 응답만 신뢰 (규칙 9: 임의 fallback 배제)
-
+        // 구독 유효기간 검증 (현재 시각이 만료일 이전인지 확인)
         const targetDate = subData?.current_period_end;
         const isValid = targetDate ? Date.now() < new Date(targetDate).getTime() : false;
 
+        // ── [6단계: 구독 상태에 따른 화면 이동 분기] ────────────────────────────────
         if (isValid && subData) {
+          // A. 정식 유효 구독이 있는 경우: 기기 세션 발급 및 에디터(/editor)로 직행
           let sessionId = sessionStorage.getItem("onrivi_tab_session_id");
           if (!sessionId) {
             sessionId = (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function")
@@ -148,6 +160,7 @@ export default function LoginPage() {
           localStorage.setItem("onrivi_payment_no", subData.payment_no || "");
           localStorage.setItem("onrivi_license_key", subData.license_key || "");
 
+          // 서버 DB에 동시 접속 기기 세션 활성화 등록
           try {
             const activationToken = (await supabase.auth.getSession()).data.session?.access_token;
             const actRes = await fetch("/api/license/activate", {
@@ -160,8 +173,11 @@ export default function LoginPage() {
           } catch (actError) {
             console.warn("[ACTIVATION] Fetch note:", actError);
           }
+
+          // 에디터 화면으로 이동
           router.push(`/editor${window.location.search}`);
         } else {
+          // B. 유효 구독이 없거나 만료된 경우: 요금제 결제 및 선택을 위해 대시보드(/dashboard)로 이동
           router.push(`/dashboard${window.location.search}`);
         }
       } else {
@@ -176,18 +192,19 @@ export default function LoginPage() {
     }
   };
 
-  // 구글 로그인 처리
+  // ── [4. 구글 소셜 로그인 처리] ─────────────────────────────────────────────────────
   const handleGoogleLogin = async () => {
     try {
       reportClientLog('구글 로그인 요청', 'INFO', 'LOGIN');
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
+          // 로그인 완료 후 돌아올 콜백 주소 지정
           redirectTo: typeof window !== "undefined"
             ? `${window.location.origin}/auth/callback?mode=login`
             : "http://localhost:3100/auth/callback?mode=login",
           queryParams: {
-            prompt: "select_account",
+            prompt: "select_account", // 항상 구글 계정 선택창이 뜨도록 지정
           },
         },
       });
@@ -201,24 +218,26 @@ export default function LoginPage() {
     }
   };
 
+  // ── [5. 로그인 UI 화면 렌더링] ─────────────────────────────────────────────────────
   return (
     <div
       className="flex flex-col min-h-screen bg-[#F9F8F6] dark:bg-[#121314] text-[#1A1A18] dark:text-[#E8ECE9] font-sans selection:bg-[#1d4ed8]/20 selection:text-[#1d4ed8] relative overflow-hidden"
       style={{ fontFamily: "Pretendard, sans-serif" }}
     >
-      {/* Subtle Ambient Background Glow (LINE Green) */}
+      {/* 배경 상단 은은한 방사형 블루 글로우 효과 */}
       <div
         aria-hidden
         className="absolute top-0 left-1/2 -translate-x-1/2 w-[720px] h-[360px] bg-[radial-gradient(ellipse_at_top,rgba(29, 78, 216,0.08)_0%,transparent_70%)] pointer-events-none z-0"
       />
 
+      {/* 상단 글로벌 헤더 */}
       <Navbar />
 
-      {/* Main Login Frame */}
+      {/* 메인 로그인 카드 프레임 */}
       <main className="flex-grow flex items-center justify-center px-4 pt-32 pb-24 relative z-10">
         <div className="max-w-[440px] w-full bg-white dark:bg-[#181A1D] border border-[#E0DED7] dark:border-white/10 rounded-3xl p-7 sm:p-9 shadow-[0_24px_70px_-15px_rgba(40,35,25,0.08)] dark:shadow-[0_20px_60px_-15px_rgba(0,0,0,0.6)]">
           <section className="space-y-6">
-            {/* Header */}
+            {/* 타이틀 및 브랜드 헤더 */}
             <div className="text-center space-y-2">
               <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#F0EFEA] dark:bg-zinc-800 text-[11px] font-bold text-[#1A1A18] dark:text-zinc-200 uppercase tracking-wider">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#1d4ed8]" />
@@ -232,13 +251,14 @@ export default function LoginPage() {
               </p>
             </div>
 
-            {/* Google Login Button */}
+            {/* 구글 원클릭 소셜 로그인 버튼 */}
             <div>
               <button
                 type="button"
                 onClick={handleGoogleLogin}
                 className="w-full bg-white dark:bg-zinc-800/80 border border-[#E0DED7] dark:border-zinc-700 hover:border-zinc-400 dark:hover:border-zinc-600 text-[#111413] dark:text-zinc-100 text-sm font-semibold py-3.5 px-4 rounded-xl flex items-center justify-center gap-3 transition-all duration-200 cursor-pointer shadow-2xs hover:shadow-xs active:scale-[0.99]"
               >
+                {/* Google 컬러 로고 SVG */}
                 <svg
                   width={18}
                   height={18}
@@ -256,7 +276,7 @@ export default function LoginPage() {
               </button>
             </div>
 
-            {/* Divider */}
+            {/* 구분선 (또는 이메일로 로그인) */}
             <div className="relative my-4">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-[#E8E6E1] dark:border-white/10" />
@@ -268,9 +288,9 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Email / Password Form */}
+            {/* 이메일 / 비밀번호 로그인 폼 */}
             <form className="space-y-4" onSubmit={handleLoginSubmit} method="POST">
-              {/* Email Input */}
+              {/* 1. 이메일 입력창 */}
               <div className="space-y-1.5 text-left">
                 <label className="text-xs font-bold text-[#111413] dark:text-zinc-200 block" htmlFor="email">
                   이메일 주소
@@ -292,7 +312,7 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              {/* Password Input */}
+              {/* 2. 비밀번호 입력창 (보기/숨기기 토글 포함) */}
               <div className="space-y-1.5 text-left">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-bold text-[#111413] dark:text-zinc-200" htmlFor="password">
@@ -316,6 +336,7 @@ export default function LoginPage() {
                   <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none text-zinc-400">
                     <Lock size={16} />
                   </div>
+                  {/* 비밀번호 보이기/숨기기 눈 모양 버튼 */}
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
@@ -326,7 +347,7 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              {/* Primary Submit Button */}
+              {/* 3. 로그인 제출 버튼 */}
               <div className="pt-2">
                 <button
                   type="submit"
@@ -339,7 +360,7 @@ export default function LoginPage() {
               </div>
             </form>
 
-            {/* Secondary Link to Signup */}
+            {/* 하단 회원가입 이동 링크 */}
             <div className="pt-3 border-t border-[#E8E6E1] dark:border-white/10 text-center">
               <Link
                 href={`/signup${typeof window !== "undefined" && new URLSearchParams(window.location.search).get("ticket") ? `?ticket=${new URLSearchParams(window.location.search).get("ticket")}` : ""}`}
@@ -353,6 +374,7 @@ export default function LoginPage() {
         </div>
       </main>
 
+      {/* 하단 공통 푸터 */}
       <Footer />
     </div>
   );
