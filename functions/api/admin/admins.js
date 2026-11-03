@@ -2,6 +2,7 @@
 // 📊 [OMD-ADMIN-admins-0003] functions/api/admin/admins.js
 // 🎯 @KICK  : 관리자 계정 목록 조회, 가입 회원 대상 관리자 임명, 권한 변경 및 권한 회수(OTP 초기화)
 // 🛡️ @GUARD : checkAdminAuth(MFA/Role) 통합 검증, ROOT_ADMIN 환경변수 보호, All-or-Nothing 단일 DB 트랜잭션
+// 🚨 @PATCH : **2026-11-04** — [PostgreSQL 42703 undefined_column 오류 해결]: public.admins 테이블에 미존재하는 is_active, updated_at 컬럼 쿼리 제거
 // 🚨 @PATCH : 2026-11-02 — [주석 표준화] onrivi-source-comments 규격 준수: 전 함수 문서 주석(JSDoc) 및 라인별 해설 주석 전면 복원
 // 🚨 @PATCH : 2026-11-02 — [정책 표준화] "선 가입 후 권한 승격" 정책 확정: 외부 Auth 생성 제거 및 사전 가입된 회원(public.users)만 관리자로 임명
 // 🚨 @PATCH : 2026-11-02 — [보안 리팩토링] ROOT_ADMIN_EMAIL 환경변수 연동 및 목록 조회 시 is_root 플래그 동적 주입
@@ -57,7 +58,7 @@ export async function onRequestGet(context) {
 
     // 2. PostgreSQL 데이터베이스에서 전체 관리자 목록 조회 (생성일시 역순 정렬)
     const result = await withDbTransaction(env, db => db.query(
-      'SELECT id, user_id, email, admin_role, is_active, created_at, updated_at FROM public.admins ORDER BY created_at DESC'
+      'SELECT id, user_id, email, admin_role, created_at FROM public.admins ORDER BY created_at DESC'
     ));
 
     // 3. 환경변수(ROOT_ADMIN_EMAIL)와 대조하여 최상위 관리자 여부(is_root) 플래그를 동적으로 주입
@@ -156,8 +157,8 @@ export async function onRequestPost(context) {
 
       // 6-3. 관리자 권한 테이블(public.admins)에 레코드 등록 (일반 회원 -> 관리자 권한 부여)
       await db.query(
-        `INSERT INTO public.admins (user_id, email, admin_role, created_at, updated_at)
-         VALUES ($1, $2, $3, NOW(), NOW())`,
+        `INSERT INTO public.admins (user_id, email, admin_role, created_at)
+         VALUES ($1, $2, $3, NOW())`,
         [targetUserId, normalizedEmail, normalizedRole]
       );
 
@@ -250,10 +251,10 @@ export async function onRequestPatch(context) {
         return { success: false, error: API_MESSAGES.ROOT_ADMIN_PROTECTED.message, status: 403 };
       }
 
-      // 5-3. 관리자 테이블의 권한(admin_role) 및 갱신일시(updated_at) 수정
+      // 5-3. 관리자 테이블의 권한(admin_role) 수정
       await db.query(
         `UPDATE public.admins
-         SET admin_role = $1, updated_at = NOW()
+         SET admin_role = $1
          WHERE id = $2`,
         [normalizedRole, adminTargetId]
       );
