@@ -1,3 +1,6 @@
+// 🚨 @PATCH : **2026-11-03** — [HTTP 로그 target 식별자 추출 및 prod/preview 환경 분리]:
+//             1) extractLogTarget 추가로 이미지(/api/image/*) 및 파라미터 기반 대상 식별자(target) 자동 기록
+//             2) hostname 기반 prod/preview 환경 분기 및 R2 저장 경로 분리 (_system-logs/{prod|preview}/YYYY-MM-DD/)
 // 🚨 @PATCH : 2026-11-01 — 요청 ID와 서버 오류 위치를 API 응답·R2 진단 로그에 연결한다.
 const operationRoutes = {
   "/api/upload-image": "이미지 업로드",
@@ -89,6 +92,32 @@ async function readErrorMessage(response) {
   finally { void reader.cancel().catch(() => {}); }
 }
 
+
+function extractLogTarget(url, headers) {
+  const headerTarget = headers?.get('X-Error-Target');
+  if (headerTarget) return redactLogMessage(headerTarget);
+
+  const pathname = url.pathname;
+  if (pathname.startsWith('/api/image/')) {
+    const rawKey = pathname.replace(/^\/api\/image\//, '');
+    try {
+      return decodeURIComponent(rawKey);
+    } catch {
+      return rawKey;
+    }
+  }
+  if (url.searchParams.has('path')) {
+    return redactLogMessage(url.searchParams.get('path') || '-');
+  }
+  if (url.searchParams.has('user_id')) {
+    return redactLogMessage(url.searchParams.get('user_id') || '-');
+  }
+  if (url.searchParams.has('id')) {
+    return redactLogMessage(url.searchParams.get('id') || '-');
+  }
+  return '-';
+}
+
 // Store metadata and redacted error messages only.
 export async function onRequest(context) {
   const started = Date.now();
@@ -105,13 +134,17 @@ export async function onRequest(context) {
   // Temporary diagnostic window ends at 2026-10-10 00:00 KST.
   const captureAllToday = Date.now() < Date.parse('2026-10-10T00:00:00+09:00');
   if ((captureAllToday || response.status >= 400 || (context.request.method !== 'GET' && ['/api/subscription/create','/api/subscription/cancel','/api/subscription/subscribe-desktop','/api/admin/users/plan'].includes(url.pathname))) && context.env.R2_BUCKET && !url.pathname.startsWith('/api/admin/system') && url.pathname !== '/api/client-log' && !(response.status < 400 && ['/api/device/session-status','/api/license/check-session'].includes(url.pathname))) {
-    const entry = { id: requestId, timestamp: new Date().toISOString(), level: response.status >= 500 ? 'ERROR' : response.status >= 400 ? 'WARN' : 'INFO', module: 'HTTP', action: context.request.method, message: `HTTP ${response.status} · ${Date.now() - started}ms`, actor: 'SERVER', target: '-', status: response.status, route, operation: describeOperation(url.pathname, context.request.method), duration_ms: Date.now() - started, request_id: requestId, outcome: unhandled ? 'UNHANDLED_EXCEPTION' : 'HTTP_RESPONSE', region: context.request.cf?.colo || null, source_file: response.headers.get('X-Error-Source') || undefined, source_function: response.headers.get('X-Error-Stage') || undefined, db_code: response.headers.get('X-Error-Db-Code') || undefined };
+    const hostname = url.hostname;
+    const isProd = hostname === 'onrivi.com' || hostname === 'www.onrivi.com';
+    const envType = isProd ? 'prod' : 'preview';
+    const logTarget = extractLogTarget(url, response.headers);
+    const entry = { id: requestId, timestamp: new Date().toISOString(), environment: envType.toUpperCase(), hostname, level: response.status >= 500 ? 'ERROR' : response.status >= 400 ? 'WARN' : 'INFO', module: 'HTTP', action: context.request.method, message: `HTTP ${response.status} · ${Date.now() - started}ms`, actor: 'SERVER', target: logTarget, status: response.status, route, operation: describeOperation(url.pathname, context.request.method), duration_ms: Date.now() - started, request_id: requestId, outcome: unhandled ? 'UNHANDLED_EXCEPTION' : 'HTTP_RESPONSE', region: context.request.cf?.colo || null, source_file: response.headers.get('X-Error-Source') || undefined, source_function: response.headers.get('X-Error-Stage') || undefined, db_code: response.headers.get('X-Error-Db-Code') || undefined };
     const date = entry.timestamp.slice(0,10);
     const errorResponse = response.status >= 400 && !unhandled ? response.clone() : null;
     context.waitUntil((async () => {
       const detail = exceptionMessage || (errorResponse ? await readErrorMessage(errorResponse) : '');
       if (detail) entry.message += ` · ${detail}`;
-      await context.env.R2_BUCKET.put(`_system-logs/${date}/${entry.timestamp}_${requestId}.json`, JSON.stringify(entry));
+      await context.env.R2_BUCKET.put(`_system-logs/${envType}/${date}/${entry.timestamp}_${requestId}.json`, JSON.stringify(entry));
     })().catch(() => console.error('[ServerLog] Storage write failed')));
   }
   const result = new Response(response.body, response);

@@ -35,7 +35,7 @@ export async function onRequestGet(context) {
     const object = await env.R2_BUCKET.get(key);
 
     if (!object) {
-      return new Response('Image not found', { status: 404 });
+      return new Response('Image not found', { status: 404, headers: { 'X-Error-Target': key } });
     }
 
     // Content-Type 결정
