@@ -26,6 +26,8 @@ export const dismissDriveAuthNotices = () => {
 // 📊 [OMD-EDIT-toast-0001] toast ➔ showToast
 // 🎯 @KICK  : 화면 우측 상단에 프리미엄 토마토 테마 Toast 알림을 동적으로 생성하여 표시한다
 // 🛡️ @GUARD : SSR 환경에서는 early return, 컨테이너 미존재 시 생성
+// 🚨 @PATCH : **2026-11-03** — [토스트 알림 target 자동 추출 연동]:
+//             메시지 내 따옴표/경로/브라우저 위치(pathname)로부터 target을 자동 추출하여 logError 및 R2 로그에 대상 식별자 보존
 // 🚨 @PATCH : **2026-11-03** — [오류·경고 발생 시 콘솔 및 R2 정밀 진단 선제 기록]:
 //             에러/경고 토스트 발생 시 logError를 통해 상위 호출 소스 파일과 작업 행위를 콘솔에 선제 기록
 // 🚨 @PATCH : **2026-10-15** — [개인 웹드라이브 인증 안내 문구 표준화]:
@@ -59,7 +61,34 @@ function translateToKorean(msg: string): string {
  * @param message 표시할 알림 메시지 내용
  * @param type 알림의 성격 ('success', 'error', 'info', 'warning')
  */
-export const showToast = (message: string, type: ToastType = 'info') => {
+
+/**
+ * 토스트 메시지 본문 또는 브라우저 컨텍스트로부터 대상 식별자(target)를 자동 추출합니다.
+ */
+function extractToastTarget(msg: string, explicitTarget?: string): string {
+  if (explicitTarget && explicitTarget !== '-') return explicitTarget;
+
+  // 1. 메시지 내 따옴표로 감싸진 파일명 또는 식별자 ('파일명.md' 등)
+  const quoteMatch = msg.match(/['"‘“]([^'"’”]+)['"’”]/);
+  if (quoteMatch && quoteMatch[1].trim()) {
+    return quoteMatch[1].trim();
+  }
+
+  // 2. 메시지 내 API 경로 또는 파일 경로 (/api/..., GoogleDrive/... 등)
+  const pathMatch = msg.match(/(?:\/[a-zA-Z0-9_\-./]+|GoogleDrive\/[a-zA-Z0-9_\-./]+)/);
+  if (pathMatch) {
+    return pathMatch[0];
+  }
+
+  // 3. 브라우저 현재 페이지 라우트 (/admin, /dashboard, /editor 등)
+  if (typeof location !== 'undefined' && location.pathname) {
+    return location.pathname;
+  }
+
+  return '-';
+}
+
+export const showToast = (message: string, type: ToastType = 'info', explicitTarget?: string) => {
   if (typeof window === 'undefined') return;
   const driveAuthNotice = (type==='error' || type==='warning') && /구글\s*드라이브|Google Drive/i.test(message)
     && /인증.*만료|연결.*갱신|재인증/.test(message);
@@ -70,10 +99,12 @@ export const showToast = (message: string, type: ToastType = 'info') => {
     type='warning';
   }
   if (type === 'error' || type === 'warning') {
+    const toastTarget = extractToastTarget(message, explicitTarget);
     logError({
       file: 'toast.ts',
       func: 'showToast',
       doing: `사용자 ${type === 'error' ? '오류' : '경고'} 알림 표출 중`,
+      target: toastTarget,
       error: translateToKorean(message),
       level: type === 'error' ? 'ERROR' : 'WARN',
       action: typeof location !== 'undefined' && location.pathname === '/login' ? 'LOGIN_NOTICE' : 'USER_NOTICE'

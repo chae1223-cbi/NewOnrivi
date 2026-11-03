@@ -158,7 +158,7 @@ export function logError(params: ErrorDiagnosticParams): void {
   // 2. [원격 R2 로그 보존] 30일 자동 보관 시스템 로그 수집 파이프라인으로 전송 (Fire-and-Forget)
   try {
     const remoteMessage = `[${file} ➔ ${func}] (${doing}) ${errMsg}${target !== '-' ? ` [대상: ${target}]` : ''}`;
-    reportClientLog(remoteMessage, level, params.action || 'APP_ERROR');
+    reportClientLog(remoteMessage, level, params.action || 'APP_ERROR', target);
   } catch (reportErr) {
     console.warn('[logError] 원격 로그 전달 실패 (무시):', reportErr);
   }

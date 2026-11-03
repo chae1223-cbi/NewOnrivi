@@ -35,7 +35,8 @@ let windowStart = 0;                    /** 전송 제한 주기를 측정하기
 export function reportClientLog(
   message: string,
   level: 'INFO' | 'WARN' | 'ERROR',
-  action = 'USER_NOTICE'
+  action = 'USER_NOTICE',
+  target = '-'
 ) {
   // 1. [환경 방어] Node.js 서버 환경(SSR)이거나 http/https 프로토콜이 아닌 환경(file:// 등)에서는 전송 중단
   if (typeof window === 'undefined' || !/^https?:$/.test(location.protocol)) return;
@@ -59,10 +60,11 @@ export function reportClientLog(
     .replace(/[A-Z]:\\Users\\[^\s\\]+/gi, '[경로가림]'); // 쿼리스트링에 토큰이 묻어있을 수 있는 외부 URL 마스킹
 
   // 5. [서버 비동기 전송] 서버의 /api/client-log 엔드포인트로 JSON 전송 (keepalive로 창이 닫혀도 전송 보장, 에러는 무시)
-  void fetch('/api/client-log', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: safe, level, action }),
+    const safeTarget = typeof target === 'string' && target !== '-' ? target.slice(0, 200) : '-';
+    void fetch('/api/client-log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: safe, level, action, target: safeTarget }),
     keepalive: true // 사용자가 브라우저 창을 즉시 닫아도 백그라운드에서 끝까지 전송 완료 보장
   }).catch(() => { }); // 로그 전송 실패가 앱 동작을 방해하지 않도록 에러 무시
 }

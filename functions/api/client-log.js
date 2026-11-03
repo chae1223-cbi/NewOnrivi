@@ -1,3 +1,4 @@
+// 🚨 @PATCH : **2026-11-03** — [클라이언트 로그 target 전달 및 자동 파싱 지원]: input.target 또는 본문 [대상: xxx]에서 target 자동 추출하여 R2 적재
 // 🚨 @PATCH : **2026-11-03** — [프로덕션/미리보기 로그 분리]: hostname 기반 prod/preview 환경 분기 및 R2 저장 경로 분리 (_system-logs/{prod|preview}/YYYY-MM-DD/)
 const sourceLocations = {
   "LOGIN": {
@@ -68,8 +69,15 @@ export async function onRequestPost({request, env}) {
     const hostname = new URL(request.url).hostname;
     const isProd = hostname === 'onrivi.com' || hostname === 'www.onrivi.com';
     const envType = isProd ? 'prod' : 'preview';
+    let target = typeof input.target === 'string' && input.target.trim() && input.target !== '-'
+      ? input.target.slice(0, 200)
+      : '-';
+    if (target === '-') {
+      const match = message.match(/\[대상:\s*([^\]]+)\]/);
+      if (match) target = match[1].trim();
+    }
     const id=crypto.randomUUID(), timestamp=new Date().toISOString();
-    const entry={id,timestamp,environment:envType.toUpperCase(),hostname,level:input.level,module:'CLIENT',action,message,actor:'BROWSER',target:'-',operation:({LOGIN:'로그인',DOCUMENT_SAVE:'문서 저장',DRIVE_CONNECT:'웹드라이브 연결',PLAN_SELECT:'요금제 선택',PLAN_CHANGE:'요금제 변경'})[action] || (action==='LOGIN_NOTICE'?'로그인 안내·실패':action==='USER_NOTICE'?'사용자 작업 경고·오류':'브라우저 실행 오류'),source:'browser-reported', source_file:sourceLocations[action].file, source_function:sourceLocations[action].function, event_code:`CLIENT_${action}_${input.level}`};
+    const entry={id,timestamp,environment:envType.toUpperCase(),hostname,level:input.level,module:'CLIENT',action,message,actor:'BROWSER',target,operation:({LOGIN:'로그인',DOCUMENT_SAVE:'문서 저장',DRIVE_CONNECT:'웹드라이브 연결',PLAN_SELECT:'요금제 선택',PLAN_CHANGE:'요금제 변경'})[action] || (action==='LOGIN_NOTICE'?'로그인 안내·실패':action==='USER_NOTICE'?'사용자 작업 경고·오류':'브라우저 실행 오류'),source:'browser-reported', source_file:sourceLocations[action].file, source_function:sourceLocations[action].function, event_code:`CLIENT_${action}_${input.level}`};
     await env.R2_BUCKET.put(`_system-logs/${envType}/${timestamp.slice(0,10)}/${timestamp}_${id}.json`,JSON.stringify(entry));
     return new Response(null,{status:204});
   } catch {return new Response(null,{status:400});}
