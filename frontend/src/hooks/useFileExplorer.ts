@@ -2,6 +2,7 @@
 import { isBundledDocumentPath } from '@/lib/bundledDocument';
 import { browserAccountStorage as localStorage, browserAccountSessionStorage as sessionStorage } from '@/lib/browserAccountStorage';
 import { reportClientLog } from '@/lib/clientLogs';
+import { logError } from '@/lib/errorDiagnostics';
 import { getResourceSettings, saveResourceSettings, activateDriveAccount } from '@/lib/resourceSettings';
 import { restoreLocalProfileFolder } from '@/lib/profileStorage';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -25,6 +26,7 @@ import {
  * [ONR-16-005] useFileExplorer 커스텀 훅
  * @description 워크스페이스 폴더 연결, IndexedDB 권한 복원, 파일 트리 스캔, 파일 열기 및 저장(I/O) 등의 책임을 전담합니다.
  */
+// 🚨 @PATCH : **2026-11-03** — [오류 진단 로깅 1단계]: connectGoogleDrive, saveFile, handleFileClick에 5대 메타데이터 기반 logError 연동으로 파일 I/O 실패 정밀 추적
 // 🚨 @PATCH : **2026-11-03** — [웹드라이브(GDRIVE) 실시간 연결 상태 추적 및 isDriveConnected 노출]:
 //             connectGoogleDrive 및 refreshFileList 성공 시 isDriveConnected를 true로 갱신하고 onrivi:drive_connected 이벤트 디스패치.
 //             토큰 만료·오류·연결해제 시 false 전환으로 웹 에디터 세션 복원 타이밍과 완벽 동기화.
@@ -1749,7 +1751,14 @@ export const useFileExplorer = ({
           try {
             fileContent = await readDriveFileContent(token, driveId);
           } catch (e) {
-            console.error('[handleFileClick GDRIVE read error]', e);
+            logError({
+              file: 'frontend/src/hooks/useFileExplorer.ts',
+              func: 'handleFileClick',
+              doing: '구글 드라이브 파일 본문 다운로드 중',
+              target: node.name || driveId,
+              error: e,
+              context: { driveId }
+            });
             showToast('구글 드라이브 파일 읽기 실패', 'error');
             return;
           }
@@ -1926,6 +1935,13 @@ export const useFileExplorer = ({
       }
       setIsSidebarOpen(true);
     } catch (err) {
+      logError({
+        file: 'frontend/src/hooks/useFileExplorer.ts',
+        func: 'handleFileClick',
+        doing: '파일 열기 및 탭 로딩 처리 중',
+        target: node?.name || 'unknown',
+        error: err
+      });
       showToast("파일을 여는데 실패했습니다.", "error");
     } finally {
       if (fileKey) loadingFilesRef.current.delete(fileKey);
@@ -2073,8 +2089,14 @@ export const useFileExplorer = ({
       localStorage.removeItem('onrivi_gdrive_token_expires_at');
       sessionStorage.removeItem('onrivi_gdrive_access_token');
       setIsDriveConnected(false);
-      reportClientLog(err.message || '구글 드라이브 연결 실패', 'ERROR', 'DRIVE_CONNECT');
-      console.error('[connectGoogleDrive Error]', err);
+      logError({
+        file: 'frontend/src/hooks/useFileExplorer.ts',
+        func: 'connectGoogleDrive',
+        doing: `구글 드라이브 [${stage}] 단계 처리 중`,
+        target: 'GoogleDrive',
+        error: err,
+        context: { stage }
+      });
       showToast(`구글 드라이브 ${stage} 실패: ${err.message || '잠시 후 다시 시도해 주세요.'}`, "error");
     } finally {
       storageSwitchRef.current = false;
@@ -2196,7 +2218,13 @@ export const useFileExplorer = ({
       setIsDriveConnected(false);
       showToast('구글 드라이브 연결을 해제하고 내 PC 로컬 작업장으로 돌아왔습니다.', 'success');
     } catch (err: any) {
-      console.error('[disconnectGoogleDrive Error]', err);
+      logError({
+        file: 'frontend/src/hooks/useFileExplorer.ts',
+        func: 'disconnectGoogleDrive',
+        doing: '구글 드라이브 연결 해제 및 로컬 작업장 복원 중',
+        target: 'GoogleDrive',
+        error: err
+      });
       showToast('로컬 작업장 복원 실패: ' + (err.message || '폴더 접근 오류'), 'error');
     } finally {
       storageSwitchRef.current = false;
@@ -2233,7 +2261,14 @@ export const useFileExplorer = ({
             lastSavedContentRef.current = targetContent;
             success = true;
           } catch (driveErr) {
-            console.error('[saveFile GDRIVE Error]', driveErr);
+            logError({
+              file: 'frontend/src/hooks/useFileExplorer.ts',
+              func: 'saveFile',
+              doing: '구글 드라이브 파일 저장 중',
+              target: targetFile.path || targetFile.name || driveFileId,
+              error: driveErr,
+              context: { driveFileId }
+            });
             showToast("구글 드라이브 저장 중 오류가 발생했습니다.", "error");
             return false;
           }
@@ -2387,7 +2422,14 @@ export const useFileExplorer = ({
       }
       return success;
     } catch (e: any) {
-      console.error('[saveFile Error]', e);
+      logError({
+        file: 'frontend/src/hooks/useFileExplorer.ts',
+        func: 'saveFile',
+        doing: '물리 파일 저장(디스크/VFS) 처리 중',
+        target: targetFile?.path || targetFile?.name || 'unknown',
+        error: e,
+        context: { workspaceType }
+      });
       showToast('파일 저장 중 오류가 발생했습니다. 권한을 확인해 주세요.', 'error');
     }
     return false;

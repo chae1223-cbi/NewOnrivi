@@ -2,6 +2,7 @@
 // 📊 [OMD-LIB-googleDriveClient-0001] src/lib/gdrive/googleDriveClient.ts
 // 🎯 @KICK  : 누구나 쉽게 사용하는 구글 드라이브 무설정(Zero-Config) 자동 연동 및 클라우드 작업장 클라이언트 모듈
 // 🛡️ @GUARD : Rule 1, Rule 2(대문자 코드값 GDRIVE), 최소 권한 원칙(drive.file 스코프 한정)
+// 🚨 @PATCH : **2026-11-03** — [오류 진단 로깅 1단계]: parseDriveError 내 정밀 진단 로거(logError) 연동으로 모든 구글 드라이브 API 통신 실패 실시간 추적
 // 🚨 @PATCH : **2026-10-24** — [구글 드라이브 실패 후 즉시 재접속 보장 & 무활동 시 무중단 자동 갱신(Auto-Keep-Alive) 지원]:
 //             1) requestGoogleDriveAuth 내 브라우저 팝업 창 닫힘(popup.closed) 즉시 감지하여 5분 잠금 없이 재연결 허용
 //             2) refreshDriveTokenSilently 및 startActiveTokenRenewal에서 1분 무활동 체크 제약을 해제하여 사용자가 자리를 비워도 24시간 끊김 없는 무중단 토큰 자동 갱신 보장
@@ -65,6 +66,7 @@ import { getResourceSettings, saveResourceSettings } from '@/lib/resourceSetting
 import CryptoJS from 'crypto-js';
 import { startActiveTokenRenewal } from './activeTokenRenewal';
 import { SYSTEM_PROFILES, isSystemProfileId } from '@/constants/cssProfile';
+import { logError } from '@/lib/errorDiagnostics';
 
 export const GOOGLE_DRIVE_SCOPES = [
   'https://www.googleapis.com/auth/drive',
@@ -762,6 +764,19 @@ export async function fetchGoogleUserInfo(token?: string): Promise<GoogleDriveUs
  * 구글 드라이브 API 응답 오류 상세 분석 헬퍼
  */
 async function parseDriveError(res: Response, defaultAction: string, requestToken: string): Promise<Error> {
+  // 🚨 [오류 진단 로깅 1단계] 구글 드라이브 API 실패 정밀 진단 로그 기록
+  try {
+    const rawUrl = typeof res.url === 'string' ? res.url.split('?')[0] : 'GoogleDrive API';
+    logError({
+      file: 'frontend/src/lib/gdrive/googleDriveClient.ts',
+      func: 'parseDriveError',
+      doing: `구글 드라이브 [${defaultAction}] 통신 중`,
+      target: rawUrl,
+      error: `HTTP ${res.status} (${res.statusText || 'Error'})`,
+      context: { status: res.status, statusText: res.statusText, action: defaultAction }
+    });
+  } catch {}
+
   if (res.status === 401) {
     const currentToken = localStorage.getItem(STORAGE_KEY_TOKEN) || sessionStorage.getItem(STORAGE_KEY_TOKEN);
     if (currentToken !== requestToken) {
