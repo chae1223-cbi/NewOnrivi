@@ -16,7 +16,8 @@
 // ========================================================================================
 // 📦 외부 라이브러리 및 내부 모듈 임포트
 // ========================================================================================
-import { reportClientLog } from '@/lib/clientLogs';                   // 중요 로그인 시도 및 성공/실패 원격 로깅 함수
+import { reportClientLog } from '@/lib/clientLogs';
+import { logError, logWarn } from '@/lib/errorDiagnostics';                   // 중요 로그인 시도 및 성공/실패 원격 로깅 함수
 import React, { useState, useEffect } from "react";                   // 리액트 상태 관리(useState) 및 생명주기 훅(useEffect)
 import { Navbar } from "@/components/layout/Navbar";                  // 상단 글로벌 내비게이션 바 컴포넌트
 import { Footer } from "@/components/layout/Footer";                  // 하단 푸터 컴포넌트
@@ -119,7 +120,13 @@ export default function LoginPage() {
               }),
             });
           } catch (upsertErr) {
-            console.warn("[LOGIN] /api/user/upsert sync warning:", upsertErr);
+            logWarn({
+              file: 'frontend/src/app/login/page.tsx',
+              func: 'handleEmailLogin',
+              doing: '회원 기본 정보 동기화(/api/user/upsert) 중',
+              target: loggedInUser.email,
+              error: upsertErr
+            });
           }
         }
 
@@ -138,7 +145,13 @@ export default function LoginPage() {
             }
           }
         } catch (e) {
-          console.warn("[LOGIN] /api/subscription/get error:", e);
+          logWarn({
+            file: 'frontend/src/app/login/page.tsx',
+            func: 'handleEmailLogin',
+            doing: '구독 정보 조회(/api/subscription/get) 중',
+            target: loggedInUser.id,
+            error: e
+          });
         }
 
         // 구독 유효기간 검증 (현재 시각이 만료일 이전인지 확인)
@@ -171,7 +184,13 @@ export default function LoginPage() {
             const actResult = await actRes.json();
             if (!actResult.success) console.warn("[ACTIVATION] API note:", actResult.message);
           } catch (actError) {
-            console.warn("[ACTIVATION] Fetch note:", actError);
+            logWarn({
+              file: 'frontend/src/app/login/page.tsx',
+              func: 'handleEmailLogin',
+              doing: '기기 세션 활성화(/api/license/activate) 중',
+              target: sessionId,
+              error: actError
+            });
           }
 
           // 에디터 화면으로 이동
@@ -184,8 +203,13 @@ export default function LoginPage() {
         router.push(`/dashboard${window.location.search}`);
       }
     } catch (err: any) {
-      reportClientLog(err.message || '이메일 로그인 실패', 'ERROR', 'LOGIN');
-      console.error("로그인 에러:", err);
+      logError({
+        file: 'frontend/src/app/login/page.tsx',
+        func: 'handleEmailLogin',
+        doing: '이메일 계정 로그인 처리 중',
+        target: email.trim(),
+        error: err
+      });
       showToast(err.message || "로그인에 실패했습니다. 정보를 다시 확인해 주세요.", "error");
     } finally {
       setLoading(false);
@@ -212,8 +236,13 @@ export default function LoginPage() {
         throw new Error(error.message);
       }
     } catch (err: any) {
-      reportClientLog(err.message || '구글 로그인 요청 실패', 'ERROR', 'LOGIN');
-      console.error("구글 로그인 에러:", err);
+      logError({
+        file: 'frontend/src/app/login/page.tsx',
+        func: 'handleGoogleLogin',
+        doing: '구글 소셜 로그인 OAuth 리다이렉트 요청 중',
+        target: 'Google OAuth',
+        error: err
+      });
       showToast(err.message || "구글 로그인 요청 중 오류가 발생했습니다.", "error");
     }
   };

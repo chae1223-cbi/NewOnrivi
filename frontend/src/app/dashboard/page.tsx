@@ -1,5 +1,6 @@
 // ====================================================================
 // 📊 [OMD-AUTH-dashboard-0001 ✅ FIXED] DashboardPage ➔ DashboardPage
+// 🚨 @PATCH : **2026-11-03** — [오류 진단 로깅 3단계]: loadDashboardData, handleDeactivateDevice에 5대 메타데이터 기반 logError/logWarn 연동으로 구독/기기 관리 실패 정밀 추적
 // 🚨 @PATCH : 2026-11-02 — [DB 접근 서버 API 일원화] 브라우저 직접 supabase.from(users, common_codes)를 서버 API(/api/common-codes, userCheck)로 전환
 // 🚨 @PATCH : 2026-11-01 — 구독 신청 실패 시 요청 ID를 토스트에 표시해 서버 로그와 연결한다.
 // 🎯 @KICK  : 로그인 유저 구독/라이선스/접속세션 관리 및 요금제 선택 대시보드
@@ -11,6 +12,7 @@
 "use client";
 
 import { reportClientLog } from '@/lib/clientLogs';
+import { logError, logWarn } from '@/lib/errorDiagnostics';
 import React, { useEffect, useState, useCallback, useRef } from 'react'; // 🔗 React 코어 — 상태관리(useState), 부수효과(useEffect), 콜백 메모이제이션(useCallback), DOM/타이머 참조(useRef)
 import { useRouter } from 'next/navigation'; // 🔗 Next.js 라우터 — 페이지 이동(router.push) 및 쿼리 파라미터 접근
 import { supabase } from '@/lib/supabaseClient'; // 🔗 Supabase 클라이언트 — Auth 세션 관리, DB 쿼리(from), RPC 호출
@@ -190,7 +192,13 @@ export default function DashboardPage() { // 🎯 @KICK : 로그인 유저 구�
           codesData = codesJson.data;
         }
       } catch (err) {
-        console.warn('[/api/common-codes] fetch failed:', err);
+        logWarn({
+          file: 'frontend/src/app/dashboard/page.tsx',
+          func: 'loadDashboardData',
+          doing: '공통 코드 목록 조회(/api/common-codes) 중',
+          target: '/api/common-codes',
+          error: err
+        });
       }
       if (codesData) {
         const codeMap: Record<string, Record<string, string>> = {};
@@ -210,7 +218,13 @@ export default function DashboardPage() { // 🎯 @KICK : 로그인 유저 구�
         if (!Array.isArray(plansData)) throw new Error('요금제 응답 형식이 올바르지 않습니다.');
         setDbPlans(plansData);
       } catch (err) {
-        console.error("Failed to fetch plans", err);
+        logWarn({
+          file: 'frontend/src/app/dashboard/page.tsx',
+          func: 'loadDashboardData',
+          doing: '요금제 목록 조회(/api/plans) 중',
+          target: '/api/plans',
+          error: err
+        });
         setDbPlans([]);
         setPlansError(true);
       }      // RLS 우회를 위해 서버사이드 API 라우트(/api/subscription/get) 호출
@@ -249,7 +263,13 @@ export default function DashboardPage() { // 🎯 @KICK : 로그인 유저 구�
       }
 
     } catch (err: any) { // ❌ 에러 핸들링
-      console.error('대시보드 로드 실패:', err);
+      logError({
+        file: 'frontend/src/app/dashboard/page.tsx',
+        func: 'loadDashboardData',
+        doing: '대시보드 데이터(사용자, 구독, 기기 목록) 일괄 로딩 중',
+        target: 'DashboardData',
+        error: err
+      });
       setDashboardError(err?.message || '데이터를 불러오는 중 문제가 발생했습니다.');
     } finally { // ⏳ 로딩 플래그 해제
       setIsLoading(false);
@@ -370,6 +390,13 @@ export default function DashboardPage() { // 🎯 @KICK : 로그인 유저 구�
       showToast('웹 세션을 해제했습니다.', 'success');
       await loadDashboardData();
     } catch (err: any) {
+      logError({
+        file: 'frontend/src/app/dashboard/page.tsx',
+        func: 'handleDeactivateDevice',
+        doing: '단일 웹 세션 해제 처리 중',
+        target: target.device_uuid,
+        error: err
+      });
       showToast(`웹 세션 해제 실패: ${err.message}`, 'error');
     } finally {
       setActionLoading(null);
