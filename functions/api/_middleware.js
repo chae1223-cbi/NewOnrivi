@@ -1,3 +1,4 @@
+// 🚨 @PATCH : **2026-11-03** — [전 API 라우트 target 및 doing 자동 추출 전면 확장]: 이미지, 파라미터(path, email, user_id, plan, id 등), REST ID 및 X-Error-Target/Doing 전역 연계
 // 🚨 @PATCH : **2026-11-03** — [HTTP 로그 target 식별자 추출 및 prod/preview 환경 분리]:
 //             1) extractLogTarget 추가로 이미지(/api/image/*) 및 파라미터 기반 대상 식별자(target) 자동 기록
 //             2) hostname 기반 prod/preview 환경 분기 및 R2 저장 경로 분리 (_system-logs/{prod|preview}/YYYY-MM-DD/)
@@ -94,27 +95,65 @@ async function readErrorMessage(response) {
 
 
 function extractLogTarget(url, headers) {
+  // 1. 응답 헤더에 명시된 대상 식별자 우선 사용
   const headerTarget = headers?.get('X-Error-Target');
-  if (headerTarget) return redactLogMessage(headerTarget);
+  if (headerTarget) {
+    try {
+      return redactLogMessage(decodeURIComponent(headerTarget));
+    } catch {
+      return redactLogMessage(headerTarget);
+    }
+  }
 
   const pathname = url.pathname;
+
+  // 2. /api/image/* (이미지 서빙 라우트)
   if (pathname.startsWith('/api/image/')) {
     const rawKey = pathname.replace(/^\/api\/image\//, '');
     try {
-      return decodeURIComponent(rawKey);
+      return redactLogMessage(decodeURIComponent(rawKey));
     } catch {
-      return rawKey;
+      return redactLogMessage(rawKey);
     }
   }
-  if (url.searchParams.has('path')) {
-    return redactLogMessage(url.searchParams.get('path') || '-');
+
+  // 3. /api/blog/* (블로그 슬러그)
+  if (pathname.startsWith('/api/blog/')) {
+    const slug = pathname.replace(/^\/api\/blog\//, '');
+    if (slug && !slug.includes('/')) return `blog:${decodeURIComponent(slug)}`;
   }
-  if (url.searchParams.has('user_id')) {
-    return redactLogMessage(url.searchParams.get('user_id') || '-');
+
+  // 4. /api/help/* (도움말 문서)
+  if (pathname.startsWith('/api/help/')) {
+    const doc = pathname.replace(/^\/api\/help\//, '');
+    if (doc) return `help:${decodeURIComponent(doc)}`;
   }
-  if (url.searchParams.has('id')) {
-    return redactLogMessage(url.searchParams.get('id') || '-');
+
+  // 5. 전 API 라우트 파라미터 기반 대상 식별자 자동 추출 (우선순위 순서)
+  const targetKeys = [
+    'path', 'filePath', 'file', 'fileName',
+    'p_email', 'email', 'user_id', 'userId', 'p_user_id',
+    'p_plan_name', 'plan_name', 'plan',
+    'subscription_id', 'p_device_uuid', 'device_uuid', 'session_id', 'p_session_id',
+    'license_key', 'search', 'date', 'slug', 'id'
+  ];
+
+  for (const key of targetKeys) {
+    if (url.searchParams.has(key)) {
+      const val = url.searchParams.get(key);
+      if (val) return `${key}=${redactLogMessage(val)}`;
+    }
   }
+
+  // 6. REST 스타일 경로의 마지막 세그먼트가 ID인 경우 (/api/admin/users/12345)
+  const segments = pathname.split('/').filter(Boolean);
+  if (segments.length >= 3) {
+    const last = segments[segments.length - 1];
+    if (/^[0-9a-f-]{8,}$/i.test(last) || /^\d+$/.test(last)) {
+      return `${segments[segments.length - 2]}:${last}`;
+    }
+  }
+
   return '-';
 }
 
@@ -138,7 +177,12 @@ export async function onRequest(context) {
     const isProd = hostname === 'onrivi.com' || hostname === 'www.onrivi.com';
     const envType = isProd ? 'prod' : 'preview';
     const logTarget = extractLogTarget(url, response.headers);
-    const entry = { id: requestId, timestamp: new Date().toISOString(), environment: envType.toUpperCase(), hostname, level: response.status >= 500 ? 'ERROR' : response.status >= 400 ? 'WARN' : 'INFO', module: 'HTTP', action: context.request.method, message: `HTTP ${response.status} · ${Date.now() - started}ms`, actor: 'SERVER', target: logTarget, status: response.status, route, operation: describeOperation(url.pathname, context.request.method), duration_ms: Date.now() - started, request_id: requestId, outcome: unhandled ? 'UNHANDLED_EXCEPTION' : 'HTTP_RESPONSE', region: context.request.cf?.colo || null, source_file: response.headers.get('X-Error-Source') || undefined, source_function: response.headers.get('X-Error-Stage') || undefined, db_code: response.headers.get('X-Error-Db-Code') || undefined };
+    const doingHeader = response.headers.get('X-Error-Doing');
+    let operationText = describeOperation(url.pathname, context.request.method);
+    if (doingHeader) {
+      try { operationText += ` · ${decodeURIComponent(doingHeader)}`; } catch {}
+    }
+    const entry = { id: requestId, timestamp: new Date().toISOString(), environment: envType.toUpperCase(), hostname, level: response.status >= 500 ? 'ERROR' : response.status >= 400 ? 'WARN' : 'INFO', module: 'HTTP', action: context.request.method, message: `HTTP ${response.status} · ${Date.now() - started}ms`, actor: 'SERVER', target: logTarget, status: response.status, route, operation: operationText, duration_ms: Date.now() - started, request_id: requestId, outcome: unhandled ? 'UNHANDLED_EXCEPTION' : 'HTTP_RESPONSE', region: context.request.cf?.colo || null, source_file: response.headers.get('X-Error-Source') || undefined, source_function: response.headers.get('X-Error-Stage') || undefined, db_code: response.headers.get('X-Error-Db-Code') || undefined };
     const date = entry.timestamp.slice(0,10);
     const errorResponse = response.status >= 400 && !unhandled ? response.clone() : null;
     context.waitUntil((async () => {
@@ -151,6 +195,8 @@ export async function onRequest(context) {
   result.headers.delete('X-Error-Source');
   result.headers.delete('X-Error-Stage');
   result.headers.delete('X-Error-Db-Code');
+  result.headers.delete('X-Error-Target');
+  result.headers.delete('X-Error-Doing');
   result.headers.set('X-Request-ID', requestId);
   return result;
 }

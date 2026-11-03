@@ -2,6 +2,7 @@
 // 📊 [OMD-ERR-CORE-0001] functions/api/_error.js
 // 🎯 @KICK  : 서버 런타임 및 PostgreSQL 예외에 대한 표준 500 에러 Response 및 진단 로그 생성
 // 🛡️ @GUARD : 내부 DB 스택 노출 차단, 추적용 requestId 부여, 헤더 기반 디버깅 메타데이터 주입
+// 🚨 @PATCH : 2026-11-03 — [전역 진단 메타데이터 전파]: X-Error-Target 및 X-Error-Doing 헤더 주입으로 미들웨어 HTTP 로그 100% 연동
 // 🚨 @PATCH : 2026-11-03 — [오류 진단 로깅 0단계]: DB 연결 URL 및 시크릿 인라인 마스킹 헬퍼 적용
 // 🚨 @PATCH : 2026-11-03 — [정밀 진단 필드 강화] doing(실행 작업), target(대상), errorMessage/errorStack 추가
 // 🚨 @PATCH : 2026-11-02 — [로그 고도화] 구조화 로그 내 functionName('serverError') 추가 및 진단 필드 주석 보강
@@ -82,6 +83,8 @@ export function serverError(request, error, { source, stage, doing, target, mess
       'Cache-Control': 'no-store', // 장애/에러 응답 캐싱 방지
       'X-Error-Source': source,
       'X-Error-Stage': stage,
+      ...(target ? { 'X-Error-Target': encodeURIComponent(String(target)) } : {}),
+      ...(doing ? { 'X-Error-Doing': encodeURIComponent(String(doing)) } : {}),
       ...(dbCode ? { 'X-Error-Db-Code': dbCode } : {}),
     },
   });
