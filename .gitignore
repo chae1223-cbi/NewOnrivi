@@ -58,8 +58,6 @@ tmp/
 **/tmp/
 .tmp/
 **/.tmp/
-tests/
-**/tests/
 __tests__/
 **/__tests__/
 *.test.*
