@@ -1,3 +1,4 @@
+// 🚨 @PATCH : 2026-11-03 — [ESLint 경고 해소] components useMemo 의존성 배열에 processedContent 누락 의존성 추가
 // 🚨 @PATCH : 2026-11-03 — [표 열 비율 수동 지정] 기본 균등 분할과 문서 저장 비율을 미리보기에 적용
 // 🚨 @PATCH : 2026-11-02 — [표 열 너비 자동 조정] 마크다운 표를 내용 기반 너비로 배분
 // 🚨 @PATCH : **2026-11-01** — [표 셀 줄바꿈 파괴 및 긴 코드 경로로 인한 가로 늘어짐 방지]:
@@ -3995,7 +3996,7 @@ function MarkdownViewer({
                 </blockquote>
               );
             }
-          }), [getIndentStyle, onImageLoaded, attachMediaActions, picturebookProfile?.mediaCaptionStructure])}
+          }), [processedContent, getIndentStyle, onImageLoaded, attachMediaActions, picturebookProfile?.mediaCaptionStructure])}
         >
           {processedContent}
         </ReactMarkdown>
