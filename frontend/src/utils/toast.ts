@@ -1,3 +1,4 @@
+// 🚨 @PATCH : **2026-11-04** — [호출자 스택 자동 추적으로 실제 에러 발생 파일/함수/라인 자동 전달]: toast.ts 대신 실제 호출 소스 기록
 // 🚨 @PATCH : **2026-11-04** — [동일 에러 토스트 10초 디바운스]: 반복 호출 시 중복 시스템 로깅 억제
 import { reportClientLog } from '@/lib/clientLogs';
 import { logError } from '@/lib/errorDiagnostics';
@@ -92,6 +93,27 @@ function extractToastTarget(msg: string, explicitTarget?: string): string {
 let lastErrorLogMessage = '';
 let lastErrorLogTime = 0;
 
+function extractCallerLocation(skipDepth = 2): { file: string; func: string; line: string } {
+  try {
+    const stack = new Error().stack;
+    if (!stack) return { file: 'toast.ts', func: 'showToast', line: '0' };
+    const lines = stack.split('\n');
+    for (let i = skipDepth; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line || line.includes('toast.ts') || line.includes('errorDiagnostics.ts')) continue;
+      const match = line.match(/at\s+(?:async\s+)?(?:([^\s(]+)\s+\()?(?:.*?[\\/])?((?:src[\\/]|app[\\/]|hooks[\\/]|lib[\\/]|components[\\/])?[^/:\s]+\.[a-zA-Z0-9]+):(\d+)/);
+      if (match) {
+        return {
+          func: match[1] || 'anonymous',
+          file: match[2],
+          line: match[3]
+        };
+      }
+    }
+  } catch {}
+  return { file: 'toast.ts', func: 'showToast', line: '0' };
+}
+
 export const showToast = (message: string, type: ToastType = 'info', explicitTarget?: string) => {
   if (typeof window === 'undefined') return;
   const driveAuthNotice = (type==='error' || type==='warning') && /구글\s*드라이브|Google Drive/i.test(message)
@@ -109,9 +131,11 @@ export const showToast = (message: string, type: ToastType = 'info', explicitTar
       lastErrorLogMessage = message;
       lastErrorLogTime = now;
       const toastTarget = extractToastTarget(message, explicitTarget);
+      const caller = extractCallerLocation(2);
+      const sourceFile = caller.line !== '0' ? `${caller.file}:${caller.line}` : caller.file;
       logError({
-        file: 'toast.ts',
-        func: 'showToast',
+        file: sourceFile,
+        func: caller.func,
         doing: `사용자 ${type === 'error' ? '오류' : '경고'} 알림 표출 중`,
         target: toastTarget,
         error: translateToKorean(message),

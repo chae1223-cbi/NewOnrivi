@@ -1,3 +1,4 @@
+// 🚨 @PATCH : **2026-11-04** — [source_file 및 source_function 전달]: 실제 호출자 파일/함수명 원격 전송 지원
 // ========================================================================================
 // 🚨 @PATCH : 2026-11-03 — [오류 진단 로깅 0단계]: 로컬 PC 절대 경로 정규식 마스킹 보강
 // ========================================================================================
@@ -36,7 +37,9 @@ export function reportClientLog(
   message: string,
   level: 'INFO' | 'WARN' | 'ERROR',
   action = 'USER_NOTICE',
-  target = '-'
+  target = '-',
+  sourceFile?: string,
+  sourceFunction?: string
 ) {
   // 1. [환경 방어] Node.js 서버 환경(SSR)이거나 http/https 프로토콜이 아닌 환경(file:// 등)에서는 전송 중단
   if (typeof window === 'undefined' || !/^https?:$/.test(location.protocol)) return;
@@ -64,7 +67,7 @@ export function reportClientLog(
     void fetch('/api/client-log', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: safe, level, action, target: safeTarget }),
+      body: JSON.stringify({ message: safe, level, action, target: safeTarget, source_file: sourceFile, source_function: sourceFunction }),
     keepalive: true // 사용자가 브라우저 창을 즉시 닫아도 백그라운드에서 끝까지 전송 완료 보장
   }).catch(() => { }); // 로그 전송 실패가 앱 동작을 방해하지 않도록 에러 무시
 }

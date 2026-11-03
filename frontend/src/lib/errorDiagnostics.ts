@@ -1,3 +1,4 @@
+// 🚨 @PATCH : **2026-11-04** — [reportClientLog에 sourceFile 및 sourceFunction 매개변수 전달]: 원격 시스템 로그에 실제 소스 파일 및 함수명 반영
 // ====================================================================
 // 📊 [OMD-LIB-errorDiagnostics-0001] frontend/src/lib/errorDiagnostics.ts
 // 🎯 @KICK  : 프론트엔드 전역 오류 발생 시 소스 파일, 함수명, 구체적 행위(doing)를 정밀 추적하여 콘솔 및 R2 시스템 로그에 선제 기록
@@ -158,7 +159,7 @@ export function logError(params: ErrorDiagnosticParams): void {
   // 2. [원격 R2 로그 보존] 30일 자동 보관 시스템 로그 수집 파이프라인으로 전송 (Fire-and-Forget)
   try {
     const remoteMessage = `[${file} ➔ ${func}] (${doing}) ${errMsg}${target !== '-' ? ` [대상: ${target}]` : ''}`;
-    reportClientLog(remoteMessage, level, params.action || 'APP_ERROR', target);
+    reportClientLog(remoteMessage, level, params.action || 'APP_ERROR', target, file, func);
   } catch (reportErr) {
     console.warn('[logError] 원격 로그 전달 실패 (무시):', reportErr);
   }

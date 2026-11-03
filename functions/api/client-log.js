@@ -1,3 +1,4 @@
+// 🚨 @PATCH : **2026-11-04** — [클라이언트 전달 source_file / source_function 우선 반영]: 실제 에러 발생 파일 및 함수명 자동 적재
 // 🚨 @PATCH : **2026-11-04** — [KST(한국표준시 UTC+9) 기준 일자 파티셔닝 적용]: UTC 자정 시차(00~09시)로 인한 날짜 불일치 해결
 // 🚨 @PATCH : **2026-11-04** — [R2 클라이언트 로그 적재 환경변수 스위치(ENABLE_R2_LOGS) 적용]: 기본 적재 비활성화(false) 및 console.warn 콘솔 출력 후 204 응답
 // 🚨 @PATCH : **2026-11-03** — [클라이언트 로그 target 전달 및 자동 파싱 지원]: input.target 또는 본문 [대상: xxx]에서 target 자동 추출하여 R2 적재
@@ -79,7 +80,7 @@ export async function onRequestPost({request, env}) {
       if (match) target = match[1].trim();
     }
     const id=crypto.randomUUID(), timestamp=new Date().toISOString();
-    const entry={id,timestamp,environment:envType.toUpperCase(),hostname,level:input.level,module:'CLIENT',action,message,actor:'BROWSER',target,operation:({LOGIN:'로그인',DOCUMENT_SAVE:'문서 저장',DRIVE_CONNECT:'웹드라이브 연결',PLAN_SELECT:'요금제 선택',PLAN_CHANGE:'요금제 변경'})[action] || (action==='LOGIN_NOTICE'?'로그인 안내·실패':action==='USER_NOTICE'?'사용자 작업 경고·오류':'브라우저 실행 오류'),source:'browser-reported', source_file:sourceLocations[action].file, source_function:sourceLocations[action].function, event_code:`CLIENT_${action}_${input.level}`};
+    const entry={id,timestamp,environment:envType.toUpperCase(),hostname,level:input.level,module:'CLIENT',action,message,actor:'BROWSER',target,operation:({LOGIN:'로그인',DOCUMENT_SAVE:'문서 저장',DRIVE_CONNECT:'웹드라이브 연결',PLAN_SELECT:'요금제 선택',PLAN_CHANGE:'요금제 변경'})[action] || (action==='LOGIN_NOTICE'?'로그인 안내·실패':action==='USER_NOTICE'?'사용자 작업 경고·오류':'브라우저 실행 오류'),source:'browser-reported', source_file: typeof input.source_file === 'string' && input.source_file.trim() ? input.source_file.slice(0, 150) : (sourceLocations[action]?.file || 'unknown'), source_function: typeof input.source_function === 'string' && input.source_function.trim() ? input.source_function.slice(0, 100) : (sourceLocations[action]?.function || 'unknown'), event_code:`CLIENT_${action}_${input.level}`};
     // Cloudflare Pages 실시간 로그(Realtime Logs) 콘솔에는 항상 출력
     console.warn(`[ClientLog] [${envType.toUpperCase()}] ${input.level} · ${action} · 대상: ${target} · ${message}`);
 
