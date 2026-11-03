@@ -1,6 +1,7 @@
 /**
  * 프로그램명 : OnriviAuthor
  * 파일명 : app/admin/components/SystemTab.tsx
+ * 🚨 @PATCH : **2026-11-04** — [R2 로그 적재 상태(logging_enabled) UI 표시]: ENABLE_R2_LOGS 환경변수 연동 상태(ON/OFF 뱃지) 안내
  * 🚨 @PATCH : **2026-11-03** — [최종 100건 실시간 스트림 & 프로드/미리보기 선택 탭 & 과거 로그 날짜별 다운로드 지원]:
  *             1. 로그 조회 한도 100건 확장 및 최신순 실시간 표시
  *             2. 환경 필터(전체 / 운영 PROD / 미리보기 PREVIEW) 토글 탭 탑재 및 로그별 환경 뱃지 표기
@@ -51,6 +52,7 @@ interface SystemHealth {
     status: 'ONLINE' | 'OFFLINE' | 'UNKNOWN';
     bucket: string;
     binding: string;
+    logging_enabled?: boolean;
   };
   hyperdrive: {
     status: string;
@@ -341,8 +343,11 @@ export default function SystemTab() {
           <div className="text-2xl font-black text-teal-700 dark:text-teal-400 font-mono">
             {health.storage.status}
           </div>
-          <div className="text-xs font-medium text-zinc-700 dark:text-zinc-300 mt-1 truncate font-mono">
-            버킷: <strong className="text-zinc-900 dark:text-zinc-100 font-bold">{health.storage.bucket}</strong>
+          <div className="text-xs font-medium text-zinc-700 dark:text-zinc-300 mt-1 flex items-center justify-between font-mono">
+            <span>버킷: <strong className="text-zinc-900 dark:text-zinc-100 font-bold">{health.storage.bucket}</strong></span>
+            <span className={`px-1.5 py-0.5 rounded text-[11px] font-bold ${health.storage.logging_enabled ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400' : 'bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-400'}`}>
+              로그적재 {health.storage.logging_enabled ? 'ON' : 'OFF'}
+            </span>
           </div>
         </div>
 
@@ -382,6 +387,11 @@ export default function SystemTab() {
           <option value="server">서버 API 로그</option><option value="audit">관리자 활동 기록</option>
         </select>
         <span className="text-sm">{source === 'server' ? logScope : '관리자 조치 최근 60건'}</span>
+        {source === 'server' && !health.storage.logging_enabled && (
+          <span className="text-xs px-2.5 py-1 rounded-md bg-amber-500/10 text-amber-800 dark:text-amber-300 font-semibold border border-amber-500/20">
+            💡 R2 적재 OFF (ENABLE_R2_LOGS=false) · Cloudflare 실시간 로그 모니터링 모드
+          </span>
+        )}
         {connectionError && <span role="alert" className="text-red-700">{connectionError}</span>}
       </div>
       {/* 3. 실시간 시스템 로그 콘솔 뷰어 (글씨 크기 상향 & 고대비 가독성 극대화) */}

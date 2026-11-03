@@ -90,3 +90,14 @@ try {
 3. **소스 위치 식별성**: 파일명(`file`)과 함수명(`func`)이 누락 없이 기록되는가?
 4. **민감정보 마스킹**: 토큰, 비밀번호, 이메일, PC 경로가 콘솔/로그에 노출되지 않는가?
 5. **환경 분리 및 30일 보관 준수**: 프로덕션(`prod`)과 미리보기(`preview`)가 올바른 접두사로 분기되며 30일 후 자동 삭제 규칙을 따르는가?
+
+---
+
+## 8. R2 로그 적재 토글 스위치 (ENABLE_R2_LOGS)
+
+- Cloudflare Pages의 실시간 로그(Workers & Pages Logs) 및 콘솔 출력을 기본으로 활용하며, R2 버킷 파일 적재는 환경변수 ENABLE_R2_LOGS === 'true'일 때만 활성화된다.
+- **기본 상태 (ENABLE_R2_LOGS 미설정 또는 alse)**:
+  - _middleware.js 및 client-log.js에서 R2 쓰기(R2_BUCKET.put())를 일체 수행하지 않아 스토리지 용량 및 쓰기 연산(Class A Operations)을 완전히 차단한다.
+  - 모든 오류 및 경고는 표준 console.error / console.warn을 통해 Cloudflare 실시간 로그 모니터에 정상 전송된다.
+- **활성화 상태 (ENABLE_R2_LOGS === 'true')**:
+  - 파일 다운로드 및 R2 영구 저장이 필요할 때만 Cloudflare Pages 환경변수에 ENABLE_R2_LOGS=true를 설정하여 30일 보관 로그 파티셔닝을 재개한다.

@@ -1,3 +1,4 @@
+// 🚨 @PATCH : **2026-11-04** — [R2 시스템 로그 적재 토글 상태(logging_enabled) 반환]: ENABLE_R2_LOGS 환경변수 상태를 헬스체크 및 응답에 포함
 // 🚨 @PATCH : **2026-11-03** — [최종 100건 실시간 스트림 & 프로드/미리보기 선택 & 과거 로그 다운로드 API]:
 //             1) 실시간 로그 최대 표시 건수를 60건 -> 최종 100건(최신순 정렬)으로 확장
 //             2) env(all/prod/preview) 선택 필터 완벽 지원
@@ -268,7 +269,8 @@ export async function onRequestGet(context) {
       storage: {
         status: r2Status,
         bucket: r2Details.bucket,
-        binding: r2Details.binding
+        binding: r2Details.binding,
+        logging_enabled: env.ENABLE_R2_LOGS === 'true'
       },
       hyperdrive: {
         status: hyperdriveStatus
@@ -292,6 +294,7 @@ export async function onRequestGet(context) {
     return apiJson({
       success: true,
       logError,
+      r2_logging_enabled: env.ENABLE_R2_LOGS === 'true',
       logScope: `실시간 시스템 로그 (최종 ${limit}건) · 환경: ${envFilter.toUpperCase()}`,
       health,
       stats,

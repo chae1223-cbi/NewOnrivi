@@ -1,3 +1,4 @@
+// 🚨 @PATCH : **2026-11-04** — [R2 클라이언트 로그 적재 환경변수 스위치(ENABLE_R2_LOGS) 적용]: 기본 적재 비활성화(false) 및 console.warn 콘솔 출력 후 204 응답
 // 🚨 @PATCH : **2026-11-03** — [클라이언트 로그 target 전달 및 자동 파싱 지원]: input.target 또는 본문 [대상: xxx]에서 target 자동 추출하여 R2 적재
 // 🚨 @PATCH : **2026-11-03** — [프로덕션/미리보기 로그 분리]: hostname 기반 prod/preview 환경 분기 및 R2 저장 경로 분리 (_system-logs/{prod|preview}/YYYY-MM-DD/)
 const sourceLocations = {
@@ -78,7 +79,13 @@ export async function onRequestPost({request, env}) {
     }
     const id=crypto.randomUUID(), timestamp=new Date().toISOString();
     const entry={id,timestamp,environment:envType.toUpperCase(),hostname,level:input.level,module:'CLIENT',action,message,actor:'BROWSER',target,operation:({LOGIN:'로그인',DOCUMENT_SAVE:'문서 저장',DRIVE_CONNECT:'웹드라이브 연결',PLAN_SELECT:'요금제 선택',PLAN_CHANGE:'요금제 변경'})[action] || (action==='LOGIN_NOTICE'?'로그인 안내·실패':action==='USER_NOTICE'?'사용자 작업 경고·오류':'브라우저 실행 오류'),source:'browser-reported', source_file:sourceLocations[action].file, source_function:sourceLocations[action].function, event_code:`CLIENT_${action}_${input.level}`};
-    await env.R2_BUCKET.put(`_system-logs/${envType}/${timestamp.slice(0,10)}/${timestamp}_${id}.json`,JSON.stringify(entry));
+    // Cloudflare Pages 실시간 로그(Realtime Logs) 콘솔에는 항상 출력
+    console.warn(`[ClientLog] [${envType.toUpperCase()}] ${input.level} · ${action} · 대상: ${target} · ${message}`);
+
+    // R2 저장은 ENABLE_R2_LOGS === 'true' 일 때만 수행 (기본값 false: R2 적재 중단)
+    if (env.ENABLE_R2_LOGS === 'true' && env.R2_BUCKET) {
+      await env.R2_BUCKET.put(`_system-logs/${envType}/${timestamp.slice(0,10)}/${timestamp}_${id}.json`,JSON.stringify(entry));
+    }
     return new Response(null,{status:204});
   } catch {return new Response(null,{status:400});}
 }

@@ -1,3 +1,4 @@
+// 🚨 @PATCH : **2026-11-04** — [R2 시스템 로그 적재 환경변수 스위치(ENABLE_R2_LOGS) 적용]: 기본 적재 비활성화(false) 및 console.error 콘솔 출력 유지로 Cloudflare 실시간 로그 지원
 // 🚨 @PATCH : **2026-11-03** — [전 API 라우트 target 및 doing 자동 추출 전면 확장]: 이미지, 파라미터(path, email, user_id, plan, id 등), REST ID 및 X-Error-Target/Doing 전역 연계
 // 🚨 @PATCH : **2026-11-03** — [HTTP 로그 target 식별자 추출 및 prod/preview 환경 분리]:
 //             1) extractLogTarget 추가로 이미지(/api/image/*) 및 파라미터 기반 대상 식별자(target) 자동 기록
@@ -172,7 +173,10 @@ export async function onRequest(context) {
   catch (error) { exceptionMessage = redactLogMessage(error instanceof Error ? error.message : 'Unknown server exception'); unhandled = true; response = new Response('Internal server error', { status: 500 }); }
   // Temporary diagnostic window ends at 2026-10-10 00:00 KST.
   const captureAllToday = Date.now() < Date.parse('2026-10-10T00:00:00+09:00');
-  if ((captureAllToday || response.status >= 400 || (context.request.method !== 'GET' && ['/api/subscription/create','/api/subscription/cancel','/api/subscription/subscribe-desktop','/api/admin/users/plan'].includes(url.pathname))) && context.env.R2_BUCKET && !url.pathname.startsWith('/api/admin/system') && url.pathname !== '/api/client-log' && !(response.status < 400 && ['/api/device/session-status','/api/license/check-session'].includes(url.pathname))) {
+  const enableR2Logs = context.env.ENABLE_R2_LOGS === 'true';
+  const shouldLog = (captureAllToday || response.status >= 400 || (context.request.method !== 'GET' && ['/api/subscription/create','/api/subscription/cancel','/api/subscription/subscribe-desktop','/api/admin/users/plan'].includes(url.pathname))) && !url.pathname.startsWith('/api/admin/system') && url.pathname !== '/api/client-log' && !(response.status < 400 && ['/api/device/session-status','/api/license/check-session'].includes(url.pathname));
+
+  if (shouldLog) {
     const hostname = url.hostname;
     const isProd = hostname === 'onrivi.com' || hostname === 'www.onrivi.com';
     const envType = isProd ? 'prod' : 'preview';
@@ -182,14 +186,23 @@ export async function onRequest(context) {
     if (doingHeader) {
       try { operationText += ` · ${decodeURIComponent(doingHeader)}`; } catch {}
     }
-    const entry = { id: requestId, timestamp: new Date().toISOString(), environment: envType.toUpperCase(), hostname, level: response.status >= 500 ? 'ERROR' : response.status >= 400 ? 'WARN' : 'INFO', module: 'HTTP', action: context.request.method, message: `HTTP ${response.status} · ${Date.now() - started}ms`, actor: 'SERVER', target: logTarget, status: response.status, route, operation: operationText, duration_ms: Date.now() - started, request_id: requestId, outcome: unhandled ? 'UNHANDLED_EXCEPTION' : 'HTTP_RESPONSE', region: context.request.cf?.colo || null, source_file: response.headers.get('X-Error-Source') || undefined, source_function: response.headers.get('X-Error-Stage') || undefined, db_code: response.headers.get('X-Error-Db-Code') || undefined };
-    const date = entry.timestamp.slice(0,10);
-    const errorResponse = response.status >= 400 && !unhandled ? response.clone() : null;
-    context.waitUntil((async () => {
-      const detail = exceptionMessage || (errorResponse ? await readErrorMessage(errorResponse) : '');
-      if (detail) entry.message += ` · ${detail}`;
-      await context.env.R2_BUCKET.put(`_system-logs/${envType}/${date}/${entry.timestamp}_${requestId}.json`, JSON.stringify(entry));
-    })().catch(() => console.error('[ServerLog] Storage write failed')));
+
+    // Cloudflare Pages 실시간 로그 콘솔(Workers & Pages Logs)에는 항상 출력
+    if (response.status >= 400 || unhandled) {
+      console.error(`[ServerLog] [${envType.toUpperCase()}] HTTP ${response.status} · ${context.request.method} ${url.pathname} · 대상: ${logTarget} · ${operationText}`);
+    }
+
+    // R2 스토리지 저장은 ENABLE_R2_LOGS === 'true' 일 때만 수행 (기본값 false: R2 적재 중단)
+    if (enableR2Logs && context.env.R2_BUCKET) {
+      const entry = { id: requestId, timestamp: new Date().toISOString(), environment: envType.toUpperCase(), hostname, level: response.status >= 500 ? 'ERROR' : response.status >= 400 ? 'WARN' : 'INFO', module: 'HTTP', action: context.request.method, message: `HTTP ${response.status} · ${Date.now() - started}ms`, actor: 'SERVER', target: logTarget, status: response.status, route, operation: operationText, duration_ms: Date.now() - started, request_id: requestId, outcome: unhandled ? 'UNHANDLED_EXCEPTION' : 'HTTP_RESPONSE', region: context.request.cf?.colo || null, source_file: response.headers.get('X-Error-Source') || undefined, source_function: response.headers.get('X-Error-Stage') || undefined, db_code: response.headers.get('X-Error-Db-Code') || undefined };
+      const date = entry.timestamp.slice(0, 10);
+      const errorResponse = response.status >= 400 && !unhandled ? response.clone() : null;
+      context.waitUntil((async () => {
+        const detail = exceptionMessage || (errorResponse ? await readErrorMessage(errorResponse) : '');
+        if (detail) entry.message += ` · ${detail}`;
+        await context.env.R2_BUCKET.put(`_system-logs/${envType}/${date}/${entry.timestamp}_${requestId}.json`, JSON.stringify(entry));
+      })().catch(() => console.error('[ServerLog] Storage write failed')));
+    }
   }
   const result = new Response(response.body, response);
   result.headers.delete('X-Error-Source');
