@@ -1,6 +1,7 @@
 // @ts-nocheck
 // ====================================================================
 // 📊 [OMD-HOOK-useEditorHandlers-0001] useEditorHandlers.ts ➔ 에디터 액션 핸들러 훅
+// 🚨 @PATCH : **2026-11-03** — [오류 진단 로깅 2단계]: handleSaveCurrentFile에 5대 메타데이터 기반 logError 연동으로 에디터 문서 저장 실패 정밀 추적
 // 🚨 @PATCH : **2026-10-31** — [제목(H1~H6) 버튼 동일 클릭 시 취소(토글 해제) 지원]:
 //             1) h1~h6 핸들러를 applyLinePrefix('h1~h6')로 연결하여 동일 제목 레벨 재클릭 시 제목 태그를 제거하고 일반 문단으로 복귀하도록 토글 취소 연동
 // 🚨 @PATCH : **2026-10-27** — [SNS 카드뉴스 전용 분할 출력 핸들러(exportSNS) 연동]: 내보내기 모달에서 'SNS 카드뉴스 출력' 선택 시 카드 비율(1:1 / 4:5 / 16:9), 분할 기준, 저장 방식(낱장 PNG / ZIP)을 exportSNSCardNews로 전달하여 일괄 사출 지원
@@ -12,6 +13,7 @@
 // ====================================================================
 import { isBundledDocumentPath } from '@/lib/bundledDocument';
 import { reportClientLog } from '@/lib/clientLogs';
+import { logError } from '@/lib/errorDiagnostics';
 import { browserPickerStartIn } from '@/lib/browserPickerStartIn';
 import { useCallback } from 'react';
 import { waitForExportContent } from '@/lib/exportPreparation';
@@ -656,7 +658,14 @@ export const useEditorHandlers = ({
               return;
             } catch (driveErr: any) {
               setSaveStatus('unsaved');
-            reportClientLog('문서 저장 실패 또는 저장 권한·연결 확인 필요', 'ERROR', 'DOCUMENT_SAVE');
+              logError({
+                file: 'frontend/src/hooks/useEditorHandlers.ts',
+                func: 'handleSaveCurrentFile',
+                doing: '구글 드라이브 문서 저장 중',
+                target: fileName || driveFileId,
+                error: driveErr,
+                context: { driveFileId }
+              });
               // 🛡️ [데이터 보존 안전망] 저장 실패 시 최신 에디터 버퍼를 로컬에 긴급 백업
               saveEmergencyDriveDrafts({
                 timestamp: Date.now(),
@@ -729,7 +738,13 @@ export const useEditorHandlers = ({
             }
           } catch (e) {
             setSaveStatus('unsaved');
-            reportClientLog('문서 저장 실패 또는 저장 권한·연결 확인 필요', 'ERROR', 'DOCUMENT_SAVE');
+            logError({
+              file: 'frontend/src/hooks/useEditorHandlers.ts',
+              func: 'handleSaveCurrentFile',
+              doing: '데스크톱 로컬 파일 저장 중',
+              target: fileNode?.path || fileName,
+              error: e
+            });
             showToast("저장 실패: " + e, 'error');
             return;
           }

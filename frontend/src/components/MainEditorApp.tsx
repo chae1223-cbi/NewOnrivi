@@ -1,5 +1,6 @@
 /**
  * 프로그램명 : OnriviAuthor 
+// 🚨 @PATCH : **2026-11-03** — [오류 진단 로깅 2단계]: cross_platform_session_restore, session_auto_save, restoreSessionTabs에 5대 메타데이터 기반 logError/logWarn 연동으로 세션 복원 및 자동저장 실패 정밀 추적
 // 🚨 @PATCH : **2026-11-03** — [웹드라이브 비연결 시 세션 복원 대기 및 연결 시점 즉시 복원]:
 //             웹 환경(!isElectron)에서 웹드라이브 미연결 상태일 때 이전 최종 문서를 노출하지 않고,
 //             구글 웹드라이브가 정상 연결·인증되는 즉시 이전 최종 문서 및 탭 세션을 복원하도록 가드 분기 정밀화. 데스크톱(Electron) 로컬 파일 복원은 기존대로 즉시 유지.
@@ -593,6 +594,7 @@ import { PreviewToolbar } from '@/components/preview/PreviewToolbar';
 import { PreviewFindWidget } from '@/components/preview/PreviewFindWidget';
 import { fetchUserProfiles, persistUserProfiles, getEffectiveResourceFolder, getProfileResourceFolder } from '@/lib/profileStorage';
 import { setProfileReadStatus } from '@/lib/profileReadStatus';
+import { logError, logWarn } from '@/lib/errorDiagnostics';
 import {
   getSavedDriveToken,
   getSavedWorkspaceInfo,
@@ -4657,7 +4659,13 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
           return;
         }
       } catch (e) {
-        console.error('[desktop session restore] 실패:', e);
+        logError({
+          file: 'frontend/src/components/MainEditorApp.tsx',
+          func: 'cross_platform_session_restore',
+          doing: '데스크톱 이전 세션 파싱 및 탭 복원 중',
+          target: 'localStorage/onrivi_tabs_session',
+          error: e
+        });
       }
       sessionRestoredRef.current = true;
       return;
@@ -4694,7 +4702,14 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
         return;
       }
     } catch (e) {
-      console.error('[web session restore] 실패:', e);
+      logError({
+        file: 'frontend/src/components/MainEditorApp.tsx',
+        func: 'cross_platform_session_restore',
+        doing: '웹 세션 복원 중 (웹드라이브/로컬 스토리지)',
+        target: 'localStorage/onrivi_tabs_session',
+        error: e,
+        context: { workspaceType, isDriveConnected }
+      });
     }
     sessionRestoredRef.current = true; // 복원할 세션 정보가 없으면 완료 처리
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -4721,7 +4736,14 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
       try {
         localStorage.setItem('onrivi_tabs_session', JSON.stringify(captureEditorSession(tabs,activeTabId,contentRef.current,previewModeRef.current)));
       } catch (e) {
-        console.error('[session_auto_save] localStorage 쓰기 실패:', e);
+        logError({
+          file: 'frontend/src/components/MainEditorApp.tsx',
+          func: 'session_auto_save',
+          doing: '활성 탭 세션 자동저장 직렬화 중',
+          target: 'localStorage/onrivi_tabs_session',
+          error: e,
+          context: { tabCount: tabs.length }
+        });
       }
     }
 
@@ -4946,7 +4968,16 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
               scrollTop:saved.scrollTop,previewMode:saved.previewMode || t.previewMode
             }:t));
             await new Promise(resolve=>setTimeout(resolve,0));
-          }catch(error){console.warn('[session restore] 문서 복원 실패:',saved.name,error);}
+          }catch(error){
+            logWarn({
+              file: 'frontend/src/components/MainEditorApp.tsx',
+              func: 'restoreSessionTabs',
+              doing: '이전 세션 탭 복원 중',
+              target: saved.name || saved.path || saved.driveFileId,
+              error: error,
+              context: { savedId: saved.id, hasDriveId: Boolean(saved.driveFileId) }
+            });
+          }
         }
         const target=restored.get(savedActiveId || '');
         if(target){
