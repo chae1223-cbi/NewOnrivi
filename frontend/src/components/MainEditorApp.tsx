@@ -1,5 +1,8 @@
 /**
  * 프로그램명 : OnriviAuthor 
+// 🚨 @PATCH : **2026-11-03** — [웹드라이브 비연결 시 세션 복원 대기 및 연결 시점 즉시 복원]:
+//             웹 환경(!isElectron)에서 웹드라이브 미연결 상태일 때 이전 최종 문서를 노출하지 않고,
+//             구글 웹드라이브가 정상 연결·인증되는 즉시 이전 최종 문서 및 탭 세션을 복원하도록 가드 분기 정밀화. 데스크톱(Electron) 로컬 파일 복원은 기존대로 즉시 유지.
 // 🚨 @PATCH : 2026-11-03 — [표 열 드래그] 서식 CSS의 auto 레이아웃보다 직접 편집 표의 fixed 레이아웃을 우선 적용
 // 🚨 @PATCH : 2026-11-02 — [표 열 너비 자동 조정] 미리보기 표의 균등 분할을 해제하고 내용 기반 너비 배분 적용
 // 🚨 @PATCH : **2026-11-02** — [비로그인 무단 에디터 진입 원천 차단] 웹 환경에서 로그인 세션이나 '체험하기' 플래그가 없는 경우 자동 게스트 모드 전환을 중단하고 로그인 화면(/login)으로 즉시 리다이렉트
@@ -3517,6 +3520,7 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     handleFileOpenByPath,
     connectGoogleDrive,
     disconnectGoogleDrive,
+    isDriveConnected,
     isDriveAuthExpired
   } = useFileExplorerResult;
 
@@ -4625,37 +4629,76 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
   // ====================================================================
   // 📊 [OMD-IO-MainEditorApp-0044] MainEditorApp.tsx ➔ cross_platform_session_restore
   // 🎯 @KICK  : 일반 웹 브라우저 및 데스크탑 공용으로 최초 기동 시 localStorage의 세션 정보를 읽어 탭 복원을 개시.
-  // 🛡️ @GUARD : 이미 데스크탑 복원 가드가 돌았거나 탭이 복원된 상태라면 중복 로드 차단.
-  // 🚨 @PATCH : **2026-08-12** — 초기 생성 (웹/데스크탑 공용 탭 세션 복원 복구)
-  // 🔗 @CALLS : restoreSessionTabs
+  //             - 데스크톱(Electron): 로컬 파일시스템에 즉시 접근 가능하므로 기동 즉시 이전 최종 문서 및 탭 목록 복원.
+  //             - 일반 웹(SaaS/Web): 웹드라이브(Google Drive)가 연결되지 않은 상태에서는 최종 문서를 표시하지 않고 대기.
+  //               이후 웹드라이브가 연결되는 순간(connectGoogleDrive 완료 또는 파일 트리 로드 시점)에 이전 세션/최종 문서를 즉각 복원.
+  // 🛡️ @GUARD : 웹 환경에서 웹드라이브 미연결 시 세션 복원 보류 및 덮어쓰기 방지. 복원 완료 전까지 sessionRestoredRef 유지.
+  // 🚨 @PATCH : **2026-11-03** — [웹드라이브 비연결 시 세션 복원 대기 및 연결 시점 즉시 복원]:
+  //             웹 환경(!isElectron)에서 웹드라이브 미연결 상태일 때 이전 최종 문서를 노출하지 않고,
+  //             구글 웹드라이브가 정상 연결·인증되는 즉시 이전 최종 문서 및 탭 세션을 복원하도록 가드 분기 정밀화.
+  // 🔗 @CALLS : restoreSessionTabs, hasValidDriveToken
   // ====================================================================
   useEffect(() => {
     if (!mounted) return;
 
     const api = typeof window !== 'undefined' ? (window as any).electronAPI : null;
-    const isElectron = !!api;
+    const isElectron = !api;
 
-    // 일렉트론이 아닌 일반 웹 환경이고 아직 복원이 되지 않았다면 복구 프로세스 가동
-    if ((!isElectron || desktopSessionReady) && !sessionRestoredRef.current && !sessionRestoringRef.current) {
+    // 이미 복원 완료되었거나 복원 진행 중이면 중복 실행 차단
+    if (sessionRestoredRef.current || sessionRestoringRef.current) return;
+
+    // 1. 데스크톱(Electron) 환경: desktopSessionReady 완료 즉시 로컬 세션 복원
+    if (isElectron) {
+      if (!desktopSessionReady) return;
       try {
         const parsed = readEditorSession(localStorage.getItem('onrivi_tabs_session'));
-        if (parsed) {
-          if (parsed.tabs.length > 0) {
-            // Folder handles and Drive credentials must be ready before opening files.
-            if(parsed.tabs.some(t=>t.path || t.driveFileId) && (!rootFolder || (rootFolder as any).needPermission || (workspaceType === 'browser' && !rootFolder.handle)))return;
-            if((rootFolder as any)?.type==='GDRIVE' && (!hasValidDriveToken() ||
-              (parsed.tabs.some(t=>t.path&&!t.driveFileId) && fileList.length===0)))return;
-            void restoreSessionTabs([], null, parsed.tabs, parsed.activeTabId, parsed.previewMode);
+        if (parsed && parsed.tabs.length > 0) {
+          void restoreSessionTabs([], null, parsed.tabs, parsed.activeTabId, parsed.previewMode);
+          return;
+        }
+      } catch (e) {
+        console.error('[desktop session restore] 실패:', e);
+      }
+      sessionRestoredRef.current = true;
+      return;
+    }
+
+    // 2. 일반 웹(Web SaaS) 환경:
+    try {
+      const parsed = readEditorSession(localStorage.getItem('onrivi_tabs_session'));
+      if (parsed && parsed.tabs.length > 0) {
+        const isDriveSession = (rootFolder as any)?.type === 'GDRIVE' ||
+          workspaceType === 'cloud' ||
+          parsed.tabs.some(t => t.driveFileId || (t.path && t.path.startsWith('GoogleDrive/')));
+
+        if (isDriveSession) {
+          // 🛡️ 웹드라이브가 아직 연결되지 않은 경우 최종 문서를 보여주지 않고 대기
+          const isDriveReady = (isDriveConnected || fileList.length > 0) &&
+            (rootFolder as any)?.type === 'GDRIVE' &&
+            hasValidDriveToken() &&
+            !isDriveAuthExpired;
+
+          if (!isDriveReady) {
+            // 웹드라이브 연결 전이므로 세션을 복원하지 않고 대기 (에디터에 최종 문서를 노출하지 않음)
+            return;
+          }
+        } else if (workspaceType === 'browser') {
+          // 브라우저 로컬 저장소 모드인 경우 핸들 준비 대기
+          if (!rootFolder || (rootFolder as any).needPermission || !rootFolder.handle) {
             return;
           }
         }
-      } catch (e) {
-        console.error('[web session restore] 실패:', e);
+
+        // 웹드라이브가 연결되었거나 브라우저 핸들이 준비된 순간 이전 세션 문서 복원!
+        void restoreSessionTabs([], null, parsed.tabs, parsed.activeTabId, parsed.previewMode);
+        return;
       }
-      sessionRestoredRef.current = true; // 복원할 정보 없으면 플래그 해제
+    } catch (e) {
+      console.error('[web session restore] 실패:', e);
     }
+    sessionRestoredRef.current = true; // 복원할 세션 정보가 없으면 완료 처리
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mounted, desktopSessionReady, rootFolder, fileList, isDriveAuthExpired]);
+  }, [mounted, desktopSessionReady, rootFolder, fileList, isDriveAuthExpired, isDriveConnected, workspaceType]);
 
   // ====================================================================
   // 📊 [OMD-IO-MainEditorApp-0039] MainEditorApp.tsx ➔ session_auto_save
@@ -9787,6 +9830,7 @@ blockquote li p {
     isRestrictedUser,
     connectGoogleDrive,
     disconnectGoogleDrive,
+    isDriveConnected,
     isDriveAuthExpired
   };
 

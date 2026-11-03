@@ -25,6 +25,9 @@ import {
  * [ONR-16-005] useFileExplorer 커스텀 훅
  * @description 워크스페이스 폴더 연결, IndexedDB 권한 복원, 파일 트리 스캔, 파일 열기 및 저장(I/O) 등의 책임을 전담합니다.
  */
+// 🚨 @PATCH : **2026-11-03** — [웹드라이브(GDRIVE) 실시간 연결 상태 추적 및 isDriveConnected 노출]:
+//             connectGoogleDrive 및 refreshFileList 성공 시 isDriveConnected를 true로 갱신하고 onrivi:drive_connected 이벤트 디스패치.
+//             토큰 만료·오류·연결해제 시 false 전환으로 웹 에디터 세션 복원 타이밍과 완벽 동기화.
 // 🚨 @PATCH : **2026-10-23** — [문서 링크 누락 대상 처리]: 미리보기에서 연 문서 링크는 경로를 엄격히 확인하고 같은 파일명 폴백 및 미존재 임시 탭 생성을 차단
 // 🚨 @PATCH : **2026-10-19** — [작업장 파일 자동저장 복구 및 플레이스홀더 수화 강화]: FileSystemAccess 경로 매칭 시 NFC 정규화 및 상대경로 직접 분해 적용, 기존 탭의 플레이스홀더('작업장 외부 문서 안내') 자동 감지 시 rootFolder.handle에서 실제 파일 즉각 수화(Hydration), handle 누락 시 rootFolder 자동 탐색 바인딩으로 저장 대화상자 불필요 팝업 차단
 // 🚨 @PATCH : **2026-10-24** — [구글 드라이브(GDRIVE/cloud) 문서 링크 및 상대경로 온디맨드 즉시 탐색·열기 지원]:
@@ -199,6 +202,7 @@ export const useFileExplorer = ({
   useEffect(() => { rootFolderRef.current = rootFolder; }, [rootFolder]);
 
   // 🛡️ [중복 새로고침 방어] 파일 변동 시 2중/3중 중복 새로고침 차단용 타임스탬프 및 락 ref
+  const [isDriveConnected, setIsDriveConnected] = useState<boolean>(false);
   const [isDriveAuthExpired, setIsDriveAuthExpired] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
     const savedRoot = localStorage.getItem('rootFolder');
@@ -270,6 +274,7 @@ export const useFileExplorer = ({
       if (rootFolderRef.current?.type !== 'GDRIVE' || expiryHandled) return;
       expiryHandled = true;
       setIsDriveAuthExpired(true);
+      setIsDriveConnected(false);
       try {
         const activeId = activeTabIdRef?.current;
         const currentVal = contentRef.current;
@@ -378,6 +383,7 @@ export const useFileExplorer = ({
         }
         if (!token || !hasValidDriveToken()) {
           setIsDriveAuthExpired(true);
+      setIsDriveConnected(false);
           return;
         }
         if (wsInfo?.workspaceFolderId) {
@@ -385,10 +391,13 @@ export const useFileExplorer = ({
             const driveNodes = await fetchDriveFileNodes(token, wsInfo.workspaceFolderId);
             setFileList(driveNodes);
             setIsDriveAuthExpired(false);
+            setIsDriveConnected(true);
+            window.dispatchEvent(new CustomEvent('onrivi:drive_connected', { detail: { nodes: driveNodes } }));
             console.log(`[refreshFileList] ✅ 구글 드라이브 파일 목록 갱신 완료 (${driveNodes.length}개 노드)`);
           } catch (err) {
             console.error('[refreshFileList GDRIVE Error]', err);
             setIsDriveAuthExpired(true);
+      setIsDriveConnected(false);
           }
         }
         return;
@@ -2049,6 +2058,8 @@ export const useFileExplorer = ({
       setIsSidebarOpen(true);
       reportClientLog('구글 드라이브 연결 완료', 'INFO', 'DRIVE_CONNECT');
       showToast(`구글 드라이브에 연결되었습니다. (${wsInfo.userEmail || '연결 완료'})`, "success");
+      setIsDriveConnected(true);
+      window.dispatchEvent(new CustomEvent('onrivi:drive_connected', { detail: { nodes: driveNodes } }));
       console.log(`[connectGoogleDrive] ✅ 구글 드라이브 연결 완료! (${wsInfo.userEmail || '연결됨'}), 파일 수: ${driveNodes.length}`);
 
       if (isLocal) {
@@ -2061,6 +2072,7 @@ export const useFileExplorer = ({
       localStorage.removeItem('onrivi_gdrive_access_token');
       localStorage.removeItem('onrivi_gdrive_token_expires_at');
       sessionStorage.removeItem('onrivi_gdrive_access_token');
+      setIsDriveConnected(false);
       reportClientLog(err.message || '구글 드라이브 연결 실패', 'ERROR', 'DRIVE_CONNECT');
       console.error('[connectGoogleDrive Error]', err);
       showToast(`구글 드라이브 ${stage} 실패: ${err.message || '잠시 후 다시 시도해 주세요.'}`, "error");
@@ -2181,6 +2193,7 @@ export const useFileExplorer = ({
       setIsSidebarOpen(true);
       // 🛡️ 로컬 작업장 파일 목록 즉시 갱신
       await refreshFileList(true);
+      setIsDriveConnected(false);
       showToast('구글 드라이브 연결을 해제하고 내 PC 로컬 작업장으로 돌아왔습니다.', 'success');
     } catch (err: any) {
       console.error('[disconnectGoogleDrive Error]', err);
@@ -2479,6 +2492,7 @@ export const useFileExplorer = ({
     saveFile,
     connectGoogleDrive,
     disconnectGoogleDrive,
-    isDriveAuthExpired
+    isDriveAuthExpired,
+    isDriveConnected
   };
 };
