@@ -1,6 +1,10 @@
 /**
  * 프로그램명 : OnriviAuthor
  * 파일명 : app/admin/components/SystemTab.tsx
+ * 🚨 @PATCH : **2026-11-03** — [최종 100건 실시간 스트림 & 프로드/미리보기 선택 탭 & 과거 로그 날짜별 다운로드 지원]:
+ *             1. 로그 조회 한도 100건 확장 및 최신순 실시간 표시
+ *             2. 환경 필터(전체 / 운영 PROD / 미리보기 PREVIEW) 토글 탭 탑재 및 로그별 환경 뱃지 표기
+ *             3. 최근 30일 과거 날짜 선택 드롭다운 및 원클릭 JSON 파일 다운로드(handleDownloadLogs) 연동
  * 🚨 @PATCH : 2026-11-01 — 서버 오류 상세에 소스 파일·단계·PostgreSQL 오류 코드를 표시한다.
  * -----------------------------------------------------------------------
  * 🚨 @PATCH : **2026-10-08** — [시스템 현황 및 실시간 로그 가독성 극대화 & 고대비 라이트 모드 리팩토링]:
@@ -29,7 +33,9 @@ import {
   Play,
   Pause,
   User,
-  ShieldAlert
+  ShieldAlert,
+  Download,
+  Calendar
 } from 'lucide-react';
 import { adminFetch } from '@/lib/adminFetch';
 import { showToast } from '@/utils/toast';
@@ -66,6 +72,8 @@ interface SystemStats {
 }
 
 interface SystemLogItem {
+  environment?: 'PROD' | 'PREVIEW';
+  hostname?: string;
   db_code?: string;
   source_file?: string;
   source_function?: string;
@@ -141,6 +149,10 @@ export default function SystemTab() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [detailLog, setDetailLog] = useState<SystemLogItem | null>(null);
   const [lastFetchedAt, setLastFetchedAt] = useState<string>('');
+  const [envFilter, setEnvFilter] = useState<'all' | 'prod' | 'preview'>('all');
+  const [availableDates, setAvailableDates] = useState<string[]>([]);
+  const [selectedDate, setSelectedDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const fetchSystemData = useCallback(async (isSilent = false) => {
     try {
@@ -148,7 +160,10 @@ export default function SystemTab() {
       const params = new URLSearchParams({
         source,
         level: levelFilter,
-        search: search.trim()
+        search: search.trim(),
+        env: envFilter,
+        date: selectedDate,
+        limit: '100'
       });
 
       const res = await adminFetch(`/api/admin/system?${params.toString()}`);
@@ -179,7 +194,7 @@ export default function SystemTab() {
     } finally {
       if (!isSilent) setLoading(false);
     }
-  }, [levelFilter, search, source]);
+  }, [levelFilter, search, source, envFilter, selectedDate]);
 
   useEffect(() => {
     fetchSystemData(false);
@@ -193,6 +208,30 @@ export default function SystemTab() {
     }, 3000);
     return () => clearInterval(interval);
   }, [isAutoRefresh, fetchSystemData]);
+
+
+  const handleDownloadLogs = async () => {
+    try {
+      setIsDownloading(true);
+      const res = await adminFetch(`/api/admin/system?action=download&date=${selectedDate}&env=${envFilter}`);
+      if (!res.ok) throw new Error(`로그 다운로드 실패 (HTTP ${res.status})`);
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `onrivi-logs-${envFilter}-${selectedDate}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+      showToast(`${selectedDate} (${envFilter.toUpperCase()}) 로그 파일이 다운로드되었습니다.`, 'success');
+    } catch (err: any) {
+      console.error('Download log error:', err);
+      showToast(err.message || '로그 다운로드 중 오류가 발생했습니다.', 'error');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -357,12 +396,70 @@ export default function SystemTab() {
             </div>
             <Terminal className="w-4 h-4 text-blue-700 dark:text-blue-400" />
             <h4 className="text-sm font-extrabold text-zinc-950 dark:text-zinc-50 tracking-wider">
-              {source === 'server' ? '서버 API 로그' : '관리자 활동 기록'} ({logs.length}건)
+              {source === 'server' ? `서버 API 로그 (최종 ${logs.length}건 실시간)` : '관리자 활동 기록'} ({logs.length}건)
             </h4>
           </div>
 
           {/* 콘솔 필터 및 검색 */}
           <div className="flex flex-wrap items-center gap-2.5">
+            {/* 🌐 환경 선택 (전체 / 운영 PROD / 미리보기 PREVIEW) */}
+            {source === 'server' && (
+              <div className="flex items-center p-0.5 rounded-lg bg-zinc-200 dark:bg-zinc-700 border border-zinc-300 dark:border-zinc-600 text-xs font-bold">
+                {([
+                  { key: 'all', label: '전체' },
+                  { key: 'prod', label: '운영 (PROD)' },
+                  { key: 'preview', label: '미리보기 (PREVIEW)' }
+                ] as const).map(envItem => (
+                  <button
+                    key={envItem.key}
+                    onClick={() => setEnvFilter(envItem.key)}
+                    className={`px-2.5 py-1.5 rounded-md transition-colors text-xs ${
+                      envFilter === envItem.key
+                        ? envItem.key === 'prod'
+                          ? 'bg-emerald-600 text-white font-extrabold shadow-xs'
+                          : envItem.key === 'preview'
+                          ? 'bg-purple-600 text-white font-extrabold shadow-xs'
+                          : 'bg-zinc-800 text-white font-extrabold shadow-xs'
+                        : 'text-zinc-700 dark:text-zinc-300 hover:text-zinc-950'
+                    }`}
+                  >
+                    {envItem.label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* 📅 과거 날짜 선택 드롭다운 */}
+            {source === 'server' && (
+              <div className="flex items-center gap-1.5 bg-zinc-100 dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-600 rounded-lg px-2 py-1">
+                <Calendar className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                <select
+                  value={selectedDate}
+                  onChange={e => setSelectedDate(e.target.value)}
+                  className="bg-transparent text-xs font-bold text-zinc-800 dark:text-zinc-200 outline-none cursor-pointer"
+                  title="조회할 로그 날짜 선택"
+                >
+                  <option value={new Date().toISOString().slice(0, 10)}>오늘 ({new Date().toISOString().slice(0, 10)})</option>
+                  {availableDates.filter(d => d !== new Date().toISOString().slice(0, 10)).map(d => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* 💾 과거 로그 파일 다운로드 버튼 */}
+            {source === 'server' && (
+              <button
+                onClick={handleDownloadLogs}
+                disabled={isDownloading}
+                className="px-3 py-1.5 rounded-lg border border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 text-blue-700 dark:text-blue-300 text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs disabled:opacity-50"
+                title="${selectedDate} 로그 전체를 JSON 파일로 다운로드합니다."
+              >
+                <Download className={`w-3.5 h-3.5 ${isDownloading ? 'animate-bounce' : ''}`} />
+                <span>다운로드</span>
+              </button>
+            )}
+
             {/* 레벨 필터 */}
             <div className="flex items-center p-0.5 rounded-lg bg-zinc-200 dark:bg-zinc-700 border border-zinc-300 dark:border-zinc-600 text-xs font-bold">
               {(['ALL', 'WARN', 'ERROR'] as const).map(lvl => (
@@ -417,6 +514,19 @@ export default function SystemTab() {
                   <span className="text-zinc-600 dark:text-zinc-400 font-mono text-xs font-bold shrink-0 bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded">
                     {formatTimestamp(log.timestamp)}
                   </span>
+
+                  {/* 환경 뱃지 (PROD / PREVIEW) */}
+                  {log.environment && (
+                    <span
+                      className={`px-2 py-0.5 rounded text-2xs font-black tracking-wider uppercase border shrink-0 ${
+                        log.environment === 'PROD'
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                          : 'bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border-purple-300 dark:border-purple-700'
+                      }`}
+                    >
+                      {log.environment}
+                    </span>
+                  )}
 
                   {/* 레벨 뱃지 */}
                   <span

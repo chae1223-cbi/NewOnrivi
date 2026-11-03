@@ -1,3 +1,8 @@
+// 🚨 @PATCH : **2026-11-03** — [최신 100건 실시간 로그 & 프로드/미리보기 선택 & 과거 로그 다운로드 API]:
+//             1) 실시간 로그 최대 표시 건수를 60건 -> 최종 100건(최신순 정렬)으로 확장
+//             2) env(all/prod/preview) 선택 필터 완벽 지원
+//             3) action=download 엔드포인트 지원으로 특정 날짜의 로그를 JSON 파일로 브라우저 원클릭 다운로드
+//             4) 최근 로그가 존재하는 과거 날짜 목록(availableDates) 자동 추출 반환
 // 🚨 @PATCH : **2026-11-03** — [프로덕션/미리보기 로그 분리 및 동일 30일 삭제 지원]: onRequestDelete에서 정규식 날짜 추출로 prod/preview 분리 경로 모두에 30일 수명주기 동일 적용
 // 🚨 @PATCH : **2026-11-03** — [오래된 시스템 로그 30일 자동/수동 정리 API 구축]: onRequestDelete 추가로 30일 경과된 _system-logs R2 로그 일괄 정리
 // 🚨 @PATCH : 2026-11-02 — 시스템 API 예외 원문 대신 공통 안전 오류와 요청 ID를 반환
@@ -17,8 +22,40 @@ export async function onRequestGet(context) {
     }
 
     const url = new URL(request.url);
+    const action = url.searchParams.get('action'); // 'download' 지원
+    const envFilter = url.searchParams.get('env') || 'all'; // all, prod, preview
     const filterLevel = url.searchParams.get('level') || 'ALL'; // ALL, INFO, WARN, ERROR
     const search = (url.searchParams.get('search') || '').trim().toLowerCase();
+    const limit = Math.min(200, Math.max(1, parseInt(url.searchParams.get('limit') || '100', 10)));
+
+    // ── [과거 로그 파일 다운로드 (action=download)] ─────────────────────────────
+    if (action === 'download' && env.R2_BUCKET) {
+      const targetDate = url.searchParams.get('date') || new Date().toISOString().slice(0, 10);
+      const downloadPrefixes = envFilter === 'prod'
+        ? [`_system-logs/prod/${targetDate}/`]
+        : envFilter === 'preview'
+        ? [`_system-logs/preview/${targetDate}/`]
+        : [`_system-logs/prod/${targetDate}/`, `_system-logs/preview/${targetDate}/`, `_system-logs/${targetDate}/`];
+
+      const listings = await Promise.all(downloadPrefixes.map(prefix => env.R2_BUCKET.list({ prefix, limit: 1000 })));
+      const objects = listings.flatMap(l => l.objects);
+      const logItems = (await Promise.all(objects.map(async obj => {
+        const stored = await env.R2_BUCKET.get(obj.key);
+        return stored ? await stored.json() : null;
+      }))).filter(Boolean);
+
+      logItems.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+
+      const filename = `onrivi-logs-${envFilter}-${targetDate}.json`;
+      return new Response(JSON.stringify(logItems, null, 2), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Content-Disposition': `attachment; filename="${filename}"`,
+          'Cache-Control': 'no-store',
+        }
+      });
+    }
 
     // 1. 시스템 헬스체크 및 DB 메트릭 측정
     const dbStartTime = Date.now();
@@ -198,11 +235,13 @@ export async function onRequestGet(context) {
     return apiJson({
       success: true,
       logError,
-      logScope: 'API·브라우저 오류 기록 · 오늘(한국 시간) 조회 범위 내 조건별 최근 60건 · 콘솔/시작 로그 제외',
+      logScope: `실시간 시스템 로그 (최종 ${limit}건) · 환경: ${envFilter.toUpperCase()}`,
       health,
       stats,
-      logs: filteredLogs.slice(0,60),
-      total_logs: Math.min(filteredLogs.length, 60),
+      availableDates,
+      env: envFilter,
+      logs: filteredLogs.slice(0, limit),
+      total_logs: filteredLogs.length,
       asOf: new Date().toISOString()
     });
   } catch (error) {
