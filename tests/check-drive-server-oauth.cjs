@@ -162,8 +162,16 @@ const cookieValue = (response, name) => response.headers.getSetCookie().find(v =
   const evilReq = await handle(new Request('https://malicious-site.com/api/gdrive/oauth/start?browser_state=' + browserState), env);
   assert.equal(evilReq.status, 400, 'unauthorized origin should be blocked');
 
+  // ─── 14. GOOGLE_DRIVE_ALLOWED_DOMAINS 환경변수 커스텀 도메인 동적 바인딩 검증 ───
+  const customEnv = { ...env, GOOGLE_DRIVE_ALLOWED_DOMAINS: 'custom-partner.com, staging.corp' };
+  const customReq = await handle(new Request('https://app.custom-partner.com/api/gdrive/oauth/start?browser_state=' + browserState), customEnv);
+  assert.equal(customReq.status, 302, 'custom env allowed domain should be allowed');
+  const customGoogle = new URL(customReq.headers.get('Location'));
+  assert.equal(customGoogle.searchParams.get('redirect_uri'), 'https://app.custom-partner.com/api/gdrive/oauth/callback');
+
   console.log('PASS: other-account save authentication and COOP polling preserve the workspace refresh session');
   console.log('PASS: Cloudflare Pages preview subdomain (dev01) dynamic redirect URI & evil origin defense');
+  console.log('PASS: GOOGLE_DRIVE_ALLOWED_DOMAINS custom environment variable resolution');
   console.log('PASS: OAuth state/PKCE, encrypted storage, cookie session, CSRF, real refresh grant, concurrent deduplication, desktop one-use handoff, revoked grant, disconnect');
 })().catch(error => {
   console.error(error);

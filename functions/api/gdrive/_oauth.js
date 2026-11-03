@@ -2,8 +2,10 @@
 // 📊 [OMD-API-gdrive-oauth-0001] functions/api/gdrive/_oauth.js
 // 🎯 @KICK  : Google Drive 서버 사이드 OAuth 인증 및 토큰 자동 연장 핸들러
 // 🛡️ @GUARD : Cloudflare Pages 미리보기(dev01 등 *.pages.dev) 및 프로덕션/로컬 다중 오리진 동적 허용, 리프레시 토큰 AES-GCM 암호화
+// 🚨 @PATCH : 2026-11-03 — [도메인 환경변수화] GOOGLE_DRIVE_ALLOWED_DOMAINS 환경변수 지원 (미설정 시 기본 도메인 안전 폴백)
 // 🚨 @PATCH : 2026-11-03 — [미리보기 오리진 지원] dev01 등 *.onriviauthor.pages.dev 서브도메인의 동적 리디렉션 URI 자동 바인딩
 // 🚨 @PATCH : 2026-10-15 — 최초 구글 드라이브 서버 OAuth 커널 구축
+// 🔗 @CALLS : Google OAuth 2.0 API, Cloudflare R2 Bucket, Web Crypto API (SubtleCrypto)
 // ====================================================================
 
 // Shared by Cloudflare Pages Functions and the local Next.js server.
@@ -173,18 +175,25 @@ export async function handleDriveOAuth(request, env) {
 
   // ─── 1. 접속 도메인 및 리디렉션 URI 동적 검증 ─────────────
   const url = new URL(request.url), configuredRedirect = new URL(env.GOOGLE_DRIVE_REDIRECT_URI);
-  const isPagesDevSubdomain = url.hostname.endsWith('.onriviauthor.pages.dev') || url.hostname === 'onriviauthor.pages.dev';
-  const isOnriviSubdomain = url.hostname.endsWith('.onrivi.com') || url.hostname === 'onrivi.com';
+
+  // 환경변수(GOOGLE_DRIVE_ALLOWED_DOMAINS)로부터 허용 도메인 파싱 (쉼표 구분, 기본값: onriviauthor.pages.dev,onrivi.com)
+  const allowedDomains = (env.GOOGLE_DRIVE_ALLOWED_DOMAINS || 'onriviauthor.pages.dev,onrivi.com')
+    .split(',')
+    .map(domain => domain.trim().toLowerCase())
+    .filter(Boolean);
+
+  // 요청 도메인이 허용 목록에 완벽히 일치하거나 해당 도메인의 서브도메인인지 판별 (예: dev01.onriviauthor.pages.dev)
+  const isAllowedDomain = allowedDomains.some(domain => url.hostname === domain || url.hostname.endsWith(`.${domain}`));
   const isLocalDev = (url.hostname === '127.0.0.1' || url.hostname === 'localhost') && (configuredRedirect.hostname === 'localhost' || configuredRedirect.hostname === '127.0.0.1');
   const isSameOrigin = url.origin === configuredRedirect.origin;
 
-  // 허용된 온리비 공식 도메인, Pages 미리보기, 로컬 개발 환경 이외의 출처는 엄격 차단
-  if (!isLocalDev && !isPagesDevSubdomain && !isOnriviSubdomain && !isSameOrigin) {
+  // 허용 도메인, 로컬 개발 환경, 동일 오리진 이외의 외부 출처는 엄격 차단 (400 Bad Request)
+  if (!isLocalDev && !isAllowedDomain && !isSameOrigin) {
     return json({ error: '인증 서버 주소가 설정과 다릅니다.' }, 400);
   }
 
-  // 미리보기 서브도메인(dev01 등) 접속 시 해당 오리진에 맞추어 리디렉션 URI 동적 매핑
-  const redirect = (isPagesDevSubdomain || isOnriviSubdomain || isLocalDev)
+  // 허용 도메인(미리보기 서브도메인 포함) 및 로컬 환경인 경우 요청 오리진에 맞추어 리디렉션 URI 동적 매핑
+  const redirect = (isAllowedDomain || isLocalDev)
     ? new URL(`${url.origin}${configuredRedirect.pathname}`)
     : configuredRedirect;
   const origin = redirect.origin, secure = redirect.protocol === 'https:';
