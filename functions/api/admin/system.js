@@ -1,3 +1,4 @@
+// 🚨 @PATCH : **2026-11-03** — [프로덕션/미리보기 로그 분리 및 동일 30일 삭제 지원]: onRequestDelete에서 정규식 날짜 추출로 prod/preview 분리 경로 모두에 30일 수명주기 동일 적용
 // 🚨 @PATCH : **2026-11-03** — [오래된 시스템 로그 30일 자동/수동 정리 API 구축]: onRequestDelete 추가로 30일 경과된 _system-logs R2 로그 일괄 정리
 // 🚨 @PATCH : 2026-11-02 — 시스템 API 예외 원문 대신 공통 안전 오류와 요청 ID를 반환
 // 🚨 @PATCH : 2026-10-08 — 시스템 현황 모니터링 및 실시간 서버/DB/R2 헬스체크 & 로그 조회 API 신규 구축
@@ -124,7 +125,13 @@ export async function onRequestGet(context) {
         const koreaDate = new Date(now.getTime() + 9*3600000).toISOString().slice(0,10);
         const start = Date.parse(koreaDate + 'T00:00:00+09:00');
         const dates = [...new Set([new Date(start).toISOString().slice(0,10), new Date(start+86400000-1).toISOString().slice(0,10)])];
-        const listings = await Promise.all(dates.map(date => env.R2_BUCKET.list({ prefix: `_system-logs/${date}/`, limit: 1000 })));
+        const envFilter = url.searchParams.get('env') || 'all'; // all, prod, preview
+        const prefixes = envFilter === 'prod'
+          ? dates.map(d => `_system-logs/prod/${d}/`)
+          : envFilter === 'preview'
+          ? dates.map(d => `_system-logs/preview/${d}/`)
+          : [...dates.map(d => `_system-logs/prod/${d}/`), ...dates.map(d => `_system-logs/preview/${d}/`), ...dates.map(d => `_system-logs/${d}/`)];
+        const listings = await Promise.all(prefixes.map(prefix => env.R2_BUCKET.list({ prefix, limit: 1000 })));
         const listing = { objects: listings.flatMap(l=>l.objects), truncated: listings.some(l=>l.truncated) };
         const newest = listing.objects.filter(object => { const stamp = Date.parse(object.key.split('/').pop().split('_')[0]); return stamp >= start && stamp < start+86400000; }).sort((a,b)=>b.key.localeCompare(a.key)).slice(0,1000);
         serverLogs = (await Promise.all(newest.map(async object => {
@@ -240,8 +247,9 @@ export async function onRequestDelete(context) {
 
       const keysToDelete = [];
       for (const obj of listing.objects) {
-        const parts = obj.key.split('/');
-        const logDate = parts[1];
+        // _system-logs/{prod|preview}/YYYY-MM-DD/ 및 _system-logs/YYYY-MM-DD/ 형식 모두 지원
+        const dateMatch = obj.key.match(/(\d{4}-\d{2}-\d{2})/);
+        const logDate = dateMatch ? dateMatch[1] : null;
         if (logDate && logDate < cutoffDateStr) {
           keysToDelete.push(obj.key);
         }
