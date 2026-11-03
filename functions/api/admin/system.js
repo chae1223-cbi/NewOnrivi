@@ -1,3 +1,4 @@
+// 🚨 @PATCH : **2026-11-04** — [키 타임스탬프 기반 정렬 및 ALL 레벨 정상 지원]: prod/preview 알파벳 역전 방어 및 INFO 로그 필터링 복원
 // 🚨 @PATCH : **2026-11-04** — [KST 기준 오늘 일자 보장 및 자정 직후 연속 조회 지원]: availableDates에 오늘(KST) 무조건 포함, 오늘 조회 시 어제 로그도 병합 조회
 // 🚨 @PATCH : **2026-11-04** — [R2 시스템 로그 적재 토글 상태(logging_enabled) 반환]: ENABLE_R2_LOGS 환경변수 상태를 헬스체크 및 응답에 포함
 // 🚨 @PATCH : **2026-11-03** — [최종 100건 실시간 스트림 & 프로드/미리보기 선택 & 과거 로그 다운로드 API]:
@@ -210,7 +211,8 @@ export async function onRequestGet(context) {
 
         const allObjects = listings.flatMap(l => l.objects || []);
         // 최신순으로 정렬
-        allObjects.sort((a, b) => b.key.localeCompare(a.key));
+        const getTimeFromKey = (k) => k.match(/(\d{4}-\d{2}-\d{2}T[\d:.]+Z?)/)?.[1] || k;
+        allObjects.sort((a, b) => getTimeFromKey(b.key).localeCompare(getTimeFromKey(a.key)));
         const targetObjects = allObjects.slice(0, limit);
 
         const loadedLogs = await Promise.all(
@@ -242,7 +244,6 @@ export async function onRequestGet(context) {
     serverLogs = serverLogs.filter(entry => !(entry.status < 400 && ['/api/device/session-status','/api/license/check-session'].includes(entry.route)));
     // 필터링 적용
     let filteredLogs = source === 'server' ? serverLogs : logs;
-    filteredLogs = filteredLogs.filter(l => l.level === 'WARN' || l.level === 'ERROR');
     if (filterLevel !== 'ALL') {
       filteredLogs = filteredLogs.filter(l => l.level === filterLevel);
     }

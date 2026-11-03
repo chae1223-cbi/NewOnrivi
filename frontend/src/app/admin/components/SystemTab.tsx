@@ -195,7 +195,7 @@ export default function SystemTab() {
             actor: safeText(l.actor),
             target: safeText(l.target)
           }));
-          setLogs(normalized.filter((log: SystemLogItem) => log.level === 'WARN' || log.level === 'ERROR'));
+          setLogs(levelFilter === 'ALL' ? normalized : normalized.filter((log: SystemLogItem) => log.level === levelFilter));
         }
         setLastFetchedAt(new Date().toLocaleTimeString());
       }
