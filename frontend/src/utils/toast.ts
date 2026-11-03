@@ -1,3 +1,4 @@
+// 🚨 @PATCH : 2026-11-04 — [서버 오류 중복 기록 방지] 서버가 이미 기록한 실패는 토스트를 표시하되 클라이언트 오류 로그를 반복 적재하지 않음
 // 🚨 @PATCH : **2026-11-04** — [호출자 스택 자동 추적으로 실제 에러 발생 파일/함수/라인 자동 전달]: toast.ts 대신 실제 호출 소스 기록
 // 🚨 @PATCH : **2026-11-04** — [동일 에러 토스트 10초 디바운스]: 반복 호출 시 중복 시스템 로깅 억제
 import { reportClientLog } from '@/lib/clientLogs';
@@ -114,7 +115,7 @@ function extractCallerLocation(skipDepth = 2): { file: string; func: string; lin
   return { file: 'toast.ts', func: 'showToast', line: '0' };
 }
 
-export const showToast = (message: string, type: ToastType = 'info', explicitTarget?: string) => {
+export const showToast = (message: string, type: ToastType = 'info', explicitTarget?: string, alreadyLogged = false) => {
   if (typeof window === 'undefined') return;
   const driveAuthNotice = (type==='error' || type==='warning') && /구글\s*드라이브|Google Drive/i.test(message)
     && /인증.*만료|연결.*갱신|재인증/.test(message);
@@ -124,7 +125,7 @@ export const showToast = (message: string, type: ToastType = 'info', explicitTar
     message='개인 웹드라이브 인증을 갱신해 주세요. 연결 해제 없이 파일 메뉴의 [개인 웹드라이브 연결]에서 다시 인증할 수 있습니다.';
     type='warning';
   }
-  if (type === 'error' || type === 'warning') {
+  if (!alreadyLogged && (type === 'error' || type === 'warning')) {
     const now = Date.now();
     const isDuplicate = (message === lastErrorLogMessage) && (now - lastErrorLogTime < 10000);
     if (!isDuplicate) {

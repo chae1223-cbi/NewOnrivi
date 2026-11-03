@@ -1,3 +1,4 @@
+// 🚨 @PATCH : 2026-11-04 — [관리자 목록 오류 중복 기록 방지] 서버 500 응답은 서버 로그를 기준으로 추적하고 토스트의 별도 오류 로그는 생략
 /** 🚨 @PATCH : 2026-11-02 — [보안 리팩토링] 서버 응답의 is_root 플래그 기반 최상위 관리자 판별 지원 */
 /** 🚨 @PATCH : 2026-11-02 — [관리자 API 호출 규격 정리] 권한 변경/회수 시 불필요한 targetEmail, adminId 클라이언트 전달 제거 */
 /** 🚨 @PATCH : 2026-11-02 — 최상위 관리자 이메일 하드코딩을 제거하고 isRootAdmin(@/constants/admin) 상수 헬퍼로 전환 */
@@ -46,6 +47,7 @@ export default function AdminsTab() {
 
   const fetchAdmins = async () => {
     setLoading(true);
+    let serverErrorAlreadyLogged = false;
     try {
       const { data: { session } } = await supabase.auth.getSession();
       setCurrentAdminId(session?.user?.id || null);
@@ -64,10 +66,11 @@ export default function AdminsTab() {
       if (res.ok && json.success) {
         setAdmins(json.data);
       } else {
+        serverErrorAlreadyLogged = res.status >= 500;
         throw new Error(json.error || '관리자 목록을 불러오지 못했습니다.');
       }
     } catch (err: any) {
-      showToast(err.message || '네트워크 오류가 발생했습니다.', 'error');
+      showToast(err.message || '네트워크 오류가 발생했습니다.', 'error', undefined, serverErrorAlreadyLogged);
     } finally {
       setLoading(false);
     }
