@@ -1,8 +1,8 @@
-// 🚨 @PATCH : **2026-11-03** — [최신 100건 실시간 로그 & 프로드/미리보기 선택 & 과거 로그 다운로드 API]:
+// 🚨 @PATCH : **2026-11-03** — [최종 100건 실시간 스트림 & 프로드/미리보기 선택 & 과거 로그 다운로드 API]:
 //             1) 실시간 로그 최대 표시 건수를 60건 -> 최종 100건(최신순 정렬)으로 확장
 //             2) env(all/prod/preview) 선택 필터 완벽 지원
 //             3) action=download 엔드포인트 지원으로 특정 날짜의 로그를 JSON 파일로 브라우저 원클릭 다운로드
-//             4) 최근 로그가 존재하는 과거 날짜 목록(availableDates) 자동 추출 반환
+//             4) 최근 로그가 존재하는 과거 날짜 목록(availableDates) 자동 추출 반환 및 빈 R2 버킷 500 에러 방어
 // 🚨 @PATCH : **2026-11-03** — [프로덕션/미리보기 로그 분리 및 동일 30일 삭제 지원]: onRequestDelete에서 정규식 날짜 추출로 prod/preview 분리 경로 모두에 30일 수명주기 동일 적용
 // 🚨 @PATCH : **2026-11-03** — [오래된 시스템 로그 30일 자동/수동 정리 API 구축]: onRequestDelete 추가로 30일 경과된 _system-logs R2 로그 일괄 정리
 // 🚨 @PATCH : 2026-11-02 — 시스템 API 예외 원문 대신 공통 안전 오류와 요청 ID를 반환
@@ -37,11 +37,17 @@ export async function onRequestGet(context) {
         ? [`_system-logs/preview/${targetDate}/`]
         : [`_system-logs/prod/${targetDate}/`, `_system-logs/preview/${targetDate}/`, `_system-logs/${targetDate}/`];
 
-      const listings = await Promise.all(downloadPrefixes.map(prefix => env.R2_BUCKET.list({ prefix, limit: 1000 })));
-      const objects = listings.flatMap(l => l.objects);
+      const listings = await Promise.all(
+        downloadPrefixes.map(prefix => env.R2_BUCKET.list({ prefix, limit: 1000 }).catch(() => ({ objects: [] })))
+      );
+      const objects = listings.flatMap(l => l.objects || []);
       const logItems = (await Promise.all(objects.map(async obj => {
-        const stored = await env.R2_BUCKET.get(obj.key);
-        return stored ? await stored.json() : null;
+        try {
+          const stored = await env.R2_BUCKET.get(obj.key);
+          return stored ? await stored.json() : null;
+        } catch {
+          return null;
+        }
       }))).filter(Boolean);
 
       logItems.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
@@ -66,7 +72,7 @@ export async function onRequestGet(context) {
     let rawAuditLogs = [];
 
     try {
-      const result = await withDbTransaction(env, async db => {
+      await withDbTransaction(env, async db => {
         const pingRes = await db.query(`SELECT version() as ver, now() as db_time`);
         dbLatencyMs = Date.now() - dbStartTime;
         if (pingRes.rows[0]) {
@@ -116,7 +122,12 @@ export async function onRequestGet(context) {
     let r2Status = 'OFFLINE';
     let r2Details = { binding: 'R2_BUCKET', bucket: 'onrivi-images' };
     if (env.R2_BUCKET) {
-      try { await env.R2_BUCKET.list({ prefix: '_system-logs/', limit: 1 }); r2Status = 'ONLINE'; } catch { r2Status = 'OFFLINE'; }
+      try {
+        await env.R2_BUCKET.list({ prefix: '_system-logs/', limit: 1 });
+        r2Status = 'ONLINE';
+      } catch {
+        r2Status = 'OFFLINE';
+      }
     }
 
     // 3. Hyperdrive 연결 풀러 상태
@@ -154,30 +165,76 @@ export async function onRequestGet(context) {
     });
 
     const source = url.searchParams.get('source') || 'server';
+    const koreaToday = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+    const reqDate = url.searchParams.get('date') || koreaToday;
+    let availableDates = [koreaToday];
     let serverLogs = [];
     let logError = null;
+
+    // R2에 실제로 존재하는 최근 날짜 목록 안전 스캔
+    if (env.R2_BUCKET) {
+      try {
+        const scan = await env.R2_BUCKET.list({ prefix: '_system-logs/', limit: 300 });
+        const dateSet = new Set();
+        for (const obj of (scan.objects || [])) {
+          const match = obj.key.match(/(\d{4}-\d{2}-\d{2})/);
+          if (match) dateSet.add(match[1]);
+        }
+        if (dateSet.size > 0) {
+          availableDates = Array.from(dateSet).sort().reverse();
+        }
+      } catch (scanErr) {
+        console.warn('[SystemAPI] R2 dates scan warning:', scanErr);
+      }
+    }
+
     if (source === 'server' && env.R2_BUCKET) {
       try {
-        const now = new Date();
-        const koreaDate = new Date(now.getTime() + 9*3600000).toISOString().slice(0,10);
-        const start = Date.parse(koreaDate + 'T00:00:00+09:00');
-        const dates = [...new Set([new Date(start).toISOString().slice(0,10), new Date(start+86400000-1).toISOString().slice(0,10)])];
-        const envFilter = url.searchParams.get('env') || 'all'; // all, prod, preview
+        const targetDates = [reqDate];
         const prefixes = envFilter === 'prod'
-          ? dates.map(d => `_system-logs/prod/${d}/`)
+          ? targetDates.map(d => `_system-logs/prod/${d}/`)
           : envFilter === 'preview'
-          ? dates.map(d => `_system-logs/preview/${d}/`)
-          : [...dates.map(d => `_system-logs/prod/${d}/`), ...dates.map(d => `_system-logs/preview/${d}/`), ...dates.map(d => `_system-logs/${d}/`)];
-        const listings = await Promise.all(prefixes.map(prefix => env.R2_BUCKET.list({ prefix, limit: 1000 })));
-        const listing = { objects: listings.flatMap(l=>l.objects), truncated: listings.some(l=>l.truncated) };
-        const newest = listing.objects.filter(object => { const stamp = Date.parse(object.key.split('/').pop().split('_')[0]); return stamp >= start && stamp < start+86400000; }).sort((a,b)=>b.key.localeCompare(a.key)).slice(0,1000);
-        serverLogs = (await Promise.all(newest.map(async object => {
-          const stored = await env.R2_BUCKET.get(object.key);
-          return stored ? await stored.json() : null;
-        }))).filter(entry => entry && Date.parse(entry.timestamp) >= start && Date.parse(entry.timestamp) < start+86400000);
-        if (listing.truncated) logError = '오늘 기록 중 일부만 표시됩니다. 조회 한도를 초과했습니다. 이 화면의 검색 결과에는 누락이 있을 수 있습니다.';
-      } catch { logError = '서버 로그 저장소를 조회하지 못했습니다.'; }
-    } else if (source === 'server') logError = '서버 로그 저장소가 연결되지 않았습니다.';
+          ? targetDates.map(d => `_system-logs/preview/${d}/`)
+          : [
+              ...targetDates.map(d => `_system-logs/prod/${d}/`),
+              ...targetDates.map(d => `_system-logs/preview/${d}/`),
+              ...targetDates.map(d => `_system-logs/${d}/`)
+            ];
+
+        const listings = await Promise.all(
+          prefixes.map(prefix => env.R2_BUCKET.list({ prefix, limit: 200 }).catch(() => ({ objects: [] })))
+        );
+
+        const allObjects = listings.flatMap(l => l.objects || []);
+        // 최신순으로 정렬
+        allObjects.sort((a, b) => b.key.localeCompare(a.key));
+        const targetObjects = allObjects.slice(0, limit);
+
+        const loadedLogs = await Promise.all(
+          targetObjects.map(async obj => {
+            try {
+              const item = await env.R2_BUCKET.get(obj.key);
+              return item ? await item.json() : null;
+            } catch {
+              return null;
+            }
+          })
+        );
+
+        serverLogs = loadedLogs.filter(Boolean);
+        // 최신 타임스탬프 내림차순 정렬
+        serverLogs.sort((a, b) => (b.timestamp || '').localeCompare(a.timestamp || ''));
+
+        if (listings.some(l => l.truncated)) {
+          logError = '기록 중 일부만 표시됩니다. 조회 한도를 초과했습니다.';
+        }
+      } catch (r2Err) {
+        console.error('[SystemAPI] R2 logs fetch error:', r2Err);
+        logError = '서버 로그 저장소 조회 중 일시적인 오류가 발생했습니다.';
+      }
+    } else if (source === 'server') {
+      logError = '서버 로그 저장소(R2)가 바인딩되지 않았습니다.';
+    }
 
     serverLogs = serverLogs.filter(entry => !(entry.status < 400 && ['/api/device/session-status','/api/license/check-session'].includes(entry.route)));
     // 필터링 적용
@@ -193,11 +250,11 @@ export async function onRequestGet(context) {
         (l.operation || '').toLowerCase().includes(search) ||
         (l.event_code || '').toLowerCase().includes(search) ||
         (l.source_file || '').toLowerCase().includes(search) ||
-        l.message.toLowerCase().includes(search) ||
-        l.action.toLowerCase().includes(search) ||
-        l.module.toLowerCase().includes(search) ||
-        l.actor.toLowerCase().includes(search) ||
-        l.target.toLowerCase().includes(search)
+        (l.message || '').toLowerCase().includes(search) ||
+        (l.action || '').toLowerCase().includes(search) ||
+        (l.module || '').toLowerCase().includes(search) ||
+        (l.actor || '').toLowerCase().includes(search) ||
+        (l.target || '').toLowerCase().includes(search)
       );
     }
 
@@ -229,7 +286,7 @@ export async function onRequestGet(context) {
       total_users: dbStats.total_users,
       active_subscriptions: dbStats.active_subscriptions,
       db_latency_ms: dbLatencyMs,
-      error_count_24h: null // HTTP log sample is not a complete 24-hour count
+      error_count_24h: null
     };
 
     return apiJson({
@@ -245,6 +302,7 @@ export async function onRequestGet(context) {
       asOf: new Date().toISOString()
     });
   } catch (error) {
+    console.error('[SystemAPI onRequestGet Exception]', error);
     return adminServerError(context.request, error, 'functions/api/admin/system.js', 'system_status');
   }
 }
@@ -285,7 +343,7 @@ export async function onRequestDelete(context) {
       });
 
       const keysToDelete = [];
-      for (const obj of listing.objects) {
+      for (const obj of (listing.objects || [])) {
         // _system-logs/{prod|preview}/YYYY-MM-DD/ 및 _system-logs/YYYY-MM-DD/ 형식 모두 지원
         const dateMatch = obj.key.match(/(\d{4}-\d{2}-\d{2})/);
         const logDate = dateMatch ? dateMatch[1] : null;
