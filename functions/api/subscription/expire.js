@@ -1,4 +1,5 @@
 // 🚨 @PATCH : 2026-11-02 — [공통소스 표준화] blog/_db.js 종속을 제거하고 공통 모듈 _db.js의 withDbTransaction/getAuthUser로 교체
+// 🚨 @PATCH : 2026-11-03 — [오류 진단 로깅 4단계]: serverError에 doing, target 명시로 정밀 진단 연계
 // 🚨 @PATCH : 2026-11-01 — [skills/onrivi-db-processing, skills/onrivi-error-handling, skills/onrivi-common-codes 준수]
 //             1) 다중 REST fetch 호출을 PostgreSQL 단일 트랜잭션(withDbTransaction)으로 통합하여 All-or-Nothing 무결성 보장
 //             2) 구독 만료(EXPIRED) -> 기기 세션 비활성화(is_active=false) -> READER 요금제 발급을 단일 트랜잭션 원자적 처리
@@ -141,6 +142,8 @@ export async function onRequestPost({ request, env }) {
     return serverError(request, error, {
       source: 'functions/api/subscription/expire.js',
       stage: 'expire_subscription',
+      doing: '구독 만료 처리 DB 트랜잭션 중',
+      target: subscription_id,
       message: '구독 만료 처리 중 일시적인 시스템 오류가 발생했습니다.',
     });
   }

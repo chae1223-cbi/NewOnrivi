@@ -1,4 +1,5 @@
 // 🚨 @PATCH : 2026-11-02 — [공통소스 표준화] blog/_db.js 종속을 제거하고 공통 모듈 _db.js의 withDbTransaction/getAuthUser로 교체
+// 🚨 @PATCH : 2026-11-03 — [오류 진단 로깅 4단계]: serverError에 doing, target 명시로 정밀 진단 연계
 // 🚨 @PATCH : 2026-11-01 — [skills/onrivi-db-processing, skills/onrivi-error-handling, skills/onrivi-common-codes 준수]
 //             1) Supabase REST API 호출을 PostgreSQL 단일 트랜잭션(withDbTransaction)으로 전환
 //             2) 사용자 인증(getAuthUser) 및 구독 소유권(user_id)과 활성 상태(is_active=true) 행 잠금(FOR UPDATE) 검증
@@ -99,6 +100,8 @@ export async function onRequestPost({ request, env }) {
     return serverError(request, error, {
       source: 'functions/api/subscription/cancel.js',
       stage: 'cancel_subscription',
+      doing: '구독 해지 DB 트랜잭션 처리 중',
+      target: subscription_id,
       message: '구독 해지 처리 중 일시적인 시스템 오류가 발생했습니다.',
     });
   }

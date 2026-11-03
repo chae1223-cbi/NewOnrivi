@@ -1,4 +1,5 @@
 // 🚨 @PATCH : 2026-11-02 — 3순위 DB 처리 표준화: 공통 _db.js(withDbTransaction) 적용
+// 🚨 @PATCH : 2026-11-03 — [오류 진단 로깅 4단계]: serverError에 doing, target 명시로 정밀 진단 연계
 // 🚨 @PATCH : 2026-11-01 — 공통 서버 오류 응답으로 요청 ID와 실패 위치를 연결한다.
 import { getAuthUser, withDbTransaction, apiJson } from '../_db.js';
 import { serverError } from '../_server-error.js';
@@ -105,6 +106,12 @@ export async function onRequestPost({ request, env }) {
     if (!outcome.success) return failure(outcome.code, outcome.message, outcome.status);
     return apiJson(outcome);
   } catch (error) {
-    return serverError(request, error, { source: 'functions/api/subscription/create.js', stage: 'onRequestPost', message: '요금제 변경에 실패했습니다.' });
+    return serverError(request, error, {
+      source: 'functions/api/subscription/create.js',
+      stage: 'onRequestPost',
+      doing: '신규 요금제 활성화 및 DB 트랜잭션 기록 중',
+      target: body?.plan_name || 'PLAN',
+      message: '요금제 변경에 실패했습니다.'
+    });
   }
 }

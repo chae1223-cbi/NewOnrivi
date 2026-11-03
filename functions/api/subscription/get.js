@@ -2,6 +2,7 @@
 // 📊 [OMD-SUB-get-0002 ✅ FIXED] frontend/functions/api/subscription/get.js
 // 🎯 @KICK  : 사용자 구독 정보, 라이선스 키, 기기 세션 및 구독 이력 조회 (만료 자동 처리 및 기본 플랜 발급)
 // 🛡️ @GUARD : 만료 구독 자동 EXPIRED, 신규 유저 APPRENTICE(14일) 자동 발급, 만료자 READER 자동 발급 및 단일 원자적 트랜잭션 보장
+// 🚨 @PATCH : 2026-11-03 — [오류 진단 로깅 4단계]: serverError에 doing, target 명시로 정밀 진단 연계
 // 🚨 @PATCH : 2026-11-02 — [공통소스 표준화] blog/_db.js 종속을 제거하고 공통 모듈 _db.js의 withDbTransaction으로 교체
 // 🚨 @PATCH : 2026-11-01 — [skills/onrivi-db-processing, skills/onrivi-error-handling, skills/onrivi-common-codes 준수]
 //             1) 다중 Supabase REST API 호출을 PostgreSQL 단일 원자적 트랜잭션(withDbTransaction)으로 전환
@@ -271,6 +272,8 @@ export async function onRequestPost(context) {
     return serverError(request, error, {
       source: 'functions/api/subscription/get.js',
       stage: 'subscription-get',
+      doing: '사용자 구독/라이선스/기기 목록 조회 중',
+      target: targetUserId,
       message: '구독 정보를 불러오는 중 오류가 발생했습니다.'
     });
   }
