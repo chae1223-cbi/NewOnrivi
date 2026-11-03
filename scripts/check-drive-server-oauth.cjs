@@ -84,6 +84,18 @@ const cookieValue = (response, name) => response.headers.getSetCookie().find(v =
   const saveStatus = await request('oauth/status', { method: 'POST', headers: { Origin: 'https://onrivi.com', Cookie: workspaceSession + '; ' + saveCookie }, body: JSON.stringify({ state: saveState, standalone: true }) });
   assert.equal((await saveStatus.json()).access_token, savedAccess);
   assert.equal((await (await post('oauth/refresh', workspaceSession)).json()).access_token, workspaceAccess);
+  // Verify Cloudflare Pages preview subdomain dynamic redirect URI support
+  const previewReq = (route, options = {}) => handle(new Request(`https://dev01.onriviauthor.pages.dev/api/gdrive/${route}`, options), env);
+  const previewStart = await previewReq('oauth/start?browser_state=' + browserState);
+  assert.equal(previewStart.status, 302, 'preview subdomain should be allowed dynamically');
+  const previewGoogle = new URL(previewStart.headers.get('Location'));
+  assert.equal(previewGoogle.searchParams.get('redirect_uri'), 'https://dev01.onriviauthor.pages.dev/api/gdrive/oauth/callback');
+
+  // Verify unauthorized foreign origin is rejected
+  const evilReq = await handle(new Request('https://malicious-site.com/api/gdrive/oauth/start?browser_state=' + browserState), env);
+  assert.equal(evilReq.status, 400, 'unauthorized origin should be blocked');
+
   console.log('PASS: other-account save authentication and COOP polling preserve the workspace refresh session');
+  console.log('PASS: Cloudflare Pages preview subdomain (dev01) dynamic redirect URI & evil origin defense');
   console.log('PASS: OAuth state/PKCE, encrypted storage, cookie session, CSRF, real refresh grant, concurrent deduplication, desktop one-use handoff, revoked grant, disconnect');
 })().catch(error => { console.error(error); process.exitCode = 1; }).finally(() => { global.fetch = originalFetch; Date.now = originalNow; });

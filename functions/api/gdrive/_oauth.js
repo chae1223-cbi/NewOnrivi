@@ -1,3 +1,11 @@
+// ====================================================================
+// 📊 [OMD-API-gdrive-oauth-0001] functions/api/gdrive/_oauth.js
+// 🎯 @KICK  : Google Drive 서버 사이드 OAuth 인증 및 토큰 자동 연장 핸들러
+// 🛡️ @GUARD : Cloudflare Pages 미리보기(dev01 등 *.pages.dev) 및 프로덕션/로컬 다중 오리진 동적 허용, 리프레시 토큰 AES-GCM 암호화
+// 🚨 @PATCH : 2026-11-03 — [미리보기 오리진 지원] dev01 등 *.onriviauthor.pages.dev 서브도메인의 동적 리디렉션 URI 자동 바인딩
+// 🚨 @PATCH : 2026-10-15 — 최초 구글 드라이브 서버 OAuth 커널 구축
+// ====================================================================
+
 // Shared by Cloudflare Pages Functions and the local Next.js server.
 // Refresh tokens never leave this server. Stored records are AES-GCM encrypted.
 const encoder = new TextEncoder();
@@ -62,10 +70,20 @@ export async function handleDriveOAuth(request, env) {
   if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET || !env.GOOGLE_DRIVE_REDIRECT_URI || !env.R2_BUCKET) {
     return json({ error: 'Google Drive 서버 OAuth 설정이 필요합니다.', code: 'OAUTH_NOT_CONFIGURED' }, 503);
   }
-  const url = new URL(request.url), redirect = new URL(env.GOOGLE_DRIVE_REDIRECT_URI);
+  const url = new URL(request.url), configuredRedirect = new URL(env.GOOGLE_DRIVE_REDIRECT_URI);
+  const isPagesDevSubdomain = url.hostname.endsWith('.onriviauthor.pages.dev') || url.hostname === 'onriviauthor.pages.dev';
+  const isOnriviSubdomain = url.hostname.endsWith('.onrivi.com') || url.hostname === 'onrivi.com';
+  const isLocalDev = (url.hostname === '127.0.0.1' || url.hostname === 'localhost') && (configuredRedirect.hostname === 'localhost' || configuredRedirect.hostname === '127.0.0.1');
+  const isSameOrigin = url.origin === configuredRedirect.origin;
+
+  if (!isLocalDev && !isPagesDevSubdomain && !isOnriviSubdomain && !isSameOrigin) {
+    return json({ error: '인증 서버 주소가 설정과 다릅니다.' }, 400);
+  }
+
+  const redirect = (isPagesDevSubdomain || isOnriviSubdomain || isLocalDev)
+    ? new URL(`${url.origin}${configuredRedirect.pathname}`)
+    : configuredRedirect;
   const origin = redirect.origin, secure = redirect.protocol === 'https:';
-  const isLocalDev = (url.hostname === '127.0.0.1' || url.hostname === 'localhost') && (redirect.hostname === 'localhost' || redirect.hostname === '127.0.0.1');
-  if (!isLocalDev && url.origin !== origin) return json({ error: '인증 서버 주소가 설정과 다릅니다.' }, 400);
   const route = url.pathname.replace(/^\/api\/gdrive\//, '');
   const requestCookies = cookies(request);
   try {
