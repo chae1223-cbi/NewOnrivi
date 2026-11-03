@@ -272,7 +272,7 @@ export async function onRequestGet(context) {
         status: r2Status,
         bucket: r2Details.bucket,
         binding: r2Details.binding,
-        logging_enabled: env.ENABLE_R2_LOGS === 'true'
+        logging_enabled: env.DISABLE_R2_LOGS !== 'true'
       },
       hyperdrive: {
         status: hyperdriveStatus
@@ -296,7 +296,7 @@ export async function onRequestGet(context) {
     return apiJson({
       success: true,
       logError,
-      r2_logging_enabled: env.ENABLE_R2_LOGS === 'true',
+      r2_logging_enabled: env.DISABLE_R2_LOGS !== 'true',
       logScope: `실시간 시스템 로그 (최종 ${limit}건) · 환경: ${envFilter.toUpperCase()}`,
       health,
       stats,

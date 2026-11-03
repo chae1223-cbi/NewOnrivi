@@ -84,7 +84,7 @@ export async function onRequestPost({request, env}) {
     console.warn(`[ClientLog] [${envType.toUpperCase()}] ${input.level} · ${action} · 대상: ${target} · ${message}`);
 
     // R2 저장은 ENABLE_R2_LOGS === 'true' 일 때만 수행 (기본값 false: R2 적재 중단)
-    if (env.ENABLE_R2_LOGS === 'true' && env.R2_BUCKET) {
+    if (env.DISABLE_R2_LOGS !== 'true' && env.R2_BUCKET) {
       const kstDate = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
       await env.R2_BUCKET.put(`_system-logs/${envType}/${kstDate}/${timestamp}_${id}.json`,JSON.stringify(entry));
     }

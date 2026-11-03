@@ -176,7 +176,7 @@ export async function onRequest(context) {
   catch (error) { exceptionMessage = redactLogMessage(error instanceof Error ? error.message : 'Unknown server exception'); unhandled = true; response = new Response('Internal server error', { status: 500 }); }
   // Temporary diagnostic window ends at 2026-10-10 00:00 KST.
   const captureAllToday = Date.now() < Date.parse('2026-10-10T00:00:00+09:00');
-  const enableR2Logs = context.env.ENABLE_R2_LOGS === 'true';
+  const enableR2Logs = context.env.DISABLE_R2_LOGS !== 'true';
   const shouldLog = (captureAllToday || response.status >= 400 || (context.request.method !== 'GET' && ['/api/subscription/create','/api/subscription/cancel','/api/subscription/subscribe-desktop','/api/admin/users/plan'].includes(url.pathname))) && !url.pathname.startsWith('/api/admin/system') && url.pathname !== '/api/client-log' && !(response.status < 400 && ['/api/device/session-status','/api/license/check-session'].includes(url.pathname));
 
   if (shouldLog) {
