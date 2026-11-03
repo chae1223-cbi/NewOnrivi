@@ -1,3 +1,4 @@
+// 🚨 @PATCH : **2026-11-04** — [KST(한국표준시 UTC+9) 기준 일자 파티셔닝 적용]: UTC 자정 시차(00~09시)로 인한 날짜 불일치 해결
 // 🚨 @PATCH : **2026-11-04** — [R2 시스템 로그 적재 환경변수 스위치(ENABLE_R2_LOGS) 적용]: 기본 적재 비활성화(false) 및 console.error 콘솔 출력 유지로 Cloudflare 실시간 로그 지원
 // 🚨 @PATCH : **2026-11-03** — [전 API 라우트 target 및 doing 자동 추출 전면 확장]: 이미지, 파라미터(path, email, user_id, plan, id 등), REST ID 및 X-Error-Target/Doing 전역 연계
 // 🚨 @PATCH : **2026-11-03** — [HTTP 로그 target 식별자 추출 및 prod/preview 환경 분리]:
@@ -195,7 +196,7 @@ export async function onRequest(context) {
     // R2 스토리지 저장은 ENABLE_R2_LOGS === 'true' 일 때만 수행 (기본값 false: R2 적재 중단)
     if (enableR2Logs && context.env.R2_BUCKET) {
       const entry = { id: requestId, timestamp: new Date().toISOString(), environment: envType.toUpperCase(), hostname, level: response.status >= 500 ? 'ERROR' : response.status >= 400 ? 'WARN' : 'INFO', module: 'HTTP', action: context.request.method, message: `HTTP ${response.status} · ${Date.now() - started}ms`, actor: 'SERVER', target: logTarget, status: response.status, route, operation: operationText, duration_ms: Date.now() - started, request_id: requestId, outcome: unhandled ? 'UNHANDLED_EXCEPTION' : 'HTTP_RESPONSE', region: context.request.cf?.colo || null, source_file: response.headers.get('X-Error-Source') || undefined, source_function: response.headers.get('X-Error-Stage') || undefined, db_code: response.headers.get('X-Error-Db-Code') || undefined };
-      const date = entry.timestamp.slice(0, 10);
+      const date = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
       const errorResponse = response.status >= 400 && !unhandled ? response.clone() : null;
       context.waitUntil((async () => {
         const detail = exceptionMessage || (errorResponse ? await readErrorMessage(errorResponse) : '');

@@ -1,3 +1,4 @@
+// 🚨 @PATCH : **2026-11-04** — [KST(한국표준시 UTC+9) 기준 일자 파티셔닝 적용]: UTC 자정 시차(00~09시)로 인한 날짜 불일치 해결
 // 🚨 @PATCH : **2026-11-04** — [R2 클라이언트 로그 적재 환경변수 스위치(ENABLE_R2_LOGS) 적용]: 기본 적재 비활성화(false) 및 console.warn 콘솔 출력 후 204 응답
 // 🚨 @PATCH : **2026-11-03** — [클라이언트 로그 target 전달 및 자동 파싱 지원]: input.target 또는 본문 [대상: xxx]에서 target 자동 추출하여 R2 적재
 // 🚨 @PATCH : **2026-11-03** — [프로덕션/미리보기 로그 분리]: hostname 기반 prod/preview 환경 분기 및 R2 저장 경로 분리 (_system-logs/{prod|preview}/YYYY-MM-DD/)
@@ -84,7 +85,8 @@ export async function onRequestPost({request, env}) {
 
     // R2 저장은 ENABLE_R2_LOGS === 'true' 일 때만 수행 (기본값 false: R2 적재 중단)
     if (env.ENABLE_R2_LOGS === 'true' && env.R2_BUCKET) {
-      await env.R2_BUCKET.put(`_system-logs/${envType}/${timestamp.slice(0,10)}/${timestamp}_${id}.json`,JSON.stringify(entry));
+      const kstDate = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+      await env.R2_BUCKET.put(`_system-logs/${envType}/${kstDate}/${timestamp}_${id}.json`,JSON.stringify(entry));
     }
     return new Response(null,{status:204});
   } catch {return new Response(null,{status:400});}

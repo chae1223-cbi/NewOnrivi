@@ -1,3 +1,4 @@
+// 🚨 @PATCH : **2026-11-04** — [KST 기준 오늘 일자 보장 및 자정 직후 연속 조회 지원]: availableDates에 오늘(KST) 무조건 포함, 오늘 조회 시 어제 로그도 병합 조회
 // 🚨 @PATCH : **2026-11-04** — [R2 시스템 로그 적재 토글 상태(logging_enabled) 반환]: ENABLE_R2_LOGS 환경변수 상태를 헬스체크 및 응답에 포함
 // 🚨 @PATCH : **2026-11-03** — [최종 100건 실시간 스트림 & 프로드/미리보기 선택 & 과거 로그 다운로드 API]:
 //             1) 실시간 로그 최대 표시 건수를 60건 -> 최종 100건(최신순 정렬)으로 확장
@@ -31,7 +32,7 @@ export async function onRequestGet(context) {
 
     // ── [과거 로그 파일 다운로드 (action=download)] ─────────────────────────────
     if (action === 'download' && env.R2_BUCKET) {
-      const targetDate = url.searchParams.get('date') || new Date().toISOString().slice(0, 10);
+      const targetDate = url.searchParams.get('date') || new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
       const downloadPrefixes = envFilter === 'prod'
         ? [`_system-logs/prod/${targetDate}/`]
         : envFilter === 'preview'
@@ -176,7 +177,7 @@ export async function onRequestGet(context) {
     if (env.R2_BUCKET) {
       try {
         const scan = await env.R2_BUCKET.list({ prefix: '_system-logs/', limit: 300 });
-        const dateSet = new Set();
+        const dateSet = new Set([koreaToday]);
         for (const obj of (scan.objects || [])) {
           const match = obj.key.match(/(\d{4}-\d{2}-\d{2})/);
           if (match) dateSet.add(match[1]);
@@ -191,7 +192,8 @@ export async function onRequestGet(context) {
 
     if (source === 'server' && env.R2_BUCKET) {
       try {
-        const targetDates = [reqDate];
+        const koreaYesterday = new Date(Date.now() + 9 * 3600000 - 86400000).toISOString().slice(0, 10);
+        const targetDates = reqDate === koreaToday ? [koreaToday, koreaYesterday] : [reqDate];
         const prefixes = envFilter === 'prod'
           ? targetDates.map(d => `_system-logs/prod/${d}/`)
           : envFilter === 'preview'

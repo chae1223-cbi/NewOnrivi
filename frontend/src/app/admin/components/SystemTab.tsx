@@ -1,6 +1,7 @@
 /**
  * 프로그램명 : OnriviAuthor
  * 파일명 : app/admin/components/SystemTab.tsx
+ * 🚨 @PATCH : **2026-11-04** — [KST(한국표준시 UTC+9) 기준 오늘 일자 적용]: getKSTToday() 함수로 UTC 시차(00~09시) 방어 및 11-04일 정상 표출
  * 🚨 @PATCH : **2026-11-04** — [R2 로그 적재 상태(logging_enabled) UI 표시]: ENABLE_R2_LOGS 환경변수 연동 상태(ON/OFF 뱃지) 안내
  * 🚨 @PATCH : **2026-11-03** — [최종 100건 실시간 스트림 & 프로드/미리보기 선택 탭 & 과거 로그 날짜별 다운로드 지원]:
  *             1. 로그 조회 한도 100건 확장 및 최신순 실시간 표시
@@ -97,6 +98,14 @@ interface SystemLogItem {
   target: string;
 }
 
+const getKSTToday = (): string => {
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  } catch {
+    return new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+  }
+};
+
 const formatTimestamp = (val: string) => {
   try {
     const d = new Date(val);
@@ -153,7 +162,7 @@ export default function SystemTab() {
   const [lastFetchedAt, setLastFetchedAt] = useState<string>('');
   const [envFilter, setEnvFilter] = useState<'all' | 'prod' | 'preview'>('all');
   const [availableDates, setAvailableDates] = useState<string[]>([]);
-  const [selectedDate, setSelectedDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [selectedDate, setSelectedDate] = useState<string>(getKSTToday);
   const [isDownloading, setIsDownloading] = useState(false);
 
   const fetchSystemData = useCallback(async (isSilent = false) => {
@@ -449,8 +458,8 @@ export default function SystemTab() {
                   className="bg-transparent text-xs font-bold text-zinc-800 dark:text-zinc-200 outline-none cursor-pointer"
                   title="조회할 로그 날짜 선택"
                 >
-                  <option value={new Date().toISOString().slice(0, 10)}>오늘 ({new Date().toISOString().slice(0, 10)})</option>
-                  {availableDates.filter(d => d !== new Date().toISOString().slice(0, 10)).map(d => (
+                  <option value={getKSTToday()}>오늘 ({getKSTToday()})</option>
+                  {availableDates.filter(d => d !== getKSTToday()).map(d => (
                     <option key={d} value={d}>{d}</option>
                   ))}
                 </select>
