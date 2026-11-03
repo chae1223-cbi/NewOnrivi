@@ -2,7 +2,7 @@
 // 📊 [OMD-PLAN-CONST-0001] frontend/src/constants/plans.ts
 // 🎯 @KICK  : OnriviAuthor 요금제(Plan)별 권한, 기능 허용 범위, 기기 한도 단일 소스(SSoT) 정의
 // 🛡️ @GUARD : DB_CODES.PLAN_NAME 대문자 코드 연동, 플랜별 웹 편집/데스크톱/기기 한도 중앙 일괄 통제
-// 🚨 @PATCH : 2026-11-03 — [플랜 권한 체계 단일화] PLAN_CAPABILITIES 및 getPlanCapability 헬퍼 신설
+// 🚨 @PATCH : 2026-11-03 — [플랜 권한 체계 단일화] PLAN_CAPABILITIES 및 getPlanCapability 헬퍼 신설 및 표준 주석 완비
 // ====================================================================
 
 import { DB_CODES } from './dbCodes';
@@ -11,6 +11,15 @@ import { DB_CODES } from './dbCodes';
  * ========================================================================================
  * 📌 [인터페이스] PlanCapability
  * 각 요금제 플랜이 보유한 세부 실행 권한 및 리소스 제약 정의 모델
+ *
+ * @property {string} code - 요금제 고유 영문 대문자 코드 (예: 'READER', 'PRO')
+ * @property {string} name - 사용자 화면 표출용 한국어 플랜 명칭
+ * @property {boolean} canWebEdit - 웹 브라우저 SaaS 환경에서 마크다운 편집 허용 여부
+ * @property {boolean} canDesktop - 일렉트론 데스크톱 앱 실행 및 라이선스 등록 허용 여부
+ * @property {number} maxDevices - 동시 접속 허용 기기 최대 대수 (기본 1대)
+ * @property {boolean} isTrial - 무료 체험판 플랜 여부 (14일 카운트다운 대상)
+ * @property {boolean} isRestricted - 읽기 전용 제한 사용자 모드 강제 여부
+ * @property {string} description - 플랜 혜택 및 서비스 범위 요약 설명
  * ========================================================================================
  */
 export interface PlanCapability {
@@ -27,7 +36,8 @@ export interface PlanCapability {
 /**
  * ========================================================================================
  * 📌 [상수그룹] PLAN_CAPABILITIES
- * 시스템 전역 플랜 권한 마스터 테이블 (SSoT)
+ * 시스템 전역 플랜 권한 마스터 테이블 (Single Source of Truth)
+ * 불변 객체(Object.freeze)로 관리되어 런타임 변조를 방지합니다.
  * ========================================================================================
  */
 export const PLAN_CAPABILITIES: Record<string, PlanCapability> = Object.freeze({
@@ -115,9 +125,18 @@ export const PLAN_CAPABILITIES: Record<string, PlanCapability> = Object.freeze({
 
 /**
  * ========================================================================================
- * 📌 [함수] getPlanCapability
- * 입력된 플랜 코드 문자열을 정규화하여 시스템 표준 권한 객체를 반환합니다.
- * 알 수 없는 코드나 누락 시 가장 안전한 READER(읽기 전용 제한) 권한으로 폴백합니다.
+ * [함수명] getPlanCapability - 입력된 플랜 코드 문자열을 정규화하여 시스템 표준 권한 객체를 반환합니다.
+ * 알 수 없는 코드나 누락 시 가장 안전한 READER(읽기 전용 제한) 권한으로 안전하게 폴백합니다.
+ *
+ * @param {string | null} [rawPlanName] - 사용자 구독 레코드에서 조회된 원본 플랜명 문자열
+ * @returns {PlanCapability} 해당 요금제에 매핑된 권한 및 기능 허용 스펙 객체
+ *
+ * @example
+ * // 구독 정보에서 권한 조회
+ * const capability = getPlanCapability(subscription?.plan_name);
+ * if (!capability.canWebEdit) {
+ *   showToast('현재 요금제는 웹 편집을 사용할 수 없습니다.', 'warning');
+ * }
  * ========================================================================================
  */
 export function getPlanCapability(rawPlanName?: string | null): PlanCapability {
