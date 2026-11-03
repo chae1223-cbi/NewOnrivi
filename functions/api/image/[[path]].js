@@ -1,4 +1,5 @@
 /**
+ * 🚨 @PATCH : **2026-11-04** — [이미지 404 진단성 강화]: R2 미존재 이미지 404 응답 시 요청된 키(경로)를 본문 및 target 헤더에 명시
  * Cloudflare Pages Function: /api/image/[...path]
  * R2 버킷에서 이미지를 읽어 서빙합니다. (퍼블릭 R2 URL 불필요)
  * 
@@ -35,7 +36,7 @@ export async function onRequestGet(context) {
     const object = await env.R2_BUCKET.get(key);
 
     if (!object) {
-      return new Response('Image not found', { status: 404, headers: { 'X-Error-Target': key } });
+      return new Response(`Image not found: ${key}`, { status: 404, headers: { 'X-Error-Target': key } });
     }
 
     // Content-Type 결정
