@@ -2,6 +2,7 @@
 // 📊 [OMD-ERR-CORE-0001] functions/api/_error.js
 // 🎯 @KICK  : 서버 런타임 및 PostgreSQL 예외에 대한 표준 500 에러 Response 및 진단 로그 생성
 // 🛡️ @GUARD : 내부 DB 스택 노출 차단, 추적용 requestId 부여, 헤더 기반 디버깅 메타데이터 주입
+// 🚨 @PATCH : 2026-11-03 — [정밀 진단 필드 강화] doing(실행 작업), target(대상), errorMessage/errorStack 추가
 // 🚨 @PATCH : 2026-11-02 — [로그 고도화] 구조화 로그 내 functionName('serverError') 추가 및 진단 필드 주석 보강
 // 🔗 @CALLS : crypto.randomUUID(), console.error()
 // ====================================================================
@@ -32,7 +33,7 @@ const PG_CODE = /^[0-9A-Z]{5}$/;
  * }
  * ========================================================================================
  */
-export function serverError(request, error, { source, stage, message = '요청을 처리하지 못했습니다.' }) {
+export function serverError(request, error, { source, stage, doing, target, message = '요청을 처리하지 못했습니다.' }) {
   // 요청 추적 식별자 추출 또는 신규 UUID 생성
   const requestId = request.headers.get('x-onrivi-request-id') || crypto.randomUUID();
 
@@ -46,8 +47,12 @@ export function serverError(request, error, { source, stage, message = '요청�
     requestId,                    // 분산 추적용 고유 요청 ID (UUID)
     source,                       // 에러 발생 모듈/도메인
     stage,                        // 에러 발생 세부 실행 단계
+    doing: doing || stage,        // 🎯 무엇을 하던 중이었는지 구체적 행위
+    target: target || undefined,  // 작업 대상 식별자 (ID, 파일명 등)
     dbCode,                       // 검증된 PostgreSQL 오류 코드 (정상 코드 외 null)
     errorName: typeof error?.name === 'string' ? error.name : 'Error',
+    errorMessage: typeof error?.message === 'string' ? error.message : String(error || ''),
+    errorStack: typeof error?.stack === 'string' ? error.stack.split('\n').slice(0, 5).join('\n') : undefined,
     constraint: typeof error?.constraint === 'string' ? error.constraint : undefined, // DB 제약조건 위반명 (있을 경우만)
   }));
 

@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useEffect } from 'react';
 import { reportClientLog } from '@/lib/clientLogs';
+import { logError } from '@/lib/errorDiagnostics';
 import { showToast, dismissDriveAuthNotices } from '@/utils/toast';
 
 type ToastType = 'success' | 'error' | 'info' | 'warning';
@@ -16,7 +17,7 @@ const ToastContext = createContext<ToastContextType | undefined>(undefined);
 // 📊 [OMD-EDIT-ToastProvider-0001] ToastProvider ➔ useToast
 // 🎯 @KICK  : Toast 컨텍스트 커스텀 훅 - Provider 내부에서 showToast 함수 조회
 // 🛡️ @GUARD : context undefined 시 "useToast must be used within a ToastProvider" 에러 throw
-// 🚨 @PATCH : 없음
+// 🚨 @PATCH : **2026-11-03** — [전역 런타임 오류 정밀 진단 선제 로깅]: onError/onRejection 시 logError를 통해 파일명, 라인:컬럼, 스택을 콘솔에 상세 기록
 // 🔗 @CALLS : useContext
 // ====================================================================
 export const useToast = () => {
@@ -29,13 +30,32 @@ export const useToast = () => {
 // 📊 [OMD-EDIT-ToastProvider-0002] ToastProvider ➔ ToastProvider
 // 🎯 @KICK  : 전역 Toast 컨텍스트 Provider - 자식 컴포넌트에 showToast 유틸리티 제공
 // 🛡️ @GUARD : 없음
-// 🚨 @PATCH : 없음
+// 🚨 @PATCH : **2026-11-03** — [전역 런타임 오류 정밀 진단 선제 로깅]: onError/onRejection 시 logError를 통해 파일명, 라인:컬럼, 스택을 콘솔에 상세 기록
 // 🔗 @CALLS : showToast (from utils)
 // ====================================================================
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   useEffect(() => {
-    const onError = (event: ErrorEvent) => reportClientLog(event.message || '브라우저 실행 오류', 'ERROR', 'BROWSER_ERROR');
-    const onRejection = (event: PromiseRejectionEvent) => reportClientLog(event.reason instanceof Error ? event.reason.message : '처리되지 않은 비동기 오류', 'ERROR', 'UNHANDLED_REJECTION');
+    const onError = (event: ErrorEvent) => {
+      const fileName = event.filename ? event.filename.split('/').pop() || event.filename : 'window';
+      logError({
+        file: fileName,
+        func: 'window.onerror',
+        doing: '브라우저 런타임 스크립트 실행 중',
+        error: event.error || event.message || '브라우저 실행 오류',
+        target: `${event.filename || 'unknown'}:${event.lineno}:${event.colno}`,
+        action: 'BROWSER_ERROR'
+      });
+    };
+    const onRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason;
+      logError({
+        file: 'Promise',
+        func: 'unhandledrejection',
+        doing: '비동기 Promise 작업 처리 중',
+        error: reason instanceof Error ? reason : (reason?.message || reason || '처리되지 않은 비동기 오류'),
+        action: 'UNHANDLED_REJECTION'
+      });
+    };
     window.addEventListener('error', onError);
     window.addEventListener('unhandledrejection', onRejection);
     window.addEventListener('onrivi:drive_token_updated', dismissDriveAuthNotices);

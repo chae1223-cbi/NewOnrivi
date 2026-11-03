@@ -1,4 +1,5 @@
 import { reportClientLog } from '@/lib/clientLogs';
+import { logError } from '@/lib/errorDiagnostics';
 // 💡 [ Onrivi Author - 공용 독립형 프리미엄 '토마토 테마' 알림 유틸리티 모듈 ]
 // 이 모듈은 일렉트론 Chromium 캐시나 컴파일러 한글 인코딩 변조에 100% 독립적으로
 // 한글 깨짐 현상을 원천 차단하고 보석 같은 글래스모피즘 알림창을 동적으로 꽂아 넣습니다.
@@ -25,6 +26,8 @@ export const dismissDriveAuthNotices = () => {
 // 📊 [OMD-EDIT-toast-0001] toast ➔ showToast
 // 🎯 @KICK  : 화면 우측 상단에 프리미엄 토마토 테마 Toast 알림을 동적으로 생성하여 표시한다
 // 🛡️ @GUARD : SSR 환경에서는 early return, 컨테이너 미존재 시 생성
+// 🚨 @PATCH : **2026-11-03** — [오류·경고 발생 시 콘솔 및 R2 정밀 진단 선제 기록]:
+//             에러/경고 토스트 발생 시 logError를 통해 상위 호출 소스 파일과 작업 행위를 콘솔에 선제 기록
 // 🚨 @PATCH : **2026-10-15** — [개인 웹드라이브 인증 안내 문구 표준화]:
 //             [내 구글 드라이브 연결] 안내 문구를 [개인 웹드라이브 연결]로 일원화
 // 🚨 @PATCH : **2026-07-22** — 영문 예외 및 서버 메시지가 노출되는 현상을 방지하도록 Supabase/서버 오류용 자동 한글 변환 맵(translateToKorean)을 탑재하여 모든 알림이 친절한 한글 메시지로 보정되어 표출되도록 개선 패치
@@ -66,7 +69,16 @@ export const showToast = (message: string, type: ToastType = 'info') => {
     message='개인 웹드라이브 인증을 갱신해 주세요. 연결 해제 없이 파일 메뉴의 [개인 웹드라이브 연결]에서 다시 인증할 수 있습니다.';
     type='warning';
   }
-  if (type === 'error' || type === 'warning') reportClientLog(translateToKorean(message), type === 'error' ? 'ERROR' : 'WARN', location.pathname === '/login' ? 'LOGIN_NOTICE' : 'USER_NOTICE');
+  if (type === 'error' || type === 'warning') {
+    logError({
+      file: 'toast.ts',
+      func: 'showToast',
+      doing: `사용자 ${type === 'error' ? '오류' : '경고'} 알림 표출 중`,
+      error: translateToKorean(message),
+      level: type === 'error' ? 'ERROR' : 'WARN',
+      action: typeof location !== 'undefined' && location.pathname === '/login' ? 'LOGIN_NOTICE' : 'USER_NOTICE'
+    });
+  }
 
   // 1. 알림 컨테이너가 없으면 body 하단에 생성 및 고유 스타일 부여 (Flex 레이아웃 구조)
   let container = document.getElementById('premium-toast-container');

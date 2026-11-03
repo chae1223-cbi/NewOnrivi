@@ -1,3 +1,4 @@
+// 🚨 @PATCH : **2026-11-03** — [오래된 시스템 로그 30일 자동/수동 정리 API 구축]: onRequestDelete 추가로 30일 경과된 _system-logs R2 로그 일괄 정리
 // 🚨 @PATCH : 2026-11-02 — 시스템 API 예외 원문 대신 공통 안전 오류와 요청 ID를 반환
 // 🚨 @PATCH : 2026-10-08 — 시스템 현황 모니터링 및 실시간 서버/DB/R2 헬스체크 & 로그 조회 API 신규 구축
 import { handleOptions, checkAdminAuth, adminServerError } from './_shared.js';
@@ -199,5 +200,68 @@ export async function onRequestGet(context) {
     });
   } catch (error) {
     return adminServerError(context.request, error, 'functions/api/admin/system.js', 'system_status');
+  }
+}
+
+/**
+ * ========================================================================================
+ * [함수명] onRequestDelete - 30일(또는 지정 일수)이 경과한 오래된 R2 시스템 로그를 일괄 정리합니다.
+ *
+ * @param {object} context - Cloudflare Pages context
+ * @returns {Promise<Response>} 정리 결과 JSON Response
+ * ========================================================================================
+ */
+export async function onRequestDelete(context) {
+  try {
+    const { request, env } = context;
+    const authResult = await checkAdminAuth(request, env, ['SUPER']);
+    if (authResult.error) {
+      return apiJson({ success: false, error: authResult.error }, authResult.status || 403);
+    }
+
+    if (!env.R2_BUCKET) {
+      return apiJson({ success: false, message: 'R2 버킷이 설정되지 않았습니다.' }, 503);
+    }
+
+    const url = new URL(request.url);
+    const days = Math.max(1, parseInt(url.searchParams.get('days') || '30', 10));
+    const cutoffTimestamp = Date.now() - (days * 24 * 60 * 60 * 1000);
+    const cutoffDateStr = new Date(cutoffTimestamp).toISOString().slice(0, 10);
+
+    let deletedCount = 0;
+    let cursor = undefined;
+
+    do {
+      const listing = await env.R2_BUCKET.list({
+        prefix: '_system-logs/',
+        cursor,
+        limit: 500,
+      });
+
+      const keysToDelete = [];
+      for (const obj of listing.objects) {
+        const parts = obj.key.split('/');
+        const logDate = parts[1];
+        if (logDate && logDate < cutoffDateStr) {
+          keysToDelete.push(obj.key);
+        }
+      }
+
+      if (keysToDelete.length > 0) {
+        await Promise.all(keysToDelete.map(key => env.R2_BUCKET.delete(key)));
+        deletedCount += keysToDelete.length;
+      }
+
+      cursor = listing.truncated ? listing.cursor : undefined;
+    } while (cursor);
+
+    return apiJson({
+      success: true,
+      message: `${days}일 이전 로그 정리 완료 (${deletedCount}건 삭제됨)`,
+      deletedCount,
+      cutoffDate: cutoffDateStr
+    });
+  } catch (error) {
+    return adminServerError(context.request, error, 'functions/api/admin/system.js', 'cleanup_logs');
   }
 }
