@@ -2,6 +2,7 @@
  * web-build.js
  * Cloudflare Pages 정적 웹 빌드. 배포 API 원본은 저장소 루트 functions/api입니다.
  * Next 개발용 API는 정적 내보내기 동안 임시로 제외하고 빌드 후 복원합니다.
+ * 🚨 @PATCH : 2026-11-03 — 이전 개발 캐시(.next-dev, .next-web-build) 선행 소탕 로직 추가로 API 격리 빌드 시 types 참조 불일치 컴파일 오류 방어
  * 🚨 @PATCH : 2026-11-02 — Cloudflare API 미러 복사를 제거하고 루트 Functions를 단일 원본으로 확정
  */
 const { execSync } = require('child_process');
@@ -57,6 +58,18 @@ try {
     fs.rmSync(BLOG_DETAIL_ROUTE, { recursive: true, force: true });
     blogDetailRouteExcluded = true;
     console.log('[web-build] 공개 글 0개: 블로그 상세 경로 생성을 건너뜁니다.');
+  }
+  // 선행 캐시 소탕: 이전 개발(.next-dev)이나 웹 빌드(.next-web-build) 캐시의 types 참조로 인한 타입 검사 오류 방지
+  const cacheDirsToClean = [
+    path.join(__dirname, '.next-dev'),
+    path.join(__dirname, '.next-web-build')
+  ];
+  for (const cDir of cacheDirsToClean) {
+    if (fs.existsSync(cDir)) {
+      try {
+        fs.rmSync(cDir, { recursive: true, force: true });
+      } catch (_) {}
+    }
   }
   console.log('[web-build] next build 시작...');
   execSync('npx next build', {
