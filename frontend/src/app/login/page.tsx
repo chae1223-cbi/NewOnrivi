@@ -350,7 +350,7 @@ export default function LoginPage() {
               {/* 3. 로그인 제출 버튼 */}
               <div className="pt-2">
                 <button
-                  type="submit"
+                  type="submit" 
                   disabled={loading}
                   className="w-full bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-bold text-[15px] py-3.5 rounded-xl flex items-center justify-center gap-2 shadow-[0_4px_20px_rgba(29, 78, 216,0.25)] hover:shadow-[0_6px_24px_rgba(29, 78, 216,0.35)] active:scale-[0.99] transition-all disabled:opacity-50 cursor-pointer"
                 >
