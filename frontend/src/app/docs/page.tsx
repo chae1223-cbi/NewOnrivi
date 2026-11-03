@@ -4,6 +4,7 @@
 // 📊 [OMD-CORE-docs-page-0001] page ➔ HelpCenterPage
 // 🎯 @KICK  : 공식 도움말 웹 센터 (https://onrivi.com/docs)
 // 🛡️ @GUARD : 30개 공식 챕터(HELP-01~29 + 00_시작하기) 전면 현행화 및 내부 링크 100% 무결점 점프
+// 🚨 @PATCH : 2026-11-03 — [도움말 본문 공간 확대] 소개 헤더를 압축하고 목차·본문을 화면 높이에 맞춰 독립 스크롤
 // 🚨 @PATCH : **2026-10-11** — [관리자 페이지 R2 게시본 실시간 무인 동기화 파이프라인 탑재]:
 //             1) /api/help를 통해 R2 클라우드에 게시(Publish)된 최신 문서를 실시간 취득하여 정적 파일보다 1순위로 즉시 렌더링
 //             2) 관리자 페이지에서 도움말 수정/게시 시 코드 재배포 없이 웹(/docs)에 0초 즉각 자동 반영 확립
@@ -327,27 +328,27 @@ export default function HelpCenterPage() {
     <div className="flex flex-col min-h-screen bg-slate-50 dark:bg-gray-950 text-gray-800 dark:text-gray-200 transition-colors duration-200">
       <Navbar />
 
-      <main className="flex-grow pt-28 pb-20">
+      <main className="flex-grow pt-24 pb-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           
           {/* 히어로 헤더 */}
-          <div className="text-center mb-12 max-w-3xl mx-auto">
+          <div className="text-center mb-5 max-w-5xl mx-auto">
             <span className="text-[#1d4ed8] dark:text-blue-400 text-xs font-bold uppercase tracking-wider bg-blue-50 dark:bg-blue-950/40 px-3 py-1 rounded-full border border-blue-100/50 dark:border-blue-900/30">
               ONRIVI HELP CENTER
             </span>
-            <h1 className="text-3xl md:text-5xl font-black text-gray-900 dark:text-white mt-4 tracking-tight leading-tight">
+            <h1 className="text-2xl md:text-3xl font-black text-gray-900 dark:text-white mt-2 tracking-tight leading-tight">
               Onrivi Author 사용 설명서
             </h1>
-            <p className="text-sm md:text-base text-gray-600 dark:text-gray-400 mt-4 leading-relaxed font-medium">
+            <p className="text-xs md:text-sm text-gray-600 dark:text-gray-400 mt-1 leading-relaxed font-medium">
               마크다운 기초부터 전문 출판 조판, 전자책(EPUB)·PDF 사출, AI 어시스턴트 및 트러블슈팅까지 총 29개 공식 챕터를 제공합니다.
             </p>
           </div>
 
           {/* 2-Pane 레이아웃 */}
-          <div className="flex flex-col md:flex-row bg-white dark:bg-zinc-900 rounded-3xl border border-slate-200 dark:border-zinc-800 shadow-sm overflow-hidden min-h-[750px]">
+          <div className="flex flex-col md:flex-row bg-white dark:bg-zinc-900 rounded-3xl border border-slate-200 dark:border-zinc-800 shadow-sm overflow-hidden md:h-[calc(100vh-12rem)] min-h-[520px]">
             
             {/* 좌측 사이드바 네비게이션 */}
-            <aside className="w-full md:w-80 lg:w-88 border-b md:border-b-0 md:border-r border-slate-200 dark:border-zinc-800 bg-slate-50/70 dark:bg-zinc-900/70 shrink-0 p-4 flex flex-col gap-3">
+            <aside className="w-full md:w-80 lg:w-88 border-b md:border-b-0 md:border-r border-slate-200 dark:border-zinc-800 bg-slate-50/70 dark:bg-zinc-900/70 shrink-0 p-4 flex flex-col gap-3 min-h-0">
               
               {/* 검색창 */}
               <div className="relative">
@@ -362,7 +363,7 @@ export default function HelpCenterPage() {
               </div>
 
               {/* 목차 스크롤 영역 */}
-              <div className="flex-1 overflow-y-auto max-h-[700px] [scrollbar-gutter:stable] pr-1 space-y-4">
+              <div className="flex-1 min-h-0 overflow-y-auto max-h-[45vh] md:max-h-none [scrollbar-gutter:stable] pr-1 space-y-4">
                 {filteredCategories.length === 0 ? (
                   <div className="text-center py-8 text-xs text-slate-400 font-medium">
                     검색 결과가 없습니다.
@@ -418,7 +419,7 @@ export default function HelpCenterPage() {
             {/* 우측 본문 마크다운 뷰어 */}
             <div 
               ref={contentContainerRef}
-              className="flex-1 p-6 md:p-10 lg:p-12 overflow-y-auto max-h-[850px]"
+              className="flex-1 min-h-0 p-5 md:p-7 lg:p-8 overflow-y-auto"
               onClick={handleLinkClick}
             >
               {isLoading ? (
