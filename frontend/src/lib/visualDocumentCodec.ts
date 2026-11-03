@@ -2,6 +2,9 @@
  * 프로그램명 : OnriviAuthor 
  * 버전 정보 : 1.0.1
  * 프로그램 ID : oaar-visual-codec
+ * 🚨 @PATCH : 2026-11-03 — [좁은 열 비율 저장] 1% 미만의 유효한 열 비율도 저장·재열기 지원
+ * 🚨 @PATCH : 2026-11-03 — [표 열 비율 0.1% 저장] 소수점 비율도 문서 저장·재열기 지원
+ * 🚨 @PATCH : 2026-11-03 — [표 열 비율 수동 지정] 표 앞 Markdown 주석을 표 속성으로 읽고 편집 후 저장
  * 🚨 @PATCH : **2026-10-27** — [빈 문단 엔터 입력 시 중복 <br> 생성 및 비정상 행간 벌어짐·원복 결함 수정]:
  *             1) visualSerializer의 인위적 <br> 삽입 paragraph 직렬화기를 제거하고 표준 MarkdownSerializer로 복원하여, 엔터 입력 시 중복 hard_break 및 과도한 행간 벌어짐/위로 튀는 현상 원천 차단
  * 🚨 @PATCH : **2026-10-26** — [HWP/문서 가져오기 체크박스(<input type="checkbox">) 위지윅 네이티브 렌더링 및 무손실 직렬화 연동]:
@@ -207,7 +210,7 @@ export const visualSchema = new Schema({
         content: (dom as HTMLElement).querySelector('.visual-footnote-body')?.textContent || ''
       })
     }],
-  }).addToEnd('table', {group:'block',content:'table_row+',isolating:true,toDOM:()=>['table',{class:'visual-editable-table'},['tbody',0]],parseDOM:[{tag:'table'}]})
+  }).addToEnd('table', {group:'block',content:'table_row+',isolating:true,attrs:{widths:{default:null}},toDOM:()=>['table',{class:'visual-editable-table'},['tbody',0]],parseDOM:[{tag:'table'}]})
     .addToEnd('table_row',{content:'(table_header | table_cell)+',toDOM:()=>['tr',0],parseDOM:[{tag:'tr'}]})
     .addToEnd('table_header',{content:'paragraph',isolating:true,attrs:{align:{default:'left'}},toDOM:()=>['th',{style:'text-align:center!important'},0],parseDOM:[{tag:'th'}]})
     .addToEnd('table_cell',{content:'paragraph',isolating:true,attrs:{align:{default:'left'}},toDOM:node=>['td',{style:`text-align:${node.attrs.align}`},0],parseDOM:[{tag:'td',getAttrs:dom=>({align:(dom as HTMLElement).style.textAlign || 'left'})}]})
@@ -401,6 +404,14 @@ export const visualSerializer = new MarkdownSerializer({
     });
   },
   table(state,node) {
+    const rawWidths = node.attrs.widths;
+    if (Array.isArray(rawWidths) && rawWidths.length === node.firstChild?.childCount) {
+      const widths = rawWidths.map((w: number) => Math.round(Number(w) * 10) / 10);
+      if (widths.every((value: number) => Number.isFinite(value) && value > 0)
+        && Math.abs(widths.reduce((sum: number, value: number) => sum + value, 0) - 100) < 0.1) {
+        state.write('<!-- onrivi:table-widths=' + widths.join(',') + ' -->\n');
+      }
+    }
     const rows: string[][] = [];
     node.forEach(row=>{
       const cells: string[]=[];
@@ -538,6 +549,7 @@ export function createVisualDocumentCodec(markdown: string) {
   if (ranges.length && ranges[0] > 0) ranges.unshift(0);
   let quoteIndent: {value:number;raw:string}|null=null;
   let listIndent: {value:number;raw:string}|null=null;
+  let tableWidths: {value:number[];raw:string}|null=null;
   for (let i = 0; i < ranges.length; i++) {
     let raw = body.slice(offsets[ranges[i]], i + 1 < ranges.length ? offsets[ranges[i + 1]] : body.length);
     const indentMarker=raw.trim().match(/^<!--\s*onrivi:quote-indent=(\d+(?:\.\d+)?)\s*-->$/);
@@ -547,6 +559,16 @@ export function createVisualDocumentCodec(markdown: string) {
     const listIndentMarker=raw.trim().match(/^<!--\s*onrivi:list-indent=(\d+(?:\.\d+)?)\s*-->$/);
     if(listIndentMarker && i+1<ranges.length && /^\s*(?:[-*+]|\d+\.)\s/.test(lines[ranges[i+1]])){
       listIndent={value:Math.max(0,Math.min(4096,Number(listIndentMarker[1]))),raw};continue;
+    }
+    const tableMarker = raw.trim().match(/^<!--\s*onrivi:table-widths=([\d.,]+)\s*-->$/);
+    if (tableMarker && i + 1 < ranges.length && /^\s*\|/.test(lines[ranges[i + 1]])) {
+      tableWidths = { value: tableMarker[1].split(',').map(Number), raw };
+      continue;
+    }
+    const inlineMarker = raw.match(/^(\s*<!--\s*onrivi:table-widths=([\d.,]+)\s*-->\s*\n)(?=\s*\|)/);
+    if (inlineMarker) {
+      tableWidths = { value: inlineMarker[2].split(',').map(Number), raw: inlineMarker[1] };
+      raw = raw.slice(inlineMarker[1].length);
     }
     let node: DocumentNode;
     const footnoteDefMatch = raw.trim().match(/^\[\^([^\]]+)\]:[ \t]*([\s\S]*)$/);
@@ -639,6 +661,20 @@ export function createVisualDocumentCodec(markdown: string) {
         node=visualSchema.nodes.source_block.create({source:raw});
       }
       listIndent=null;
+    }
+    if (tableWidths) {
+      const original = tableWidths.raw + raw;
+      const rawValues = tableWidths.value;
+      const values = Array.isArray(rawValues) ? rawValues.map(v => Math.round(Number(v) * 10) / 10) : [];
+      if (node.type === visualSchema.nodes.table && values.length === node.firstChild?.childCount
+        && values.every(value => Number.isFinite(value) && value > 0)
+        && Math.abs(values.reduce((sum, value) => sum + value, 0) - 100) < 0.1) {
+        node = node.type.create({ ...node.attrs, widths: values }, node.content, node.marks);
+      } else {
+        node = visualSchema.nodes.source_block.create({ source: original });
+      }
+      raw = original;
+      tableWidths = null;
     }
     originals.set(node, raw);
     rawSuffixes.push(raw.match(/\n+$/)?.[0] || '\n');

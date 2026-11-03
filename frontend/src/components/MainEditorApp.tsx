@@ -1,5 +1,7 @@
 /**
  * 프로그램명 : OnriviAuthor 
+// 🚨 @PATCH : 2026-11-03 — [표 열 드래그] 서식 CSS의 auto 레이아웃보다 직접 편집 표의 fixed 레이아웃을 우선 적용
+// 🚨 @PATCH : 2026-11-02 — [표 열 너비 자동 조정] 미리보기 표의 균등 분할을 해제하고 내용 기반 너비 배분 적용
 // 🚨 @PATCH : **2026-11-02** — [비로그인 무단 에디터 진입 원천 차단] 웹 환경에서 로그인 세션이나 '체험하기' 플래그가 없는 경우 자동 게스트 모드 전환을 중단하고 로그인 화면(/login)으로 즉시 리다이렉트
 // 🚨 @PATCH : **2026-11-02** — [DB 접근 서버 API 일원화] 브라우저 직접 supabase.from(subscriptions, users)를 서버 API(/api/subscription/get, /api/user/check)로 전환하여 보안 강화 및 일관된 원트랜잭션 규칙 보장
 // 🚨 @PATCH : **2026-11-01** — [표 셀 줄바꿈 파괴 및 가로 늘어짐·텍스트 잘림 결함 완전 해결]:
@@ -7665,6 +7667,13 @@ blockquote li p {
   box-shadow: none !important;
   width: 100% !important;
   max-width: 100% !important;
+  table-layout: auto !important;
+}
+/* Directly editable tables use explicit colgroup widths during boundary dragging. */
+.custom-preview-container .visual-document-surface table.visual-editable-table,
+.onrivi-content-root .visual-document-surface table.visual-editable-table,
+.dark .custom-preview-container .visual-document-surface table.visual-editable-table,
+.dark .onrivi-content-root .visual-document-surface table.visual-editable-table {
   table-layout: fixed !important;
 }
 .custom-preview-container th,

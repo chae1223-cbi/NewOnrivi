@@ -14,7 +14,7 @@
 
 루트에서 `npm run dev`를 실행하면 Next 화면(3100), 로컬 백엔드, Wrangler API(8788)가 함께 시작된다. `frontend/.env.local`의 `DATABASE_URL`은 로컬 Hyperdrive 연결에 사용된다. Wrangler는 빌드 없이 `frontend/public`을 정적 자산 디렉터리로 사용하며 로컬 상태는 Git에서 제외된 `scratch/wrangler-state`에 저장한다. 화면은 Next 개발 서버에서 제공하고, Wrangler의 정적 자산은 개발 API 실행을 위한 최소 입력으로만 사용한다.
 
-로컬 전용 Next API: `knowledge/**`, `create-file`, `create-folder`, `save`, `delete`, `rename`, `file-content`, `view`, `upload-pasted-image`, `profiles`, `prompts`, `ai-credentials`, `system/emoji`, `cron/cleanup-users`. `cron/cleanup-users`는 로컬 Next에만 존재하며 Cloudflare Pages 배포 경로에는 포함되지 않는다.
+로컬 전용 Next API: `knowledge/**`, `create-file`, `create-folder`, `save`, `delete`, `rename`, `file-content`, `view`, `upload-pasted-image`, `profiles`, `prompts`, `ai-credentials`, `system/emoji`. 탈퇴 회원 자동 정리는 별도 Cloudflare Worker에서 수행한다. 자세한 내용은 `docs/cleanup-users.md`를 참조한다.
 
 ## 변경 시 확인
 

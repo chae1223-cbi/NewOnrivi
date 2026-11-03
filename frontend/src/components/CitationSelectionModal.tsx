@@ -10,7 +10,7 @@ interface CitationSelectionModalProps {
   onClose: () => void;
   isDarkMode: boolean;
   bibContent?: string;
-  onSelect: (citekey: string) => void;
+  onSelect: (citekey: string, mode?: 'cite' | 'bibliography', entry?: any) => void;
   resourceFolderHandle?: any;
   workspaceType?: string;
   rootFolder?: any;
@@ -130,27 +130,53 @@ export default function CitationSelectionModal({
                 <p className="text-xs text-[#949494] mt-1">.bib 파일을 추가하거나 검색어를 변경해보세요.</p>
               </div>
             ) : (
-              filteredEntries.map((entry,index) => (
+              filteredEntries.map((entry, index) => (
                 <div
-                  key={entry.key+':'+index}
-                  onClick={() => {
-                    if(parsed.duplicates.some(k=>k.toLowerCase()===entry.key.toLowerCase())){setLoadError('중복 인용키입니다. 참조문헌 관리에서 키를 변경해 주세요.');return;}
-                    onSelect(entry.key);
-                    onClose();
-                  }}
-                  className="group flex flex-col p-3.5 rounded-xl border border-[#EFEFEF] dark:border-zinc-800 hover:border-[#1d4ed8] hover:bg-[#E8F9EE]/50 dark:hover:bg-emerald-950/20 cursor-pointer transition-all shadow-2xs"
+                  key={entry.key + ':' + index}
+                  className="group flex flex-col p-3.5 rounded-xl border border-[#EFEFEF] dark:border-zinc-800 hover:border-[#1d4ed8] hover:bg-blue-50/20 dark:hover:bg-blue-950/20 transition-all shadow-2xs"
                 >
-                  <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <div className="font-bold text-sm text-on-surface truncate group-hover:text-[#1d4ed8] transition-colors">
+                      <div className="font-bold text-sm text-zinc-900 dark:text-zinc-100 truncate group-hover:text-[#1d4ed8] transition-colors">
                         {entry.title || '(제목 없음)'}
                       </div>
-                      <div className="text-xs text-text-secondary mt-1 truncate">
+                      <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 truncate">
                         {entry.author || '저자 미상'} {entry.year ? `(${entry.year})` : ''}
                       </div>
                     </div>
-                    <div className="shrink-0 text-xs font-mono px-2 py-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded-md group-hover:bg-[#1d4ed8]/15 group-hover:text-[#1d4ed8] transition-colors">
-                      @{entry.key}
+                    <div className="shrink-0 flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (parsed.duplicates.some(k => k.toLowerCase() === entry.key.toLowerCase())) {
+                            setLoadError('중복 인용키입니다. 참조문헌 관리에서 키를 변경해 주세요.');
+                            return;
+                          }
+                          onSelect(entry.key, 'bibliography', entry);
+                          onClose();
+                        }}
+                        className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-colors cursor-pointer"
+                        title="본문 태그 없이 문서 맨 뒤 참고문헌 목록에 직접 추가"
+                      >
+                        참고문헌에 추가
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (parsed.duplicates.some(k => k.toLowerCase() === entry.key.toLowerCase())) {
+                            setLoadError('중복 인용키입니다. 참조문헌 관리에서 키를 변경해 주세요.');
+                            return;
+                          }
+                          onSelect(entry.key, 'cite', entry);
+                          onClose();
+                        }}
+                        className="px-2 py-1 text-xs font-mono rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300 transition-colors cursor-pointer"
+                        title="본문 커서 위치에 [@키] 인용 태그 삽입"
+                      >
+                        본문 인용(@)
+                      </button>
                     </div>
                   </div>
                 </div>

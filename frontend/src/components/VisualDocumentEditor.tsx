@@ -1,6 +1,14 @@
 /**
  * 프로그램명 : OnriviAuthor 
  * 버전 정보 : 1.0.1
+ * 🚨 @PATCH : 2026-11-03 — [각주 영역 단편화 방지 및 참고문헌 삭제 기능 연동]:
+ *             1) 각주 정의(visual_footnote_def) 사이 및 하단에 엔터/타이핑으로 인한 빈 문단 삽입 원천 차단 및 단편화 자동 소거
+ *             2) 참고문헌 카드별 개별 삭제 버튼(✕) 및 전체 삭제 버튼 연동으로 본문 인용 태그 실시간 일괄 정리
+ * * 🚨 @PATCH : 2026-11-03 — [일반 도서용 참고문헌 목록 삽입 커맨드(/참고문헌) 신설] 복잡한 인용 태그 없이 문서 끝에 '## 참고문헌'과 글머리 기호 목록을 자동 생성하고 커서 이동
+ * * 🚨 @PATCH : 2026-11-03 — [각주 참조/정의 동시 삭제 및 고아 노드 방지] 본문 내 각주 번호(visual_footnote_ref) 삭제 시 하단 각주 설명(visual_footnote_def)을 단일 트랜잭션에서 자동 삭제(Undo/Redo 지원)하고 역방향 삭제도 동기화
+ * 🚨 @PATCH : 2026-11-03 — [각주 삽입 시 선택 문구 보존] 텍스트 선택 후 각주 적용 시 문구가 지워지지 않고 해당 문구 바로 뒤에 각주 번호가 첨부되도록 개선
+ * 🚨 @PATCH : 2026-11-03 — [페이지 보기 표 조정] 출력 표 경계 누름 시 직접 편집으로 전환하고 숨겨진 표 도구는 감춤
+ * 🚨 @PATCH : 2026-11-02 — [표 열 너비 자동 조정] 편집 표의 균등 분할을 해제하고 내용 길이에 따라 열 너비를 배분
  * 🚨 @PATCH : **2026-11-01** — [표 셀 줄바꿈 파괴 및 가로 늘어짐·텍스트 잘림 결함 완전 해결]:
  *             1) .visual-document-surface .visual-editable-table에 table-layout: fixed !important 및 max-width: 100%를 적용하여 긴 텍스트/코드 포함 시 표가 화면 밖으로 튀어나가거나 특정 열이 1글자 세로로 찌그러지는 현상 원천 차단
  *             2) th, td 셀에 overflow-wrap: anywhere !important 및 word-break: break-word !important를 부여하여 컬럼 비율 내에서 텍스트가 자연스럽게 줄바꿈되도록 개선
@@ -283,6 +291,7 @@
 import { quoteIndent, withIndependentQuotes, protectQuoteBoundary } from '@/lib/visualQuoteCommands';
 import { resolveDocumentLink, resolveWorkspaceHelpLink } from '@/lib/nativeDocumentPath';
 import { removeEmptySignatureBlocks } from '@/lib/signatureCleanup';
+import { removeOrphanFootnotes } from '@/lib/footnoteCleanup';
 import { clearMarkdownFormatting } from '@/lib/clearMarkdownFormatting';
 import { hasHeadingNumber, numberHeadingTransaction, type HeadingNumberSetting } from '@/lib/headingNumbering';
 import { nextReportNumber } from '@/lib/aiFriendlyReport';
@@ -318,6 +327,7 @@ import { baseKeymap, chainCommands, exitCode, lift, setBlockType, toggleMark, wr
 import { splitListItem, sinkListItem, liftListItem } from 'prosemirror-schema-list';
 import { history, undo, redo, closeHistory } from 'prosemirror-history';
 import { keymap } from 'prosemirror-keymap';
+import { equalColumnRatios, validColumnRatios, resizeTableBoundary } from '@/lib/tableColumnRatios';
 import { createVisualDocumentCodec, visualSchema, visualImageDetails, normalizeVisualMarkdownSpacing } from '@/lib/visualDocumentCodec';
 import { visualMarkdownInputRules } from '@/lib/visualMarkdownInputRules';
 import { undoInputRule } from 'prosemirror-inputrules';
@@ -1440,7 +1450,63 @@ export default function VisualDocumentEditor({ content, onChange, readOnly = fal
     window.addEventListener('onrivi:insert-citation',insert);
     const cancel=()=>{pendingCitation.current=null;};
     window.addEventListener('onrivi:cancel-citation',cancel);
-    return()=>{window.removeEventListener('onrivi:insert-citation',insert);window.removeEventListener('onrivi:cancel-citation',cancel);};
+
+    const addBibEntry = (event: Event) => {
+      const view = viewRef.current;
+      if (!view || !view.editable) return;
+      event.preventDefault();
+      const text = (event as CustomEvent).detail?.text;
+      if (!text) return;
+
+      let tr = view.state.tr;
+      let existingPos = -1;
+      view.state.doc.descendants((node, pos) => {
+        if (node.type.name === 'heading' && node.textContent.trim().includes('참고문헌')) {
+          existingPos = pos;
+          return false;
+        }
+      });
+
+      const pNode = visualSchema.nodes.paragraph.create(null, visualSchema.text(text));
+      const itemNode = visualSchema.nodes.list_item.create(null, pNode);
+
+      if (existingPos >= 0) {
+        let bulletListPos = -1;
+        let bulletListNode: any = null;
+        view.state.doc.descendants((node, pos) => {
+          if (pos > existingPos && node.type.name === 'bullet_list' && bulletListPos === -1) {
+            bulletListPos = pos;
+            bulletListNode = node;
+            return false;
+          }
+        });
+
+        if (bulletListPos >= 0 && bulletListNode) {
+          const insertPos = bulletListPos + bulletListNode.nodeSize - 1;
+          tr = tr.insert(insertPos, itemNode);
+        } else {
+          const listNode = visualSchema.nodes.bullet_list.create(null, [itemNode]);
+          const node = view.state.doc.nodeAt(existingPos);
+          const insertPos = existingPos + (node ? node.nodeSize : 0);
+          tr = tr.insert(insertPos, listNode);
+        }
+      } else {
+        const headingNode = visualSchema.nodes.heading.create({ level: 2 }, visualSchema.text('참고문헌'));
+        const listNode = visualSchema.nodes.bullet_list.create(null, [itemNode]);
+        tr = tr.insert(tr.doc.content.size, [headingNode, listNode]);
+      }
+
+      view.dispatch(closeHistory(tr).scrollIntoView());
+      view.focus();
+      if (onToastRef.current) onToastRef.current('참고문헌 목록에 추가되었습니다.', 'success');
+    };
+    window.addEventListener('onrivi:add-bibliography-entry', addBibEntry);
+
+    return()=>{
+      window.removeEventListener('onrivi:insert-citation',insert);
+      window.removeEventListener('onrivi:cancel-citation',cancel);
+      window.removeEventListener('onrivi:add-bibliography-entry', addBibEntry);
+    };
   },[]);
   useEffect(()=>{const view=viewRef.current;if(view)view.dispatch(view.state.tr.setMeta('onrivi:bibliography',true));},[bibContent]);
   const cursorFrame=useRef(0);
@@ -2207,7 +2273,40 @@ export default function VisualDocumentEditor({ content, onChange, readOnly = fal
       }), keymap(baseKeymap)] }),
       editable: () => !readOnly,
       attributes: { spellcheck: String(spellCheck), class: 'visual-document-surface', 'aria-label': '문서 직접 편집', role: 'textbox', 'aria-multiline': 'true', 'data-editor-tab-size': String(tabSize) },
-      nodeViews: { visual_image:mediaNodeView, visual_media:mediaNodeView,
+      nodeViews: {
+        /**
+         * ========================================================================================
+         * [table] 각 열의 저장된 너비를 colgroup에 직접 반영한다.
+         * @param {Node} node - 현재 표 노드
+         * @returns {NodeView} 표와 편집 가능한 tbody
+         * ========================================================================================
+         */
+        table(node) {
+          const dom = document.createElement('table');
+          dom.className = 'visual-editable-table';
+          dom.style.setProperty('table-layout', 'fixed', 'important');
+          const columns = document.createElement('colgroup');
+          const body = document.createElement('tbody');
+          dom.append(columns, body);
+          const renderWidths = (tableNode: typeof node) => {
+            const count = tableNode.firstChild?.childCount || 0;
+            const widths = validColumnRatios(tableNode.attrs.widths, count) || equalColumnRatios(count);
+            columns.replaceChildren(...widths.map(width => {
+              const col = document.createElement('col');
+              col.style.width = `${width}%`;
+              return col;
+            }));
+          };
+          renderWidths(node);
+          return { dom, contentDOM: body, update(nextNode) {
+            if (nextNode.type !== node.type) return false;
+            renderWidths(nextNode);
+            return true;
+          }, ignoreMutation(mutation) {
+            return mutation.type !== 'selection' && (mutation.target === columns || columns.contains(mutation.target));
+          } };
+        },
+        visual_image:mediaNodeView, visual_media:mediaNodeView,
         visual_math(node, currentView, getPos) {
           const dom = document.createElement('div');
           dom.className = 'visual-math-node my-4 py-3 px-4 text-center cursor-pointer select-none rounded-lg hover:ring-2 hover:ring-blue-500/40 transition-all';
@@ -2954,6 +3053,7 @@ export default function VisualDocumentEditor({ content, onChange, readOnly = fal
       },
       dispatchTransaction(transaction) {
         removeEmptySignatureBlocks(transaction);
+        removeOrphanFootnotes(transaction);
         const formats = headingFormatsRef.current;
         if (!formats.readOnly && !view.composing && (transaction.docChanged || transaction.getMeta('onrivi:heading-numbering'))) {
           numberHeadingTransaction(transaction, formats.current, formats.previous);
@@ -3062,6 +3162,16 @@ export default function VisualDocumentEditor({ content, onChange, readOnly = fal
       },
       handleKeyDown(currentView, event) {
         if (!currentView.editable || event.isComposing) return false;
+        if (event.key === 'Enter') {
+          const { $from } = currentView.state.selection;
+          const isFootnoteDef = $from.parent.type === visualSchema.nodes.visual_footnote_def ||
+            ($from.nodeAfter && $from.nodeAfter.type === visualSchema.nodes.visual_footnote_def) ||
+            ($from.nodeBefore && $from.nodeBefore.type === visualSchema.nodes.visual_footnote_def);
+          if (isFootnoteDef) {
+            event.preventDefault();
+            return true;
+          }
+        }
         if (currentView.state.selection instanceof NodeSelection && currentView.state.selection.node.type === visualSchema.nodes.horizontal_rule) {
           if (event.key === 'Enter' && !event.ctrlKey && !event.metaKey) {
             event.preventDefault();
@@ -3463,6 +3573,12 @@ export default function VisualDocumentEditor({ content, onChange, readOnly = fal
       handleClick(currentView, pos, event) {
         // A completed drag must keep its range; click correction only applies to a caret.
         if (!currentView.state.selection.empty || document.getSelection()?.isCollapsed === false) return false;
+        const clickedFootnoteDef = (event.target as HTMLElement | null)?.closest('.visual-footnote-def');
+        const clickedFootnoteArea = (event.target as HTMLElement | null)?.closest('.visual-footnote-area-header, .visual-footnote-def-container');
+        if (clickedFootnoteArea && !clickedFootnoteDef) {
+          event.preventDefault();
+          return true;
+        }
         const clickedHrPos = findClickedHorizontalRulePos(currentView, event);
         if (clickedHrPos >= 0) {
           event.preventDefault();
@@ -3744,6 +3860,100 @@ export default function VisualDocumentEditor({ content, onChange, readOnly = fal
       }
     };
     window.addEventListener('keydown', handleWindowKeyDown);
+    // A boundary is shared by two columns; dragging it changes only those two widths.
+    let activeResize: {
+      pos: number; boundary: number; widths: number[]; latest: number[];
+      startX: number; tableWidth: number; leftCol: HTMLTableColElement; rightCol: HTMLTableColElement;
+    } | null = null;
+    const resizeHit = (event: PointerEvent) => {
+      // Collapsed table borders often target the table or row rather than a cell.
+      const target = event.target instanceof Element ? event.target : null;
+      const table = target?.closest<HTMLTableElement>('table.visual-editable-table')
+        || Array.from(view.dom.querySelectorAll<HTMLTableElement>('table.visual-editable-table')).find(candidate => {
+          const bounds = candidate.getBoundingClientRect();
+          return event.clientX >= bounds.left - 2 && event.clientX <= bounds.right + 2
+            && event.clientY >= bounds.top && event.clientY <= bounds.bottom;
+        });
+      if (!table || !view.dom.contains(table)) return null;
+      const rect = table.getBoundingClientRect();
+      if (event.clientY < rect.top || event.clientY > rect.bottom) return null;
+      const header = table.rows[0];
+      if (!header || header.cells.length < 2) return null;
+      let boundary = -1;
+      let distance = 14;
+      for (let index = 0; index < header.cells.length - 1; index++) {
+        const edge = header.cells[index].getBoundingClientRect().right;
+        const nextDistance = Math.abs(event.clientX - edge);
+        if (nextDistance < distance) { boundary = index; distance = nextDistance; }
+      }
+      if (boundary < 0) return null;
+      const row = Array.from(table.rows).find(candidate => {
+        const bounds = candidate.getBoundingClientRect();
+        return event.clientY >= bounds.top && event.clientY <= bounds.bottom;
+      });
+      const cell = row?.cells[boundary] || header.cells[boundary];
+      return { cell, table, boundary, edge: 'right' };
+    };
+    const handleTableResizeMove = (event: MouseEvent) => {
+      if (!activeResize) return;
+      const drag = activeResize;
+      event.preventDefault();
+      const next = resizeTableBoundary(drag.widths, drag.boundary, (event.clientX - drag.startX) * 100 / drag.tableWidth);
+      if (next[drag.boundary] === drag.latest[drag.boundary]) return;
+      drag.latest = next;
+      // Preview only the two affected columns. Save the document once on mouseup.
+      drag.leftCol.style.width = `${next[drag.boundary]}%`;
+      drag.rightCol.style.width = `${next[drag.boundary + 1]}%`;
+    };
+    const stopTableResize = (event?: Event) => {
+      const drag = activeResize;
+      activeResize = null;
+      document.body.style.cursor = '';
+      document.removeEventListener('pointermove', handleTableResizeMove);
+      document.removeEventListener('mousemove', handleTableResizeMove);
+      document.removeEventListener('pointerup', stopTableResize);
+      document.removeEventListener('mouseup', stopTableResize);
+      if (!drag) return;
+      if ((event?.type === 'pointerup' || event?.type === 'mouseup') && drag.latest.some((width, index) => width !== drag.widths[index])) {
+        const tableNode = view.state.doc.nodeAt(drag.pos);
+        if (tableNode?.type.name === 'table') {
+          view.dispatch(view.state.tr.setNodeMarkup(drag.pos, undefined, { ...tableNode.attrs, widths: drag.latest }));
+          return;
+        }
+      }
+      drag.leftCol.style.width = `${drag.widths[drag.boundary]}%`;
+      drag.rightCol.style.width = `${drag.widths[drag.boundary + 1]}%`;
+    };
+    const startTableResize = (event: PointerEvent) => {
+      if (readOnly || event.button !== 0) return;
+      const hit = resizeHit(event);
+      if (!hit) return;
+      const cellPos = view.posAtDOM(hit.cell, 0);
+      const resolved = view.state.doc.resolve(cellPos);
+      let pos = -1;
+      for (let depth = resolved.depth; depth > 0; depth--) {
+        if (resolved.node(depth).type.name === 'table') { pos = resolved.before(depth); break; }
+      }
+      if (pos < 0) return;
+      const tableNode = view.state.doc.nodeAt(pos);
+      if (tableNode?.type.name !== 'table') return;
+      const count = tableNode.firstChild?.childCount || 0;
+      const widths = validColumnRatios(tableNode.attrs.widths, count) || equalColumnRatios(count);
+      if (widths.length < 2) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const cols = hit.table.querySelectorAll<HTMLTableColElement>('colgroup > col');
+      const leftCol = cols[hit.boundary], rightCol = cols[hit.boundary + 1];
+      if (!leftCol || !rightCol) return;
+      activeResize = { pos, boundary: hit.boundary, widths, latest: widths, startX: event.clientX,
+        tableWidth: hit.table.getBoundingClientRect().width, leftCol, rightCol };
+      document.body.style.cursor = 'col-resize';
+      document.addEventListener('pointermove', handleTableResizeMove);
+      document.addEventListener('mousemove', handleTableResizeMove);
+      document.addEventListener('pointerup', stopTableResize);
+      document.addEventListener('mouseup', stopTableResize);
+    };
+    hostEl.addEventListener('pointerdown', startTableResize, true);
     const scrollContainer=hostEl.closest('.custom-preview-container') as HTMLElement|null;
     // A scene editor mounts inside an already-scrolled picturebook. Resetting
     // the shared document viewport here jumps back to the scene list.
@@ -3793,6 +4003,8 @@ export default function VisualDocumentEditor({ content, onChange, readOnly = fal
       aiTargets.clear();if(aiTargetRef)aiTargetRef.current=null;
       clearDropIndicator();
       window.removeEventListener('keydown', handleWindowKeyDown);
+      stopTableResize();
+      hostEl.removeEventListener('pointerdown', startTableResize, true);
       window.removeEventListener('dragover', handleWindowDragOver, true);
       window.removeEventListener('dragend', handleWindowDragEnd, true);
       window.removeEventListener('drop', handleWindowDrop, true);
@@ -4113,7 +4325,7 @@ export default function VisualDocumentEditor({ content, onChange, readOnly = fal
     math: () => { executeItem('math'); return true; }, latex: () => { executeItem('math'); return true; },
     footnote: () => { insertFootnote(); return true; }, fn: () => { insertFootnote(); return true; },
     signature: () => { applySignature(); return true; }, sign: () => { applySignature(); return true; },
-    citation: () => { openCitation(); return true; }, cite: () => { openCitation(); return true; },
+    bibliography: () => { insertBibliography(); return true; }, citation: () => { openCitation(); return true; }, cite: () => { openCitation(); return true; },
     add_reference: () => { onReferenceSettingsRef.current?.(); return true; }, vibe: () => { onReferenceSettingsRef.current?.(); return true; },
   };
   for (let level = 1; level <= 6; level++) nativeCommands[`h${level}`] = setHeadingBlock(level);
@@ -4136,14 +4348,15 @@ export default function VisualDocumentEditor({ content, onChange, readOnly = fal
     }
     const { from, to } = tr.selection;
     const refNode = visualSchema.nodes.visual_footnote_ref.create({ label });
-    tr = tr.replaceWith(from, to, refNode);
+    // 🛡️ 선택된 문구가 있을 경우 지우지 않고 문구 바로 뒤(to)에 각주 번호 노드를 삽입
+    tr = tr.insert(to, refNode);
     const defNode = visualSchema.nodes.visual_footnote_def.create({
       label,
       content: '각주 내용을 입력하세요'
     });
     const insertPos = tr.doc.content.size;
     tr = tr.insert(insertPos, defNode);
-    const nextPos = from + refNode.nodeSize;
+    const nextPos = to + refNode.nodeSize;
     tr = tr.setSelection(TextSelection.create(tr.doc, nextPos));
     view.dispatch(closeHistory(tr).scrollIntoView());
 
@@ -4389,12 +4602,127 @@ export default function VisualDocumentEditor({ content, onChange, readOnly = fal
       view.dispatch(closeHistory(tr).scrollIntoView()); view.focus(); return true;
     });
   };
+  const deleteCitationFromDoc = (key: string) => {
+    const view = viewRef.current;
+    if (!view || !view.editable) return;
+    let tr = view.state.tr;
+    const lowerKey = key.toLowerCase();
+
+    const rangesToDelete: Array<{ from: number; to: number }> = [];
+    view.state.doc.descendants((node, pos) => {
+      if (!node.isText || !node.text) return;
+      for (const match of Array.from(node.text.matchAll(citationPattern))) {
+        const matchKey = match[1] || match[2];
+        if (matchKey && matchKey.toLowerCase() === lowerKey) {
+          rangesToDelete.push({ from: pos + match.index!, to: pos + match.index! + match[0].length });
+        }
+      }
+    });
+
+    for (let i = rangesToDelete.length - 1; i >= 0; i--) {
+      tr = tr.delete(rangesToDelete[i].from, rangesToDelete[i].to);
+    }
+
+    let bibHeadingPos = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'heading' && node.textContent.trim().includes('참고문헌')) {
+        bibHeadingPos = pos;
+        return false;
+      }
+    });
+
+    if (bibHeadingPos >= 0) {
+      const itemsToDelete: Array<{ from: number; to: number }> = [];
+      view.state.doc.descendants((node, pos) => {
+        if (pos > bibHeadingPos && node.type.name === 'list_item') {
+          if (node.textContent.toLowerCase().includes(lowerKey)) {
+            itemsToDelete.push({ from: pos, to: pos + node.nodeSize });
+          }
+        }
+      });
+      for (let i = itemsToDelete.length - 1; i >= 0; i--) {
+        const mappedFrom = tr.mapping.map(itemsToDelete[i].from);
+        const mappedTo = tr.mapping.map(itemsToDelete[i].to);
+        tr = tr.delete(mappedFrom, mappedTo);
+      }
+    }
+
+    view.dispatch(closeHistory(tr));
+    view.focus();
+    if (onToastRef.current) onToastRef.current('참고문헌이 삭제되었습니다.', 'success');
+  };
+
+  const deleteAllCitationsFromDoc = () => {
+    const view = viewRef.current;
+    if (!view || !view.editable) return;
+    let tr = view.state.tr;
+    const rangesToDelete: Array<{ from: number; to: number }> = [];
+    view.state.doc.descendants((node, pos) => {
+      if (!node.isText || !node.text) return;
+      for (const match of Array.from(node.text.matchAll(citationPattern))) {
+        rangesToDelete.push({ from: pos + match.index!, to: pos + match.index! + match[0].length });
+      }
+    });
+    for (let i = rangesToDelete.length - 1; i >= 0; i--) {
+      tr = tr.delete(rangesToDelete[i].from, rangesToDelete[i].to);
+    }
+    view.dispatch(closeHistory(tr));
+    view.focus();
+    if (onToastRef.current) onToastRef.current('모든 참고문헌이 삭제되었습니다.', 'success');
+  };
+
+  const insertBibliography = (removeSlash = false) => {
+    const view = viewRef.current;
+    if (!view || !view.editable) return;
+    let tr = view.state.tr;
+    if (removeSlash && slashRange.current) {
+      tr = tr.delete(slashRange.current.from, slashRange.current.to);
+      slashRange.current = null;
+      setSlash(false);
+    }
+    let existingPos = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'heading' && node.textContent.trim().includes('참고문헌')) {
+        existingPos = pos;
+        return false;
+      }
+    });
+
+    if (existingPos >= 0) {
+      const node = view.state.doc.nodeAt(existingPos);
+      const targetPos = Math.min(tr.doc.content.size, existingPos + (node ? node.nodeSize : 0));
+      tr = tr.setSelection(TextSelection.create(tr.doc, targetPos));
+      view.dispatch(tr.scrollIntoView());
+      view.focus();
+      if (onToastRef.current) onToastRef.current('이미 참고문헌 섹션이 존재하여 해당 위치로 이동했습니다.', 'info');
+      return;
+    }
+
+    const headingNode = visualSchema.nodes.heading.create({ level: 2 }, visualSchema.text('참고문헌'));
+    const pNode = visualSchema.nodes.paragraph.create(null, visualSchema.text(''));
+    const itemNode = visualSchema.nodes.list_item.create(null, pNode);
+    const listNode = visualSchema.nodes.bullet_list.create(null, [itemNode]);
+
+    const insertPos = tr.doc.content.size;
+    tr = tr.insert(insertPos, [headingNode, listNode]);
+
+    const cursorTarget = insertPos + headingNode.nodeSize + 2;
+    tr = tr.setSelection(TextSelection.create(tr.doc, Math.min(tr.doc.content.size - 1, cursorTarget)));
+    view.dispatch(closeHistory(tr).scrollIntoView());
+    view.focus();
+    if (onToastRef.current) onToastRef.current('문서 끝에 참고문헌 목록이 추가되었습니다.', 'success');
+  };
+
   const executeItem = (id: string, removeSlash = false) => {
     const view = viewRef.current;
     if (!view || readOnly) return;
     if(id==='aiHelp'){
       if(removeSlash&&slashRange.current){view.dispatch(view.state.tr.delete(slashRange.current.from,slashRange.current.to));slashRange.current=null;setSlash(false);}
       window.dispatchEvent(new Event('onrivi:open-inline-ai'));return;
+    }
+    if (['bibliography', 'bib', '참고문헌'].includes(id)) {
+      insertBibliography(removeSlash);
+      return;
     }
     if (['citation','cite'].includes(id)){openCitation(removeSlash);return;}
     if (['footnote', 'fn'].includes(id)) {
@@ -4714,7 +5042,7 @@ export default function VisualDocumentEditor({ content, onChange, readOnly = fal
         return true;
       }
       if (commands[command]) { run(commands[command]); return true; }
-      const aliases: Record<string, string> = { HR:'divider', CHECK:'checklist', CHECKLIST:'checklist', CITE:'citation', CITATION:'citation', FOOTNOTE:'footnote', FN:'footnote', DOCLINK:'taglink',
+      const aliases: Record<string, string> = { HR:'divider', CHECK:'checklist', CHECKLIST:'checklist', BIBLIOGRAPHY:'bibliography', BIB:'bibliography', CITE:'citation', CITATION:'citation', FOOTNOTE:'footnote', FN:'footnote', DOCLINK:'taglink',
         NOW:'now', CALENDAR:'now',
         VIDEO:'youtube', YOUTUBE:'youtube', ADD_REFERENCE:'add_reference', TOGGLE_CSS_STYLE:'styleSettings', AI_DRAFT:'aiHelp', CODE:'codeblock', LATEX:'math', MATH:'math',
         SIGNATURE:'signature', SIGN:'signature' };
@@ -4855,14 +5183,14 @@ export default function VisualDocumentEditor({ content, onChange, readOnly = fal
         )}
       </div>
     </div>
-    {inTable && !readOnly && tableToolbarDismissed && createPortal(
+    {inTable && !pageGuides && !readOnly && tableToolbarDismissed && createPortal(
       <button type="button" style={{ position:'fixed', top:tableToolPosition.top, left:tableToolPosition.left, zIndex:150 }}
         className="no-print rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800 shadow-lg hover:bg-blue-100 cursor-pointer"
         data-editor-controls aria-label="표 편집 도구 다시 열기" title="표 편집 도구 다시 열기"
         onMouseDown={event=>event.preventDefault()} onClick={()=>setTableToolbarDismissed(false)}>
         표 도구 열기
       </button>, document.body)}
-    {inTable && !readOnly && !tableToolbarDismissed && createPortal(<div style={tableToolPosition} className="no-print fixed z-[150] flex flex-wrap gap-1 rounded-lg border border-blue-200 bg-blue-50 p-2 text-zinc-800 shadow-lg items-center" data-editor-controls aria-label="표 편집 도구">
+    {inTable && !pageGuides && !readOnly && !tableToolbarDismissed && createPortal(<div style={tableToolPosition} className="no-print fixed z-[150] flex flex-wrap gap-1 rounded-lg border border-blue-200 bg-blue-50 p-2 text-zinc-800 shadow-lg items-center" data-editor-controls aria-label="표 편집 도구">
       <strong className="self-center px-2 text-sm font-bold text-zinc-900">표 편집 도구</strong>
       {firstBlockNeedsParagraph && viewRef.current?.state.doc.firstChild?.type === visualSchema.nodes.table &&
         <button type="button" className="rounded border border-blue-300 bg-white px-2 py-1 text-sm font-semibold text-blue-700 hover:bg-blue-100 cursor-pointer"
@@ -4990,11 +5318,18 @@ export default function VisualDocumentEditor({ content, onChange, readOnly = fal
         {pdfPageBusy && <p role="status" className="text-xs text-blue-600">PDF 페이지 계산 중...</p>}
         {pdfPageError && <p role="alert" className="text-xs text-red-600">PDF 페이지를 표시하지 못했습니다: {pdfPageError}</p>}
         {pdfPageHtml && !pdfPageError && <div style={{height:'min(80vh, 900px)',display:'flex'}}>
-          <PrintPaginationPreview html={pdfPageHtml} editing={!readOnly} busy={pdfPageBusy} onToggle={togglePdfBreak} onEscape={closePdfPages} />
+          <PrintPaginationPreview html={pdfPageHtml} editing={!readOnly} busy={pdfPageBusy} onToggle={togglePdfBreak} onEscape={closePdfPages} onTableResizeStart={closePdfPages} />
         </div>}
       </div>}
     </div>
-    {showBibliography&&<BibliographySummary source={content} content={bibContent}/>}
+    {showBibliography && (
+      <BibliographySummary
+        source={content}
+        content={bibContent}
+        onDeleteCitation={deleteCitationFromDoc}
+        onDeleteAll={deleteAllCitationsFromDoc}
+      />
+    )}
     {imageMounts.map(item => createPortal(renderImage?.(item.source) || <VisualReadOnlyMarkdownBlock source={item.source} />, item.element, String(item.id)))}
     <style>{`
       .custom-preview-container:has(.visual-document-editor) { overflow-anchor:none!important; scroll-behavior:auto!important; }
@@ -5019,6 +5354,8 @@ export default function VisualDocumentEditor({ content, onChange, readOnly = fal
       .visual-document-surface :is(p,h1,h2,h3,h4,h5,h6,li > div) { white-space:break-spaces!important; tab-size:inherit; }
       .visual-document-surface p { margin:0; }
       .visual-document-surface br.ProseMirror-trailingBreak { display:inline!important; content:normal!important; margin:0!important; height:auto!important; }
+      .visual-document-surface > .visual-footnote-def + p:empty,
+      .visual-document-surface > .visual-footnote-def ~ p:empty { display: none !important; }
       .visual-document-surface p:empty,
       .visual-document-surface p:has(>br.ProseMirror-trailingBreak:only-child) {
         min-height: 1em;
@@ -5130,6 +5467,17 @@ export default function VisualDocumentEditor({ content, onChange, readOnly = fal
       @media print { .visual-media-controls { display:none; } }
       @media (hover:none) { .visual-media-controls { opacity:1; pointer-events:auto; } }
       .visual-document-surface .visual-editable-table { border-collapse:collapse!important; width:100%!important; max-width:100%!important; table-layout:fixed!important; margin:16px 0!important; }
+      .visual-document-surface .visual-editable-table :is(th, td) { position:relative; }
+      .visual-document-surface .visual-editable-table :is(th, td):not(:last-child)::after,
+      .visual-document-surface .visual-editable-table :is(th, td):not(:first-child)::before {
+        content:'↔'; position:absolute; top:0; width:20px; height:100%; z-index:3;
+        cursor:col-resize!important; opacity:0; color:#1d4ed8; font-size:18px; font-weight:700;
+        display:flex; align-items:center; justify-content:center; text-shadow:0 1px #fff,0 -1px #fff;
+      }
+      .visual-document-surface .visual-editable-table :is(th, td):not(:last-child)::after { right:-10px; }
+      .visual-document-surface .visual-editable-table :is(th, td):not(:first-child)::before { left:-10px; }
+      .visual-document-surface .visual-editable-table :is(th, td):not(:last-child):hover::after,
+      .visual-document-surface .visual-editable-table :is(th, td):not(:first-child):hover::before { opacity:1; }
       .visual-document-surface .visual-editable-table th, .visual-document-surface .visual-editable-table td { border:1px solid #cbd5e1!important; padding:8px 10px!important; min-width:0!important; vertical-align:top!important; overflow-wrap:anywhere!important; word-break:break-word!important; box-sizing:border-box!important; }
       .visual-document-surface table th p, .visual-document-surface table td p { margin:0!important; padding:0!important; overflow-wrap:anywhere!important; word-break:break-word!important; white-space:pre-wrap!important; }
       .visual-document-surface .visual-editable-table th { background:#f1f5f9!important; text-align:center!important; }

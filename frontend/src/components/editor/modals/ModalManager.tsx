@@ -739,13 +739,57 @@ export default function ModalManager({ modals, deps }: ModalManagerProps) {
         workspaceType={workspaceType}
         rootFolder={rootFolder}
         resourceFolder={resourceFolder}
-        onSelect={(citekey) => {
-          if(citationTarget.current?.documentId!==deps.activeTabId){deps.showToast('문서가 변경되었습니다. 인용을 다시 선택해 주세요.','warning');return;}
-          const event=new CustomEvent('onrivi:insert-citation',{cancelable:true,detail:{key:citekey}});
-          window.dispatchEvent(event);if(event.defaultPrevented)return;
+        onSelect={(citekey, mode = 'bibliography', entry) => {
+          if (mode === 'bibliography') {
+            const formatted = [
+              entry?.author || citekey,
+              entry?.year && `(${entry.year}).`,
+              entry?.title,
+              entry?.journal || entry?.publisher,
+              entry?.doi ? `https://doi.org/${entry.doi}` : entry?.url
+            ].filter(Boolean).join(' ');
+
+            const event = new CustomEvent('onrivi:add-bibliography-entry', {
+              cancelable: true,
+              detail: { text: formatted, key: citekey }
+            });
+            window.dispatchEvent(event);
+            if (event.defaultPrevented) return;
+
+            if (deps.editorRef.current) {
+              const editor = deps.editorRef.current;
+              const model = editor.getModel();
+              if (model) {
+                const fullText = model.getValue();
+                const suffix = fullText.endsWith('\n\n') ? '' : fullText.endsWith('\n') ? '\n' : '\n\n';
+                const lastLine = model.getLineCount();
+                const lastCol = model.getLineMaxColumn(lastLine);
+                const hasBib = /^#{1,3}\s*참고문헌/m.test(fullText);
+                const textToInsert = hasBib ? `- ${formatted}\n` : `${suffix}## 참고문헌\n- ${formatted}\n`;
+                editor.executeEdits('add-bib', [{
+                  range: new (window as any).monaco.Range(lastLine, lastCol, lastLine, lastCol),
+                  text: textToInsert,
+                  forceMoveMarkers: true
+                }]);
+                deps.showToast('참고문헌 목록에 추가되었습니다.', 'success');
+              }
+            }
+            return;
+          }
+
+          if (citationTarget.current?.documentId !== deps.activeTabId) {
+            deps.showToast('문서가 변경되었습니다. 인용을 다시 선택해 주세요.', 'warning');
+            return;
+          }
+          const event = new CustomEvent('onrivi:insert-citation', { cancelable: true, detail: { key: citekey } });
+          window.dispatchEvent(event);
+          if (event.defaultPrevented) return;
           if (deps.editorRef.current) {
             const editor = deps.editorRef.current;
-            if(editor.getModel()!==citationTarget.current?.model){deps.showToast('문서가 변경되었습니다. 인용을 다시 선택해 주세요.','warning');return;}
+            if (editor.getModel() !== citationTarget.current?.model) {
+              deps.showToast('문서가 변경되었습니다. 인용을 다시 선택해 주세요.', 'warning');
+              return;
+            }
             const position = editor.getPosition();
             if (position) {
               editor.executeEdits('citation', [{

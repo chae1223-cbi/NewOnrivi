@@ -1,4 +1,12 @@
 'use client';
+/**
+ * ====================================================================
+ * 🏷️ 파일명 : PrintPaginationPreview.tsx
+ * 🎭 역할(Role) : Core
+ * 🎯 주요기능 : PDF 페이지 보기와 페이지 나누기 조작
+ * 🚨 @PATCH : 2026-11-03 — [표 열 조정 진입] 페이지 보기의 표 경계를 누르면 직접 편집 화면으로 전환
+ * ====================================================================
+ */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { type PrintBreakAnchor } from '@/lib/documentPaginationSettings';
 import { ANCHOR_ATTRIBUTE } from '@/lib/printBreaks';
@@ -9,11 +17,12 @@ interface Props {
   busy:boolean;
   onToggle:(anchor:PrintBreakAnchor,existingId?:string)=>void;
   onEscape:()=>void;
+  onTableResizeStart?:()=>void;
   expanded?:boolean;
   onExpand?:()=>void;
 }
 /** The parent owns all controls; no script execution permission is added to the iframe. */
-export default function PrintPaginationPreview({html,editing,busy,onToggle,onEscape,expanded=false,onExpand}:Props){
+export default function PrintPaginationPreview({html,editing,busy,onToggle,onEscape,onTableResizeStart,expanded=false,onExpand}:Props){
   const frame=useRef<HTMLIFrameElement>(null),cleanup=useRef<()=>void>(()=>{});
   const [pageNumber,setPageNumber]=useState(1),[pageTexts,setPageTexts]=useState<string[]>([]);
   const currentPage=useRef(1);
@@ -61,6 +70,30 @@ export default function PrintPaginationPreview({html,editing,busy,onToggle,onEsc
     doc.querySelectorAll('.onrivi-print-adjust-controls').forEach(el=>el.remove());
     const escape=(event:KeyboardEvent)=>{if(event.key==='Escape'){event.preventDefault();onEscape();}};
     doc.addEventListener('keydown',escape);
+    /**
+     * ========================================================================================
+     * [handleTableBoundaryPointerDown] 출력용 표의 내부 열 경계에서 직접 편집으로 전환한다.
+     * @param {PointerEvent} event - PDF iframe 내부 포인터 누름
+     * @returns {void} 편집 전환 요청
+     * ========================================================================================
+     */
+    const handleTableBoundaryPointerDown = (event:PointerEvent) => {
+      if (!editing || busy || !onTableResizeStart || event.button !== 0) return;
+      const target = event.target as Element | null;
+      const table = target?.closest<HTMLTableElement>('table');
+      const header = table?.rows[0];
+      if (!table || !header || header.cells.length < 2) return;
+      const bounds = table.getBoundingClientRect();
+      if (event.clientY < bounds.top || event.clientY > bounds.bottom) return;
+      const nearBoundary = Array.from(header.cells).slice(0, -1).some(cell =>
+        Math.abs(cell.getBoundingClientRect().right - event.clientX) <= 14);
+      if (!nearBoundary) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onTableResizeStart();
+    };
+    doc.addEventListener('pointerdown',handleTableBoundaryPointerDown,true);
+
     const layer=doc.createElement('div');layer.className='onrivi-print-adjust-controls';layer.style.cssText='position:absolute;inset:0;pointer-events:none;z-index:10000';
     const candidates=Array.from(doc.querySelectorAll<HTMLElement>(`[${ANCHOR_ATTRIBUTE}]`));
     const ids=new Set<string>();
@@ -108,8 +141,8 @@ export default function PrintPaginationPreview({html,editing,busy,onToggle,onEsc
     else pages[savedPage-1]?.scrollIntoView({block:'start',inline:'nearest'});
     lastDocument.current=doc;
     currentPage.current=savedPage;setPageNumber(savedPage);
-    cleanup.current=()=>{doc.removeEventListener('keydown',escape);win.removeEventListener('scroll',trackPage);layer.remove();};
-  },[editing,busy,onToggle,onEscape,zoom]);
+    cleanup.current=()=>{doc.removeEventListener('keydown',escape);doc.removeEventListener('pointerdown',handleTableBoundaryPointerDown,true);win.removeEventListener('scroll',trackPage);layer.remove();};
+  },[editing,busy,onToggle,onEscape,onTableResizeStart,zoom]);
   useEffect(()=>{setup();return()=>cleanup.current();},[setup,html]);
   useEffect(()=>{
     const element=frame.current;if(!element)return;

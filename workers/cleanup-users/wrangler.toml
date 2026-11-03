@@ -1,0 +1,13 @@
+name = "onriviauthor-cleanup-users"
+main = "index.js"
+compatibility_date = "2026-06-23"
+compatibility_flags = [ "nodejs_compat" ]
+workers_dev = false
+
+# 18:00 UTC = 03:00 Asia/Seoul (다음 날)
+[triggers]
+crons = [ "0 18 * * *" ]
+
+[[hyperdrive]]
+binding = "HYPERDRIVE"
+id = "b69b14ee883b477caf4e35b2a6d1205b"

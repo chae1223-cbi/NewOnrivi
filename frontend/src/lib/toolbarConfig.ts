@@ -4,6 +4,7 @@
 // 🚨 @PATCH : **2026-10-25** — [서식·태그 지우기(clear/태그 취소) 기본 단축키 Ctrl+\\ 변경 및 한글 키보드(₩) 정규화]:
 //             1) TOOLBAR_ITEMS 태그 취소(clear) 기본 단축키를 Ctrl+Shift+0에서 Ctrl+\\로 변경
 //             2) configuredHotkeyItem에서 event.code === 'Backslash' 및 한글 원화 기호(₩)를 '\\'로 정규화하여 영문/한글 입력기 상태 무관 100% 단축키 동작 보장
+// 🚨 @PATCH : **2026-11-03** — [참고문헌 목록 추가 슬래시 커맨드(/참고문헌) 신설]: 본문 태그 없는 일반 도서·가이드용 참고문헌 목록 템플릿(## 참고문헌\n- ) 삽입 지원
 // 🚨 @PATCH : **2026-10-17** — [인용문(기본 및 콜아웃 5종) 슬래시 커맨드 액션 연동 및 하단 빈 행 자동 추가]: quote, quoteNote, quoteTip, quoteImportant, quoteWarning, quoteCaution을 actionOnlyKeys에 등록하여 슬래시 명령어 실행 시에도 인용문 아래에 빈 행이 자동 추가되도록 통일
 // 🚨 @PATCH : **2026-10-15** — [서명/발신인 서식 왼쪽 정렬 기본 전환]: 서명/발신인 템플릿(signature)의 기본 정렬을 <div align="left">로 변경하고 슬래시 자동완성에 '서명/발신인 (왼쪽 정렬)'으로 갱신
 // 🚨 @PATCH : **2026-10-13** — [달력/날짜 슬래시 커맨드 별칭 확장]: now 커맨드에 '달력', '캘린더', '시간' 별칭 추가 연동
@@ -42,6 +43,7 @@ export const TOOLBAR_ITEMS = [
   { id: 'checklist', icon: '☑️', name: '체크리스트', group: '목록', tagFormat: '- [ ] ', defaultHotkey: 'Ctrl+Shift+C', defaultCommand: 'check', insertText: '- [ ] ', kind: 17 },
   { id: 'clear', icon: '🧹', name: '태그 취소', group: '목록', tagFormat: '서식 취소', defaultHotkey: 'Ctrl+\\', defaultCommand: 'clear', insertText: '', kind: 17 },
   { id: 'cleanDoc', icon: '✨', name: '문서 서식 일괄 정리', group: '목록', tagFormat: '없음', defaultHotkey: 'Ctrl+Shift+L', defaultCommand: 'cleandoc', insertText: '', kind: 17 },
+  { id: 'bibliography', icon: '📖', name: '참고문헌(목록 추가)', group: '목록', tagFormat: '## 참고문헌', defaultHotkey: '', defaultCommand: 'bibliography', insertText: '\n\n## 참고문헌\n- ', kind: 17 },
 
   // 4. 미디어 (Media)
   { id: 'link', icon: '🔗', name: '링크', group: '미디어', tagFormat: '[홈페이지명](https://)', defaultHotkey: 'Ctrl+K', defaultCommand: 'link', insertText: '[홈페이지명](https://)', kind: 15 },

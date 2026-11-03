@@ -17,7 +17,8 @@
     "build:extension": "cd frontend && npm run build:extension",
     "build:electron": "electron-builder --win",
     "dist": "npm run build && npm run build:electron",
-    "deploy": "npm run build:web && npx wrangler pages deploy frontend/out --project-name onriviauthor"
+    "deploy": "npm run build:web && npx wrangler pages deploy frontend/out --project-name onriviauthor",
+    "deploy:cleanup": "npx wrangler deploy --config workers/cleanup-users/wrangler.toml"
   },
   "dependencies": {
     "chokidar": "^5.0.0"

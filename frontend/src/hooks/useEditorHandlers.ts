@@ -51,6 +51,8 @@ import { organizeMarkdownFootnotes } from '@/lib/footnoteOrganizer';
 //             1) handlers.save 시 activeTab에 유효한 path가 존재할 경우 fileNode를 자동 복원하고 currentFileNode/currentFileName을 즉시 동기화하여 불필요한 '저장 공통 다이얼로그(saveFileAs)' 팝업 결함 해결
 //             2) fileName이 '새 파일.md'이더라도 fileNode.path가 존재하면 실제 디스크 파일명을 역추출하여 직접 저장하도록 방어
 //             3) saveFileAs 및 saveAs 완료 시 tabs 배열의 활성 탭에 name, path, node를 온전히 갱신하고, 활성 탭이 없을 경우 신규 탭을 추가하여 탭 상태 유실 및 자동저장 무력화 방어
+// 🚨 @PATCH : **2026-11-03** — [참고문헌(bibliography) 목록 핸들러 연동]: 본문 인용 태그 없는 일반 참고도서 목록 템플릿(## 참고문헌\n- ) 삽입 지원
+// 🚨 @PATCH : **2026-11-03** — [각주 삽입 시 선택 문구 보존]: 텍스트 선택 후 각주(footnote) 적용 시 선택된 문구를 삭제하지 않고 해당 문구 바로 뒤(endOffset)에 각주 번호가 붙도록 개선
 // 🚨 @PATCH : **2026-10-17** — [빠른 표(quickTable) 생성 시 하단 빈 행 자동 추가]: quickTable 생성 마크다운 끝에 빈 줄(\n\n)을 추가하여 마우스 클릭으로 다음 작업을 이어갈 수 있도록 개선
 // 🚨 @PATCH : **2026-10-16** — [전역 검색(globalSearch) 호출 시 사이드바 오픈 및 검색 입력창 포커스 강제 연동]:
 //             globalSearch 실행 시 setIsSidebarOpen(true), setIsSearchOpen(true) 및 onrivi:focus-global-search 이벤트를 발송하여 어느 상태에서든 즉시 검색 탭이 열리고 포커스되도록 개선
@@ -240,8 +242,8 @@ export const useEditorHandlers = ({
         const nextNumber = maxNumber + 1;
         const footnoteRef = `[^${nextNumber}]`;
   
-        // 2. 인라인 각주 문자열 병합
-        const textWithRef = fullText.substring(0, startOffset) + footnoteRef + fullText.substring(endOffset);
+        // 2. 인라인 각주 문자열 병합 (선택 영역 보존하고 선택된 문구 바로 뒤에 각주 부착)
+        const textWithRef = fullText.substring(0, endOffset) + footnoteRef + fullText.substring(endOffset);
   
         // 3. 전체 문서 파싱 및 각주 수집
         const lines = textWithRef.split('\n');
@@ -359,6 +361,31 @@ export const useEditorHandlers = ({
         editor.pushUndoStop();
 
         showToast(`총 ${result.count}개의 각주를 본문 순서에 맞추어 1번부터 순차적으로 재정렬했습니다.`, 'success');
+      },
+
+      bibliography: () => {
+        if (!editorRef.current || typeof window === 'undefined' || !(window as any).monaco) return;
+        const editor = editorRef.current;
+        const model = editor.getModel();
+        if (!model) return;
+        const fullText = model.getValue();
+        if (/^#{1,3}\s*참고문헌/m.test(fullText)) {
+          showToast('이미 참고문헌 섹션이 존재합니다.', 'info');
+          return;
+        }
+        const suffix = fullText.endsWith('\n\n') ? '' : fullText.endsWith('\n') ? '\n' : '\n\n';
+        const template = `${suffix}## 참고문헌\n- `;
+        const lastLine = model.getLineCount();
+        const lastCol = model.getLineMaxColumn(lastLine);
+        editor.executeEdits('bibliography', [{
+          range: new (window as any).monaco.Range(lastLine, lastCol, lastLine, lastCol),
+          text: template,
+          forceMoveMarkers: true
+        }]);
+        const newLastLine = model.getLineCount();
+        editor.setPosition({ lineNumber: newLastLine, column: 3 });
+        editor.focus();
+        showToast('문서 끝에 참고문헌 목록이 추가되었습니다.', 'success');
       },
 
       citation: () => {

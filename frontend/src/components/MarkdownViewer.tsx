@@ -1,3 +1,5 @@
+// 🚨 @PATCH : 2026-11-03 — [표 열 비율 수동 지정] 기본 균등 분할과 문서 저장 비율을 미리보기에 적용
+// 🚨 @PATCH : 2026-11-02 — [표 열 너비 자동 조정] 마크다운 표를 내용 기반 너비로 배분
 // 🚨 @PATCH : **2026-11-01** — [표 셀 줄바꿈 파괴 및 긴 코드 경로로 인한 가로 늘어짐 방지]:
 //             1) .table-wrapper-area :is(th, td)에 overflow-wrap: anywhere 및 word-break: break-word, box-sizing: border-box 적용
 //             2) :is(th, td) code에 white-space: pre-wrap, overflow-wrap: anywhere, word-break: break-all을 적용하여 긴 파일 경로가 표를 찢지 않고 셀 안에서 안전하게 줄바꿈되도록 조판 완성
@@ -127,6 +129,7 @@ import katex from 'katex';
 import React, { useMemo, useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import TableHeaderCell from '@/components/TableHeaderCell';
+import { ratiosBeforeTable } from '@/lib/tableColumnRatios';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import remarkMath from 'remark-math';
@@ -1312,9 +1315,25 @@ function CodeBlock({ lang, title, rawInfo, code, className, node, lineMap, child
 // ====================================================================
 // 🛡️ [한글 주석 완벽 탑재] TableWrapper는 렌더링된 표 위에 마우스 오버 시 '시트/표형식 복사' 버튼을 표시하고, 
 // 클릭하면 MS 오피스(워드, 엑셀) 및 한글 프로그램 등에 표 형태로 바로 붙여넣어지도록 HTML과 탭 구분 텍스트(TSV)로 클립보드에 적재해 주는 컴포넌트입니다.
-function TableWrapper({ children, ...restProps }: { children: React.ReactElement; [key: string]: any }) {
+function TableWrapper({ children, widths, ...restProps }: { children: React.ReactElement; widths?: number[] | null; [key: string]: any }) {
   const [copied, setCopied] = useState(false);
   const tableRef = React.useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const table = tableRef.current?.querySelector('table');
+    if (!table) return;
+    table.querySelector('colgroup[data-onrivi-column-ratios]')?.remove();
+    if (widths?.length) {
+      const group = document.createElement('colgroup');
+      group.setAttribute('data-onrivi-column-ratios', '');
+      widths.forEach(width => {
+        const col = document.createElement('col');
+        col.style.width = `${width}%`;
+        group.append(col);
+      });
+      table.prepend(group);
+    }
+  }, [children, widths]);
 
   const handleCopy = async () => {
     if (!tableRef.current) return;
@@ -3570,7 +3589,7 @@ function MarkdownViewer({
             th: TableHeaderCell,
             table: ({ node, children, className, ...props }: any) => {
                return (
-                 <TableWrapper>
+                 <TableWrapper widths={ratiosBeforeTable(processedContent, node?.position?.start?.offset, node?.children?.[0]?.children?.[0]?.children?.length || node?.children?.[0]?.children?.length || 0)}>
                    <table className={`w-full table-fixed !m-0 !mt-0 !mb-0 ${className || ''}`} {...props}>
                      {children}
                    </table>

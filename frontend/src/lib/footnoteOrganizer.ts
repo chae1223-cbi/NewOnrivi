@@ -1,8 +1,10 @@
 /**
  * 프로그램명 : OnriviAuthor 
- * 버전 정보 : 1.0.1
+ * 버전 정보 : 1.0.2
  * 프로그램 ID : oaar-footnote-organizer
  * -----------------------------------------------------------------------
+ * 🚨 @PATCH : **2026-11-03** — [고아 각주 정의 자동 제거 및 본문 참조 기반 완전 동기화]:
+ *             1) 본문에서 참조(Reference)가 삭제된 고아 각주 정의(Orphan Definitions)를 자동 제거하도록 정렬 로직 개선
  * 🚨 @PATCH : **2026-10-14** — [마크다운 각주 정리(Footnote Organizer) 엔진 전면 고도화]:
  *             1) 본문 등장 순서(Reading Order) 기반 순차 재번호 부여(1, 2, 3...)
  *             2) 영문, 한글, 기호 등 임의 라벨([^참고], [^note])의 표준 숫자화 정규화
@@ -19,10 +21,15 @@ export interface FootnoteOrganizeResult {
 }
 
 /**
- * 마크다운 문서 내 각주 참조와 정의를 분석하여:
- * 1) 본문 등장 순서대로 1, 2, 3... 순차 번호를 재부여
- * 2) 본문에 흩어진 각주 정의를 수집하여 문서 최하단에 정렬 배치
- * 3) 다중 인용 및 비숫자 라벨([^참고]) 정규화
+ * 📊 [OMD-LIB-FOOTNOTE-0001] footnoteOrganizer.ts ➔ organizeMarkdownFootnotes
+ * 🎯 @KICK  : 마크다운 문서 내 각주 참조와 정의를 분석하여:
+ *             1) 본문 등장 순서대로 1, 2, 3... 순차 번호를 재부여
+ *             2) 본문에 흩어진 각주 정의를 수집하여 문서 최하단에 정렬 배치
+ *             3) 본문에서 참조가 삭제된 고아 각주 정의는 자동 제거
+ *             4) 다중 인용 및 비숫자 라벨([^참고]) 정규화
+ * 
+ * @param markdown - 정리 대상 마크다운 원문 문자열
+ * @returns FootnoteOrganizeResult - 정리된 텍스트, 각주 개수, 변경 여부
  */
 export function organizeMarkdownFootnotes(markdown: string): FootnoteOrganizeResult {
   if (!markdown || typeof markdown !== 'string') {
@@ -108,21 +115,12 @@ export function organizeMarkdownFootnotes(markdown: string): FootnoteOrganizeRes
     }
   }
 
-  // 5. 본문에는 없지만 정의만 남아있는 고아 각주(Orphan) 처리
-  // 데이터 유실 방지를 위해 본문 뒤에 순차 번호로 안전하게 보존
-  definitionsMap.forEach((_lines, oldLabel) => {
-    if (!labelToNewIndex.has(oldLabel)) {
-      const newNum = orderedLabels.length + 1;
-      labelToNewIndex.set(oldLabel, newNum);
-      orderedLabels.push(oldLabel);
-    }
-  });
-
+  // 본문 참조와 정의가 모두 없는 경우 조기 반환
   if (orderedLabels.length === 0 && definitionsMap.size === 0) {
     return { text: markdown, count: 0, changed: false };
   }
 
-  // 6. 본문 내 각주 참조 치환 (충돌 방지를 위한 2단계 토큰 치환)
+  // 5. 본문 내 각주 참조 치환 (충돌 방지를 위한 2단계 토큰 치환)
   // 1단계: [^oldLabel] -> \u0000FN_${newNum}\u0000
   let updatedBody = maskedBody.replace(/\[\^([^\]\r\n]+)\](?!\:)/g, (fullMatch, label) => {
     const trimmedLabel = label.trim();
@@ -138,7 +136,7 @@ export function organizeMarkdownFootnotes(markdown: string): FootnoteOrganizeRes
     updatedBody = updatedBody.replace(`\u0000CODEBLOCK_${i}\u0000`, codeSnippets[i]);
   }
 
-  // 7. 각주 정의 블록 재구성
+  // 6. 각주 정의 블록 재구성 (본문에서 참조된 각주만 정의 생성하여 고아 각주 자동 정리)
   const orderedDefinitions: string[] = [];
   for (let i = 0; i < orderedLabels.length; i++) {
     const oldLabel = orderedLabels[i];
@@ -164,7 +162,7 @@ export function organizeMarkdownFootnotes(markdown: string): FootnoteOrganizeRes
     }
   }
 
-  // 8. 본문과 각주 블록 병합
+  // 7. 본문과 각주 블록 병합
   const hadTrailingNewline = markdown.endsWith('\n');
   const cleanBodyText = updatedBody.trimEnd();
   let resultText = cleanBodyText;

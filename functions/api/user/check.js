@@ -70,11 +70,9 @@ export async function onRequestOptions() {
  */
 export async function onRequestPost({ request, env }) {
   try {
-    // 1. [요청 본문 파싱] 클라이언트가 보낸 JSON에서 이메일과 유저 ID 추출
-    const { p_email, p_id } = await request.json();
-
-    // 2. [입력값 정규화] 이메일 공백 제거 및 소문자 정규화
-    const email = typeof p_email === 'string' ? p_email.trim().toLowerCase() : '';
+   
+    const { p_email, p_id } = await request.json();          // 1. [요청 본문 파싱] 클라이언트가 보낸 JSON에서 이메일과 유저 ID 추출
+    const email = typeof p_email === 'string' ? p_email.trim().toLowerCase() : '';   // 2. [입력값 정규화] 이메일 공백 제거 및 소문자 정규화
 
     // 3. [UUID 형식 검증] p_id가 전달된 경우 표준 36자리 UUID 형식인지 정규표현식 검사
     const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
