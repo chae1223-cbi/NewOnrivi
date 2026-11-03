@@ -1,3 +1,4 @@
+// 🚨 @PATCH : **2026-11-04** — [동일 에러 토스트 10초 디바운스]: 반복 호출 시 중복 시스템 로깅 억제
 import { reportClientLog } from '@/lib/clientLogs';
 import { logError } from '@/lib/errorDiagnostics';
 // 💡 [ Onrivi Author - 공용 독립형 프리미엄 '토마토 테마' 알림 유틸리티 모듈 ]
@@ -88,6 +89,9 @@ function extractToastTarget(msg: string, explicitTarget?: string): string {
   return '-';
 }
 
+let lastErrorLogMessage = '';
+let lastErrorLogTime = 0;
+
 export const showToast = (message: string, type: ToastType = 'info', explicitTarget?: string) => {
   if (typeof window === 'undefined') return;
   const driveAuthNotice = (type==='error' || type==='warning') && /구글\s*드라이브|Google Drive/i.test(message)
@@ -99,16 +103,22 @@ export const showToast = (message: string, type: ToastType = 'info', explicitTar
     type='warning';
   }
   if (type === 'error' || type === 'warning') {
-    const toastTarget = extractToastTarget(message, explicitTarget);
-    logError({
-      file: 'toast.ts',
-      func: 'showToast',
-      doing: `사용자 ${type === 'error' ? '오류' : '경고'} 알림 표출 중`,
-      target: toastTarget,
-      error: translateToKorean(message),
-      level: type === 'error' ? 'ERROR' : 'WARN',
-      action: typeof location !== 'undefined' && location.pathname === '/login' ? 'LOGIN_NOTICE' : 'USER_NOTICE'
-    });
+    const now = Date.now();
+    const isDuplicate = (message === lastErrorLogMessage) && (now - lastErrorLogTime < 10000);
+    if (!isDuplicate) {
+      lastErrorLogMessage = message;
+      lastErrorLogTime = now;
+      const toastTarget = extractToastTarget(message, explicitTarget);
+      logError({
+        file: 'toast.ts',
+        func: 'showToast',
+        doing: `사용자 ${type === 'error' ? '오류' : '경고'} 알림 표출 중`,
+        target: toastTarget,
+        error: translateToKorean(message),
+        level: type === 'error' ? 'ERROR' : 'WARN',
+        action: typeof location !== 'undefined' && location.pathname === '/login' ? 'LOGIN_NOTICE' : 'USER_NOTICE'
+      });
+    }
   }
 
   // 1. 알림 컨테이너가 없으면 body 하단에 생성 및 고유 스타일 부여 (Flex 레이아웃 구조)

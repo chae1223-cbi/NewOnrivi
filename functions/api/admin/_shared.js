@@ -1,3 +1,4 @@
+// 🚨 @PATCH : **2026-11-04** — [관리자 인증 인메모리 30초 캐싱]: 반복 폴링 시 Supabase Auth/DB 부하 및 503 에러 원천 방어
 // ====================================================================
 // 📊 [OMD-ADMIN-shared-0002] functions/api/admin/_shared.js
 // 🎯 @KICK  : 관리자 API 전역 CORS, 공통 응답, 인증/MFA 검증 및 ROOT_ADMIN 보안 헬퍼
@@ -171,6 +172,9 @@ export function getSupabaseConfig(env) {
  * @returns {Promise<{ user?: object, adminData?: object, error?: string, status?: number }>} 검증 성공 시 유저 및 관리자 데이터 반환, 실패 시 error/status 반환
  * ==========================================================================================
  */
+const adminAuthCache = new Map();
+const AUTH_CACHE_TTL_MS = 30000; // 30초 캐시 유효
+
 export async function checkAdminAuth(
   request,
   env,
@@ -184,6 +188,14 @@ export async function checkAdminAuth(
   // 2. 'Bearer <token>' 정규식 파싱으로 순수 JWT 토큰만 추출
   const token = authHeader.match(/^Bearer\s+(.+)$/i)?.[1];                         // Bearer 접두어 제거 및 순수 JWT 문자열 추출
   if (!token) return { error: API_MESSAGES.UNAUTHORIZED.code, status: 401 };       // 토큰 포맷이 비정상이면 401 오류 반환
+
+  // 2-1. [인메모리 캐시 검증] 최근 30초 내 검증된 관리자 토큰이면 원격 Supabase/DB 조회 생략 (503 방어 & 초고속 응답)
+  const cacheKey = `${token}_${allowPreMfa}_${requiredRoles.join(',')}`;
+  const cached = adminAuthCache.get(cacheKey);
+  if (cached && (Date.now() - cached.timestamp < AUTH_CACHE_TTL_MS)) {
+    return { user: cached.user, adminData: cached.adminData };
+  }
+
   const { supabaseUrl, headers: serviceHeaders } = getSupabaseConfig(env);         // Supabase API 통신용 URL 및 Service Role 키 조회
 
   // 3. [1단계] Supabase Auth 서버에 토큰 유효성 검증 및 유저 프로필 조회
@@ -224,6 +236,13 @@ export async function checkAdminAuth(
   if (!adminData || !requiredRoles.includes(adminData.admin_role)) {
     return { error: API_MESSAGES.FORBIDDEN.code, status: 403 };                    // 권한 등급 미달 시 403 차단
   }
+
+  // 30초 캐싱 (메모리 누수 방어: 200건 초과 시 오래된 키 삭제)
+  if (adminAuthCache.size > 200) {
+    const oldestKey = adminAuthCache.keys().next().value;
+    adminAuthCache.delete(oldestKey);
+  }
+  adminAuthCache.set(cacheKey, { user, adminData, timestamp: Date.now() });
 
   // 모든 3단계 검증 통과 시 유저 및 관리자 메타데이터 반환
   return { user, adminData };

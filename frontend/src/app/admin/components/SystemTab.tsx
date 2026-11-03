@@ -1,6 +1,7 @@
 /**
  * 프로그램명 : OnriviAuthor
  * 파일명 : app/admin/components/SystemTab.tsx
+ * 🚨 @PATCH : **2026-11-04** — [로그 폭주 및 서버 부하 방어]: 자동 갱신 주기 3초 -> 10초로 최적화 완화
  * 🚨 @PATCH : **2026-11-04** — [KST(한국표준시 UTC+9) 기준 오늘 일자 적용]: getKSTToday() 함수로 UTC 시차(00~09시) 방어 및 11-04일 정상 표출
  * 🚨 @PATCH : **2026-11-04** — [R2 로그 적재 상태(logging_enabled) UI 표시]: ENABLE_R2_LOGS 환경변수 연동 상태(ON/OFF 뱃지) 안내
  * 🚨 @PATCH : **2026-11-03** — [최종 100건 실시간 스트림 & 프로드/미리보기 선택 탭 & 과거 로그 날짜별 다운로드 지원]:
@@ -211,12 +212,12 @@ export default function SystemTab() {
     fetchSystemData(false);
   }, [fetchSystemData]);
 
-  // 실시간 3초 주기 자동 갱신
+  // 실시간 10초 주기 자동 갱신 (서버 부하 및 로그 폭주 방어)
   useEffect(() => {
     if (!isAutoRefresh) return;
     const interval = setInterval(() => {
-      if (document.visibilityState === 'visible') fetchSystemData(true);
-    }, 3000);
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') fetchSystemData(true);
+    }, 10000);
     return () => clearInterval(interval);
   }, [isAutoRefresh, fetchSystemData]);
 

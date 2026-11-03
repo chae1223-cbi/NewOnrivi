@@ -1,3 +1,4 @@
+// 🚨 @PATCH : **2026-11-04** — [관리자 미들웨어 예외 로깅 강화]: catch 블록 에러 콘솔 출력 및 명확한 에러 메시지 반환
 // 🚨 @PATCH : 2026-11-02 — 관리자 역할 조회 GET에 한해 MFA 이전 사전 검사를 미들웨어에서도 허용
 import { checkAdminAuth, jsonResponse } from './_shared.js';
 
@@ -23,7 +24,8 @@ export async function onRequest(context) {
     headers.set('x-verified-admin-id', auth.user.id);
     headers.set('x-verified-admin-role', auth.adminData.admin_role);
     return context.next(new Request(context.request, { headers }));
-  } catch {
-    return jsonResponse({ error: 'Admin authentication unavailable' }, 503);
+  } catch (err) {
+    console.error('[AdminMiddleware] Authentication error:', err);
+    return jsonResponse({ error: 'Admin authentication unavailable', message: err?.message || 'Auth failure' }, 503);
   }
 }
