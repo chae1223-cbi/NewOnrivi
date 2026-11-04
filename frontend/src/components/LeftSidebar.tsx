@@ -13,7 +13,7 @@
 
 import React from 'react';
 import { useUIStore } from '@/store/useUIStore';
-import { useEditorContext } from '@/contexts/EditorContext';
+import { useEditorContext } from '@/context/EditorContext';
 import { Icon } from '@/components/icons/Icon';
 import FileExplorerPanel from '@/components/sidebar/FileExplorerPanel';
 import OutlinePanel from '@/components/sidebar/OutlinePanel';

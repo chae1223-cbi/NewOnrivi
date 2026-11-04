@@ -13,7 +13,7 @@ import React from 'react';
 import MenuBar from '@/components/MenuBar';
 import LeftSidebar from '@/components/LeftSidebar';
 import StatusBar from '@/components/StatusBar';
-import KnowledgeHubView from '@/components/knowledge/KnowledgeHubView';
+import { KnowledgeHubView } from '@/components/knowledge/KnowledgeHubView';
 
 export interface EditorLayoutProps {
   children: React.ReactNode;

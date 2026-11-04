@@ -27,9 +27,9 @@ import PromptModal from '@/components/PromptModal';
 import { Icon } from '@/components/icons/Icon';
 import { msg } from '@/lib/systemMessages';
 import { useUIStore } from '@/store/useUIStore';
-import { useEditorContext } from '@/contexts/EditorContext';
-import { hasValidDriveToken } from '@/lib/googleDriveClient';
-import { canAccessKnowledgeDb } from '@/lib/knowledgeDbBridge';
+import { useEditorContext } from '@/context/EditorContext';
+import { hasValidDriveToken } from '@/lib/gdrive/googleDriveClient';
+import { canAccessKnowledgeDb } from '@/lib/knowledge/knowledgeClient';
 import {
   saveDirectoryHandle,
   restoreDirectoryHandle,
@@ -166,8 +166,7 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
   const { 
     isSidebarOpen, setIsSidebarOpen, 
     sidebarWidth, setSidebarWidth, 
-    sidebarTab, setSidebarTab, 
-    isDarkMode 
+    sidebarTab, setSidebarTab 
   } = useUIStore();
   
   const [drives, setDrives] = useState<FileNode[]>([]);
