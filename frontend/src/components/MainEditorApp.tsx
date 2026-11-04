@@ -1,5 +1,9 @@
 /**
  * 프로그램명 : OnriviAuthor 
+// 🚨 @PATCH : **2026-11-04** — [게스트 체험판·리소스 폴더·에디터 생명주기 이펙트 모듈화]:
+//             1) 비로그인 체험판(Guest Mode) 5분 타이머 및 5회 제한 상태를 useEditorGuestMode 훅으로, 만료 차단막 UI를 GuestPaywallOverlay 컴포넌트로 분리 위임
+//             2) 공통 리소스 폴더(selectResourceFolder/clearResourceFolder), IndexedDB 핸들 복원, MCP 동기화, .bib 로드, AI 자격증명 리로드/자가 치유를 useEditorResourceFolder 훅으로 분리 위임
+//             3) 탭 이름변경·삭제·라인점프 이벤트 리스너, 분할 화면 읽기 전용 가드, 에디터 테마·옵션 동기화, 제한사용자 웰컴 정리, 자동 저장(autoSave), 목차(TOC) 생성을 useEditorLifecycleEffects 훅으로 분리 위임 (총 1,134줄 감축)
 // 🚨 @PATCH : **2026-11-04** — [미리보기 동기화·하이라이트 및 Monaco 데코레이션 모듈화]:
 //             1) handleCheckboxToggle, handlePreviewWheel, bindPreviewScrollContainer, handlePreviewClick, handleCopyPreviewContent, processedContent/lineMap/frontmatterLines 전처리, 미리보기 추종 레이아웃 이펙트, handlePreviewImageLoaded, previewHighlightLine을 useEditorPreviewSync 훅으로 분리 위임
 //             2) updateDecorations 본문을 utils/monacoDecorations.ts(applyMarkdownDecorations)로 분리 위임 (총 390줄 감축)
@@ -606,6 +610,10 @@ import * as utilsEditorActions from '@/utils/editorActions';
 import { useEditorFormatting } from '@/hooks/editor/useEditorFormatting';
 import { useEditorPreviewSync } from '@/hooks/editor/useEditorPreviewSync';
 import { applyMarkdownDecorations } from '@/utils/monacoDecorations';
+import { useEditorGuestMode } from '@/hooks/editor/useEditorGuestMode';
+import GuestPaywallOverlay from '@/components/editor/GuestPaywallOverlay';
+import { useEditorResourceFolder } from '@/hooks/editor/useEditorResourceFolder';
+import { useEditorLifecycleEffects } from '@/hooks/editor/useEditorLifecycleEffects';
 import { useEditorTabs } from '@/hooks/useEditorTabs';
 import { useEditorSettings } from '@/hooks/useEditorSettings';
 import { useEditorHandlers } from '@/hooks/useEditorHandlers';
@@ -1105,100 +1113,19 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
   const tabsRef = useRef<any[]>([]);
   const activeTabIdRef = useRef<string | null>(null);
 
-  // ⏳ [게스트 즉시 체험판 시간 및 횟수 제한(Paywall) 상태]
-  const [isGuestMode, setIsGuestMode] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    return localStorage.getItem('onrivi_guest_mode') === 'Y';
-  });
-  const [guestRemainingSeconds, setGuestRemainingSeconds] = useState<number>(300); // 5분 (300초)
-  const [isGuestExpired, setIsGuestExpired] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    const tryCount = parseInt(localStorage.getItem('onrivi_guest_try_count') || '0', 10);
-    return localStorage.getItem('onrivi_guest_expired') === 'Y' || tryCount > 5;
-  });
-
-  // ⏳ [게스트 즉시 체험판 인터랙티브 플로팅 가이드 상태]
-  const [guideStep, setGuideStep] = useState<number>(1);
-  const [isGuideMinimized, setIsGuideMinimized] = useState<boolean>(false);
-  const guestCountedRef = useRef<boolean>(false);
-
-  // ⏳ [게스트 타이머 구동 및 재접속 제한 이펙트]
-  useEffect(() => {
-    if (!isGuestMode) return;
-    
-    const tryCount = parseInt(localStorage.getItem('onrivi_guest_try_count') || '0', 10);
-
-    // 1. 이미 만료 낙인이 찍혔거나 재접속 횟수를 초과한 게스트인 경우
-    if (isGuestExpired || tryCount > 5) {
-      setIsGuestExpired(true);
-      localStorage.setItem('onrivi_guest_expired', 'Y');
-      setLicenseStatus({
-        isActivated: false,
-        isExpired: true,
-        remainingDays: 0,
-        userId: 'GUEST_USER',
-        licenseKey: '',
-        paymentNo: '',
-        planName: '체험판 재접속 횟수 초과',
-        nextPaymentDate: ''
-      });
-      return;
-    }
-
-    // 2. 신규 진입 세션에 대해 접속 횟수 카운터 증가 (Strict Mode 중복 연산 방지 가드)
-    let newCount = tryCount;
-    if (!guestCountedRef.current) {
-      guestCountedRef.current = true;
-      newCount = tryCount + 1;
-      localStorage.setItem('onrivi_guest_try_count', newCount.toString());
-    }
-
-    // 3. 증가된 카운트가 제한(5회)을 초과한 경우
-    if (newCount > 5) {
-      setIsGuestExpired(true);
-      localStorage.setItem('onrivi_guest_expired', 'Y');
-      setLicenseStatus({
-        isActivated: false,
-        isExpired: true,
-        remainingDays: 0,
-        userId: 'GUEST_USER',
-        licenseKey: '',
-        paymentNo: '',
-        planName: '체험판 재접속 횟수 초과',
-        nextPaymentDate: ''
-      });
-      return;
-    }
-
-    // 4. 타이머를 5분(300초)으로 매 접속마다 독립적으로 새로 기동
-    setGuestRemainingSeconds(300);
-    const interval = setInterval(() => {
-      setGuestRemainingSeconds(prev => {
-        if (prev <= 1) {
-          clearInterval(interval);
-          setIsGuestExpired(true);
-          // 5분 만료 시점에 접속 카운트가 5회 이상이었다면 완전히 영구 낙인 찍기
-          if (newCount >= 5) {
-            localStorage.setItem('onrivi_guest_expired', 'Y');
-          }
-          setLicenseStatus({
-            isActivated: false,
-            isExpired: true,
-            remainingDays: 0,
-            userId: 'GUEST_USER',
-            licenseKey: '',
-            paymentNo: '',
-            planName: '체험판 시간 만료',
-            nextPaymentDate: ''
-          });
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [isGuestMode, isGuestExpired, setLicenseStatus]);
+  // ⏳ [OMD-HOOK-useEditorGuestMode] 게스트 즉시 체험판 타이머 및 Paywall 상태 분리 훅
+  const {
+    isGuestMode,
+    setIsGuestMode,
+    guestRemainingSeconds,
+    setGuestRemainingSeconds,
+    isGuestExpired,
+    setIsGuestExpired,
+    guideStep,
+    setGuideStep,
+    isGuideMinimized,
+    setIsGuideMinimized,
+  } = useEditorGuestMode({ setLicenseStatus });
 
   // 💾 [탭 순서 영구 보존 이펙트] localStorage에 기록된 순서가 있다면 tabs 배열의 순서를 복원
   useEffect(() => {
@@ -1274,34 +1201,6 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     return null;
   });
 
-  // 🌟 [공통 리소스 폴더 Handle 및 경로 자동 복원 엔진]
-  useEffect(() => {
-    if (!mounted) return;
-    const restoreRF = async () => {
-      if (!getResourceSettings()) {setResourceFolder(null);return;}
-      // 1. IndexedDB에서 웹 브라우저용 Handle 복원
-      if (!resourceFolderHandle && getResourceSettings()?.kind === 'browser' && typeof window !== 'undefined') {
-        try {
-          const savedHandle = await idb.get('localResourceFolderHandle') || await idb.get('resourceFolderHandle');
-          if (savedHandle && savedHandle.name === getResourceSettings()?.path) {
-            setResourceFolderHandle(savedHandle);
-            (window as any).__resourceFolderHandle = savedHandle;
-            if (!resourceFolder) {
-              setResourceFolder(savedHandle.name);
-            }
-          }
-        } catch (e) {
-          console.warn('[ResourceFolder] IndexedDB handle 복원 실패:', e);
-        }
-      }
-      // 2. localStorage 및 secureStorage 기반 경로 복원 동기화
-      const effective = getEffectiveResourceFolder();
-      if (effective && (!resourceFolder || resourceFolder !== effective)) {
-        setResourceFolder(effective);
-      }
-    };
-    void restoreRF();
-  }, [mounted, resourceFolderHandle, resourceFolder]);
 
   // 💡 [Step 2 리팩토링으로 구글 드라이브 토큰 갱신 시 서식 로드 실시간 연동은 useEditorProfiles로 이관됨]
 
@@ -1316,36 +1215,10 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     return 'local';
   });
 
-  // Share only the active folder locations with the local MCP process.
-  useEffect(() => {
-    const api = (window as any).electronAPI;
-    if (!mounted || !api?.syncMcpContext) return;
-    const sync = () => {
-      const settings = getResourceSettings(workspaceType === 'cloud' ? 'cloud' : 'local');
-      void api.syncMcpContext({
-        workspaceType,
-        workspacePath: workspaceType === 'local' ? ((rootFolder as any)?.path || rootFolder?.name || null) : null,
-        resourceKind: settings?.kind || 'unset',
-        resourcePath: settings?.kind === 'local' ? settings.path : null,
-      }).catch((error: unknown) => console.warn('[MCP context] sync failed', error));
-    };
-    sync();
-    const timer = window.setInterval(sync, 30000);
-    window.addEventListener('onrivi:resource_folder_changed', sync);
-    return () => {
-      window.clearInterval(timer);
-      window.removeEventListener('onrivi:resource_folder_changed', sync);
-    };
-  }, [mounted, workspaceType, rootFolder, resourceFolder]);
 
   // 💡 [Step 2 리팩토링으로 profileStorageRevision 및 서식 로드/리로드 이펙트는 useEditorProfiles로 이관됨]
 
   const [fileList, setFileList] = useState<FileNode[]>([]);
-  useEffect(() => {
-    const openResourceSettings = () => {setIsImageModalOpen(false);setIsYoutubeModalOpen(false);setIsStyleModalOpen(false);setIsReferenceModalOpen(false);setSettingsModalInitialTab('general');setIsSettingsModalOpen(true);};
-    window.addEventListener('onrivi:resource-settings', openResourceSettings);
-    return () => window.removeEventListener('onrivi:resource-settings', openResourceSettings);
-  }, [setIsSettingsModalOpen,setIsImageModalOpen,setIsYoutubeModalOpen,setIsStyleModalOpen,setIsReferenceModalOpen,setSettingsModalInitialTab]);
   const [currentFileName, setCurrentFileName] = useState<string>('새 파일.md');
   const [currentFileNode, setCurrentFileNode] = useState<FileNode | null>(null);
   const [bibContent, setBibContent] = useState<string>('');
@@ -1370,23 +1243,6 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
   // 🚨 @PATCH : 2026-08-05 — 앱 시작 시 리소스 폴더 미지정 안내 메시지 표시 로직 추가 (hasShownResourceWarningRef)
   // 🔗 @CALLS : setTabs
   // ====================================================================
-  // 🌟 [전체사용자 공통 리소스 폴더 미설정 시 초기 안내 모달 트리거]
-  useEffect(() => {
-    if (!mounted) return;
-    const isMissing = !getResourceSettings()?.path && !resourceFolder && !resourceFolderHandle;
-    if (!isMissing) {
-      setIsResourceGuideModalOpen(false);
-      return;
-    }
-    const isFullUser = !isDuplicateInstance && !isRestrictedUser && licenseStatus.isActivated && !licenseStatus?.isExpired;
-
-    if (isMissing && isFullUser && !isDismissedGuide) {
-      const timer = setTimeout(() => {
-        if (!getResourceSettings()?.path) setIsResourceGuideModalOpen(true);
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [mounted, resourceFolder, resourceFolderHandle, licenseStatus.isActivated, licenseStatus?.isExpired, isDuplicateInstance, isRestrictedUser, isDismissedGuide]);
 
   // ☁️ [구글 드라이브 무중단 토큰 자동 갱신 엔진 가동]
   useEffect(() => {
@@ -1410,112 +1266,6 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     }
   }, [currentFileName, currentFileNode, activeTabId]);
 
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0012b] MainEditorApp.tsx ➔ file:tab-renamed listener
-  // 🎯 @KICK  : 탐색기에서 파일/폴더 이름 변경 시 새 탭을 열지 않고 기존 탭 메타데이터만 갱신
-  // 🛡️ @GUARD : oldPath가 현재 열린 탭과 일치하거나 하위 경로에 포함될 때만 동작
-  // 🚨 @PATCH : **2026-09-18** — [폴더명 변경 시 열린 탭 경로·브레드크럼 동기화 및 탭 순서/활성 노드 일괄 갱신]
-  // 🔗 @CALLS : setCurrentFileName, setCurrentFileNode, setTabs, setActiveTabId
-  // ====================================================================
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const { oldPath, newPath, newName, newHandle } = (e as CustomEvent).detail;
-      if (!oldPath || !newPath) return;
-
-      const cleanOld = oldPath.replace(/[/\\]+$/, '');
-      const cleanNew = newPath.replace(/[/\\]+$/, '');
-      const normOld = cleanOld.replace(/\\/g, '/');
-      const normNew = cleanNew.replace(/\\/g, '/');
-      const normOldLower = normOld.toLowerCase();
-
-      // 현재 열린 파일이 변경/이동된 파일이거나 변경된 폴더 하위에 있을 때
-      setTabs(prev => {
-        const updatedTabs = prev.map(t => {
-          const rawPath = t.path || '';
-          const cleanTabPath = rawPath.replace(/[/\\]+$/, '');
-          const tabPath = cleanTabPath.replace(/\\/g, '/');
-          const tabPathLower = tabPath.toLowerCase();
-
-          if (tabPathLower === normOldLower) {
-            // 정확히 이름 변경/이동된 파일
-            const targetId = (t.id === t.path || t.id === oldPath || t.id.replace(/\\/g, '/').toLowerCase() === normOldLower) ? cleanNew : t.id;
-            return {
-              ...t,
-              id: targetId,
-              name: newName,
-              path: cleanNew,
-              node: { ...t.node, name: newName, path: cleanNew, ...(newHandle ? { handle: newHandle } : {}) }
-            };
-          } else if (tabPathLower.startsWith(normOldLower + '/')) {
-            // 이름 변경/이동된 폴더의 하위 파일
-            const subRel = tabPath.substring(normOld.length);
-            const isBackslash = cleanNew.includes('\\') || (!cleanNew.includes('/') && rawPath.includes('\\'));
-            const subRelFormatted = isBackslash ? subRel.replace(/\//g, '\\') : subRel;
-            const updatedPath = `${cleanNew}${subRelFormatted}`;
-            const targetId = (t.id === t.path || t.id.replace(/\\/g, '/').toLowerCase() === tabPathLower) ? updatedPath : t.id;
-            return {
-              ...t,
-              id: targetId,
-              path: updatedPath,
-              node: { ...t.node, path: updatedPath }
-            };
-          }
-          return t;
-        });
-
-        // 💡 tabsRef 및 로컬스토리지 onrivi_tabs_order 동기화
-        tabsRef.current = updatedTabs;
-        try {
-          const tabOrders = updatedTabs.map(t => ({ id: t.id, name: t.name, path: t.path }));
-          localStorage.setItem('onrivi_tabs_order', JSON.stringify(tabOrders));
-        } catch (_) {}
-
-        return updatedTabs;
-      });
-
-      // 활성 탭 식별자(activeTabId)도 함께 갱신
-      const curActive = activeTabIdRef.current || '';
-      if (curActive) {
-        const cleanActive = curActive.replace(/[/\\]+$/, '');
-        const normActive = cleanActive.replace(/\\/g, '/');
-        const normActiveLower = normActive.toLowerCase();
-
-        if (normActiveLower === normOldLower || cleanActive === cleanOld) {
-          setActiveTabId(cleanNew);
-          activeTabIdRef.current = cleanNew;
-        } else if (normActiveLower.startsWith(normOldLower + '/')) {
-          const subRel = normActive.substring(normOld.length);
-          const isBackslash = cleanNew.includes('\\') || (!cleanNew.includes('/') && curActive.includes('\\'));
-          const subRelFormatted = isBackslash ? subRel.replace(/\//g, '\\') : subRel;
-          const updatedActive = `${cleanNew}${subRelFormatted}`;
-          setActiveTabId(updatedActive);
-          activeTabIdRef.current = updatedActive;
-        }
-      }
-
-      // 현재 활성 파일(currentFileNode) 및 파일명 동시 갱신
-      setCurrentFileNode(prev => {
-        if (!prev) return prev;
-        const curPath = (prev.path || '').replace(/[/\\]+$/, '');
-        const normCur = curPath.replace(/\\/g, '/');
-        const normCurLower = normCur.toLowerCase();
-
-        if (normCurLower === normOldLower) {
-          setCurrentFileName(newName);
-          return { ...prev, name: newName, path: cleanNew, ...(newHandle ? { handle: newHandle } : {}) };
-        } else if (normCurLower.startsWith(normOldLower + '/')) {
-          const subRel = normCur.substring(normOld.length);
-          const isBackslash = cleanNew.includes('\\') || (!cleanNew.includes('/') && curPath.includes('\\'));
-          const subRelFormatted = isBackslash ? subRel.replace(/\//g, '\\') : subRel;
-          const updatedPath = `${cleanNew}${subRelFormatted}`;
-          return { ...prev, path: updatedPath };
-        }
-        return prev;
-      });
-    };
-    window.addEventListener('file:tab-renamed', handler);
-    return () => window.removeEventListener('file:tab-renamed', handler);
-  }, []);
 
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isAIDraftModalOpen, setIsAIDraftModalOpen] = useState(false);
@@ -1588,19 +1338,6 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
   //              웹 SaaS: count 조회만 수행, upsert/device UUID 완전 제거 (auth callback에서 insert 담당)
   // 🔗 @CALLS : api.loadLicenseFull, fetch(/api/license/activate, /api/license/check-session), crypto.subtle.digest, saveSecureData, loadSecureData, setLicenseStatus, setLicenseKey
 
-  // 📊 [OMD-CITATION-MainEditorApp] .bib 워크스페이스 자동 로드
-  // 🎯 @KICK  : 워크스페이스 전체를 재귀 탐색하여 .bib 파일을 모두 병합 로드
-  // 🚨 @PATCH : **2026-07-07** — allMdFiles 의존성 완전 제거.
-  //              Electron IPC(listDirectory) 직접 재귀 스캔 + fileList 트리 병렭 탐색.
-  //              웹 환경: bib.handle → VFS → getApiUrl REST API 순서로 폴백 처리.
-  // 🔗 @CALLS : electronAPI.listDirectory, electronAPI.readFromPath, vfsReadFile, getApiUrl
-  useEffect(()=>{
-    let disposed=false;
-    const load=async()=>{try{const files=await loadBibliographyFiles(resourceFolderHandle);if(!disposed)setBibContent(files.map(f=>f.content).join('\n'));}
-      catch(e){if(!disposed){setBibContent('');console.warn('[Bibliography]',e);}}};
-    void load();window.addEventListener('onrivi:bibliography-updated',load);
-    return()=>{disposed=true;window.removeEventListener('onrivi:bibliography-updated',load);};
-  },[workspaceType,resourceFolder,resourceFolderHandle]);
 
   // 💡 [Step 2 리팩토링으로 내보내기, 어바웃, 컴펌 등 기타 모달 상태 싹 다 삭제됨 (useEditorModals로 이관)]
 
@@ -1786,97 +1523,6 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     };
   }, [isA4GuardEnabled, previewRef]);
 
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0012c] MainEditorApp.tsx ➔ file:close-tab-by-path listener
-  // 🎯 @KICK  : 탐색기에서 파일/폴더 삭제 시 해당 열린 탭을 즉시 닫고 에디터 정리
-  // 🛡️ @GUARD : 삭제된 경로와 일치하거나 하위 경로에 속한 모든 탭 정리, 활성 탭 전환 또는 빈 탭 처리
-  // 🚨 @PATCH : **2026-10-03** — [파일 삭제 시 열린 탭 자동 닫기 전면 강화]: driveId 일치, path 끝부분(endsWith) 매칭 및 name 일치 다중 검증 탑재
-  // 🔗 @CALLS : setTabs, switchTab, setContent, setCurrentFileName, setCurrentFileNode, setActiveTabId
-  // ====================================================================
-  useEffect(() => {
-    const handleCloseTabByPath = (e: Event) => {
-      const { path, name, driveId, isDir } = (e as CustomEvent).detail || {};
-      if (!path && !name && !driveId) return;
-
-      const normTarget = (path || '').replace(/\\/g, '/').toLowerCase();
-      const targetFileName = (name || (normTarget ? normTarget.split('/').pop() : '') || '').toLowerCase();
-      const hasTargetSlash = normTarget.includes('/');
-
-      // 🛡️ [동일 파일명 오종료 방어]: 삭제된 파일 또는 삭제된 폴더 하위에 속한 탭들만 엄격하게 필터링
-      const tabsToClose = tabsRef.current.filter(t => {
-        // 1. Google Drive 고유 ID 일치 확인 (가장 확실한 식별자)
-        const tabDriveId = (t as any).driveFileId || (t as any).driveId || (t as any).id;
-        if (driveId && tabDriveId && String(driveId) === String(tabDriveId)) {
-          return true;
-        }
-
-        const tabPath = (t.path || '').replace(/\\/g, '/').toLowerCase();
-        const hasTabSlash = tabPath.includes('/');
-
-        // 2. 정확한 경로 일치 (파일 또는 폴더 경로가 100% 동일)
-        if (normTarget && tabPath && tabPath === normTarget) {
-          return true;
-        }
-
-        // 3. 폴더 삭제 시: 해당 폴더 하위에 속한 탭들 닫기
-        if (normTarget && tabPath && (isDir || normTarget.endsWith('/'))) {
-          const folderPrefix = normTarget.endsWith('/') ? normTarget : normTarget + '/';
-          if (tabPath.startsWith(folderPrefix)) {
-            return true;
-          }
-        }
-
-        // 4. 경로 끝부분 매칭: 단, 양쪽 모두 디렉토리 경로 구분자(/)를 포함하고 있을 때만!
-        // (예: 절대경로 D:/project/folderA/test.md vs 상대경로 folderA/test.md)
-        // 🚨 단일 파일명(test.md)만으로 endsWith 매칭을 수행하면 다른 폴더의 동명 파일이 닫히므로 차단
-        if (hasTargetSlash && hasTabSlash) {
-          if (tabPath.endsWith('/' + normTarget) || normTarget.endsWith('/' + tabPath)) {
-            return true;
-          }
-        }
-
-        // 5. 경로가 양쪽 모두 완전히 없는(미저장 가상 파일 등) 경우에만 한하여 파일명 단독 비교
-        if (!normTarget && !tabPath && targetFileName) {
-          const tabName = (t.name || '').toLowerCase();
-          if (tabName === targetFileName) {
-            return true;
-          }
-        }
-
-        // 그 외: 다른 경로에 있는 동일 파일명의 파일은 절대 닫지 않음!
-        return false;
-      });
-
-      if (tabsToClose.length === 0) return;
-
-      tabsToClose.forEach(tab => {
-        if (tab.model) {
-          try { tab.model.dispose(); } catch {}
-        }
-      });
-
-      const closeIds = new Set(tabsToClose.map(t => t.id));
-      const nextTabs = tabsRef.current.filter(t => !closeIds.has(t.id));
-      tabsRef.current = nextTabs;
-      setTabs(nextTabs);
-
-      if (activeTabIdRef.current && closeIds.has(activeTabIdRef.current)) {
-        if (nextTabs.length > 0) {
-          switchTab(nextTabs[0].id);
-        } else {
-          setContent('');
-          setCurrentFileName('새 파일.md');
-          setCurrentFileNode(null);
-          setActiveTabId(null);
-          if (editorRef.current) {
-            editorRef.current.setValue('');
-          }
-        }
-      }
-    };
-    window.addEventListener('file:close-tab-by-path', handleCloseTabByPath);
-    return () => window.removeEventListener('file:close-tab-by-path', handleCloseTabByPath);
-  }, [setTabs, switchTab, setContent, setCurrentFileName, setCurrentFileNode, setActiveTabId]);
 
   // ====================================================================
   // 📊 [OMD-EDIT-MainEditorApp-0021] MainEditorApp.tsx ➔ currentFileNodeRef_sync
@@ -1985,182 +1631,7 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     isDriveAuthExpired
   } = useFileExplorerResult;
 
-  // 🧠 [ONRIVI-KNOWLEDGE-ENGINE-003] 지식 베이스 / 출처 링크 에디터 파일 열기 및 라인 점프 리스너
-  useEffect(() => {
-    const handleOpenFileAtLine = async (e: CustomEvent) => {
-      const { filePath, startLine } = e.detail || {};
-      if (!filePath && !startLine) return;
 
-      if (previewModeRef.current === 'preview' && setPreviewModeRaw) {
-        setPreviewModeRaw('both');
-        previewModeRef.current = 'both';
-        isEditorMountedRef.current = true;
-        lastGeneralPreviewModeRef.current = 'both';
-      }
-
-      const normTarget = (filePath || '').replace(/\\/g, '/').toLowerCase().normalize('NFC');
-      const targetBase = normTarget.split('/').pop() || '';
-      const currentPath = (currentFileNode?.path || '').replace(/\\/g, '/').toLowerCase().normalize('NFC');
-      const currentName = (currentFileName || '').toLowerCase().normalize('NFC');
-
-      const isAlreadyActive = filePath && (
-        currentPath === normTarget ||
-        (currentPath && normTarget && currentPath.endsWith('/' + targetBase)) ||
-        currentName === targetBase ||
-        currentName === targetBase.replace(/\.md$/i, '')
-      );
-
-      if (isAlreadyActive && editorRef.current && startLine) {
-        editorRef.current.revealPositionInCenter({ lineNumber: startLine, column: 1 }, 1);
-        editorRef.current.setPosition({ lineNumber: startLine, column: 1 });
-        editorRef.current.focus();
-
-        const lineEl = document.querySelector(`[data-line="${startLine}"]`) as HTMLElement;
-        if (lineEl) {
-          lineEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          lineEl.classList.add('preview-highlight-line');
-          setTimeout(() => lineEl.classList.remove('preview-highlight-line'), 2500);
-        }
-        return;
-      }
-
-      if (filePath && handleFileOpenByPath) {
-        const anchor = startLine ? `L${startLine}` : undefined;
-        await handleFileOpenByPath(filePath, anchor);
-      } else if (editorRef.current && startLine) {
-        editorRef.current.revealPositionInCenter({ lineNumber: startLine, column: 1 }, 1);
-        editorRef.current.setPosition({ lineNumber: startLine, column: 1 });
-        editorRef.current.focus();
-      }
-    };
-
-    window.addEventListener('app:open-file-at-line', handleOpenFileAtLine as any);
-    return () => window.removeEventListener('app:open-file-at-line', handleOpenFileAtLine as any);
-  }, [handleFileOpenByPath, currentFileNode, currentFileName, setPreviewModeRaw]);
-
-  const selectResourceFolder = async () => {
-    if (workspaceType === 'cloud') {
-      try {
-        const {getSavedDriveToken,initializeDriveResourceFolder}=await import('@/lib/gdrive/googleDriveClient');
-        const token=getSavedDriveToken();if(!token)throw new Error('구글 드라이브를 먼저 연결해 주세요.');
-        const {pickDriveResourceFolder}=await import('@/lib/gdrive/ResourceFilePicker');
-        const selected=await pickDriveResourceFolder(token);if(!selected)return;
-        const folderName = selected.name;
-        if (!folderName) throw new Error('선택한 폴더의 이름을 확인할 수 없습니다.');
-        const folders = await initializeDriveResourceFolder(token, selected.id);
-        saveResourceSettings({kind:'drive',path:folderName,folderId:selected.id,...folders}, 'cloud');
-        setResourceFolder(folderName);
-        setProfileStorageRevision(r => r + 1);
-        setResourceFolderHandle(null);(window as any).__resourceFolderHandle=null;
-        showToast(`드라이브 리소스 폴더가 '${folderName}'(으)로 변경되었습니다.`,'success');
-      } catch(error:any) {showToast(error.message,'error');}
-      return;
-    }
-    const api = (window as any).electronAPI;
-    if (api && api.selectFolder) {
-      const result = await api.selectFolder(resourceFolder || '');
-      if (result && result.status !== 'canceled' && result.path) {
-        if (api.initResourceFolder) { const initialized=await api.initResourceFolder(result.path, SYSTEM_PROFILES);if(initialized?.success===false) {showToast(initialized.error || '리소스 폴더 초기화 실패','error');return;} }
-        saveResourceSettings({kind:'local',path:result.path});
-        setResourceFolder(result.path);
-        setProfileStorageRevision(value => value + 1);
-        try { saveSecureData('resourceFolder', result.path); } catch { }
-        try { localStorage.setItem('onrivi_resource_folder_path', result.path); } catch { }
-        try { localStorage.setItem('onrivi_resource_folder', result.path); } catch { }
-        try { localStorage.setItem('resourceFolder', result.path); } catch { }
-        
-        showToast('리소스 폴더가 설정되었습니다.', 'success');
-      }
-    } else if (typeof (window as any).showDirectoryPicker === 'function') {
-      try {
-        const handle = await (window as any).showDirectoryPicker({ mode: 'readwrite' });
-        const defaults:Record<string,string>={'profiles/userCssProfiles.json':JSON.stringify(SYSTEM_PROFILES,null,2),'prompt/ai_prompts.json':'{}','prompt/ai_presets.json':'[]','prompt/promptTemplates.json':'[]','bible/references.bib':'','db/onrivi_knowledge.db':''};
-        for (const name of ['profiles','prompt','bible','media','db']) await handle.getDirectoryHandle(name,{create:true});
-        for (const [relative,content] of Object.entries(defaults)) {
-          const [directory,name]=relative.split('/');const dir=await handle.getDirectoryHandle(directory);
-          try {await dir.getFileHandle(name);}catch(error:any){if(error.name!=='NotFoundError')throw error;const file=await dir.getFileHandle(name,{create:true});const writable=await file.createWritable();await writable.write(content);await writable.close();}
-        }
-        await idb.set('resourceFolderHandle',handle);
-        await idb.set('localResourceFolderHandle',handle);
-        setResourceFolderHandle(handle);(window as any).__resourceFolderHandle=handle;
-        saveResourceSettings({kind:'browser',path:handle.name});
-        setResourceFolder(handle.name);
-        await idb.set('resourceFolderHandle', handle);
-        try { saveSecureData('resourceFolder', handle.name); } catch { }
-        try { localStorage.setItem('onrivi_resource_folder_path', handle.name); } catch { }
-        try { localStorage.setItem('onrivi_resource_folder', handle.name); } catch { }
-        try { localStorage.setItem('resourceFolder', handle.name); } catch { }
-        
-        // 🚀 [사용자 지시 완벽 반영] 웹 브라우저 환경 5대 디렉토리 일괄 생성
-        try {
-          await handle.getDirectoryHandle('profiles', { create: true });
-          await handle.getDirectoryHandle('prompt', { create: true });
-          await handle.getDirectoryHandle('bible', { create: true });
-          await handle.getDirectoryHandle('media', { create: true });
-          await handle.getDirectoryHandle('db', { create: true });
-        } catch (dirErr) {
-          console.warn('[Browser ResourceFolder Dir Creation Error]:', dirErr);
-        }
-
-        // 서식 로드는 공통 effect에서 처리한다. 폴더명으로 서버 저장소를 추측하지 않는다.
-        showToast('리소스 폴더가 설정되었습니다.', 'success');
-      } catch (err: any) {
-        if (err?.name !== 'AbortError') {
-          showToast('폴더 선택 중 오류가 발생했습니다.', 'error');
-        }
-      }
-    } else {
-      showToast('이 브라우저에서는 폴더 선택 기능을 지원하지 않습니다.', 'warning');
-    }
-  };
-
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0025b ✅ FIXED] MainEditorApp.tsx ➔ clearResourceFolder
-  // 🎯 @KICK  : 공통 자원 관리 폴더 연결 해제 및 로컬/IndexedDB 영구 스토리지 데이터 완전 소거
-  // 🛡️ @GUARD : idb.del 및 idb.set(null) 이중 방어, localStorage/sessionStorage 클린업
-  // 🚨 @PATCH : **2026-09-05** — 공통 리소스 폴더 연결 해제 시 IndexedDB 및 로컬/세션스토리지 완전 소거, 모달 중첩 방어 및 안내 문구 순화('폴더 해제')
-  // 🔗 @CALLS : saveSecureData, localStorage.removeItem, idb.del, idb.set, showToast
-  // ====================================================================
-  const clearResourceFolder = async () => {
-    const clearingLocal = getResourceEnvironment() === 'local';
-    saveResourceSettings(null);
-    setResourceFolder(null);
-    setResourceFolderHandle(null);
-    (window as any).__resourceFolderHandle = null;
-    setGeminiApiKey('');
-    setAiModelName('gemini-3.8-flash');
-    void deleteResourceAICredentials();
-    purgeLocalStorageAICredentials();
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new Event('onrivi:ai-connections'));
-    }
-    setIsDismissedGuide(false);
-    if (clearingLocal) {
-    try { saveSecureData('resourceFolder', ''); } catch {}
-    try { localStorage.removeItem('resourceFolder'); } catch {}
-    try { localStorage.removeItem('onrivi_resource_folder'); } catch {}
-    try { localStorage.removeItem('onrivi_resource_folder_path'); } catch {}
-    try { sessionStorage.removeItem('resourceFolder'); } catch {}
-    try {
-      const rawSettings = localStorage.getItem('onrivi_settings');
-      if (rawSettings) {
-        const parsed = JSON.parse(rawSettings);
-        if (parsed.resourceFolder) {
-          delete parsed.resourceFolder;
-          localStorage.setItem('onrivi_settings', JSON.stringify(parsed));
-        }
-      }
-    } catch {}
-    try { await idb.del('resourceFolderHandle'); } catch {}
-    try { await idb.set('resourceFolderHandle', null); } catch {}
-    try { await idb.del('localResourceFolderHandle'); } catch {}
-    }
-    (window as any)._resourceFolderSynced = false;
-    showToast('공통 리소스 폴더 연결이 해제되었습니다.', 'info');
-    if (!isSettingsModalOpen) {
-      setIsResourceGuideModalOpen(true);
-    }
-  };
 
   // ====================================================================
   // 📊 [OMD-EDIT-MainEditorApp-0026 ✅ FIXED] MainEditorApp.tsx ➔ setPreviewMode
@@ -2380,136 +1851,44 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     takeOverControl,
   });
 
-  // 🌟 [공통 리소스 폴더 동적 변경 실시간 감지 리스너] (구글 드라이브 ↔ 로컬 전환 등)
-  useEffect(() => {
-    const handleResourceFolderChange = async (e: any) => {
-      const newFolder = getResourceSettings()?.path || '';
-      setResourceFolder(newFolder || null);
-      setProfileStorageRevision(revision => revision + 1);
-      let handle = null;
-      if (getResourceSettings()?.kind === 'drive') {
-        setResourceFolderHandle(null);
-        (window as any).__resourceFolderHandle = null;
-      } else {
-        handle = (window as any).__resourceFolderHandle;
-        setResourceFolderHandle(handle?.name === newFolder ? handle : null);
-      }
-
-      // 🚀 [리소스 폴더 변경 즉시 해당 폴더의 AI 환경정보 실시간 재로드]
-      try {
-        const creds = await loadResourceAICredentials(newFolder || undefined, handle);
-        setGeminiApiKey(creds?.apiKey || '');
-        setAiModelName(creds?.aiModelName || 'gemini-3.8-flash');
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new Event('onrivi:ai-connections'));
-        }
-      } catch (err) {
-        console.warn('[handleResourceFolderChange reload error]:', err);
-      }
-    };
-    if (typeof window !== 'undefined') {
-      window.addEventListener('onrivi:resource_folder_changed', handleResourceFolderChange);
-      return () => window.removeEventListener('onrivi:resource_folder_changed', handleResourceFolderChange);
-    }
-  }, [setGeminiApiKey, setAiModelName, setProfileStorageRevision]);
 
 
-  useEffect(()=>{
-    const isInsideMarkdownPane=(target:EventTarget|null)=>target instanceof Element && Boolean(target.closest('#onrivi-markdown-pane'));
-    const blockWheel=(event:WheelEvent)=>{
-      if(previewModeRef.current==='both' && isInsideMarkdownPane(event.target)){event.preventDefault();event.stopImmediatePropagation();}
-    };
-    const blockMutationEvent=(event:Event)=>{
-      if(previewModeRef.current==='both' && isInsideMarkdownPane(event.target)){event.preventDefault();event.stopImmediatePropagation();}
-    };
-    const blockKeyDown=(event:KeyboardEvent)=>{
-      if(previewModeRef.current!=='both' || !isInsideMarkdownPane(event.target))return;
-      const key=event.key;
-      const lower=key.toLowerCase();
-      const isAllowedShortcut=(event.ctrlKey || event.metaKey) && !event.altKey && (lower==='c' || lower==='a' || lower==='f' || lower==='s');
-      const isAllowedNav=['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Home','End','PageUp','PageDown','Escape','Shift','Control','Alt','Meta'].includes(key);
-      if(isAllowedShortcut || isAllowedNav)return;
-      event.preventDefault();
-      event.stopImmediatePropagation();
-    };
-    document.addEventListener('wheel',blockWheel,{passive:false,capture:true});
-    document.addEventListener('beforeinput',blockMutationEvent,true);
-    document.addEventListener('paste',blockMutationEvent,true);
-    document.addEventListener('cut',blockMutationEvent,true);
-    document.addEventListener('drop',blockMutationEvent,true);
-    document.addEventListener('keydown',blockKeyDown,true);
-    const isPaneReadOnly = tabs.length === 0 || isRestrictedUser || previewMode === 'both';
-    editorRef.current?.updateOptions({
-      readOnly: isPaneReadOnly,
-      domReadOnly: isPaneReadOnly,
-      scrollbar:{vertical:previewMode==='both'?'hidden':'visible',horizontal:previewMode==='both'?'hidden':'auto',handleMouseWheel:previewMode!=='both'}
-    });
-    return()=>{
-      document.removeEventListener('wheel',blockWheel,true);
-      document.removeEventListener('beforeinput',blockMutationEvent,true);
-      document.removeEventListener('paste',blockMutationEvent,true);
-      document.removeEventListener('cut',blockMutationEvent,true);
-      document.removeEventListener('drop',blockMutationEvent,true);
-      document.removeEventListener('keydown',blockKeyDown,true);
-    };
-  },[previewMode,activeTabId,tabs.length,isRestrictedUser]);
 
   useEffect(()=>{tabSizeRef.current=editorTabSize;editorRef.current?.getModel()?.updateOptions({tabSize:editorTabSize,indentSize:editorTabSize,insertSpaces:true});},[editorTabSize]);
 
-  // 🛡️ [AI 암호화 키 및 모델명 자가 치유(Self-Healing) 파이프라인]
-  // 과거 로컬스토리지에 AES 암호문(U2FsdGVkX1...) 형태로 저장되었던 API 키 및 모델명을 즉시 자동 감지하여 복호화/정상화
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    if (geminiApiKey && geminiApiKey.startsWith('U2FsdGVkX1')) {
-      const decrypted = ensureDecryptedApiKey(geminiApiKey);
-      if (decrypted && !decrypted.startsWith('U2FsdGVkX1')) {
-        setGeminiApiKey?.(decrypted);
-        try {
-          purgeLocalStorageAICredentials();
-        } catch {}
-      }
-    }
-
-    if (aiModelName && (aiModelName.startsWith('U2FsdGVkX1') || aiModelName.length > 50)) {
-      const fixedModel = normalizeAIModelName(aiModelName);
-      setAiModelName?.(fixedModel);
-      try {
-        localStorage.setItem('onrivi_ai_model_name', fixedModel);
-        const raw = localStorage.getItem('onrivi_settings');
-        if (raw) {
-          const parsed = JSON.parse(raw);
-          parsed.aiModelName = fixedModel;
-          localStorage.setItem('onrivi_settings', JSON.stringify(parsed));
-        }
-      } catch {}
-    }
-  }, [geminiApiKey, aiModelName, setGeminiApiKey, setAiModelName]);
-
-  // 🔐 [AI API 키 리소스 폴더 암호화 자격증명 자동 로드 및 로컬스토리지 소거]
-  useEffect(() => {
-    if (!mounted) return;
-    let disposed = false;
-    let revision = 0;
-    const loadCreds = async () => {
-      const request = ++revision;
-      try {
-        const creds = await loadResourceAICredentials(resourceFolder || undefined, resourceFolderHandle);
-        if (disposed || request !== revision) return;
-        setGeminiApiKey(creds?.apiKey || '');
-        setAiModelName(creds?.aiModelName || 'gemini-3.8-flash');
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new Event('onrivi:ai-connections'));
-        }
-      } catch (err) {
-        console.warn('[MainEditorApp loadResourceAICredentials Error]:', err);
-      }
-    };
-    const reload = () => { void loadCreds(); };
-    window.addEventListener('onrivi:drive_token_updated', reload);
-    reload();
-    return () => { disposed = true; window.removeEventListener('onrivi:drive_token_updated', reload); };
-  }, [mounted, resourceFolder, resourceFolderHandle, setGeminiApiKey, setAiModelName]);
+  // ====================================================================
+  // 📊 [OMD-HOOK-useEditorResourceFolder] 공통 리소스 폴더 관리 및 .bib·AI 자격증명·MCP 동기화 분리 훅
+  // 🚨 @PATCH : 2026-11-04 - [MainEditorApp 모듈화] selectResourceFolder/clearResourceFolder 및 리소스 폴더 복원·MCP·.bib·AI 자격증명 이펙트를 useEditorResourceFolder로 분리 위임
+  // ====================================================================
+  const { selectResourceFolder, clearResourceFolder } = useEditorResourceFolder({
+    mounted,
+    workspaceType,
+    rootFolder,
+    resourceFolder,
+    setResourceFolder,
+    resourceFolderHandle,
+    setResourceFolderHandle,
+    setProfileStorageRevision,
+    setBibContent,
+    geminiApiKey,
+    setGeminiApiKey,
+    aiModelName,
+    setAiModelName,
+    licenseStatus,
+    isDuplicateInstance,
+    isRestrictedUser,
+    isDismissedGuide,
+    setIsDismissedGuide,
+    setIsResourceGuideModalOpen,
+    isSettingsModalOpen,
+    setIsSettingsModalOpen,
+    setSettingsModalInitialTab,
+    setIsImageModalOpen,
+    setIsYoutubeModalOpen,
+    setIsStyleModalOpen,
+    setIsReferenceModalOpen,
+    showToast,
+  });
 
 
   const [isAiLoading, setIsAiLoading] = useState(false);
@@ -2673,171 +2052,6 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
   const hotkeyDisposablesRef = useRef<any[]>([]);
 
   // ====================================================================
-  // 📊 [OMD-CORE-MainEditorApp-0032] MainEditorApp.tsx ➔ darkModeDOMClass
-  // 🎯 @KICK  : Tailwind 다크 모드를 위해 documentElement에 'dark' 클래스 토글
-  // 🛡️ @GUARD : SSR 불일치 방지를 위해 마운트 후에만 실행
-  // 🚨 @PATCH : None
-  // 🔗 @CALLS : document.documentElement.classList.add/remove
-  // ====================================================================
-
-  useEffect(() => {
-    if (!mounted) return;
-    document.documentElement.classList.remove('dark');
-  }, [mounted]);
-
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0033] MainEditorApp.tsx ➔ editorSettingsSync
-  // 🎯 @KICK  : 설정 또는 에디터 마운트 변경 시 테마, 폰트 크기, 줄 바꿈 재적용
-  // 🛡️ @GUARD : 레이스 컨디션 방지를 위해 mounted && isEditorReady로 가드
-  // 🚨 @PATCH : 2026-06-23 — 라이선스 만료/제한 여부(isExpired) 변경 시 readOnly/domReadOnly 동기화 연동 추가
-  // 🔗 @CALLS : monaco.editor.setTheme, editor.updateOptions, requestAnimationFrame
-  // ====================================================================
-  useEffect(() => {
-    if (mounted && isEditorReady && editorRef.current) {
-      // 1. 테마 및 고대비(High Contrast) 모드 강제 적용
-      if ((window as any).monaco) {
-        const monaco = (window as any).monaco;
-        applySafeMarkdownMonarchTokenizer(monaco);
-        EDITOR_THEMES.forEach(t => {
-          const isDark = t.base === 'vs-dark';
-          const defaultFg = isDark ? '#e2e8f0' : '#1e293b';
-          const defaultPunctuation = isDark ? 'e2e8f0' : '1e293b';
-          const activeFg = editorHighContrast ? (isDark ? '#ffffff' : '#000000') : defaultFg;
-          const activePunctuation = editorHighContrast ? (isDark ? 'ffffff' : '000000') : defaultPunctuation;
-
-          monaco.editor.defineTheme(t.id, {
-            base: t.base,
-            inherit: true,
-            rules: [
-              ...(t.rules || []),
-              { token: 'punctuation', foreground: activePunctuation },
-              { token: 'delimiter.markdown', foreground: editorHighContrast ? (isDark ? '38bdf8' : '1d4ed8') : '60a5fa', fontStyle: 'bold' },
-              { token: 'string.link.markdown', foreground: isDark ? '94a3b8' : '64748b' },
-              { token: 'variable.md', foreground: 'f59e0b' }
-            ],
-            colors: {
-              ...t.colors,
-              'editor.background': isDark ? '#0b1120' : '#eef2f6',
-              'editorGutter.background': isDark ? '#090d16' : '#e2e8f0',
-              'editor.foreground': activeFg,
-              'editorLineNumber.foreground': isDark ? '#475569' : '#64748b',
-              'editorLineNumber.activeForeground': isDark ? '#60A5FA' : '#2563EB',
-              'editorCursor.foreground': '#38bdf8',
-              'editor.lineHighlightBackground': isDark ? '#1e293b50' : '#cbd5e155',
-              'editorIndentGuide.background': '#88888815',
-              'editorIndentGuide.activeBackground': '#88888830',
-            }
-          });
-        });
-        monaco.editor.setTheme(themePalette);
-      }
-      // 2. 에디터 옵션(폰트 크기, 글꼴 굵기, 줄 바꿈, 읽기 전용 여부) 강제 동기화
-      const isPaneReadOnly = tabs.length === 0 || isRestrictedUser || previewMode === 'both';
-      editorRef.current.updateOptions({
-        fontSize: fontSize || 16,
-        mouseWheelZoom: false,
-        lineHeight: Math.round((fontSize || 16) * 1.75), // 글자 크기에 비례하는 동일 행간
-        fontWeight: editorFontWeight === 'bold' ? '700' : editorFontWeight === 'semibold' ? '600' : editorFontWeight === 'medium' ? '500' : '400',
-        fontFamily: "'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto, 'Noto Sans KR', 'Malgun Gothic', sans-serif",
-        padding: { top: 28, bottom: 28 },
-        wordWrap: wordWrap,
-        wrappingStrategy: 'advanced',
-        wordWrapBreakAfterCharacters: ' \t})]?|/&.,;¢°′″‰℃、。｡､￠，．：；？！％・･ゝゞヽヾーァィゥェォッャュョヮヵヶぁぃぅぇぉっゃゅょゎゕゖㇰㇱㇲㇳㇴㇵㇶㇷㇸㇹㇺㇻㇼㇽㇾㇿ々ㇻｧｨｩｪｫｬｭｮｯｰ”〉》」』】〕）］｝｣',
-        wordWrapBreakBeforeCharacters: '([{\'"“‘«‹〈《「『【〔（［｛｢',
-        readOnly: isPaneReadOnly,
-        domReadOnly: isPaneReadOnly,
-        lineNumbers: 'off',
-        lineNumbersMinChars: 0,
-        lineDecorationsWidth: 8,
-        glyphMargin: false,
-        folding: false,
-        cursorSmoothCaretAnimation: 'off',
-        scrollbar: { verticalScrollbarSize: 16 },
-      });
-      // 3. 레이아웃 리플로우 강제 트리거 및 비동기 웹폰트 로딩 후 글자 폭 재계산 (핵심 버그 수정)
-      requestAnimationFrame(() => {
-        editorRef.current?.layout();
-      });
-      document.fonts.ready.then(() => {
-        if ((window as any).monaco) {
-          (window as any).monaco.editor.remeasureFonts();
-        }
-      });
-    }
-  }, [themePalette, fontSize, wordWrap, editorFontWeight, editorHighContrast, mounted, isEditorReady, isRestrictedUser, previewMode, tabs.length]);
-
-  // ====================================================================
-  // 📊 [OMD-CORE-MainEditorApp-0034] MainEditorApp.tsx ➔ darkModePaletteSync
-  // 🎯 @KICK  : 다크모드(isDarkMode)는 강제 비활성화되어 있으므로 자동 테마 전환을 수행하지 않음
-  // 🛡️ @GUARD : 없음
-  // 🚨 @PATCH : 2026-07-09 — 다크 테마가 isDarkMode=false여도 강제로 onrivi-light로 되돌려지던 버그 수정. effect를 무효화하여 사용자가 설정에서 선택한 테마를 유지하도록 변경.
-  // 🔗 @CALLS : 없음
-  // ====================================================================
-  useEffect(() => {
-    // isDarkMode는 항상 false로 고정되어 있으므로 아무 동작도 하지 않음
-  }, []);
-
-  // 💡 [Step 2 리팩토링으로 profilesSave, activeProfileSave, resolveEffectiveDocumentProfile, frontmatter 동기화는 useEditorProfiles로 이관됨]
-
-  // ====================================================================
-  // 📊 [OMD-IO-MainEditorApp-0041] MainEditorApp.tsx ➔ a4_guard_auto_save
-  // 🎯 @KICK  : isA4GuardEnabled 가드 상태가 변경될 때마다 localStorage에 즉시 보존.
-  // 🛡️ @GUARD : Electron 및 일반 브라우저 환경 지원
-  // 🚨 @PATCH : **2026-08-12** — 초기 생성 (A4 가드 레이아웃 보존 기능)
-  // 🔗 @CALLS : 없음
-  // ====================================================================
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('isA4GuardEnabled', String(isA4GuardEnabled));
-    }
-  }, [isA4GuardEnabled]);
-
-
-
-  // 💡 [Step 2 리팩토링으로 handleProfileChange, 제목 넘버링, 가로형 그림책 레거시 프로필 동기화는 useEditorProfiles로 이관됨]
-
-  // 🟢 [권한 기반 초기 화면 제어: 웰컴 탭 영구 잠금 및 강제 노출 로직 2026-07-05]
-  const prevRestrictedRef = useRef<boolean | null>(null);
-  useEffect(() => {
-    if (!mounted || isLicenseChecking) return;
-
-    // 제한 사용자 조건: 사용 기간 만료 혹은 웹에서 동시 접속을 초과하여 인증을 상실한 경우, 또는 다중 탭 실행 시
-    const isRestrictedUser = isDuplicateInstance ||
-      effectiveLicenseStatus.isExpired ||
-      effectiveLicenseStatus.isRestricted ||
-      effectiveLicenseStatus.planName?.includes('미인증') ||
-      effectiveLicenseStatus.planName?.includes('제한사용자');
-
-    if (prevRestrictedRef.current === isRestrictedUser) return;
-    prevRestrictedRef.current = isRestrictedUser;
-
-    if (isRestrictedUser) {
-      if (previewModeRef.current !== 'preview') {
-        lastGeneralPreviewModeRef.current = previewModeRef.current;
-        setPreviewModeRaw('preview');
-        previewModeRef.current = 'preview';
-      }
-    } else {
-      const restored = lastGeneralPreviewModeRef.current || 'preview';
-      if (previewModeRef.current !== restored) {
-        setPreviewModeRaw(restored);
-        previewModeRef.current = restored;
-      }
-    }
-
-    setTabs(prev => {
-      const hasWelcome = prev.some(t => t.name === 'Onrivi Author 시작하기.md' && !t.isStyleTab);
-      if (!hasWelcome) return prev;
-      const cleaned = prev.filter(t => !(t.name === 'Onrivi Author 시작하기.md' && !t.isStyleTab));
-      if (cleaned.length === 0) {
-        setActiveTabId(null);
-        setContent(localStorage.getItem('onrivi_content') || '');
-        setCurrentFileName('새 파일.md');
-        setCurrentFileNode(null);
-      }
-      return cleaned;
-    });
-  }, [mounted, isLicenseChecking, isDuplicateInstance, effectiveLicenseStatus]);
 
 
   // ====================================================================
@@ -2867,251 +2081,6 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
   // }, [mounted]);
 
   // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0040] MainEditorApp.tsx ➔ dynamicTitleBar
-  // 🎯 @KICK  : document.title을 'Onrivi Author'로 고정 (탭 UI가 파일명 표시하므로)
-  // 🛡️ @GUARD : None
-  // 🚨 @PATCH : 2026-06-22 — 파일명 제거, 'Onrivi Author'만 표시 (탭으로 대체)
-  // 🔗 @CALLS : None
-  // ====================================================================
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      document.title = 'Onrivi Author';
-    }
-  }, []);
-
-  // 💡 [OMD-CORE-MainEditorApp-0041] previewHighlightLine 훅은 processedContent 선언 이후(Line 4870)로 이동되었습니다 (TDZ 방어).
-  // 💡 [OMD-SYNC-DEPRECATED] 스크롤 동기화 및 휠 차단 로직은 Monaco Setup 내부 단일 리스너(onDidScrollChange)로 완전히 마이그레이션되어 이곳의 중복 훅은 삭제되었습니다.
-
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0043] MainEditorApp.tsx ➔ handleMouseMove
-  // 🎯 @KICK  : 사이드바 크기 조정 드래그 mousemove 이벤트 처리
-  // 🛡️ @GUARD : 너비를 150-600px 사이로 제한
-  // 🚨 @PATCH : None
-  // 🔗 @CALLS : setSidebarWidth, localStorage.setItem
-  // ====================================================================
-
-  const handleMouseMove = useCallback((e: MouseEvent) => {
-    if (!isResizing.current) return;
-    const newWidth = e.clientX;
-    if (newWidth > 150 && newWidth < 600) {
-      setSidebarWidth(newWidth);
-      localStorage.setItem('sidebarWidth', newWidth.toString());
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // fontSize 및 wordWrap 저장은 통합 환경설정 저장 가드에서 처리
-
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0044] MainEditorApp.tsx ➔ stopResizing
-  // 🎯 @KICK  : 사이드바 크기 조정 종료: 리스너 제거, 커서 및 user-select 복원
-  // 🛡️ @GUARD : None
-  // 🚨 @PATCH : None
-  // 🔗 @CALLS : document.removeEventListener, document.body.style.cursor/userSelect
-  // ====================================================================
-  const stopResizing = useCallback(() => {
-    isResizing.current = false;
-    document.removeEventListener('mousemove', handleMouseMove);
-    document.removeEventListener('mouseup', stopResizing);
-    document.body.style.cursor = 'default';
-    document.body.style.userSelect = 'auto';
-  }, [handleMouseMove]);
-
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0045] MainEditorApp.tsx ➔ startResizing
-  // 🎯 @KICK  : 사이드바 크기 조정 시작: 리스너 추가, col-resize 커서 설정
-  // 🛡️ @GUARD : None
-  // 🚨 @PATCH : None
-  // 🔗 @CALLS : document.addEventListener, document.body.style
-  // ====================================================================
-  const startResizing = useCallback((e: React.MouseEvent) => {
-    isResizing.current = true;
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', stopResizing);
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-  }, [handleMouseMove, stopResizing]);
-
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0046] MainEditorApp.tsx ➔ tabModeSync
-  // 🎯 @KICK  : 탭 전환 시 도움말은 미리보기 전용으로 강제하고 일반 문서는 직전의 전역 에디터 모드로 복구 동기화
-  // 🛡️ @GUARD : 라이선스 만료 시 preview 모드로 가드
-  // 🚨 @PATCH : 2026-07-04 — 신규 추가
-  // 🔗 @CALLS : setPreviewModeRaw
-  // ====================================================================
-  useEffect(() => {
-    if (!mounted || !activeTabId) return;
-    const activeTab = tabs.find(t => t.id === activeTabId);
-    if (!activeTab) return;
-
-    if (activeTab.name === '도움말.md') {
-      // 💡 1. 도움말 탭은 예외없이 무조건 미리보기 전용('preview') 고정
-      if (previewModeRef.current !== 'preview') {
-        setPreviewModeRaw('preview');
-        previewModeRef.current = 'preview';
-      }
-    } else if (activeTab.isStyleTab === true) {
-      // 💡 2. 서식설정 전용 탭: 모드 전환 없이 현재 모드 유지 (CssStyleForm은 Ctrl+Shift+S로만 토글)
-    } else {
-      // 💡 3. 그 외 일반 마크다운 문서들은 전역으로 공유되는 마크다운 보기 모드를 그대로 상속 및 유지
-      const target = isRestrictedUser ? 'preview' : lastGeneralPreviewModeRef.current;
-      if (previewModeRef.current !== target) {
-        setPreviewModeRaw(target);
-        previewModeRef.current = target;
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTabId, mounted, isRestrictedUser, helpContent]);
-  // 🟢 [권한 기반 초기 화면 제어: 웰컴 탭 차단 및 강제 노출 로직 2026-07-05]
-  // 초기 로딩 후 제한 사용자인지 판단하여 웰컴 페이지를 남기거나, 일반 사용자면 지웁니다.
-  const hasHandledWelcomeRef = useRef(false);
-
-  useEffect(() => {
-    if (!mounted || isLicenseChecking || hasHandledWelcomeRef.current || sessionRestoringRef.current) return;
-
-    console.log('[WELCOME#2] FIRED! isExpired=%o planName=%o tabsRef=%o', effectiveLicenseStatus.isExpired, effectiveLicenseStatus.planName, tabsRef.current.map((t: any) => t.name));
-
-    // 이펙트를 단 한 번만 실행하여 다른 컴포넌트나 훅이 웰컴탭을 덮어쓰거나 무한루프 도는 것을 원천 방지
-    hasHandledWelcomeRef.current = true;
-
-    // 제한 사용자 조건: 사용 기간 만료 혹은 웹에서 동시 접속을 초과하여 인증을 상실한 경우 (undefined 방어를 위해 Optional Chaining 추가), 또는 다중 탭 중복 실행 시
-    const isRestrictedUser = isDuplicateInstance ||
-      effectiveLicenseStatus.isExpired ||
-      effectiveLicenseStatus.isRestricted ||
-      effectiveLicenseStatus.planName?.includes('미인증') ||
-      effectiveLicenseStatus.planName?.includes('제한사용자');
-
-    // tabs 상태값 대신 refs로 현재 상황을 안전하게 스냅샷
-    const hasWelcome = tabsRef.current.some(t => t.name === 'Onrivi Author 시작하기.md' && !t.isStyleTab);
-
-      // 1. [정상/전체 사용자]: 웰컴 페이지 강제 삭제 (빈 문서 시작)
-      if (hasWelcome) {
-        const cleaned = tabsRef.current.filter(t => !(t.name === 'Onrivi Author 시작하기.md' && !t.isStyleTab));
-        setTabs(cleaned);
-        if (cleaned.length === 0) {
-          setActiveTabId(null);
-          // 시작 페이지 없이(Empty) 시작하도록 요청됨 -> 로컬 스토리지에 남아있는 게 있다면 복원하거나 빈 문자열.
-          const localDraft = localStorage.getItem('onrivi_content');
-          setContent(localDraft || '');
-          setCurrentFileName('새 파일.md');
-          setCurrentFileNode(null);
-        }
-    }
-  }, [mounted, isLicenseChecking, isDuplicateInstance, effectiveLicenseStatus]);
-  useEffect(() => {
-    if (currentFileNode && activeTabId) {
-      if (prevActiveTabRef.current !== activeTabId) {
-        prevActiveTabRef.current = activeTabId;
-          const activeTab = tabsRef.current.find(t => t.id === activeTabId);
-          if (!activeTab?.isModified) lastSavedContentRef.current = content;
-          setSaveStatus(activeTab?.isModified ? 'unsaved' : 'saved');
-          return;
-      }
-      const isUnsaved = content !== lastSavedContentRef.current;
-      setSaveStatus(isUnsaved ? 'unsaved' : 'saved');
-      setTabs(prev => {
-        const cur = prev.find(t => t.id === activeTabId);
-        if (cur && cur.isModified === isUnsaved) return prev;
-        return prev.map(t =>
-          t.id === activeTabId
-            ? { ...t, isModified: isUnsaved }
-            : t
-        );
-      });
-    }
-  }, [content, currentFileNode, activeTabId]);
-
-  // 💡 [탭 전환 시 에디터 기준 미리보기 1:1 완벽 동기화 보장]
-  useEffect(() => {
-    if (!activeTabId || previewMode !== 'both' || !previewRef.current || !editorRef.current) return;
-
-    // 탭 전환 시 직전 커서 라인 캐시 리셋 (마우스/방향키 이동 즉시 반응 보장)
-    prevCursorLineRef.current = null;
-
-    const performSync = () => {
-      const editor = editorRef.current;
-      const preview = previewRef.current;
-      if (!editor || !preview || preview.querySelector('.visual-document-editor')) return;
-
-      const editorTop = editor.getScrollTop?.() ?? 0;
-      const pos = editor.getPosition?.();
-      if (editorTop <= 2 && (!pos || pos.lineNumber <= 1)) {
-        if (preview.scrollTop !== 0) {
-          preview.scrollTop = 0;
-        }
-        return;
-      }
-
-      const currentContent = editor.getValue?.() || content;
-      if (pos && pos.lineNumber > 1) {
-        syncPreviewToTargetLine(preview, pos.lineNumber, currentContent);
-      } else {
-        syncPreviewFromEditorScroll(preview, editor, currentContent);
-      }
-    };
-
-    // DOM 렌더링 완료 타이밍에 맞춰 보장 실행
-    requestAnimationFrame(performSync);
-    const t1 = setTimeout(performSync, 80);
-
-    return () => {
-      clearTimeout(t1);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTabId, previewMode]);
-  // ====================================================================
-  // 📊 [OMD-FILE-MainEditorApp-0047] MainEditorApp.tsx ➔ autoSave
-  // 🎯 @KICK  : 콘텐츠 변경 및 autoSave 활성화 시 5초 디바운스 후 파일 자동 저장
-  // 🛡️ @GUARD : 콘텐츠가 비어있거나, 미리보기 모드가 변경 중이거나, 콘텐츠가 변경되지 않았으면 건너뜀; 5초 디바운스 정리
-  // 🚨 @PATCH : **2026-10-19** — [5초 자동저장 무한 루프 척결 및 텍스트 덮어쓰기 방어]:
-  //             1) 자동 저장 중 불필요한 Frontmatter 강제 주입(updateCssProfileInFrontmatter) 및 setContent/model.pushEditOperations 호출 전면 배제 (백그라운드 물리 디스크 저장 전담)
-  //             2) 저장 시작 직후 lastSavedContentRef 즉시 갱신 및 setTabs 불필요한 배열 재생성 가드로 무한 루프 및 텍스트 덮어쓰기 원천 차단
-  //             3) autoSave useEffect 내 setCurrentFileNode 직접 호출을 배제하여 React 렌더링 무한 루프 종식
-  // 🔗 @CALLS : saveFile, setSaveStatus, setTimeout, clearTimeout
-  // ====================================================================
-  useEffect(() => {
-    // 🌟 [세이프티 가드 1]: 원고 본문이 비어있거나 데이터가 초기화되기 전 상태라면 
-    // 시스템 오염 저장을 원천 차단합니다.
-    if (!content || content.trim() === "") {
-      return;
-    }
-
-    const activeTab = tabsRef.current?.find(t => t.id === activeTabIdRef.current);
-    const effectiveFileNode = activeTab ? (activeTab.node || (activeTab.path ? { name: activeTab.name, path: activeTab.path, kind: 'file' } : null)) : currentFileNode;
-
-    // Bundled help has no writable target until the user saves a copy.
-    if (activeTab?.isBundledHelp || isBundledDocumentPath(effectiveFileNode?.path)) return;
-
-    // 🌟 [세이프티 가드 2]: 유저가 뷰 모드(분할/에디터/프리뷰)를 변환하는 찰나의 순간에는 
-    // 컴포넌트 오염 타이밍이므로 자동 저장을 생략하고 무조건 대기시킵니다.
-    if (typeof autoSave === 'number' && autoSave > 0 && effectiveFileNode && licenseStatus.isActivated) {
-      if (content === lastSavedContentRef.current) return;
-
-      setSaveStatus('saving');
-      const savingTabId = activeTab?.id;
-      const timer = setTimeout(async () => {
-        if (savingTabId && activeTabIdRef.current !== savingTabId) return;
-        const saveContent = content;
-        const success = await saveFile(saveContent, effectiveFileNode);
-        setSaveStatus(success ? 'saved' : 'unsaved');
-        if (success) {
-          lastSavedContentRef.current = saveContent;
-          console.log(`✏️ [Onrivi Guard] 자동 저장 완료 (${autoSave}초)`);
-          // 자동 저장 후 현재 탭의 isModified 상태를 false로 복구 (불필요한 re-render 방어)
-          setTabs(prev => {
-            const currentTab = prev.find(t => t.id === activeTabIdRef.current);
-            if (!currentTab || (!currentTab.isModified && currentTab.content === saveContent)) return prev;
-            return prev.map(t =>
-              t.id === activeTabIdRef.current ? { ...t, isModified: false, content: saveContent } : t
-            );
-          });
-        } else {
-          lastSavedContentRef.current = '';
-        }
-      }, autoSave * 1000); // 🕒 설정된 초(seconds) 기반 디바운스
-      return () => clearTimeout(timer);
-    }
-  }, [content, autoSave, currentFileNode, saveFile, licenseStatus.isActivated, currentFileName]);
 
   // ====================================================================
   // 📊 [OMD-HOOK-useEditorFormatting] Monaco 텍스트 삽입 및 서식 조작 분리 훅
@@ -3579,54 +2548,57 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
   }, [dateTimeFormatDropdown.open]);
 
   // ====================================================================
-  // 📊 [OMD-CORE-MainEditorApp-0074] MainEditorApp.tsx ➔ toc
-  // 🎯 @KICK  : 마크다운 제목에서 목차를 생성하고 코드 블록은 건너뜁니다
-  // 🛡️ @GUARD : BOM 문자를 제거하고 코드 블록 펜스를 감지하여 오탐을 방지합니다
-  // 🚨 @PATCH : None
-  // 🔗 @CALLS : None
+  // 📊 [OMD-HOOK-useEditorLifecycleEffects] 탭/파일 이벤트·테마·모드·자동저장 및 TOC 분리 훅
+  // 🚨 @PATCH : 2026-11-04 - [MainEditorApp 모듈화] 탭 이름변경/삭제/라인점프 리스너, 에디터 테마·옵션 동기화, 제한사용자 웰컴 정리, 자동 저장, TOC 계산을 useEditorLifecycleEffects로 분리 위임
   // ====================================================================
-  const toc = useMemo(() => {
-    if (typeof content !== 'string') return [];
-    // 윈도우 스타일의 개행(\r\n)과 일반 개행(\n) 모두를 안전하게 분리
-    const lines = content.split(/\r?\n/);
-    const items: { id: string, text: string, level: number, lineNumber: number }[] = [];
-    const codeBlockMask = getCodeBlockLineMask(lines);
-    const headingNumber = createHeadingNumberer(activeProfileId === 'default' ? [] : (profiles.find(p => p.id === activeProfileId) || DEFAULT_PROFILE).headingNumbering);
-    lines.forEach((line, index) => {
-      if (codeBlockMask[index]) return;
-      const trimmed = line.trim();
-
-      // UTF-8 BOM(\ufeff)을 제거하고, 양쪽 공백이 정리된 깨끗한 텍스트로 헤더를 매칭
-      const cleanLine = trimmed.replace(/^\ufeff/, '');
-      const match = cleanLine.match(/^(#{1,6})\s+(.+)$/);
-      if (match) {
-        const level = match[1].length;
-          let text = match[2].trim();
-          
-          // 💡 개요(TOC)에서 마크다운 태그가 그대로 노출되는 현상 방지
-          text = text.replace(/\*\*(.*?)\*\*/g, '$1') // 굵게 **
-                     .replace(/__(.*?)__/g, '$1') // 굵게 __
-                     .replace(/\*(.*?)\*/g, '$1') // 기울임 *
-                     .replace(/_(.*?)_/g, '$1') // 기울임 _
-                     .replace(/~~(.*?)~~/g, '$1') // 취소선 ~~
-                     .replace(/`(.*?)`/g, '$1') // 인라인 코드
-                     .replace(/\[(.*?)\]\(.*?\)/g, '$1') // 링크 [텍스트](URL) -> 텍스트
-                     .replace(/!\[(.*?)\]\(.*?\)/g, '$1') // 이미지 ![텍스트](URL) -> 텍스트
-                     .replace(/<[^>]*>?/gm, ''); // HTML 태그 제거
-                     
-          const marker = headingNumber(level, text);
-          if (marker) text = marker + ' ' + text;
-          const lineNumber = index + 1;
-        items.push({
-          id: `toc-line-${lineNumber}`,
-          text,
-          level,
-          lineNumber
-        });
-      }
-    });
-    return items;
-  }, [content, profiles, activeProfileId]);
+  const { toc, handleMouseMove, stopResizing, startResizing } = useEditorLifecycleEffects({
+    mounted,
+    isEditorReady,
+    editorRef,
+    previewRef,
+    tabs,
+    setTabs,
+    tabsRef,
+    activeTabId,
+    setActiveTabId,
+    activeTabIdRef,
+    prevActiveTabRef,
+    prevCursorLineRef,
+    switchTab,
+    content,
+    setContent,
+    currentFileNode,
+    setCurrentFileNode,
+    currentFileName,
+    setCurrentFileName,
+    previewMode,
+    setPreviewModeRaw,
+    previewModeRef,
+    lastGeneralPreviewModeRef,
+    isEditorMountedRef,
+    handleFileOpenByPath,
+    themePalette,
+    fontSize,
+    wordWrap,
+    editorFontWeight,
+    editorHighContrast,
+    isA4GuardEnabled,
+    isLicenseChecking,
+    isDuplicateInstance,
+    isRestrictedUser,
+    effectiveLicenseStatus,
+    licenseStatus,
+    sessionRestoringRef,
+    helpContent,
+    isResizing,
+    setSidebarWidth,
+    lastSavedContentRef,
+    setSaveStatus,
+    autoSave,
+    saveFile,
+    profiles,
+    activeProfileId,
+  });
 
   const heightClass = 'h-[calc(100vh-128px)]';
   const activeTab = tabs.find(t => t.id === activeTabId);
@@ -3726,116 +2698,13 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
       `}</style>
       <EditorProvider value={contextValue}>
         {/* ⏳ [게스트 즉시 체험 만료 가입 유도 모달 차단막] */}
-        {isGuestMode && isGuestExpired && (
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-zinc-950/85 backdrop-blur-md p-6 select-none" translate="no">
-            <div className="max-w-md w-full bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl p-8 shadow-2xl text-center transform scale-100 transition-all duration-300">
-              <div className="w-16 h-16 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-500 rounded-full flex items-center justify-center mx-auto mb-6">
-                <span className="text-3xl">⏱️</span>
-              </div>
-              <h3 className="text-xl font-bold text-zinc-900 dark:text-white mb-3 flex items-center justify-between gap-2">
-                <span>정식으로 회원가입 후 사용하세요</span>
-                {typeof window !== 'undefined' && (
-                  window.location.hostname.includes('localhost') || 
-                  window.location.hostname.includes('127.0.0.1') || 
-                  window.location.port === '3100' ||
-                  process.env.NODE_ENV === 'development'
-                ) && (
-                  <button
-                    onClick={() => {
-                      localStorage.removeItem('onrivi_guest_expired');
-                      localStorage.removeItem('onrivi_guest_start_time');
-                      localStorage.setItem('onrivi_guest_try_count', '0');
-                      setIsGuestExpired(false);
-                      setGuestRemainingSeconds(300);
-                      window.location.reload();
-                    }}
-                    className="text-[10px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 underline bg-transparent border-none cursor-pointer font-normal flex-shrink-0"
-                    title="개발자 전용 체험 횟수 초기화"
-                  >
-                    테스트용 리셋
-                  </button>
-                )}
-              </h3>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400 leading-relaxed mb-8">
-                동일 브라우저당 허용되는 <strong>5회 체험 접속</strong>을 모두 사용하셨거나, <strong>5분 편집 제한 시간</strong>이 경과하였습니다. 작성하신 소중한 원고는 브라우저에 임시 안전 보관 중입니다. 계속해서 원고를 이어서 작성하고 무제한 클라우드 백업 및 AI 어시스턴트를 활용하시려면 지금 가입하세요!
-              </p>
-              <div className="flex flex-col gap-3">
-                <button
-                  onClick={() => {
-                    localStorage.removeItem('onrivi_guest_mode');
-                    localStorage.removeItem('onrivi_guest_start_time');
-                    window.location.href = '/signup';
-                  }}
-                  className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition duration-150 shadow-md cursor-pointer border-none text-center"
-                >
-                  3초 만에 무료 회원가입
-                </button>
-                {/* 🌟 접속 횟수가 5회 미만일 때만 '체험판 계속하기' 단추 노출 (5회 완료 시 완전 차단) */}
-                {(() => {
-                  const currentTryCount = typeof window !== 'undefined' ? parseInt(localStorage.getItem('onrivi_guest_try_count') || '0', 10) : 0;
-                  if (currentTryCount < 5) {
-                    return (
-                      <button
-                        onClick={() => {
-                          localStorage.removeItem('onrivi_guest_expired');
-                          localStorage.removeItem('onrivi_guest_start_time');
-                          
-                          // 🌟 계속하기 클릭 역시 새로운 5분 세션을 시작하는 행위이므로 접속 카운트를 1회 추가 소진(증가)시킵니다!
-                          const nextCount = currentTryCount + 1;
-                          localStorage.setItem('onrivi_guest_try_count', nextCount.toString());
-
-                          setIsGuestExpired(false);
-                          setGuestRemainingSeconds(300);
-                          setLicenseStatus({
-                            isActivated: true,
-                            isExpired: false,
-                            remainingDays: 999,
-                            userId: 'GUEST_USER',
-                            licenseKey: 'GUEST_LICENSE_KEY',
-                            paymentNo: 'GUEST_PAYMENT_NO',
-                            planName: '체험판 게스트 요금제',
-                            nextPaymentDate: '2999-12-31'
-                          });
-                        }}
-                        className="w-full py-3 px-4 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 font-semibold rounded-xl transition duration-150 cursor-pointer border-none text-center"
-                      >
-                        체험판 계속하기
-                      </button>
-                    );
-                  }
-                  return null;
-                })()}
-                <button
-                  onClick={() => {
-                    localStorage.removeItem('onrivi_guest_mode');
-                    localStorage.removeItem('onrivi_guest_start_time');
-                    window.location.href = '/';
-                  }}
-                  className="w-full py-3 px-4 bg-zinc-50 hover:bg-zinc-100 dark:bg-zinc-900/40 dark:hover:bg-zinc-800/80 text-zinc-500 dark:text-zinc-400 font-semibold border border-zinc-200 dark:border-zinc-800 rounded-xl transition duration-150 cursor-pointer text-center"
-                >
-                  홈페이지 가기
-                </button>
-              </div>
-              <div className="mt-8 pt-6 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-center">
-                <a 
-                  href="/" 
-                  onClick={() => {
-                    localStorage.removeItem('onrivi_guest_mode');
-                    localStorage.removeItem('onrivi_guest_start_time');
-                  }}
-                  className="flex items-center gap-2 hover:opacity-85 transition-opacity"
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM13 17H11V15H13V17ZM13 13H11V7H13V13Z" fill="#10B981" />
-                  </svg>
-                  <span className="text-[11px] font-bold text-zinc-400 dark:text-zinc-500 tracking-wider uppercase">
-                    Onrivi Author
-                  </span>
-                </a>
-              </div>
-            </div>
-          </div>
-        )}
+        <GuestPaywallOverlay
+          isGuestMode={isGuestMode}
+          isGuestExpired={isGuestExpired}
+          setIsGuestExpired={setIsGuestExpired}
+          setGuestRemainingSeconds={setGuestRemainingSeconds}
+          setLicenseStatus={setLicenseStatus}
+        />
 
         <EditorLayout
           mounted={mounted}
