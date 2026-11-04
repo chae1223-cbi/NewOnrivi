@@ -1,5 +1,7 @@
 /**
  * 프로그램명 : OnriviAuthor 
+// 🚨 @PATCH : **2026-11-04** — [MainEditorApp 4단계 리팩토링 3단계: EditorLayout 레이아웃 분리]:
+//             1) 에디터 쉘(Shell), 메뉴바(MenuBar), 좌측 사이드바(LeftSidebar), 상태바(StatusBar), 동시 접속 배너 및 지식 베이스 뷰를 EditorLayout으로 분리 (Rule 3 준수)
 // 🚨 @PATCH : **2026-11-04** — [MainEditorApp 4단계 리팩토링 2단계: useEditorKeybindings 단축키 분리]:
 //             1) Monaco 에디터 액션 등록 및 전역 keydown 이벤트 핸들러(handleGlobalKeyDown)를 useEditorKeybindings 독립 훅으로 분리 (Rule 3 준수)
 // 🚨 @PATCH : **2026-11-04** — [MainEditorApp 4단계 리팩토링 1단계: EditorOverlayManager 모달 분리]:
@@ -589,6 +591,7 @@ import { useEditorModals } from '@/hooks/editor/useEditorModals';
 // import EditorLayout from '@/components/editor/layout/EditorLayout';
 // import EditorCore from '@/components/editor/core/EditorCore';
 import EditorOverlayManager from '@/components/editor/EditorOverlayManager';
+import EditorLayout from '@/components/editor/EditorLayout';
 import NewDocumentModal from '@/components/NewDocumentModal';
 import { transferDocument } from '@/lib/documentTransfer';
 import { extractFrontmatter, updateCssProfileInFrontmatter } from '@/lib/frontmatter';
@@ -9691,62 +9694,53 @@ blockquote li p {
           </div>
         )}
 
-        <div className={`onrivi-editor-shell flex h-screen overflow-hidden flex-col text-on-surface ${mounted && isDarkMode ? 'dark' : ''} bg-surface relative`}>
-
-          {/* 🛡️ 동일 브라우저 다중 탭 또는 다른 브라우저/기기 동시 접속 시 - 비차단형 제한사용자 안내 배너 */}
-          {((isDuplicateInstance && isEditorPlan) || (licenseStatus.isConcurrentLimited && (licenseStatus.hasEditorSubscription || isEditorPlan))) && activeMainView !== 'knowledge' && (
-            <aside aria-label="동시 접속 제한 모드 안내" className="w-full bg-amber-500/10 dark:bg-amber-500/15 border-b border-amber-500/30 px-4 py-2 flex items-center justify-between text-xs text-amber-900 dark:text-amber-200 z-50 shrink-0 select-none">
-              <div className="flex items-center gap-2 font-medium">
-                <span className="text-base leading-none">⚠️</span>
-                <span>
-                  {isDuplicateInstance ? (
-                    <>다른 탭에서 Onrivi 에디터가 이미 실행 중이므로 현재 화면은 <strong>읽기 전용(제한사용자)</strong> 모드로 동작합니다.</>
-                  ) : (
-                    <>다른 브라우저나 기기에서 Onrivi 에디터가 이미 사용 중이어서 현재 화면은 <strong>읽기 전용(제한사용자)</strong> 모드로 열렸습니다.</>
-                  )}
-                </span>
-              </div>
-              <button
-                type="button"
-                disabled={isTakingOver}
-                onClick={handleTakeover}
-                className="px-3 py-1 bg-[#1d4ed8] hover:bg-[#05b34c] text-white font-extrabold rounded-lg shadow-xs transition-colors cursor-pointer border-none shrink-0 ml-4 disabled:opacity-50 disabled:cursor-not-allowed outline-none focus:outline-none"
-              >
-                {isTakingOver ? '편집 권한 전환 중...' : '이 화면에서 편집 시작하기'}
-              </button>
-            </aside>
+        <EditorLayout
+          mounted={mounted}
+          isDarkMode={isDarkMode}
+          isDuplicateInstance={isDuplicateInstance}
+          isEditorPlan={isEditorPlan}
+          licenseStatus={licenseStatus}
+          isTakingOver={isTakingOver}
+          handleTakeover={handleTakeover}
+          activeMainView={activeMainView}
+          setActiveMainView={setActiveMainView}
+          resourceFolder={resourceFolder}
+          resourceFolderHandle={resourceFolderHandle}
+          geminiApiKey={geminiApiKey}
+          setGeminiApiKey={setGeminiApiKey}
+          aiModelName={aiModelName}
+          setAiModelName={setAiModelName}
+          fileList={fileList}
+          bottomBar={isAiButtonVisible && (
+            <InlineAIAssistant
+              documentId={activeTabId}
+              disabled={!activeTabId || isRestrictedUser || currentFileName === '도움말.md'}
+              disabledReason={!activeTabId ? '문서를 먼저 열거나 새 문서를 만들어 주세요.' : isRestrictedUser ? '현재 문서 편집 권한이 제한되어 있습니다. 로그인·인증 및 동시 접속 상태를 확인해 주세요.' : currentFileName === '도움말.md' ? '도움말은 수정할 수 없습니다. 작성할 문서를 열어 주세요.' : undefined}
+              legacyKey={ensureDecryptedApiKey(geminiApiKey)}
+              legacyModel={aiModelName}
+              nickname={userNickname}
+              resourceFolder={resourceFolder}
+              resourceHandle={resourceFolderHandle}
+              readDocument={() => editorRef.current?.hasTextFocus() ? editorRef.current.getValue() : contentRef.current}
+              capture={(scope) => {
+                if (resolveEffectiveDocumentProfile(contentRef.current).layout) {
+                  if (previewModeRef.current !== 'preview' && editorRef.current?.hasTextFocus()) return captureMonacoAITarget(editorRef.current, activeTabIdRef.current || '', () => activeTabIdRef.current, scope);
+                  if (scope === 'reference') return null;
+                  throw Error('그림책은 질문·문서 정리를 사용할 수 있습니다. 문구 수정은 마크다운 편집창에서 글을 선택한 뒤 실행해 주세요.');
+                }
+                if(scope==='auto'){if(visualAITargetRef.current&&previewRef.current?.querySelector('.visual-document-editor'))return visualAITargetRef.current(scope);if(editorRef.current?.hasTextFocus()&&!editorRef.current.getSelection()?.isEmpty())return captureMonacoAITarget(editorRef.current,activeTabIdRef.current || '',()=>activeTabIdRef.current,'selection');throw Error('문서 전체 수정은 문서보기에서 편집을 켠 뒤 실행해 주세요.');}
+                if(scope==='document'){if(visualAITargetRef.current&&previewRef.current?.querySelector('.visual-document-editor'))return visualAITargetRef.current(scope);throw Error('문서 전체 수정은 문서보기에서 편집을 켠 뒤 실행해 주세요.');}
+                if (editorRef.current?.hasTextFocus()) return captureMonacoAITarget(editorRef.current,activeTabIdRef.current || '',()=>activeTabIdRef.current,scope);
+                if (previewRef.current?.querySelector('.visual-document-editor') && visualAITargetRef.current) return visualAITargetRef.current(scope);
+                if (previewModeRef.current === 'preview') throw Error('문서 편집을 켠 뒤 글을 선택해 주세요.');
+                return captureMonacoAITarget(editorRef.current,activeTabIdRef.current || '',()=>activeTabIdRef.current,scope);
+              }}
+              onSettings={() => {setSettingsModalInitialTab('general');setIsSettingsModalOpen(true);}}
+              isToolbarOpen={isToolbarOpen}
+            />
           )}
-
-          {/* 🧠 지식 베이스(KnowledgeHubView) 인라인 오버레이 (에디터 DOM 언마운트 없이 영구 보존, z-[150]으로 에디터 UI 완벽 격리) */}
-          {activeMainView === 'knowledge' && (
-            <div className="absolute inset-0 z-[150] flex flex-col bg-[#FAFBFC] dark:bg-[#121316]">
-              <KnowledgeHubView 
-                initialTab="dashboard"
-                resourceFolder={resourceFolder}
-                resourceFolderHandle={resourceFolderHandle}
-                geminiApiKey={geminiApiKey}
-                onSaveApiKey={setGeminiApiKey}
-                planCode="ELITEPRO"
-                aiModelName={aiModelName}
-                onSaveModelName={setAiModelName}
-                fileTreeNodes={fileList}
-                isStandalonePage={false}
-                onBackToEditor={() => setActiveMainView('editor')}
-              />
-            </div>
-          )}
-
-          <div className={activeMainView === 'knowledge' ? 'hidden' : 'contents'}>
-            <MenuBar />
-
-          </div>
-
-
-
-          <div className="flex flex-1 overflow-hidden relative">
-            <LeftSidebar />
-
-            <main className="flex flex-1 flex-col overflow-hidden bg-transparent relative">
+        >
+          <main className="flex flex-1 flex-col overflow-hidden bg-transparent relative">
               
               {/* ⏳ [게스트 즉시 체험판 인터랙티브 플로팅 가이드 위젯] */}
               {isGuestMode && (
@@ -11554,28 +11548,7 @@ blockquote li p {
                 <Toolbar documentEditing={directEditEnabled && !!activeTabId && !isRestrictedUser && currentFileName !== '도움말.md'} />
               </div>
             )}
-          </div>
-
-          {isAiButtonVisible && <InlineAIAssistant documentId={activeTabId} disabled={!activeTabId || isRestrictedUser || currentFileName === '도움말.md'}
-            disabledReason={!activeTabId ? '문서를 먼저 열거나 새 문서를 만들어 주세요.' : isRestrictedUser ? '현재 문서 편집 권한이 제한되어 있습니다. 로그인·인증 및 동시 접속 상태를 확인해 주세요.' : currentFileName === '도움말.md' ? '도움말은 수정할 수 없습니다. 작성할 문서를 열어 주세요.' : undefined}
-            legacyKey={ensureDecryptedApiKey(geminiApiKey)} legacyModel={aiModelName} nickname={userNickname} resourceFolder={resourceFolder} resourceHandle={resourceFolderHandle}
-            readDocument={() => editorRef.current?.hasTextFocus() ? editorRef.current.getValue() : contentRef.current}
-            capture={(scope) => {
-              if (resolveEffectiveDocumentProfile(contentRef.current).layout) {
-                if (previewModeRef.current !== 'preview' && editorRef.current?.hasTextFocus()) return captureMonacoAITarget(editorRef.current, activeTabIdRef.current || '', () => activeTabIdRef.current, scope);
-                if (scope === 'reference') return null;
-                throw Error('그림책은 질문·문서 정리를 사용할 수 있습니다. 문구 수정은 마크다운 편집창에서 글을 선택한 뒤 실행해 주세요.');
-              }
-              if(scope==='auto'){if(visualAITargetRef.current&&previewRef.current?.querySelector('.visual-document-editor'))return visualAITargetRef.current(scope);if(editorRef.current?.hasTextFocus()&&!editorRef.current.getSelection()?.isEmpty())return captureMonacoAITarget(editorRef.current,activeTabIdRef.current || '',()=>activeTabIdRef.current,'selection');throw Error('문서 전체 수정은 문서보기에서 편집을 켠 뒤 실행해 주세요.');}
-              if(scope==='document'){if(visualAITargetRef.current&&previewRef.current?.querySelector('.visual-document-editor'))return visualAITargetRef.current(scope);throw Error('문서 전체 수정은 문서보기에서 편집을 켠 뒤 실행해 주세요.');}
-              if (editorRef.current?.hasTextFocus()) return captureMonacoAITarget(editorRef.current,activeTabIdRef.current || '',()=>activeTabIdRef.current,scope);
-              if (previewRef.current?.querySelector('.visual-document-editor') && visualAITargetRef.current) return visualAITargetRef.current(scope);
-              if (previewModeRef.current === 'preview') throw Error('문서 편집을 켠 뒤 글을 선택해 주세요.');
-              return captureMonacoAITarget(editorRef.current,activeTabIdRef.current || '',()=>activeTabIdRef.current,scope);
-            }}
-            onSettings={() => {setSettingsModalInitialTab('general');setIsSettingsModalOpen(true);}}
-            isToolbarOpen={isToolbarOpen} />}
-          <StatusBar />
+        </EditorLayout>
 
           {/* 💡 [Rule 3 Manager 영역] 모든 모달 및 플로팅 오버레이를 EditorOverlayManager로 통합 위임 */}
           <EditorOverlayManager
@@ -11714,7 +11687,6 @@ blockquote li p {
               insertAtCursor
             }}
           />
-        </div>
       </EditorProvider>
     </>
   );
