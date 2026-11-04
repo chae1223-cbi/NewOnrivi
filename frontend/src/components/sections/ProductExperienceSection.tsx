@@ -2,6 +2,7 @@
 // 📊 [OMD-UI-ProductExperienceSection-0003] ProductExperienceSection ➔ ProductExperienceSection
 // 🎯 @KICK  : Onrivi Author 실제 UI 쇼케이스 — SPLIT VIEW(`onrivi/onrivi_randing_spilit.png`), PREVIEW(`onrivi/onrivi_randing_preview.png`), '구현'(실제 시연 비디오 randing_hero.mp4) 3대 모드
 // 🛡️ @GUARD : Default 모드는 SPLIT VIEW, 200 OK 정규 이미지 URL 연동 및 비디오 스트리밍 최적화
+// 🚨 @PATCH : **2026-11-04** — [비디오 정적 URL 404 해결]: Cloudflare Pages 정적 환경에 맞추어 randing_hero.mp4 주소를 퍼블릭 정적 경로(/onrivi/randing_hero.mp4)로 교체
 // 🚨 @PATCH : **2026-09-30** — [섹션 순서 변경에 따른 배경색 교차 동기화]: DocumentResultsSection(#F9FAFC) 직후 06번 섹션으로 이동함에 따라 섹션 배경색을 #FFFFFF(화이트)로 전환하고, 탭 스위처를 연회색(bg-[#F1F5F9] dark:bg-[#16181D])으로 정돈하여 완벽한 상하 1:1 교차 대비 달성
 // 🚨 @PATCH : **2026-09-30** — [랜딩 섹션 교차 배경색 표준화]: ProductExperienceSection 배경색을 사용자 지정 #F9FAFC(연회색)로 적용하여 Workflow(화이트)와 1:1 교차 대비 완성
 // 🚨 @PATCH : **2026-09-30** — [비디오 초기 검은 화면(Black Screen) 방지 패치]:
@@ -198,9 +199,9 @@ export function ProductExperienceSection() {
                     e.currentTarget.currentTime = 0.05;
                   }
                 }}
-                src="https://onrivi.com/api/image/onrivi/randing_hero.mp4?v=20260930_latest#t=0.05"
+                src="/onrivi/randing_hero.mp4?v=20261104_latest#t=0.05"
               >
-                <source src="https://onrivi.com/api/image/onrivi/randing_hero.mp4?v=20260930_latest#t=0.05" type="video/mp4" />
+                <source src="/onrivi/randing_hero.mp4?v=20261104_latest#t=0.05" type="video/mp4" />
                 브라우저가 비디오 태그를 지원하지 않습니다.
               </video>
             </div>

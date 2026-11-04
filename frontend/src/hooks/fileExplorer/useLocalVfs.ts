@@ -2,12 +2,13 @@
 // 📊 [OMD-HOOK-useLocalVfs-0001] useLocalVfs.ts ➔ 로컬 VFS 및 파일 저장/스캔 훅
 // 🎯 @KICK  : 로컬 폴더/브라우저 FSA/VFS/웹드라이브 파일 트리 스캔(refreshFileList), 워크스페이스 선택(selectRootFolder), 물리적 파일 저장(saveFile)
 // 🛡️ @GUARD : 지식 보관함 자동 재색인(triggerKnowledgeAutoSyncOnSave), 디바운스 새로고침, Electron 네이티브 API 및 브라우저 FSA 3중 호환
+// 🚨 @PATCH : 2026-11-04 — [런타임 버그 수정]: useEffect import 누락으로 인한 rootFolder ReferenceError 해소
 // 🚨 @PATCH : 2026-11-04 — [useFileExplorer 모듈화 분리]:
 //             1) useFileExplorer에서 파일 목록 스캔, 루트 폴더 선택/복원, 물리적 파일 저장 및 지식 베이스 동기화 로직을 useLocalVfs 독립 서브 훅으로 분리 (Rule 3 준수)
 // 🔗 @CALLS : scanDirectory, getVfsFiles, vfsWriteFile, triggerKnowledgeAutoSyncOnSave, logError
 // ====================================================================
 // @ts-nocheck
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useEffect } from 'react';
 import { FileNode, scanDirectory, idb } from '@/lib/indexedDbHelper';
 import { isBundledDocumentPath } from '@/lib/bundledDocument';
 import { browserAccountStorage as localStorage } from '@/lib/browserAccountStorage';
