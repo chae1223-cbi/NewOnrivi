@@ -9,3 +9,8 @@ export * from './activeTagInspector';
 export * from './visualDocumentCommands';
 export * from './visualSelectionHelper';
 export * from './visualDropHelper';
+export * from './visualEditorStyles';
+export { default as VisualSlashMenu } from './VisualSlashMenu';
+export { default as VisualEditorToolbar } from './VisualEditorToolbar';
+export type { VisualSlashMenuItem, VisualSlashMenuProps } from './VisualSlashMenu';
+export type { VisualEditorToolbarProps } from './VisualEditorToolbar';

@@ -1,6 +1,9 @@
 /**
  * 프로그램명 : OnriviAuthor 
  * 버전 정보 : 1.0.1
+ * 🚨 @PATCH : 2026-11-04 — [Rule 3 5순위: VisualDocumentEditor 2단계 모듈화 분리]:
+ *             1) 인라인 상단 툴바/표 도구를 VisualEditorToolbar.tsx로, 슬래시 메뉴/플로팅 포털을 VisualSlashMenu.tsx로 분리
+ *             2) 360줄의 인라인 CSS 스타일을 visualEditorStyles.ts로 완전 격리하여 총 700줄 이상 추가 슬림화 달성
  * 🚨 @PATCH : 2026-11-04 — [Rule 3 5순위: VisualDocumentEditor 대형 위지윅 에디터 모듈화 분리]:
  *             1) 5,640줄의 거대 VisualDocumentEditor.tsx에서 4대 핵심 엔진(activeTagInspector, visualDocumentCommands, visualSelectionHelper, visualDropHelper)을 frontend/src/components/visualEditor/로 전면 분리
  *             2) 태그 인스펙터 분석(120줄), 블록 조작/정규화 커맨드군(480줄), 선택/키보드 이동 헬퍼(270줄), 드롭/경로 변환(140줄) 등 총 1,000줄 이상을 독립 모듈화하여 소스 슬림화 달성
@@ -377,6 +380,9 @@ import {
   resolveDropTarget,
   resolveDropInsertPos,
   resolveDocPath,
+  VisualSlashMenu,
+  VisualEditorToolbar,
+  VISUAL_EDITOR_STYLES,
 } from '@/components/visualEditor';
 
 type Codec = ReturnType<typeof createVisualDocumentCodec>;
@@ -4148,68 +4154,27 @@ export default function VisualDocumentEditor({ content, onChange, readOnly = fal
         void executeDropRef.current(viewRef.current, event.nativeEvent);
       }
     }}>
-    <div className="sticky top-0 z-20 flex flex-wrap items-center gap-1 border-b bg-white p-2 text-zinc-800" data-editor-controls>
-      {itemButton('bold', 'bold')}{itemButton('italic', 'italic')}{itemButton('underline', '밑줄')}{itemButton('strikethrough', '취소선')}{itemButton('inlineCode', 'inlinecode')}{itemButton('link', 'link')}{itemButton('clear', 'clear')}{itemButton('image', '사진 넣기')}{itemButton('table', '표 넣기')}
-      {button('실행 취소', undo)}{button('다시 실행', redo)}
-      <select aria-label="문단 서식" defaultValue="" onChange={event => {
-        const item = blockCommands.find(([label]) => label === event.target.value);
-        if (item) run(item[1]); event.target.value = '';
-      }} className="rounded border p-2 text-sm"><option value="">문단 서식</option>
-        {blockCommands.map(([label]) => <option key={label}>{label}</option>)}
-      </select>
-      <span className="ml-auto text-xs text-zinc-500">/ 입력: 블록 추가 · Ctrl+Space: 툴바 · Ctrl+Enter: 표·코드·인용문·이미지 아래 본문 · Tab: 목록 들여쓰기</span>
-      <span aria-label="현재 입력 서식" className="text-xs text-blue-700">{activeMarks.length ? activeMarks.map(name => ({strong:'bold',em:'italic',code:'inlinecode',link:'link',strike:'strike',underline:'underline'}[name] || name)).join(' + ') : 'plain'}</span>
-      <div className="flex items-center gap-1.5 border-l border-zinc-200 dark:border-zinc-700 pl-2 select-none" data-testid="active-tag-indicator" aria-label="현재 입력 태그" title={`전체 태그 경로: ${tagInfo.labelPathString} (${tagInfo.pathString})`}>
-        <span className="text-[11px] font-bold text-zinc-700 dark:text-zinc-300">현재 태그:</span>
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-mono font-bold text-xs bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-200 ring-1 ring-blue-400 dark:ring-blue-600 shadow-xs">
-          <span>&lt;{tagInfo.innermostTag}&gt;</span>
-          <span className="font-sans font-semibold text-[11px] text-blue-700 dark:text-blue-300">({tagInfo.innermostLabel})</span>
-        </span>
-        {tagInfo.path.length > 1 && (
-          <span className="hidden sm:inline-flex items-center text-xs font-mono font-bold text-zinc-700 dark:text-zinc-300 truncate max-w-[260px]" title={`전체 태그 경로: ${tagInfo.labelPathString}`}>
-            <span className="text-zinc-400 mx-1 font-normal">·</span>
-            {tagInfo.pathString}
-          </span>
-        )}
-      </div>
-    </div>
-    {inTable && !pageGuides && !readOnly && tableToolbarDismissed && createPortal(
-      <button type="button" style={{ position:'fixed', top:tableToolPosition.top, left:tableToolPosition.left, zIndex:150 }}
-        className="no-print rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800 shadow-lg hover:bg-blue-100 cursor-pointer"
-        data-editor-controls aria-label="표 편집 도구 다시 열기" title="표 편집 도구 다시 열기"
-        onMouseDown={event=>event.preventDefault()} onClick={()=>setTableToolbarDismissed(false)}>
-        표 도구 열기
-      </button>, document.body)}
-    {inTable && !pageGuides && !readOnly && !tableToolbarDismissed && createPortal(<div style={tableToolPosition} className="no-print fixed z-[150] flex flex-wrap gap-1 rounded-lg border border-blue-200 bg-blue-50 p-2 text-zinc-800 shadow-lg items-center" data-editor-controls aria-label="표 편집 도구">
-      <strong className="self-center px-2 text-sm font-bold text-zinc-900">표 편집 도구</strong>
-      {firstBlockNeedsParagraph && viewRef.current?.state.doc.firstChild?.type === visualSchema.nodes.table &&
-        <button type="button" className="rounded border border-blue-300 bg-white px-2 py-1 text-sm font-semibold text-blue-700 hover:bg-blue-100 cursor-pointer"
-          onMouseDown={e=>e.preventDefault()} onClick={insertParagraphBeforeFirstBlock}>표 위에 본문</button>}
-      <button type="button" className="onrivi-media-control cursor-pointer" aria-label="표 복사" onMouseDown={e=>e.preventDefault()} onClick={async()=>{
-        const view=viewRef.current,codec=codecRef.current;
-        const context=view && tableContext(view.state);
-        if(!context || !codec)return;
-        const text=codec.serialize(visualSchema.nodes.doc.create(null,context.table));
-        try {
-          const api=(window as any).electronAPI;
-          if(api?.copyTextToClipboard)await api.copyTextToClipboard(text);
-          else await navigator.clipboard.writeText(text);
-          setNotice('표를 마크다운 형식으로 복사했습니다.');
-        } catch {setNotice('표 복사에 실패했습니다.');}
-      }}>복사</button>
-      {(['addRow','deleteRow','addColumn','deleteColumn','left','center','right','afterTable','deleteTable'] as const).map(action=><button key={action} type="button" className="rounded border bg-white px-2 py-1 text-sm hover:bg-zinc-50 cursor-pointer" onMouseDown={e=>e.preventDefault()} onClick={()=>{const view=viewRef.current,command=tableAction(action);if(view && !command(view.state))setNotice('헤더 행과 마지막 열은 삭제할 수 없습니다. 표 전체를 지우려면 표 삭제를 사용해 주세요.');else run(command);}}>
-        {{addRow:'행 추가',deleteRow:'행 삭제',addColumn:'열 추가',deleteColumn:'열 삭제',left:'본문 왼쪽',center:'본문 중앙',right:'본문 오른쪽',afterTable:'표 아래 본문',deleteTable:'표 삭제'}[action]}</button>)}
-      <button
-        type="button"
-        className="rounded border border-zinc-300 bg-white px-2.5 py-1 text-sm font-semibold text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900 cursor-pointer transition-colors ml-auto"
-        onMouseDown={e => e.preventDefault()}
-        onClick={() => setTableToolbarDismissed(true)}
-        aria-label="표 편집 도구 닫기"
-        title="표 편집 도구 닫기 (Esc 또는 표 밖으로 나가면 닫힙니다)"
-      >
-        닫기
-      </button>
-    </div>, document.body)}
+    <VisualEditorToolbar
+      itemButton={itemButton}
+      button={button}
+      undo={undo}
+      redo={redo}
+      blockCommands={blockCommands}
+      run={run}
+      activeMarks={activeMarks}
+      tagInfo={tagInfo}
+      inTable={inTable}
+      pageGuides={pageGuides}
+      readOnly={readOnly}
+      tableToolbarDismissed={tableToolbarDismissed}
+      setTableToolbarDismissed={setTableToolbarDismissed}
+      tableToolPosition={tableToolPosition}
+      firstBlockNeedsParagraph={firstBlockNeedsParagraph}
+      viewRef={viewRef}
+      codecRef={codecRef}
+      insertParagraphBeforeFirstBlock={insertParagraphBeforeFirstBlock}
+      setNotice={setNotice}
+    />
     <TableModal nextNumber={nextReportNumber(content, '표')} isOpen={tableDialog} isDarkMode={false} onClose={()=>{setTableDialog(false);if(tableTargetRef.current)imageTargets.current.delete(tableTargetRef.current);tableTargetRef.current=null;}} onInsert={source=>{
       const view=viewRef.current,target=tableTargetRef.current;
       if(!view || !target?.valid || !view.editable || !codecRef.current){setNotice('문서나 삽입 위치가 변경되었습니다.');return;}
@@ -4250,53 +4215,20 @@ export default function VisualDocumentEditor({ content, onChange, readOnly = fal
       isDarkMode={false}
     />
     {notice && <div role="status" className="flex justify-between bg-amber-50 px-4 py-2 text-sm text-amber-900" data-editor-controls>{notice}<button type="button" onClick={() => setNotice('')}>닫기</button></div>}
-    {selection && !readOnly && !onFloatingToolbar && createPortal(<div role="toolbar" tabIndex={-1} aria-label="선택한 글 서식"
-      onKeyDown={(e) => {
-        e.stopPropagation();
-        const buttons = Array.from(e.currentTarget.querySelectorAll('button:not([disabled])')) as HTMLButtonElement[];
-        const activeEl = document.activeElement as HTMLButtonElement;
-        const currentIndex = buttons.indexOf(activeEl);
-        if (e.key === 'Tab') {
-          e.preventDefault();
-          const nextIndex = currentIndex === -1
-            ? (e.shiftKey ? buttons.length - 1 : 0)
-            : (e.shiftKey ? (currentIndex - 1 + buttons.length) % buttons.length : (currentIndex + 1) % buttons.length);
-          buttons[nextIndex]?.focus();
-        } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-          e.preventDefault();
-          const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % buttons.length;
-          buttons[nextIndex]?.focus();
-        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-          e.preventDefault();
-          const prevIndex = currentIndex === -1 ? buttons.length - 1 : (currentIndex - 1 + buttons.length) % buttons.length;
-          buttons[prevIndex]?.focus();
-        } else if (e.key === 'Enter' || e.key === ' ') {
-          if (activeEl && buttons.includes(activeEl)) {
-            e.preventDefault();
-            activeEl.click();
-          }
-        } else if (e.key === 'Escape') {
-          e.preventDefault();
-          setSelection(false); manualFloatingRef.current = false; viewRef.current?.focus();
-        }
-      }}
-      style={{ ...popup,
-      left: Math.max(8, Math.min(popup.left, window.innerWidth - 916)), width: 'min(900px, calc(100vw - 16px))',
-      maxHeight: Math.min(window.innerHeight * 0.4, window.innerHeight - popup.top - 8), overflow:'auto' }} className="fixed z-[1000] flex flex-wrap rounded-xl border bg-white text-zinc-800 shadow-lg outline-none" data-editor-controls>
-      {([['bold','B'], ['italic','I'], ['inlineCode','</>'], ['link','🔗'], ['orderedList','1.'], ['list','•'], ['checklist','☑'], ['clear','⌫']] as [string,string][]).map(([id,label]) => itemButton(id,label))}
-    </div>, document.body)}
-    {slash && !readOnly && createPortal(<div id="visual-slash-menu" role="menu" aria-label="슬래시 명령어" style={{ ...popup, width: 'min(650px, calc(100vw - 16px))',
-      left: Math.max(8, Math.min(popup.left, window.innerWidth - 666)),
-      maxHeight: Math.min(window.innerHeight * 0.4, window.innerHeight - popup.top - 8), overflow: 'auto' }} className="fixed z-[1000] flex flex-wrap rounded-xl border bg-white p-2 text-zinc-800 shadow-lg" data-editor-controls>
-      {filtered.map((item, index) => <button key={item.id} type="button" aria-label={`/${item.command}`} data-selected={index === menuIndex}
-        onMouseDown={event => event.preventDefault()} onClick={() => executeItem(item.id, true)}
-        className={`flex w-full items-center gap-2 px-2 py-1 text-left text-sm ${index === menuIndex ? 'bg-[#3d5db5] text-white' : 'hover:bg-blue-50'}`}
-        title={item.description}>
-        <span className="w-6 shrink-0 text-center">{item.icon}</span><span className="w-28 shrink-0 font-semibold">/{item.command}</span>
-        <span className="min-w-0 flex-1 truncate">{item.name}</span><span className="hidden max-w-[45%] truncate text-xs opacity-65 sm:block">{item.description}</span>
-      </button>)}
-      {!filtered.length && <span className="p-2 text-sm text-zinc-500">No commands</span>}
-    </div>, document.body)}
+    <VisualSlashMenu
+      slash={slash}
+      readOnly={readOnly}
+      popup={popup}
+      filtered={filtered}
+      menuIndex={menuIndex}
+      executeItem={executeItem}
+      selection={selection}
+      onFloatingToolbar={onFloatingToolbar}
+      itemButton={itemButton}
+      setSelection={setSelection}
+      manualFloatingRef={manualFloatingRef}
+      viewRef={viewRef}
+    />
     <div className="relative">
       {!pageGuides && !readOnly && firstBlockNeedsParagraph && !(inTable && viewRef.current?.state.doc.firstChild?.type === visualSchema.nodes.table) && <button type="button" data-editor-controls
         className="ml-7 mb-1 rounded border border-blue-200 bg-white px-2 py-1 text-xs text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:bg-zinc-900 dark:text-blue-300"
@@ -4321,358 +4253,6 @@ export default function VisualDocumentEditor({ content, onChange, readOnly = fal
       />
     )}
     {imageMounts.map(item => createPortal(renderImage?.(item.source) || <VisualReadOnlyMarkdownBlock source={item.source} />, item.element, String(item.id)))}
-    <style>{`
-      .custom-preview-container:has(.visual-document-editor) { overflow-anchor:none!important; scroll-behavior:auto!important; }
-      .visual-document-surface { caret-color:transparent; outline:none; min-height:360px; padding:28px; white-space:pre-wrap; overflow-wrap:anywhere; color:inherit; background:inherit; font-family:inherit; font-size:inherit; line-height:1.75; }
-      .visual-document-surface > :first-child { margin-top:0!important; }
-      .visual-document-surface a { color:#1d4ed8; text-decoration:underline; cursor:pointer; }
-      .visual-citation { color:#1d4ed8; background:#eff6ff; border-radius:3px; }
-      .visual-citation-missing { color:#b91c1c; text-decoration:underline wavy; }
-      .visual-document-surface a:hover { color:#1e40af; text-decoration:underline; }
-      .visual-document-surface ::selection,
-      .visual-document-surface *::selection {
-        background: #2563eb !important;
-        color: #ffffff !important;
-      }
-      .dark .visual-document-surface ::selection,
-      .dark .visual-document-surface *::selection {
-        background: #3b82f6 !important;
-        color: #ffffff !important;
-      }
-      .custom-preview-container .visual-document-surface :is(p,h1,h2,h3,h4,h5,h6,li > div),
-      .onrivi-content-root .visual-document-surface :is(p,h1,h2,h3,h4,h5,h6,li > div),
-      .visual-document-surface :is(p,h1,h2,h3,h4,h5,h6,li > div) { white-space:break-spaces!important; tab-size:inherit; }
-      .visual-document-surface p { margin:0; }
-      .visual-document-surface br.ProseMirror-trailingBreak { display:inline!important; content:normal!important; margin:0!important; height:auto!important; }
-      .visual-document-surface > .visual-footnote-def + p:empty,
-      .visual-document-surface > .visual-footnote-def ~ p:empty { display: none !important; }
-      .visual-document-surface p:empty,
-      .visual-document-surface p:has(>br.ProseMirror-trailingBreak:only-child) {
-        min-height: 1em;
-        cursor: text;
-      }
-      .visual-document-surface li { margin-top:0!important; margin-bottom: var(--li-margin-bottom, 6px); padding-top:0!important; padding-bottom:0!important; }
-      .visual-document-surface li p { margin-top:0!important; margin-bottom:0!important; }
-      .custom-preview-container .visual-document-surface li ul, .custom-preview-container .visual-document-surface li ol, .visual-document-surface li ul, .visual-document-surface li ol { margin-top:0!important; margin-bottom:0!important; padding-top:0!important; padding-bottom:0!important; }
-      .visual-document-surface h1 { font-size:2em; font-weight:700; }
-      .visual-document-surface h2 { font-size:1.5em; font-weight:700; }
-      .visual-document-surface h3 { font-size:1.25em; font-weight:700; }
-      .visual-document-surface h4 { font-size:1.1em; font-weight:700; }
-      .visual-document-surface h5 { font-size:1em; font-weight:700; }
-      .visual-document-surface h6 { font-size:0.9em; font-weight:700; }
-
-      /* 🏷️ [문서보기 제목(H1~H6) 태그 시각화 뱃지 (Plan 2)] */
-      .visual-document-surface[contenteditable="true"] :is(h1,h2,h3,h4,h5,h6) {
-        position: relative;
-      }
-      .visual-document-surface[contenteditable="true"] :is(h1,h2,h3,h4,h5,h6)::after {
-        position: absolute;
-        left: -34px;
-        top: 0.15em;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-width: 26px;
-        height: 19px;
-        box-sizing: border-box;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-        font-size: 11px;
-        font-weight: 800;
-        line-height: 1;
-        letter-spacing: -0.02em;
-        padding: 0 4px;
-        border-radius: 4px;
-        user-select: none;
-        pointer-events: none;
-        opacity: 0.92;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-        transition: opacity 0.12s ease, transform 0.12s ease, box-shadow 0.12s ease;
-      }
-      .visual-document-surface[contenteditable="true"] :is(h1,h2,h3,h4,h5,h6):hover::after,
-      .visual-document-surface[contenteditable="true"] :is(h1,h2,h3,h4,h5,h6):focus-within::after {
-        opacity: 1;
-        transform: scale(1.1);
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
-      }
-      .visual-document-surface[contenteditable="true"] h1::after { content: 'H1'; color: #1e40af; background: #dbeafe; border: 1.5px solid #60a5fa; }
-      .visual-document-surface[contenteditable="true"] h2::after { content: 'H2'; color: #0f766e; background: #ccfbf1; border: 1.5px solid #2dd4bf; }
-      .visual-document-surface[contenteditable="true"] h3::after { content: 'H3'; color: #6d28d9; background: #ede9fe; border: 1.5px solid #a78bfa; }
-      .visual-document-surface[contenteditable="true"] h4::after { content: 'H4'; color: #92400e; background: #fef3c7; border: 1.5px solid #f59e0b; }
-      .visual-document-surface[contenteditable="true"] h5::after { content: 'H5'; color: #334155; background: #e2e8f0; border: 1.5px solid #94a3b8; }
-      .visual-document-surface[contenteditable="true"] h6::after { content: 'H6'; color: #475569; background: #f1f5f9; border: 1.5px solid #cbd5e1; }
-
-      .dark .visual-document-surface[contenteditable="true"] h1::after { color: #dbeafe; background: #1e3a8a; border: 1.5px solid #3b82f6; }
-      .dark .visual-document-surface[contenteditable="true"] h2::after { color: #ccfbf1; background: #134e4a; border: 1.5px solid #14b8a6; }
-      .dark .visual-document-surface[contenteditable="true"] h3::after { color: #ede9fe; background: #4c1d95; border: 1.5px solid #8b5cf6; }
-      .dark .visual-document-surface[contenteditable="true"] h4::after { color: #fef3c7; background: #78350f; border: 1.5px solid #d97706; }
-      .dark .visual-document-surface[contenteditable="true"] h5::after { color: #f1f5f9; background: #334155; border: 1.5px solid #64748b; }
-      .dark .visual-document-surface[contenteditable="true"] h6::after { color: #f8fafc; background: #1e293b; border: 1.5px solid #475569; }
-
-      /* 인쇄 및 PDF 내보내기 시 완전 비표시 (100% 무결성 삼중 방어) */
-      @media print {
-        .visual-document-surface :is(h1,h2,h3,h4,h5,h6)::after,
-        :is(h1,h2,h3,h4,h5,h6)::after {
-          display: none !important;
-          content: none !important;
-          visibility: hidden !important;
-        }
-      }
-      .picturebook-root .visual-document-surface :is(h1,h2,h3,h4,h5,h6)::after {
-        display: none !important;
-        content: none !important;
-        visibility: hidden !important;
-      }
-      .visual-document-surface ul { padding-left:2em; list-style:disc; }
-      .visual-document-surface ul, .visual-document-surface ol { padding-left: var(--list-indent, 2em); margin-top:0!important; margin-bottom:0!important; }
-      /* Keep separate lists at the same gap as a normal list block. */
-      .custom-preview-container .visual-document-surface > :is(ul,ol) + :is(ul,ol),
-      .visual-document-surface > :is(ul,ol) + :is(ul,ol) { margin-top:4px!important; }
-
-      .visual-document-surface ol { padding-left:2em; list-style:decimal; }
-      .visual-document-surface blockquote { border-left:3px solid #93c5fd; padding-left:1em; }
-      .visual-document-surface pre { background:#f4f4f5; padding:12px; white-space:pre-wrap; }
-      .visual-document-surface .visual-code-block { margin-top:24px!important; margin-bottom:20px!important; min-width:0; max-width:100%; box-sizing:border-box; }
-      .visual-document-surface .visual-code-editor-panel { min-width:0; max-width:100%; }
-      .visual-document-surface .visual-code-block pre { display:block!important; max-width:100%!important; box-sizing:border-box!important; overflow-x:auto!important; white-space:pre!important; overflow-wrap:normal!important; word-break:normal!important; }
-      .visual-document-surface .visual-code-block pre code { display:block!important; width:max-content!important; min-width:100%; white-space:pre!important; overflow:visible!important; overflow-wrap:normal!important; word-break:normal!important; }
-      .visual-code-editor-panel > summary { width:max-content; margin:8px 12px; cursor:pointer; }
-      .visual-code-editor-panel > summary[hidden] { display:none!important; }
-      .visual-code-language button[aria-label="코드 내용 복사"] { margin-left:auto; }
-      .visual-code-language button[hidden] { display:none!important; }
-      .visual-document-surface .visual-code-language { display:flex!important; gap:10px; align-items:center; padding:10px 16px!important; margin:0!important; background:#eef2f7!important; border-bottom:1px solid #dbe2ea; font-family:system-ui,sans-serif!important; font-size:11px!important; line-height:1.4!important; font-weight:700; letter-spacing:.06em; color:#475569!important; }
-      .visual-document-surface .visual-code-language input { background:#fff!important; color:#334155!important; border:1px solid #cbd5e1; border-radius:6px; padding:4px 8px!important; width:120px!important; max-width:60%; height:28px; box-sizing:border-box; font-family:system-ui,sans-serif!important; font-size:12px!important; line-height:18px!important; letter-spacing:0; }
-      .visual-code-language input:focus { outline:2px solid #93c5fd; outline-offset:2px; }
-      .visual-document-surface code { background:#f4f4f5; font-family:monospace; }
-      .visual-document-surface .visual-code-block { background:#1e293b; color:#e2e8f0; border:1px solid #dbe2ea; border-radius:10px; overflow:hidden; box-shadow:0 2px 8px rgba(15,23,42,.04); }
-      .custom-preview-container .visual-document-surface .visual-code-block pre, .visual-document-surface .visual-code-block pre { background:transparent!important; color:inherit; margin:0!important; padding:18px 20px!important; white-space:pre; overflow-x:auto; line-height:1.65!important; }
-      .custom-preview-container .visual-document-surface .visual-code-block code, .visual-document-surface .visual-code-block code { background:transparent!important; color:inherit; opacity:1; white-space:inherit; padding:0!important; font-family:"D2Coding","Cascadia Code",Consolas,monospace!important; line-height:inherit!important; letter-spacing:0!important; }
-      .visual-image-block { position:relative; margin:16px 0; }
-      .visual-media-controls { position:absolute; right:12px; top:12px; display:flex; gap:6px; z-index:20; opacity:0; pointer-events:none; }
-      .visual-image-block:has([data-caption-position="top"]) .visual-media-controls,
-      .visual-image-block:has(figcaption[data-position="top"]) .visual-media-controls { top:34px; }
-      .visual-image-block:hover .visual-media-controls, .visual-image-block:focus-within .visual-media-controls { opacity:1; pointer-events:auto; }
-      .visual-document-surface .onrivi-image-figure[data-caption-position="top"] img { margin-top:0!important; }
-      .visual-document-surface .onrivi-image-figure[data-caption-position="bottom"] img { margin-bottom:0!important; }
-      .visual-document-surface[contenteditable="false"] .visual-image-edit { display:none; }
-      @media print { .visual-media-controls { display:none; } }
-      @media (hover:none) { .visual-media-controls { opacity:1; pointer-events:auto; } }
-      .visual-document-surface .visual-editable-table { border-collapse:collapse!important; width:100%!important; max-width:100%!important; table-layout:fixed!important; margin:16px 0!important; }
-      .visual-document-surface .visual-editable-table :is(th, td) { position:relative; }
-      .visual-document-surface .visual-editable-table :is(th, td):not(:last-child)::after,
-      .visual-document-surface .visual-editable-table :is(th, td):not(:first-child)::before {
-        content:'↔'; position:absolute; top:0; width:20px; height:100%; z-index:3;
-        cursor:col-resize!important; opacity:0; color:#1d4ed8; font-size:18px; font-weight:700;
-        display:flex; align-items:center; justify-content:center; text-shadow:0 1px #fff,0 -1px #fff;
-      }
-      .visual-document-surface .visual-editable-table :is(th, td):not(:last-child)::after { right:-10px; }
-      .visual-document-surface .visual-editable-table :is(th, td):not(:first-child)::before { left:-10px; }
-      .visual-document-surface .visual-editable-table :is(th, td):not(:last-child):hover::after,
-      .visual-document-surface .visual-editable-table :is(th, td):not(:first-child):hover::before { opacity:1; }
-      .visual-document-surface .visual-editable-table th, .visual-document-surface .visual-editable-table td { border:1px solid #cbd5e1!important; padding:8px 10px!important; min-width:0!important; vertical-align:top!important; overflow-wrap:anywhere!important; word-break:break-word!important; box-sizing:border-box!important; }
-      .visual-document-surface table th p, .visual-document-surface table td p { margin:0!important; padding:0!important; overflow-wrap:anywhere!important; word-break:break-word!important; white-space:pre-wrap!important; }
-      .visual-document-surface .visual-editable-table th { background:#f1f5f9!important; text-align:center!important; }
-      .visual-document-surface .visual-editable-table :is(th, td) code { white-space:pre-wrap!important; overflow-wrap:anywhere!important; word-break:break-all!important; display:inline!important; box-decoration-break:clone; -webkit-box-decoration-break:clone; }
-      .dark .visual-document-surface .visual-editable-table th { background:#1e293b!important; color:#f1f5f9!important; border-color:#334155!important; }
-      .dark .visual-document-surface .visual-editable-table td { border-color:#334155!important; }
-      .custom-preview-container .visual-document-surface blockquote[data-alert-type], .onrivi-content-root .visual-document-surface blockquote[data-alert-type], .visual-document-surface blockquote[data-alert-type] { background:var(--alert-bg,#eff6ff)!important; border-left:4px solid var(--alert-border,#3b82f6)!important; padding:12px!important; border-radius:0 10px 10px 0; }
-      .visual-document-surface blockquote[data-alert-type]::before { content:attr(data-alert-type); display:block; font-weight:700; color:inherit!important; margin-bottom:8px; }
-.visual-document-surface [data-alert-type="NOTE" i], .visual-document-surface [data-alert-type="참고" i], .visual-document-surface [data-alert-type="참조" i], .visual-document-surface [data-alert-type="메모" i], .visual-document-surface [data-alert-type="알림" i] { --alert-bg:#eff6ff; --alert-border:#3b82f6; --alert-text:#1d4ed8; }
-.visual-document-surface [data-alert-type="TIP" i], .visual-document-surface [data-alert-type="팁" i], .visual-document-surface [data-alert-type="도움말" i] { --alert-bg:#ecfdf5; --alert-border:#10b981; --alert-text:#047857; }
-.visual-document-surface [data-alert-type="IMPORTANT" i], .visual-document-surface [data-alert-type="중요" i], .visual-document-surface [data-alert-type="필독" i] { --alert-bg:#faf5ff; --alert-border:#a855f7; --alert-text:#7e22ce; }
-.visual-document-surface [data-alert-type="WARNING" i], .visual-document-surface [data-alert-type="주의" i] { --alert-bg:#fffbeb; --alert-border:#f59e0b; --alert-text:#b45309; }
-.visual-document-surface [data-alert-type="CAUTION" i], .visual-document-surface [data-alert-type="경고" i], .visual-document-surface [data-alert-type="위험" i] { --alert-bg:#fff1f2; --alert-border:#f43f5e; --alert-text:#be123c; }
-      .visual-document-surface s { text-decoration:line-through; }
-      .visual-source-block { position:relative; margin:12px 0; color:inherit; font-size:inherit; }
-      .visual-source-block:hover .visual-media-controls, .visual-source-block:focus-within .visual-media-controls { opacity:1; pointer-events:auto; }
-      .visual-source-block pre { max-height:none; overflow:auto; }
-      .visual-source-block.visual-mermaid-container {
-        margin: 1.5rem 0 !important;
-        border: 1px solid rgba(228, 228, 231, 0.8) !important;
-        border-radius: 0.5rem !important;
-        overflow: hidden !important;
-        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
-        background-color: #ffffff !important;
-        transition: border-color 0.15s ease, box-shadow 0.15s ease;
-      }
-      .dark .visual-source-block.visual-mermaid-container {
-        border-color: rgba(51, 65, 85, 0.8) !important;
-        background-color: #0f172a !important;
-        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.3) !important;
-      }
-      .visual-source-block.visual-mermaid-container .onrivi-media-actions-frame {
-        margin: 0 !important;
-        border: none !important;
-        border-radius: 0 !important;
-        box-shadow: none !important;
-        background-color: transparent !important;
-      }
-      .visual-mermaid-editor {
-        margin: 0 !important;
-        border: none !important;
-        border-top: 1px solid rgba(228, 228, 231, 0.8) !important;
-        border-radius: 0 !important;
-        box-shadow: none !important;
-        background-color: transparent !important;
-      }
-      .dark .visual-mermaid-editor {
-        border-top-color: rgba(51, 65, 85, 0.8) !important;
-      }
-      .visual-mermaid-editor summary {
-        list-style: none !important;
-      }
-      .visual-mermaid-editor summary::-webkit-details-marker {
-        display: none !important;
-      }
-      .visual-mermaid-editor[open] .mermaid-chevron {
-        transform: rotate(180deg);
-      }
-      @media print {
-        .visual-mermaid-editor {
-          display: none !important;
-        }
-      }
-      .visual-mermaid-code-input {
-        caret-color: #2563eb !important;
-      }
-      .dark .visual-mermaid-code-input {
-        caret-color: #60a5fa !important;
-      }
-      .visual-document-surface textarea,
-      .visual-document-surface input {
-        caret-color: #2563eb !important;
-      }
-      .dark .visual-document-surface textarea,
-      .dark .visual-document-surface input {
-        caret-color: #60a5fa !important;
-      }
-      .visual-footnote-ref { color: #2563eb; font-weight: 600; text-decoration: none; cursor: pointer; }
-      .visual-footnote-ref:hover { text-decoration: underline; }
-      .visual-footnote-area-header {
-        margin-top: 18px !important;
-        margin-bottom: 6px !important;
-        padding: 0 !important;
-        user-select: none;
-        white-space: normal !important;
-      }
-      .visual-footnote-area-header .visual-footnote-area-badge {
-        display: inline-flex !important;
-        align-items: center !important;
-        gap: 3.5px !important;
-        font-size: 11.5px !important;
-        line-height: 1 !important;
-        padding: 2.5px 7px !important;
-        height: auto !important;
-        min-height: 0 !important;
-        white-space: nowrap !important;
-      }
-      .visual-footnote-area-header .visual-footnote-area-badge svg {
-        width: 13px !important;
-        height: 13px !important;
-        min-width: 13px !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        flex-shrink: 0 !important;
-      }
-      .visual-footnote-area-header .visual-footnote-area-title {
-        font-size: 11.5px !important;
-        line-height: 1 !important;
-        white-space: nowrap !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        letter-spacing: -0.01em;
-      }
-      .visual-footnote-def-container,
-      .visual-footnote-def {
-        font-size: 12.5px !important;
-        line-height: 1.55 !important;
-        color: #475569;
-        margin: 3px 0 !important;
-        transition: border-color 0.15s ease, box-shadow 0.15s ease;
-      }
-      .dark .visual-footnote-def { color: #94a3b8; }
-      .visual-footnote-text { font-size: 12.5px !important; line-height: 1.55 !important; cursor: text; caret-color: #2563eb !important; }
-      .dark .visual-footnote-text { caret-color: #60a5fa !important; }
-      .visual-footnote-text:empty::before { content: attr(data-placeholder); color: #94a3b8; pointer-events: none; }
-      .dark .visual-footnote-text:empty::before { color: #64748b; }
-      .visual-footnote-badge { font-size: 12px !important; }
-      .visual-footnote-jump-btn:hover { color: #2563eb; }
-      .visual-footnote-delete-btn:hover { color: #ef4444; }
-      .visual-readonly-content table { border-collapse:collapse; width:100%; }
-      .visual-readonly-content th, .visual-readonly-content td { border:1px solid #d4d4d8; padding:8px; }
-      .visual-readonly-content pre { max-height:none; overflow:auto; }
-      .visual-readonly-callout { border-left:4px solid var(--alert-border,#3b82f6)!important; background:var(--alert-bg,#eff6ff)!important; padding:12px; }
-      .visual-readonly-callout > strong { color:inherit; display:block; margin-bottom:8px; }
-      .visual-readonly-caption { margin-top:8px; color:#71717a; font-size:11px; }
-      .visual-document-surface .ProseMirror-selectednode { outline:2px solid #93c5fd; }
-      .visual-document-surface hr { cursor: text; position: relative; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
-      .visual-document-surface hr:hover { box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14); border-radius: 2px; }
-      .visual-math-preview { margin: 8px 0; overflow-x: auto; display: flex; justify-content: center; }
-      .visual-math-preview .visual-readonly-content pre,
-      .visual-math-preview pre { display: none !important; }
-      .visual-document-surface .onrivi-drop-line-highlight {
-        background-color: rgba(29, 78, 216, 0.1) !important;
-        outline: 2px dashed #1d4ed8 !important;
-        outline-offset: 3px !important;
-        border-radius: 6px !important;
-        transition: background-color 0.08s ease, outline-color 0.08s ease !important;
-      }
-      .dark .visual-document-surface .onrivi-drop-line-highlight {
-        background-color: rgba(56, 189, 248, 0.15) !important;
-        outline: 2px dashed #38bdf8 !important;
-      }
-      @keyframes omd-visual-caret-blink {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.18; }
-      }
-      .visual-drag-drop-caret {
-        animation: omd-visual-caret-blink 0.85s infinite ease-in-out !important;
-      }
-      .visual-drag-drop-caret::before,
-      .visual-drag-drop-caret::after {
-        content: '';
-        position: absolute;
-        left: -4px;
-        width: 11.5px;
-        height: 2.5px;
-        background: inherit;
-        border-radius: 1.5px;
-        box-shadow: inherit;
-      }
-      .visual-drag-drop-caret::before {
-        top: -1.5px;
-      }
-      .visual-drag-drop-caret::after {
-        bottom: -1.5px;
-      }
-      @keyframes omd-badge-pop {
-        from { transform: translateX(-50%) translateY(0) scale(0.92); opacity: 0; }
-        to { opacity: 1; }
-      }
-      .visual-drag-drop-badge {
-        animation: omd-badge-pop 0.18s cubic-bezier(0.16, 1, 0.3, 1) !important;
-      }
-      .onrivi-inline-syntax-tag {
-        font-family: var(--font-mono, 'JetBrains Mono', 'D2Coding', Consolas, monospace);
-        font-size: 0.88em;
-        font-weight: 700;
-        color: #3b82f6;
-        opacity: 0.85;
-        user-select: none;
-        pointer-events: none;
-        display: inline;
-        letter-spacing: -0.02em;
-        margin: 0 1px;
-        vertical-align: baseline;
-      }
-      .dark .onrivi-inline-syntax-tag {
-        color: #60a5fa;
-        opacity: 0.9;
-      }
-      @media print {
-        .onrivi-inline-syntax-tag {
-          display: none !important;
-        }
-      }
-    `}</style>
+    <style>{VISUAL_EDITOR_STYLES}</style>
   </section>;
 }
