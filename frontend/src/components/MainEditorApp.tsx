@@ -1,5 +1,8 @@
 /**
  * 프로그램명 : OnriviAuthor 
+// 🚨 @PATCH : **2026-11-04** — [서식 프로필 및 프론트매터 동기화 모듈화]:
+//             1) profiles, activeProfileId, isProfilesLoaded, profileStorageRevision 및 로드/저장/디바운스 로직을 useEditorProfiles 훅으로 분리 위임
+//             2) resolveEffectiveDocumentProfile, handleProfileChange, 제목 넘버링(headingNumbering) 동기화를 useEditorProfiles 훅으로 분리 위임 (350줄 감축)
 // 🚨 @PATCH : **2026-11-04** — [문서 링크 및 헤딩 연결 모듈화]:
 //             1) 문서 연결(DocLinkPicker) 상태, 헤딩 파싱(extractHeadings), 파일 텍스트 읽기(readFileText), 팝업 좌표 계산(docLinkPickerStyle)을 useEditorDocLinks 훅으로 분리 위임 (460줄 감축)
 // 🚨 @PATCH : **2026-11-04** — [에디터 파일 유틸리티 모듈화]:
@@ -614,6 +617,7 @@ import { useEditorDocumentSession } from '@/hooks/editor/useEditorDocumentSessio
 import { mapIdToCommandType as importedMapIdToCommandType } from '@/types/editorCommand';
 import { useEditorModals } from '@/hooks/editor/useEditorModals';
 import { useEditorDocLinks } from '@/hooks/editor/useEditorDocLinks';
+import { useEditorProfiles } from '@/hooks/editor/useEditorProfiles';
 // import EditorLayout from '@/components/editor/layout/EditorLayout';
 // import EditorCore from '@/components/editor/core/EditorCore';
 import EditorOverlayManager from '@/components/editor/EditorOverlayManager';
@@ -1230,44 +1234,12 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
 
   const [activeLine, setActiveLine] = useState<number | null>(null); // @activeLine : active line state 
   const lastSelectionRef = useRef<any>(null);    // @lastSelectionRef : last selection state 
-  /*
-   * profiles state — CssProfile 배열
-   * - 시스템 프로필(SYSTEM_PROFILES)은 항상 앞에 고정
-   * - 사용자 프로필: Addon → localStorage, Desktop → electronAPI(userData)
-   */
-  const [profiles, setProfiles] = useState<CssProfile[]>(() => {
-    if (typeof window === 'undefined') return [...SYSTEM_PROFILES];
-    // SSR 이후: 시스템 프로필만 우선 세팅, 사용자 프로필은 useEffect에서 비동기 로드
-    return [...SYSTEM_PROFILES];
-  });
-  // ====================================================================
-  // 📊 [OMD-CORE-MainEditorApp-0007] MainEditorApp.tsx ➔ loadUserProfiles
-  // 🎯 @KICK  : 연결된 리소스 폴더의 profiles/userCssProfiles.json에서 사용자 서식 로드
-  // 🛡️ @GUARD : 사용자 저장 데이터에서 시스템 프로필 필터링, 레거시 형식 마이그레이션 병합
-  // 🚨 @PATCH : **2026-09-26** — [사용자 서식 리소스 폴더 저장 및 데스크탑/웹 일원화]: fetchUserProfiles(profileStorage 파사드) 연동으로 데스크탑·웹 모두 리소스 폴더(profiles/userCssProfiles.json) 단일 진입점으로 100% 통합
-  //             2026-08-05 — 웹과 데스크탑 환경 모두 무조건 `profiles/userCssProfiles.json` 경로를 통합하여 서식 로드/저장하도록 표준화.
-  // 🔗 @CALLS : fetchUserProfiles, normalizeCssProfile, setProfiles
-  // ====================================================================
-  const [activeProfileId, setActiveProfileId] = useState<string>(
-    () => SYSTEM_PROFILES[0].id
-  );
-  const [isProfilesLoaded, setIsProfilesLoaded] = useState(false);
+  // 💡 [Step 2 리팩토링으로 서식 프로필(profiles, activeProfileId, isProfilesLoaded)은 useEditorProfiles로 이관됨]
   const [isAddonEnv, setIsAddonEnv] = useState(false);
   const [helpContent, setHelpContent] = useState<string | null>(null);
   const [helpTitle, setHelpTitle] = useState('');
   const helpContentRef = useRef(helpContent);
   helpContentRef.current = helpContent;
-
-  // 🌟 존재하지 않는 삭제된 테마(프로필) ID가 localStorage에 남아있을 경우 
-  // 시스템 기본 프로필로 자동 복구하여 테마 찌꺼기를 안전하게 소거합니다.
-  useEffect(() => {
-    if (isProfilesLoaded && activeProfileId) {
-      const exists = profiles.some(p => p.id === activeProfileId);
-      if (!exists) {
-        setActiveProfileId(SYSTEM_PROFILES[0].id);
-      }
-    }
-  }, [isProfilesLoaded, profiles, activeProfileId]);
 
   // ====================================================================
   // 📊 [OMD-EDIT-MainEditorApp-0008] MainEditorApp.tsx ➔ previewModeRef_sync
@@ -1323,25 +1295,7 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     void restoreRF();
   }, [mounted, resourceFolderHandle, resourceFolder]);
 
-  // ☁️ [구글 로그인/토큰 갱신 즉시 서식 로드 실시간 연동]
-  useEffect(() => {
-    const handleDriveTokenUpdate = () => {
-      setProfileStorageRevision(revision => revision + 1);
-    };
-    const handleDriveTokenExpired = () => {
-      showToast('☁️ 개인 웹드라이브 인증이 만료되었습니다. 파일 메뉴에서 [개인 웹드라이브 연결]을 눌러 재인증해 주세요.', 'warning');
-    };
-    if (typeof window !== 'undefined') {
-      window.addEventListener('onrivi:drive_token_updated', handleDriveTokenUpdate);
-      window.addEventListener('onrivi:drive_token_expired', handleDriveTokenExpired);
-      window.addEventListener('onrivi:drive_auth_expired', handleDriveTokenExpired);
-      return () => {
-        window.removeEventListener('onrivi:drive_token_updated', handleDriveTokenUpdate);
-        window.removeEventListener('onrivi:drive_token_expired', handleDriveTokenExpired);
-        window.removeEventListener('onrivi:drive_auth_expired', handleDriveTokenExpired);
-      };
-    }
-  }, [showToast]);
+  // 💡 [Step 2 리팩토링으로 구글 드라이브 토큰 갱신 시 서식 로드 실시간 연동은 useEditorProfiles로 이관됨]
 
   const [workspaceType, setWorkspaceType] = useState<'local' | 'cloud' | 'browser'>(() => {
     if (typeof window !== 'undefined') {
@@ -1376,97 +1330,7 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     };
   }, [mounted, workspaceType, rootFolder, resourceFolder]);
 
-  const [profileStorageRevision, setProfileStorageRevision] = useState(0);
-  const profileStorageRef = useRef<{ folder: string; handle: any; hash: string } | null>(null);
-  useEffect(() => {
-    if (!mounted) return;
-    let cancelled = false;
-    profileStorageRef.current = null;
-    setIsProfilesLoaded(false);
-    let loadRevision = 0;
-    const load = async () => {
-      const profilesStartedAt = performance.now();
-      const requestRevision = ++loadRevision;
-      const targetEnv = getResourceEnvironment();
-      let folder = getProfileResourceFolder(null, targetEnv);
-      setIsProfilesLoaded(false);
-      const destination = { environment: targetEnv, folder, folderId: getResourceSettings(targetEnv)?.folderId };
-      setProfileReadStatus({ ...destination, state: 'loading' });
-      try {
-        const api = (window as any).electronAPI;
-        if (targetEnv === 'cloud') {
-          const token = getSavedDriveToken();
-          if (!token) throw new Error('웹드라이브 인증을 갱신해 주세요.');
-          const drive = await import('@/lib/gdrive/googleDriveClient');
-          // 계정 선택과 폴더 구성은 연결 단계에서 완료한다. 조회 중 재활성화하면
-          // 전환 직후 확정된 설정을 이전 요청이 다시 덮어쓸 수 있다.
-          const saved = getResourceSettings('cloud');
-          const resolved = saved?.folderId
-            ? { name: saved.path, folderId: saved.folderId }
-            : await drive.resolveDriveResourceFolderByName(token);
-          if (cancelled || requestRevision !== loadRevision || getResourceEnvironment() !== targetEnv) return false;
-          folder = resolved.name;
-          destination.folder = folder;
-          destination.folderId = resolved.folderId;
-        }
-        if (targetEnv === 'local' && api?.ensureLocalEnvironment) {
-          const settings = getResourceSettings('local');
-          const initialized = await api.ensureLocalEnvironment({
-            resourceFolder: settings?.kind === 'local' ? settings.path : undefined,
-            workspaceFolder: localStorage.getItem('onrivi_last_local_workspace_path') || (workspaceType === 'local' ? localStorage.getItem('onrivi_workspace_path') : undefined),
-            profiles: SYSTEM_PROFILES,
-          });
-          if (cancelled || requestRevision !== loadRevision || getResourceEnvironment() !== targetEnv) return false;
-          if (!initialized?.success) throw new Error(initialized?.error || '로컬 작업 환경 초기화 실패');
-          folder = initialized.resourcePath;
-          destination.folder = folder;
-          saveResourceSettings({ kind: 'local', path: folder }, 'local', { silent: true });
-          localStorage.setItem('onrivi_last_local_workspace_path', initialized.workspacePath);
-          if (workspaceType !== 'cloud' && !rootFolder?.name) {
-            setRootFolder({ name: initialized.workspacePath });
-            setWorkspaceType('local');
-            localStorage.setItem('onrivi_workspace_path', initialized.workspacePath);
-            localStorage.setItem('rootFolder', JSON.stringify({ name: initialized.workspacePath, path: initialized.workspacePath }));
-            localStorage.setItem('workspaceType', 'local');
-          }
-        }
-        const readSettings = getResourceSettings(targetEnv);
-        const readAccount = localStorage.getItem('onrivi_active_drive_account');
-        const users = await fetchUserProfiles(folder, resourceFolderHandle, targetEnv);
-        if (cancelled || requestRevision !== loadRevision || getResourceEnvironment() !== targetEnv) return false;
-        const currentSettings = getResourceSettings(targetEnv);
-        if (currentSettings?.path !== readSettings?.path || currentSettings?.folderId !== readSettings?.folderId ||
-            (targetEnv === 'cloud' && localStorage.getItem('onrivi_active_drive_account') !== readAccount)) return false;
-        const normalized = users.filter(p => p && p.id !== 'default' && !isSystemProfileId(p.id))
-          .map(p => normalizeCssProfile(p, SYSTEM_PROFILES));
-        // 로드 자체는 저장하지 않는다. 빈 배열도 이 파일의 유효한 원본 상태이다.
-        profileStorageRef.current = { folder, handle: resourceFolderHandle, hash: JSON.stringify(normalized) };
-        setProfiles([...SYSTEM_PROFILES, ...normalized]);
-        if (resourceFolder !== folder) setResourceFolder(folder);
-        setIsProfilesLoaded(true);
-        setProfileReadStatus({ ...destination, state: 'success', userCount: normalized.length });
-        console.info('[STARTUP timing] profile load ms=%d environment=%s', Math.round(performance.now() - profilesStartedAt), targetEnv);
-        return true;
-      } catch (error) {
-        if (cancelled || requestRevision !== loadRevision) return false;
-        console.info('[STARTUP timing] profile load failed after ms=%d', Math.round(performance.now() - profilesStartedAt));
-        console.error('[loadUserProfiles] userCssProfiles.json 읽기 실패:', error);
-        setProfileReadStatus({ ...destination, state: 'error', error: error instanceof Error ? error.message : '서식 파일을 읽지 못했습니다.' });
-        if (folder) {
-          showToast(error instanceof Error ? error.message : 'userCssProfiles.json을 읽지 못했습니다. 리소스 폴더 연결과 파일을 확인해 주세요.', 'error');
-        }
-        return false;
-      }
-    };
-    const reload = (event: Event) => {
-      const detail = (event as CustomEvent).detail;
-      void load().then(success => detail?.resolve?.(success));
-    };
-    window.addEventListener('onrivi:reload_profiles', reload);
-    void load();
-    return () => { cancelled = true; window.removeEventListener('onrivi:reload_profiles', reload); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mounted, resourceFolder, resourceFolderHandle, profileStorageRevision, workspaceType]);
+  // 💡 [Step 2 리팩토링으로 profileStorageRevision 및 서식 로드/리로드 이펙트는 useEditorProfiles로 이관됨]
 
   const [fileList, setFileList] = useState<FileNode[]>([]);
   useEffect(() => {
@@ -1817,6 +1681,46 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
   // 🚨 @PATCH : useEditorTabsResult.ref → React state 직접 참조로 변경 (stale ref가 closeTab에서 삭제된 탭을 복원하는 버그 수정) | 2026-06-18
   tabsRef.current = tabs;
   activeTabIdRef.current = activeTabId;
+
+  // 💡 [OMD-HOOK-useEditorProfiles] 서식 프로필 및 프론트매터 동기화 전담 훅
+  const {
+    profiles,
+    setProfiles,
+    activeProfileId,
+    setActiveProfileId,
+    isProfilesLoaded,
+    setIsProfilesLoaded,
+    profileStorageRevision,
+    setProfileStorageRevision,
+    resolveEffectiveDocumentProfile,
+    handleProfileChange,
+  } = useEditorProfiles({
+    mounted,
+    content,
+    contentRef,
+    editorRef,
+    isEditorMountedRef,
+    resourceFolder,
+    setResourceFolder,
+    resourceFolderHandle,
+    workspaceType,
+    setWorkspaceType,
+    rootFolder,
+    setRootFolder,
+    previewMode,
+    previewModeRef,
+    isStyleModalOpen,
+    activeTabId,
+    activeTabIdRef,
+    tabs,
+    setTabs,
+    updateContent,
+    showToast,
+    isRestrictedUser,
+    currentFileName,
+    directEditEnabled,
+    isComposingRef,
+  });
 
   // ====================================================================
   // 📊 [OMD-EDIT-0012 TDZ-GUARD] MainEditorApp.tsx ➔ autoSaveRef/lastSavedContentRef 선행 선언
@@ -2499,7 +2403,7 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
       window.addEventListener('onrivi:resource_folder_changed', handleResourceFolderChange);
       return () => window.removeEventListener('onrivi:resource_folder_changed', handleResourceFolderChange);
     }
-  }, [setGeminiApiKey, setAiModelName]);
+  }, [setGeminiApiKey, setAiModelName, setProfileStorageRevision]);
 
 
   useEffect(()=>{
@@ -3069,133 +2973,7 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     // isDarkMode는 항상 false로 고정되어 있으므로 아무 동작도 하지 않음
   }, []);
 
-  // ====================================================================
-  // 📊 [OMD-CORE-MainEditorApp-0035] MainEditorApp.tsx ➔ profilesSave
-  // 🎯 @KICK  : 변경 시마다 사용자 CSS 프로필을 플랫폼 저장소에 유지
-  // 🛡️ @GUARD : 중복 방지를 위해 저장 전 시스템 프로필 필터링
-  // 🚨 @PATCH : **2026-09-27** — [서식 설정 컨트롤 변경 시 1.5초 디바운스 저장]: 슬라이더·컨트롤 조작 시 RAF마다 과도한 파일 I/O 방지를 위해 debounce 타이머(1500ms) 적용. cleanup 시 타이머 취소로 메모리 누수 방지
-  //             2026-09-26 — [사용자 서식 리소스 폴더 저장 및 데스크탑/웹 일원화]: persistUserProfiles(profileStorage 파사드) 연동
-  //             2026-08-05 — 웹 브라우저 로컬 권한 파일시스템(handle) 사용 시에도 `profiles/userCssProfiles.json` 로 통일 저장
-  //             2026-07-30 — resourceFolderHandle이 변경될 때 이전 빈 프로필 상태로 덮어쓰는 버그 방지
-  // 🔗 @CALLS : persistUserProfiles
-  // ====================================================================
-  useEffect(() => {
-    if (!mounted || !isProfilesLoaded) return;
-    const targetEnv = getResourceEnvironment();
-    const folder = getProfileResourceFolder(resourceFolder, targetEnv);
-    const source = profileStorageRef.current;
-    if (!source || source.folder !== folder || source.handle !== resourceFolderHandle) return;
-    const userProfiles = profiles.filter(p => p.id !== 'default' && !isSystemProfileId(p.id));
-    const hash = JSON.stringify(userProfiles);
-    if (source.hash === hash) return;
-    const timerId = setTimeout(() => {
-      if (profileStorageRef.current !== source || getResourceEnvironment() !== targetEnv || getProfileResourceFolder(null, targetEnv) !== folder) return;
-      // 저장 중 이전 값으로 되돌리는 편집도 누락되지 않도록 캐시를 무효화한다.
-      source.hash = '';
-      void persistUserProfiles(userProfiles, folder, resourceFolderHandle, targetEnv).then(ok => {
-        if (profileStorageRef.current !== source) return;
-        if (ok) {
-          source.hash = hash;
-        } else {
-          showToast('userCssProfiles.json 저장에 실패했습니다. 리소스 폴더 연결과 쓰기 권한을 확인해 주세요.', 'error');
-        }
-      });
-    }, 500);
-    return () => clearTimeout(timerId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mounted, isProfilesLoaded, profiles, resourceFolder, resourceFolderHandle, workspaceType]);
-
-
-
-  // ====================================================================
-  // 📊 [OMD-CORE-MainEditorApp-0036] MainEditorApp.tsx ➔ activeProfileSave
-  // 🎯 @KICK  : 활성 CSS 프로필 ID를 localStorage에 유지
-  // 🛡️ @GUARD : None
-  // 🚨 @PATCH : None
-  // 🔗 @CALLS : localStorage.setItem
-  // ====================================================================
-  useEffect(() => {
-    if (mounted && activeProfileId) {
-      localStorage.setItem('activeCssProfileId', activeProfileId);
-    }
-  }, [activeProfileId, mounted]);
-
-
-  // ====================================================================
-  // 📊 [OMD-CORE-MainEditorApp-0000] MainEditorApp.tsx ➔ Sync Frontmatter Profile
-  // 🎯 @KICK  : 에디터 본문(content) 또는 탭 전환 시 Frontmatter에서 css_profile을 추출하여 현재 서식(activeProfileId)을 동기화
-  // 🛡️ @GUARD : 서식 모달 오픈 중에는 사용자 서식 탐색을 방해하지 않으며, 서식이 없거나 지정된 서식 파일이 없으면 무조건 공식 기본 서식(Onrivi 기본서식: SYSTEM_PROFILES[0].id)으로 일원화
-  // 🚨 @PATCH : **2026-09-24** — [문서 오픈 시 서식 부재 또는 미존재 시 공식 기본 서식(Onrivi 기본서식) 강제 적용]:
-  //             1) Frontmatter에 css_profile이 지정되어 있으나 해당 프로필이 존재하지 않을 때 공식 기본 서식(system-1)으로 자동 전환
-  //             2) 문서에 css_profile 지정 자체가 없을 때 직전 탭 서식을 상속하지 않고 무조건 공식 기본 서식(system-1)으로 일원화
-  // 🔗 @CALLS : extractFrontmatter, setActiveProfileId
-  // ====================================================================
-  // 💡 문서 열기/탭 전환 시 useEffect 실행 전 첫 렌더링 프레임에서도 Frontmatter 서식(특히 가로형 그림책)을 즉시 동기 판별하여 세로->가로 점프 흔들림 원천 차단
-  const resolveEffectiveDocumentProfile = useCallback((docText: string) => {
-    const preferLive = previewMode === 'css-style' || isStyleModalOpen;
-    const stateProfile = profiles.find(p => p.id === activeProfileId) || DEFAULT_PROFILE;
-    if (preferLive) {
-      return documentBookProfile(docText, stateProfile, true);
-    }
-    const { data } = extractFrontmatter(docText || '');
-    if (data.css_profile) {
-      const profileId = data.css_profile.trim().replace(/^["']|["']$/g, '');
-      const matched = profiles.find(p =>
-        p.id === profileId ||
-        p.name === profileId ||
-        ((data.css_profile === 'ChatGPT 스타일 콘텐츠' || data.css_profile === '온리비어서 표준 서식' || data.css_profile === 'Onrivi 기본서식') && p.id === SYSTEM_PROFILES[0].id) ||
-        ((data.css_profile === 'GitHub 기술 블로그/명세서' || data.css_profile === 'system-2') && p.id === 'github-readme-style') ||
-        ((data.css_profile === 'Stroy Book - 오른쪽 그림 표지' || data.css_profile === 'Story Book - 오른쪽 그림 표지') && p.id === 'profile-1792072480655') ||
-        ((data.css_profile === 'Story Book-전체표지' || data.css_profile === 'Story Book - 전체표지' || data.css_profile === 'profile-1792072443551' || data.css_profile === 'profile-1792073192013') && (p.id === 'profile-1792073192013' || p.id === 'profile-1792072443551'))
-      );
-      if (matched) {
-        return documentBookProfile(docText, matched, false);
-      }
-      const snapshot = legacyBookProfile(docText);
-      if (snapshot?.layout) {
-        return snapshot;
-      }
-    }
-    return documentBookProfile(docText, stateProfile, false);
-  }, [profiles, activeProfileId, previewMode, isStyleModalOpen]);
-
-  useEffect(() => {
-    if (isStyleModalOpen) return;
-    const { data } = extractFrontmatter(content);
-    if (data.css_profile) {
-      const profileId = data.css_profile.trim().replace(/^["']|["']$/g, '');
-      const targetProfile = profiles.find(p => 
-        p.id === profileId || 
-        p.name === profileId ||
-        ((data.css_profile === 'ChatGPT 스타일 콘텐츠' || data.css_profile === '온리비어서 표준 서식' || data.css_profile === 'Onrivi 기본서식') && p.id === SYSTEM_PROFILES[0].id) ||
-        ((data.css_profile === 'GitHub 기술 블로그/명세서' || data.css_profile === 'system-2') && p.id === 'github-readme-style') ||
-        ((data.css_profile === 'Stroy Book - 오른쪽 그림 표지' || data.css_profile === 'Story Book - 오른쪽 그림 표지') && p.id === 'profile-1792072480655') ||
-        ((data.css_profile === 'Story Book-전체표지' || data.css_profile === 'Story Book - 전체표지' || data.css_profile === 'profile-1792072443551' || data.css_profile === 'profile-1792073192013') && (p.id === 'profile-1792073192013' || p.id === 'profile-1792072443551'))
-      );
-      if (targetProfile) {
-        if (targetProfile.id !== activeProfileId) {
-          setActiveProfileId(targetProfile.id);
-        }
-      } else {
-        // 🚨 지정된 서식 프로필이 존재하지 않는 경우 (해당 서식 파일 부재): 무조건 공식 기본 서식으로 적용
-        const snapshot = legacyBookProfile(content);
-        if (snapshot?.layout) {
-          setProfiles(previous => previous.some(profile => profile.id === snapshot.id) ? previous : [...previous, snapshot]);
-          setActiveProfileId(snapshot.id);
-          return;
-        }
-        if (activeProfileId !== SYSTEM_PROFILES[0].id) {
-          setActiveProfileId(SYSTEM_PROFILES[0].id);
-        }
-      }
-    } else {
-      // 🚨 해당 파일에 서식 지정이 없는 경우: 무조건 공식 기본 서식(SYSTEM_PROFILES[0].id)으로 강제 적용
-      if (activeProfileId !== SYSTEM_PROFILES[0].id) {
-        setActiveProfileId(SYSTEM_PROFILES[0].id);
-      }
-    }
-  }, [content, activeProfileId, profiles, isStyleModalOpen]);
-
+  // 💡 [Step 2 리팩토링으로 profilesSave, activeProfileSave, resolveEffectiveDocumentProfile, frontmatter 동기화는 useEditorProfiles로 이관됨]
 
   // ====================================================================
   // 📊 [OMD-IO-MainEditorApp-0041] MainEditorApp.tsx ➔ a4_guard_auto_save
@@ -3212,82 +2990,7 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
 
 
 
-  // 🎯 @KICK  : 사이드바 UI에서 서식을 변경했을 때, 에디터 본문에 Frontmatter를 주입/갱신하고 상태를 업데이트한다.
-  // 🛡️ @GUARD : Monaco 모델 값이 변경될 때 자동으로 onDidChangeContent가 트리거되므로 setContent는 별도 호출하지 않음.
-  // 🚨 @PATCH : 2026-07-30 (Frontmatter 서식 개별 지정 지원)
-  // 🔗 @CALLS : updateCssProfileInFrontmatter, setActiveProfileId
-  // ====================================================================
-  const handleProfileChange = useCallback((newProfileId: string, appliedProfile?: CssProfile) => {
-    setActiveProfileId(newProfileId);
-    
-    // 서식 이름 찾기
-    const selectedProfile = appliedProfile ?? profiles.find(p => p.id === newProfileId);
-    const profileName = selectedProfile ? selectedProfile.name : undefined;
-    
-    const currentModel = isEditorMountedRef.current ? editorRef.current?.getModel() : null;
-    const currentContent = currentModel?.getValue() ?? contentRef.current;
-    const newContent = syncMarkdownHeadingNumbers(writeBookProfileSnapshot(updateCssProfileInFrontmatter(currentContent, newProfileId, profileName), selectedProfile), selectedProfile?.headingNumbering, resolveEffectiveDocumentProfile(currentContent).headingNumbering);
-    if (currentContent !== newContent) {
-      // 서식 화면/미리보기에서는 Monaco 이벤트가 차단되므로 문서 상태도 직접 갱신한다.
-      contentRef.current = newContent;
-      updateContent(newContent, false, true);
-      setTabs(previous => previous.map(tab => tab.id === activeTabIdRef.current ? { ...tab, content: newContent, isModified: true } : tab));
-    }
-  }, [setActiveProfileId, editorRef, profiles, updateContent, resolveEffectiveDocumentProfile]);
-
-  const headingSourceFormatsRef = useRef(new Map<string, unknown[]>());
-  const isHeadingStyleTab = Boolean(tabs.find(tab => tab.id === activeTabId)?.isStyleTab);
-  useEffect(() => {
-    if (!isProfilesLoaded || !activeTabId || isRestrictedUser || currentFileName === '도움말.md' || isHeadingStyleTab) return;
-    const profile = resolveEffectiveDocumentProfile(content);
-    if (profile.layout) return;
-    // The visual editor updates prefixes in its own transaction, preserving caret and undo.
-    if (directEditEnabled && document.querySelector('.visual-document-surface[contenteditable="true"]')?.contains(document.activeElement)) return;
-    const formats = profile.headingNumbering || [];
-    const previous = headingSourceFormatsRef.current.get(activeTabId) || formats;
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout>;
-    const sync = () => {
-      if (cancelled || activeTabIdRef.current !== activeTabId) return;
-      if (isComposingRef.current) { timer = setTimeout(sync, 100); return; }
-      const model = isEditorMountedRef.current ? editorRef.current?.getModel() : null;
-      const original = model && previewModeRef.current !== 'preview' ? model.getValue() : contentRef.current;
-      const next = syncMarkdownHeadingNumbers(original, formats, previous);
-      headingSourceFormatsRef.current.set(activeTabId, formats);
-      if (next === original) return;
-      contentRef.current = next;
-      updateContent(next, false, true);
-      setTabs(items => items.map(tab => tab.id === activeTabId ? { ...tab, content: next, isModified: true } : tab));
-    };
-    timer = setTimeout(sync, 250);
-    return () => { cancelled = true; clearTimeout(timer); };
-  }, [content, profiles, activeProfileId, activeTabId, isProfilesLoaded, isRestrictedUser, currentFileName, isHeadingStyleTab, directEditEnabled, updateContent, resolveEffectiveDocumentProfile]);
-
-  useEffect(() => {
-    if (!isProfilesLoaded) return;
-    const original = content;
-    const { data } = extractFrontmatter(original);
-    if (!data.onrivi_picturebook_profile) return;
-    const legacy = legacyBookProfile(original);
-    const profile = profiles.find(item => item.id === legacy?.id);
-    if (legacy && !profile) {
-      // 기존 문서만 갖고 있는 사용자 서식은 라이브러리로 옮긴 뒤 메타를 정리한다.
-      setProfiles(previous => previous.some(item => item.id === legacy.id) ? previous : [...previous, legacy]);
-      return;
-    }
-    if (!profile) return;
-    let cancelled = false;
-    const environment = getResourceEnvironment();
-    const folder = getProfileResourceFolder(resourceFolder, environment);
-    void persistUserProfiles(profiles.filter(item => item.id !== 'default' && !isSystemProfileId(item.id)), folder, resourceFolderHandle, environment).then(ok => {
-      if (!ok || cancelled || contentRef.current !== original) return;
-      const next = writeBookProfileSnapshot(original);
-      contentRef.current = next;
-      updateContent(next);
-      setTabs(previous => previous.map(tab => tab.id === activeTabId ? { ...tab, content:next, isModified:true } : tab));
-    });
-    return () => { cancelled = true; };
-  }, [content, profiles, isProfilesLoaded, activeTabId, updateContent, resourceFolder, resourceFolderHandle]);
+  // 💡 [Step 2 리팩토링으로 handleProfileChange, 제목 넘버링, 가로형 그림책 레거시 프로필 동기화는 useEditorProfiles로 이관됨]
 
   // 🟢 [권한 기반 초기 화면 제어: 웰컴 탭 영구 잠금 및 강제 노출 로직 2026-07-05]
   const prevRestrictedRef = useRef<boolean | null>(null);
