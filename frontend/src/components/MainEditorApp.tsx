@@ -1,8 +1,9 @@
 /**
  * 프로그램명 : OnriviAuthor 
 // 🚨 @PATCH : **2026-11-04** — [MainEditorApp 모듈화 및 TDZ 초기화 순서 수정]:
-//             1) dynamicCssGenerator, useEditorLicense, useEditorCommands, useEditorPaste 분리 위임 완료
-//             2) useEditorLicense 호출부를 licenseKey/useEditorSettingsResult 선언부 뒤로 재배치하여 'Cannot access op before initialization' TDZ 런타임 오류 완전 해결
+//             1) dynamicCssGenerator, useEditorLicense, useEditorCommands, useEditorPaste, useEditorSaveActions 분리 위임 완료
+//             2) handleSaveToLocal, handleSaveToWebDrive, handleCreateNewDocument, transferProgress를 useEditorSaveActions 훅으로 분리 (237줄 감축)
+//             3) useEditorLicense 호출부를 licenseKey/useEditorSettingsResult 선언부 뒤로 재배치하여 'Cannot access op before initialization' TDZ 런타임 오류 완전 해결
 // 🚨 @PATCH : **2026-11-04** — [MainEditorApp 4단계 리팩토링 4단계: EditorCore 코어 뷰 분리 완료]:
 //             1) MainEditorApp.tsx 내부의 1,779줄에 달하는 에디터/미리보기 스플릿 뷰, 브레드크럼, 탭바, 툴바 본체를 EditorCore.tsx 컴포넌트로 분리
 //             2) Container(MainEditorApp)는 순수 상태 조율 및 Context Provider 제공에만 집중하고, Layout(EditorLayout)의 중앙 렌더링을 EditorCore에 위임하여 역할 기반 아키텍처(Container-Layout-Core-Manager) 100% 완성
@@ -598,6 +599,7 @@ import { useEditorAuth } from '@/hooks/editor/useEditorAuth';
 import { useEditorLicense } from '@/hooks/editor/useEditorLicense';
 import { useEditorCommands } from '@/hooks/editor/useEditorCommands';
 import { useEditorPaste } from '@/hooks/editor/useEditorPaste';
+import { useEditorSaveActions } from '@/hooks/editor/useEditorSaveActions';
 import { mapIdToCommandType as importedMapIdToCommandType } from '@/types/editorCommand';
 import { useEditorModals } from '@/hooks/editor/useEditorModals';
 // import EditorLayout from '@/components/editor/layout/EditorLayout';
@@ -606,7 +608,6 @@ import EditorOverlayManager from '@/components/editor/EditorOverlayManager';
 import EditorLayout from '@/components/editor/EditorLayout';
 import EditorCore from '@/components/editor/EditorCore';
 import NewDocumentModal from '@/components/NewDocumentModal';
-import { transferDocument } from '@/lib/documentTransfer';
 import { extractFrontmatter, updateCssProfileInFrontmatter } from '@/lib/frontmatter';
 import { documentBookProfile, writeBookProfileSnapshot, legacyBookProfile, parseBookScenes, replaceSceneImage } from '@/lib/picturebook';
 import { KnowledgeHubView } from '@/components/knowledge/KnowledgeHubView';
@@ -623,8 +624,7 @@ import {
   readDriveFileContent,
   uploadDriveImage,
   initDriveTokenAutoRefresh,
-  hasValidDriveToken,
-  prepareGoogleDriveAuth
+  hasValidDriveToken
 } from '@/lib/gdrive/googleDriveClient';
 
 
@@ -5341,249 +5341,33 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
   }, [isExportModalOpen, directEditEnabled]);
 
   // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0070] MainEditorApp.tsx ➔ dispatchCommand
-  // 🎯 @KICK  : 에디터 포커스 가드와 함께 EditorCommandType을 핸들러 메서드로 라우팅하는 통합 명령 디스패처
-  // 🛡️ @GUARD : 브라우저 포커스 손실 방지를 위한 entry에서 editor.focus(); 모달 명령 후 50ms 비동기 forceTokenization; previewMode !== 'preview' 가드를 이용한 내보내기 제한
-  // 🚨 @PATCH : **2026-06-19** — 내보내기 모드 가드 패치: previewMode가 'preview'(미리보기 전용) 모드가 아닐 때 내보내기 명령(PRINT, EXPORT_*)이 트리거되는 경우 경고 토스트를 띄우고 명령 실행을 차단하도록 보정; 문자 겹침 수정을 위한 50ms setTimeout 토큰화 + 레이아웃 (WBS SYNC-02)
-  // 🔗 @CALLS : handlers.newFile/save/saveAs/exit/print/exportHTML/exportEPUB/exportPNG/openExport, handlers.zoomIn/zoomOut/undo/redo/find/replace/globalSearch/settings/about/help/license, handlers.toggleFloatingToolbar/cleanDoc/copyAll, handlers.bold/italic/inlineCode/underline/strikethrough/h1-h6/hr/orderedList/list/quote/check/removePrefix, handlers.link/doclink/image/video/now/map/table/quickTable/insertTableRow/deleteTableRow/code/chart/math, handlers.quickWrap, selectRootFolder, setPreviewMode, setIsToolbarOpen, setIsSidebarOpen, setThemePalette, setIsDarkMode
+  // 📊 [OMD-HOOK-useEditorSaveActions] 에디터 파일 저장 및 새 문서 생성 분리 훅
+  // 🚨 @PATCH : 2026-11-04 - [MainEditorApp 모듈화] 로컬/웹드라이브 저장 및 새 문서 생성을 useEditorSaveActions로 237줄 분리 위임
   // ====================================================================
-  const transferBusyRef = useRef(false);
-  const [transferProgress, setTransferProgress] = useState('');
-
-  // 💾 [내PC(로컬)로 저장] — 작업장 변경 없이 원하는 로컬 폴더에 파일 저장
-  const handleSaveToLocal = useCallback(async () => {
-    if (transferBusyRef.current || isRestrictedUser || isDuplicateInstance || isLicenseChecking) {
-      showToast('현재 문서를 저장할 수 없습니다.', 'warning');
-      return;
-    }
-    const markdown = editorRef.current?.getValue() ?? contentRef.current;
-    const suggestedName = currentFileName || '새 문서.md';
-    const api = (window as any).electronAPI;
-
-    // 1. 데스크톱(Electron) 환경: 표준 파일 저장 대화상자 직접 호출 (작업장 변경 없이 파일만 저장)
-    if (api?.saveFileAs) {
-      try {
-        const defaultDir = rootFolder?.path && rootFolder?.type !== 'GDRIVE' ? rootFolder.path : undefined;
-        const file = await api.saveFileAs(markdown, suggestedName, defaultDir, [
-          { name: 'Markdown Files (*.md)', extensions: ['md'] },
-          { name: 'All Files (*.*)', extensions: ['*'] }
-        ]);
-        if (!file || file.canceled) return;
-        showToast(`내 PC에 저장되었습니다: ${file.name}`, 'success');
-        // ⚠️ [사용자 규칙] 작업장(rootFolder, workspaceType)은 절대 변경하지 않는다!
-        if (rootFolder?.path && rootFolder?.type !== 'GDRIVE' && file.path?.startsWith(rootFolder.path)) {
-          await refreshFileList();
-        }
-      } catch (e: any) {
-        showToast(e.message || '내 PC 저장에 실패했습니다.', 'error');
-      }
-      return;
-    }
-
-    // 2. 웹 브라우저 환경 (showSaveFilePicker 지원 시: Chrome, Edge 등)
-    if (typeof window !== 'undefined' && (window as any).showSaveFilePicker) {
-      try {
-        const handle = await (window as any).showSaveFilePicker({
-          suggestedName: suggestedName.endsWith('.md') ? suggestedName : `${suggestedName}.md`,
-          types: [{
-            description: 'Markdown Files (*.md)',
-            accept: { 'text/markdown': ['.md', '.markdown'] }
-          }]
-        });
-        const writable = await handle.createWritable();
-        await writable.write(markdown);
-        await writable.close();
-        showToast(`내 PC에 저장되었습니다: ${handle.name}`, 'success');
-        // ⚠️ [사용자 규칙] 작업장은 절대 변경하지 않는다!
-      } catch (e: any) {
-        if (e.name !== 'AbortError') showToast(e.message || '내 PC 저장에 실패했습니다.', 'error');
-      }
-      return;
-    }
-
-    // 3. 브라우저 직접 다운로드 폴백
-    try {
-      let targetName = window.prompt('저장할 파일 이름을 입력해 주세요:', suggestedName);
-      if (targetName === null) return; // 사용자 취소
-      targetName = targetName.trim() || suggestedName;
-      if (!targetName.endsWith('.md')) targetName = `${targetName}.md`;
-
-      const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = targetName;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      showToast(`내 PC에 저장되었습니다: ${a.download}`, 'success');
-    } catch (e: any) {
-      showToast(e.message || '내 PC 저장에 실패했습니다.', 'error');
-    }
-  }, [currentFileName, isDuplicateInstance, isLicenseChecking, isRestrictedUser, refreshFileList, rootFolder, showToast]);
-
-  // ☁️ [개인웹드라이브 저장] — 작업장 변경 없이 원하는 구글 드라이브 폴더 및 파일명으로 저장
-  const handleSaveToWebDrive = useCallback(async () => {
-    if (transferBusyRef.current || isRestrictedUser || isDuplicateInstance || isLicenseChecking) {
-      showToast('현재 문서를 저장할 수 없습니다.', 'warning');
-      return;
-    }
-    const markdown = editorRef.current?.getValue() ?? contentRef.current;
-    const defaultName = currentFileName || '새 문서.md';
-
-    transferBusyRef.current = true;
-    const preparedAuth = !getSavedDriveToken() || !hasValidDriveToken()
-      ? prepareGoogleDriveAuth({ isStandalone: true }) : null;
-    try {
-      const { getSavedDriveToken, hasValidDriveToken, requestGoogleDriveAuth, ensureDriveFolder, createDriveMarkdownFile, listDriveChildren, saveDriveFileContent } = await import('@/lib/gdrive/googleDriveClient');
-      let token = getSavedDriveToken();
-      if (!token || !hasValidDriveToken()) {
-        token = await preparedAuth!.request();
-      }
-      if (!token) {
-        showToast('개인웹드라이브 인증이 필요합니다.', 'warning');
-        return;
-      }
-
-      const { pickAccessibleDriveFolder } = await import('@/lib/gdrive/WorkspaceFolderPicker');
-      let initialPath = [{ id: 'root', name: '내 드라이브' }];
-      try {
-        const rootId = await ensureDriveFolder(token, 'OnriviAuthor', 'root');
-        initialPath = [{ id: 'root', name: '내 드라이브' }, { id: rootId, name: 'OnriviAuthor' }];
-      } catch {
-        // 폴더 권한에 따라 기본 루트로 진행
-      }
-
-      const driveDestination = await pickAccessibleDriveFolder(token, initialPath, {
-        title: '개인웹드라이브 저장 (드라이브·폴더 및 파일명 지정)',
-        description: '저장할 계정·드라이브·폴더와 파일명을 선택해 주세요. 저장 후에도 현재 작업장은 유지됩니다.',
-        confirmText: '이 폴더에 저장',
-        initialFileName: defaultName,
-        showFileNameInput: true,
-      });
-      if (!driveDestination) return; // 사용자 취소
-
-      const activeToken = driveDestination.token || token;
-      const chosenName = (driveDestination.fileName || defaultName).trim();
-      const finalName = /\.md$/i.test(chosenName) ? chosenName : `${chosenName}.md`;
-
-      transferBusyRef.current = true;
-      setTransferProgress('개인웹드라이브에 저장 중...');
-      const siblings = await listDriveChildren(activeToken, driveDestination.id);
-      const existingFile = siblings.find(item => !item.isFolder && item.name.toLowerCase() === finalName.toLowerCase());
-
-      const emailLabel = driveDestination.userEmail ? ` [${driveDestination.userEmail}]` : '';
-
-      if (existingFile) {
-        const overwrite = window.confirm(`선택한 폴더에 '${finalName}' 파일이 이미 존재합니다.\n덮어쓰시겠습니까?`);
-        if (!overwrite) {
-          showToast('저장이 취소되었습니다.', 'info');
-          return;
-        }
-        await saveDriveFileContent(activeToken, existingFile.id, markdown);
-        showToast(`개인웹드라이브에 저장되었습니다 (덮어쓰기)${emailLabel}: ${driveDestination.name}/${finalName}`, 'success');
-      } else {
-        await createDriveMarkdownFile(activeToken, driveDestination.id, finalName, markdown);
-        showToast(`개인웹드라이브에 저장되었습니다${emailLabel}: ${driveDestination.name}/${finalName}`, 'success');
-      }
-
-      // ⚠️ [사용자 규칙] 작업장(rootFolder, workspaceType)은 절대 변경하지 않는다!
-      if (rootFolder?.type === 'GDRIVE' && (rootFolder?.id === driveDestination.id || rootFolder?.driveFolderId === driveDestination.id)) {
-        await refreshFileList();
-      }
-    } catch (e: any) {
-      if (e.name !== 'AbortError') {
-        showToast(e.message || '개인웹드라이브 저장에 실패했습니다.', 'error');
-      }
-    } finally {
-      preparedAuth?.close();
-      transferBusyRef.current = false;
-      setTransferProgress('');
-    }
-  }, [currentFileName, isDuplicateInstance, isLicenseChecking, isRestrictedUser, refreshFileList, rootFolder, showToast]);
-
-  useEffect(() => {
-    const handleSaveAsTarget = (event: Event) => {
-      const target = (event as CustomEvent).detail;
-      if (target === 'download') {
-        handleSaveToLocal();
-      } else if (target === 'upload') {
-        handleSaveToWebDrive();
-      }
-    };
-    window.addEventListener('onrivi:save-as-target', handleSaveAsTarget);
-    return () => window.removeEventListener('onrivi:save-as-target', handleSaveAsTarget);
-  }, [handleSaveToLocal, handleSaveToWebDrive]);
-  useEffect(() => {
-    const transfer = async (event: Event) => {
-      const direction = (event as CustomEvent).detail;
-      if (direction !== 'download' && direction !== 'upload') return;
-      if (transferBusyRef.current || isRestrictedUser || isDuplicateInstance || isLicenseChecking) return;
-      const name = currentFileName;
-      const markdown = editorRef.current?.getValue() ?? contentRef.current;
-      if (!name || !/\.md$/i.test(name)) { showToast('먼저 Markdown 문서를 열어 주세요.', 'warning'); return; }
-      transferBusyRef.current = true;
-      setTransferProgress('저장할 위치를 선택해 주세요.');
-      try {
-        const result = await transferDocument({direction, name, markdown, onProgress:setTransferProgress});
-        showToast(`복사 완료: ${result}`, 'success');
-        await refreshFileList();
-      } catch (error: any) {
-        if (error.name !== 'AbortError') showToast(error.message || '문서 전송에 실패했습니다. 다시 실행해 주세요.', 'error');
-      } finally { transferBusyRef.current = false; setTransferProgress(''); }
-    };
-    window.addEventListener('onrivi:transfer-document',transfer);
-    return () => window.removeEventListener('onrivi:transfer-document',transfer);
-  }, [currentFileName, isRestrictedUser, isDuplicateInstance, isLicenseChecking, refreshFileList, showToast]);
-
-  const handleCreateNewDocument = async (fileName: string, targetFolderNode: FileNode | null) => {
-    if (isRestrictedUser || isDuplicateInstance || isLicenseChecking) throw new Error('현재 문서를 생성할 수 없습니다. 로그인·사용 권한을 확인해 주세요.');
-    const name = fileName.trim();
-    if (!name || /[\\/:*?"<>|]/.test(name) || name === '.' || name === '..') throw new Error('올바른 파일명을 입력해 주세요.');
-    const finalName = /\.md$/i.test(name) ? name : `${name}.md`;
-    const folder = targetFolderNode || rootFolder;
-    let node: FileNode;
-    if (rootFolder?.type === 'GDRIVE' || rootFolder?.driveFolderId) {
-      const {getSavedDriveToken,getSavedWorkspaceInfo,listDriveChildren,createDriveMarkdownFile} = await import('@/lib/gdrive/googleDriveClient');
-      const token = getSavedDriveToken();
-      const folderId = targetFolderNode?.driveId || targetFolderNode?.id || rootFolder?.driveFolderId || rootFolder?.id || getSavedWorkspaceInfo()?.workspaceFolderId;
-      if (!token || !folderId) throw new Error('구글 드라이브 연결을 확인해 주세요.');
-      const children = await listDriveChildren(token, folderId);
-      if (children.some(child => child.name.toLowerCase() === finalName.toLowerCase())) throw new Error('같은 이름의 파일이 있습니다.');
-      const created = await createDriveMarkdownFile(token, folderId, finalName, '');
-      node = {name:finalName,kind:'file',driveId:created.id,id:created.id,path:`${folder?.path || 'GoogleDrive'}/${finalName}`};
-    } else if (folder?.handle) {
-      for await (const [existing] of folder.handle.entries()) if (existing.toLowerCase() === finalName.toLowerCase()) throw new Error('같은 이름의 파일이 있습니다.');
-      const handle = await folder.handle.getFileHandle(finalName, {create:true});
-      node = {name:finalName,kind:'file',handle,path:`${folder?.path || folder?.name || ''}/${finalName}`};
-    } else if ((window as any).electronAPI?.createFile) {
-      const parent = folder?.path || rootFolder?.path;
-      if (!parent) throw new Error('먼저 작업장 폴더를 선택해 주세요.');
-      const created = await (window as any).electronAPI.createFile(parent,finalName);
-      if (!created?.success) throw new Error('파일을 생성하지 못했습니다.');
-      node = {name:finalName,kind:'file',path:created.path};
-    } else {
-      const {vfsCreateFile,getVfsFiles} = await import('@/lib/virtualFileSystem');
-      const parent = targetFolderNode?.path || '';
-      const allFiles = getVfsFiles();
-      const findFolder = (nodes: FileNode[]): FileNode | undefined => { for (const item of nodes) { if (item.path === parent) return item; const found = item.children && findFolder(item.children); if (found) return found; } };
-      const siblings = parent ? findFolder(allFiles)?.children || [] : allFiles;
-      if (siblings.some(item => item.name.toLowerCase() === finalName.toLowerCase())) throw new Error('같은 이름의 파일이 있습니다.');
-      vfsCreateFile(parent,finalName);
-      node = {name:finalName,kind:'file',path:parent ? `${parent}/${finalName}` : finalName};
-    }
-    createNewTab('',finalName,false,node.path || null,node);
-    setCurrentFileNode(node);
-    setCurrentFileName(finalName);
-    lastSavedContentRef.current = '';
-    setSaveStatus('saved');
-    const targetMode = isRestrictedUser ? 'preview' : (lastGeneralPreviewModeRef.current || 'preview');
-    setPreviewMode(targetMode);
-    setIsNewDocumentModalOpen(false);
-    await refreshFileList();
-    showToast('새 문서를 만들었습니다.', 'success');
-  };
+  const {
+    handleSaveToLocal,
+    handleSaveToWebDrive,
+    handleCreateNewDocument,
+    transferProgress,
+  } = useEditorSaveActions({
+    isRestrictedUser,
+    isDuplicateInstance,
+    isLicenseChecking,
+    editorRef,
+    contentRef,
+    currentFileName,
+    setCurrentFileName,
+    rootFolder,
+    refreshFileList,
+    showToast,
+    createNewTab,
+    setCurrentFileNode,
+    lastSavedContentRef,
+    setSaveStatus,
+    lastGeneralPreviewModeRef,
+    setPreviewMode,
+    setIsNewDocumentModalOpen,
+  });
 
   const handleInsertFormattedDate = useCallback((formattedDate: string) => {
     if (previewRef.current?.querySelector('.visual-document-editor') && visualCommandRef.current) {
