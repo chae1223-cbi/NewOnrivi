@@ -1,23 +1,29 @@
-// ====================================================================
-// 📊 [OMD-UTIL-editorFileUtils-0001] frontend/src/utils/editorFileUtils.ts
-// 🎯 @KICK  : 에디터 작업장 파일 트리 탐색, 마크다운 수집, 상대 이미지/문서 경로 계산 유틸리티
-// 🛡️ @GUARD : 재귀 탐색 시 무한 루프(visited Set) 방지, 대소문자/유니코드(NFC) 정규화, 드라이브 문자 불일치 방어
-// 🚨 @PATCH : **2026-11-04** — [MainEditorApp 모듈화]: getMdFiles, fetchAllMdFiles, resolveRelativeImagePath, getRelativePath를 editorFileUtils로 분리 위임 (330줄 감축)
-// 🔗 @CALLS : scanDirectoryDeep, knowledgeClient.listDocuments, getVfsFiles, getApiUrl
-// ====================================================================
+/**
+ * ============================================================================
+ * 🏷️ 파일명 : editorFileUtils.ts
+ * 🎯 주요기능 :
+ *   - 에디터 작업장 파일 트리 탐색, 마크다운(.md/.markdown) 통합 수집, 상대 이미지/문서 경로 계산 유틸리티
+ *   - 브라우저(FSA & WASM 지식 DB), 데스크톱(Electron), VFS, 열린 탭 전 환경 중복 제거 및 NFC 정규화
+ * 🚨 @PATCH :
+ *   - 2026-11-04 : 주석 표준화(1·2단계) 및 Log-First(logError/logWarn) 에러 진단 로깅 일괄 적용
+ *   - 2026-11-04 : getMdFiles, fetchAllMdFiles, resolveRelativeImagePath, getRelativePath를 MainEditorApp에서 분리 위임
+ * ============================================================================
+ */
 
 import { FileNode, scanDirectoryDeep } from '@/lib/indexedDbHelper';
 import { getVfsFiles } from '@/lib/virtualFileSystem';
 import { knowledgeClient } from '@/lib/knowledge/knowledgeClient';
 import { getApiUrl } from '@/lib/apiUrlBuilder';
+import { logError, logWarn } from '@/lib/errorDiagnostics';
 
 /**
- * ========================================================================================
- * [함수명] getMdFiles - FileNode 트리를 순회하여 모든 .md 파일을 재귀적으로 수집합니다.
+ * ============================================================================
+ * [getMdFiles]
+ * FileNode 트리를 순회하여 모든 .md 파일을 재귀적으로 수집합니다.
  *
  * @param {FileNode[]} nodes - 대상 파일 노드 목록
  * @returns {FileNode[]} 수집된 마크다운 파일 노드 배열
- * ========================================================================================
+ * ============================================================================
  */
 export const getMdFiles = (nodes: FileNode[]): FileNode[] => {
   const result: FileNode[] = [];
@@ -38,8 +44,9 @@ export const getMdFiles = (nodes: FileNode[]): FileNode[] => {
 };
 
 /**
- * ========================================================================================
- * [함수명] fetchAllMdFiles - 브라우저(FSA & WASM DB), 데스크톱(Electron), VFS, 열린 탭 전 환경 마크다운 통합 수집
+ * ============================================================================
+ * [fetchAllMdFiles]
+ * 브라우저(FSA & WASM DB), 데스크톱(Electron), VFS, 열린 탭 전 환경의 마크다운 파일을 통합 수집합니다.
  *
  * @param {string} workspaceType - 작업장 유형 ('browser' | 'local' | 'cloud')
  * @param {FileNode[]} fileList - 현재 메모리 파일 트리
@@ -49,7 +56,7 @@ export const getMdFiles = (nodes: FileNode[]): FileNode[] => {
  * @param {FileNode | null} [currentFileNode] - 현재 활성 파일 노드
  * @param {any[]} [tabs] - 현재 열려 있는 탭 목록
  * @returns {Promise<FileNode[]>} 중복이 제거된 전체 마크다운 파일 노드 배열
- * ========================================================================================
+ * ============================================================================
  */
 export const fetchAllMdFiles = async (
   workspaceType: string,
@@ -113,7 +120,13 @@ export const fetchAllMdFiles = async (
         const deepFiles = await scanDirectoryDeep(rootFolder.handle, "", new Set(), false);
         deepFiles.forEach(f => addToFileMap(f));
       } catch (e) {
-        console.warn('[fetchAllMdFiles] scanDirectoryDeep failed:', e);
+        logWarn({
+          file: 'src/utils/editorFileUtils.ts',
+          func: 'fetchAllMdFiles',
+          doing: '브라우저 작업장 폴더 핸들 심층 재귀 스캔(scanDirectoryDeep)',
+          target: rootFolder.name || 'browser_root',
+          error: e,
+        });
       }
     }
 
@@ -127,7 +140,15 @@ export const fetchAllMdFiles = async (
           addToFileMap({ name: f.name, path: f.path || f.name, kind: 'file' });
         });
       }
-    } catch {}
+    } catch (e) {
+      logWarn({
+        file: 'src/utils/editorFileUtils.ts',
+        func: 'fetchAllMdFiles',
+        doing: '가상 파일 시스템(VFS) 마크다운 목록 조회',
+        target: 'vfsFiles',
+        error: e,
+      });
+    }
   } else if (workspaceType === 'local') {
     // 2. 데스크톱(Electron) 로컬 워크스페이스 수집
     if (api?.listDirectory && rootFolder?.name) {
@@ -154,7 +175,13 @@ export const fetchAllMdFiles = async (
           }
         } catch (e: any) {
           if (!e?.message?.includes('ENOENT') && !e?.message?.includes('EPERM')) {
-            console.warn('[fetchAllMdFiles] scan error for path:', dirPath, e);
+            logWarn({
+              file: 'src/utils/editorFileUtils.ts',
+              func: 'fetchAllMdFiles',
+              doing: '데스크톱 로컬 디렉토리 재귀 스캔',
+              target: dirPath,
+              error: e,
+            });
           }
         }
       };
@@ -168,7 +195,13 @@ export const fetchAllMdFiles = async (
           addTreeNodes(list);
         }
       } catch (err) {
-        console.error('[fetchAllMdFiles] fetch full files error:', err);
+        logError({
+          file: 'src/utils/editorFileUtils.ts',
+          func: 'fetchAllMdFiles',
+          doing: '로컬 파일 트리 API(/api/files) 조회',
+          target: '/api/files',
+          error: err,
+        });
       }
     }
     addTreeNodes(fileList);
@@ -213,7 +246,13 @@ export const fetchAllMdFiles = async (
       }
     }
   } catch (err) {
-    console.warn('[fetchAllMdFiles] knowledgeClient.listDocuments failed:', err);
+    logWarn({
+      file: 'src/utils/editorFileUtils.ts',
+      func: 'fetchAllMdFiles',
+      doing: '지식 보관함(Knowledge Base) 문서 목록 조회',
+      target: resourceFolder || 'knowledge_db',
+      error: err,
+    });
   }
 
   // 5. 로컬스토리지 등록 지식 문서 플래그 동기화
@@ -229,19 +268,28 @@ export const fetchAllMdFiles = async (
         }
       }
     }
-  } catch {}
+  } catch (err) {
+    logWarn({
+      file: 'src/utils/editorFileUtils.ts',
+      func: 'fetchAllMdFiles',
+      doing: '로컬스토리지 등록 지식 문서 플래그(onrivi_registered_knowledge_docs) 파싱',
+      target: 'onrivi_registered_knowledge_docs',
+      error: err,
+    });
+  }
 
   return Array.from(fileMap.values());
 };
 
 /**
- * ========================================================================================
- * [함수명] resolveRelativeImagePath - 상대 마크다운 이미지 경로를 절대 경로로 변환 및 백슬래시 정규화
+ * ============================================================================
+ * [resolveRelativeImagePath]
+ * 상대 마크다운 이미지 경로를 현재 파일 기준 절대 경로로 변환하고 구분자를 정규화합니다.
  *
  * @param {string} srcPath - 이미지 소스 경로
  * @param {string | undefined} currentFileNodePath - 현재 마크다운 파일의 절대 경로
  * @returns {string} 정규화된 절대/상대 경로
- * ========================================================================================
+ * ============================================================================
  */
 export const resolveRelativeImagePath = (srcPath: string, currentFileNodePath: string | undefined): string => {
   if (!srcPath) return "";
@@ -299,13 +347,14 @@ export const resolveRelativeImagePath = (srcPath: string, currentFileNodePath: s
 };
 
 /**
- * ========================================================================================
- * [함수명] getRelativePath - 두 파일 간 상대 경로 계산
+ * ============================================================================
+ * [getRelativePath]
+ * 기준 소스 파일 경로(fromPath)에서 대상 파일 경로(toPath)까지의 상대 경로를 계산합니다.
  *
  * @param {string | null | undefined} fromPath - 기준 소스 파일 경로
  * @param {string} toPath - 대상 타겟 파일 경로
  * @returns {string} 계산된 상대 경로 (예: ./sub/doc.md 또는 ../sibling.md)
- * ========================================================================================
+ * ============================================================================
  */
 export const getRelativePath = (fromPath: string | null | undefined, toPath: string): string => {
   if (!fromPath) {

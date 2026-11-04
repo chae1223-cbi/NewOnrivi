@@ -1,13 +1,14 @@
-// ====================================================================
-// 📊 [OMD-UI-LeftSidebar-0001] LeftSidebar.tsx ➔ 에디터 좌측 사이드바 (슬림 컨테이너)
-// 🎯 @KICK  : 사이드바 너비 리사이징, 탭(탐색기/개요/검색) 전환 상태 제어 및 하위 패널 렌더링 위임
-// 🛡️ @GUARD : Rule 3(역할 기반 분리)에 따라 FileExplorerPanel, OutlinePanel, GlobalSearchPanel로 핵심 뷰 100% 위임
-// 🚨 @PATCH : 2026-11-04 — [LeftSidebar 3,809줄 모듈화 분리]:
-//             1) 3,809줄의 단일 거대 컴포넌트를 Rule 3에 맞춰 Layout/Container 컴포넌트로 전면 슬림화
-//             2) 파일 탐색기(FileExplorerPanel), 개요 목차(OutlinePanel), 전역 검색(GlobalSearchPanel)을 독립 패널 컴포넌트로 분리
-//             3) 사이드바 너비 조절 리사이저 바(12px 스크롤바 방어) 및 탭 전환 상태는 LeftSidebar에서 중앙 제어
-// 🔗 @CALLS : FileExplorerPanel, OutlinePanel, GlobalSearchPanel, useUIStore, useEditorContext
-// ====================================================================
+/**
+ * ====================================================================
+ * 🏷️ 파일명 : LeftSidebar.tsx
+ * 🎭 역할(Role) : Layout (구조 래퍼 — 좌측 사이드바 탭 전환 및 너비 조절 컨테이너)
+ * 🎯 주요기능 : 사이드바 너비 리사이징, 탭(탐색기/개요/검색) 전환 제어 및 하위 패널(FileExplorerPanel, OutlinePanel, GlobalSearchPanel) 렌더링 위임
+ * 🚨 @PATCH : 2026-11-04 — [LeftSidebar 3,809줄 모듈화 분리 & 주석 표준화]
+ *             1) 3,809줄의 단일 거대 컴포넌트를 규칙 3에 맞춰 Layout/Container 컴포넌트로 슬림화 및 2단계 주석 적용
+ *             2) 파일 탐색기(FileExplorerPanel), 개요 목차(OutlinePanel), 전역 검색(GlobalSearchPanel)을 독립 패널 컴포넌트로 분리
+ *             3) 사이드바 너비 조절 리사이저 바(12px 스크롤바 방어) 및 탭 전환 상태는 LeftSidebar에서 중앙 제어
+ * ====================================================================
+ */
 // @ts-nocheck
 "use client";
 
@@ -19,6 +20,13 @@ import FileExplorerPanel from '@/components/sidebar/FileExplorerPanel';
 import OutlinePanel from '@/components/sidebar/OutlinePanel';
 import GlobalSearchPanel from '@/components/sidebar/GlobalSearchPanel';
 
+/**
+ * ========================================================================================
+ * [컴포넌트명] LeftSidebar - 에디터 좌측 사이드바 프레임 및 탭 스위처 컴포넌트
+ *
+ * @returns {JSX.Element | null} 좌측 사이드바 영역 또는 닫힌 상태일 때 null
+ * ==========================================================================================
+ */
 export default function LeftSidebar() {
   const { isDarkMode, setIsSearchOpen } = useEditorContext();
   const { 

@@ -1,11 +1,11 @@
-// ====================================================================
-// 📊 [OMD-UI-EditorOverlayManager-0001] EditorOverlayManager.tsx ➔ 에디터 오버레이 및 모달 통합 매니저
-// 🎯 @KICK  : 에디터의 모든 플로팅 UI, 15대 이상의 모달, 피커, 로딩 오버레이, 모바일 음성 비서 버튼의 중앙 집중식 생명주기 및 렌더링 관리
-// 🛡️ @GUARD : Z-Index 격리, 접근성(ARIA) 및 키보드 네비게이션 무결성 보장, 메인 에디터 렌더링 부하 최소화 (Rule 3 Manager 영역)
-// 🚨 @PATCH : 2026-11-04 — [MainEditorApp 모듈화 1단계]:
-//             1) MainEditorApp에서 ModalManager(16개 모달), AIDraftModal, NewDocumentModal, CalendarModal, DateTimePicker, QuoteDropdown, 로딩 오버레이를 EditorOverlayManager로 통합 분리 (Rule 3 준수)
-// 🔗 @CALLS : ModalManager, AIDraftModal, NewDocumentModal, CalendarModal, DateTimeInsertPicker, Icon
-// ====================================================================
+/**
+ * ====================================================================
+ * 🏷️ 파일명 : EditorOverlayManager.tsx
+ * 🎭 역할(Role) : Manager (오버레이 통합 관리 — 16대 모달, 피커, 로딩 인디케이터, 모바일 음성 비서 관리)
+ * 🎯 주요기능 : 에디터의 모든 플로팅 UI, 모달(ModalManager, AIDraftModal, NewDocumentModal, CalendarModal), 피커, 로딩 오버레이 중앙 집중식 관리
+ * 🚨 @PATCH : 2026-11-04 — [MainEditorApp 모듈화 1단계 & 주석/에러 표준화] MainEditorApp에서 모든 모달·플로팅 오버레이를 분리하고 2단계 주석 및 logError 적용 (규칙 3 Manager 역할 준수)
+ * ====================================================================
+ */
 // @ts-nocheck
 "use client";
 
@@ -16,6 +16,7 @@ import NewDocumentModal from '@/components/NewDocumentModal';
 import CalendarModal from '@/components/CalendarModal';
 import DateTimeInsertPicker from '@/components/DateTimeInsertPicker';
 import { Icon } from '@/components/icons/Icon';
+import { logError } from '@/lib/errorDiagnostics';
 
 export interface EditorOverlayManagerProps {
   modals: any;
@@ -73,6 +74,14 @@ export interface EditorOverlayManagerProps {
   };
 }
 
+/**
+ * ========================================================================================
+ * [컴포넌트명] EditorOverlayManager - 에디터 모달 및 플로팅 오버레이 중앙 관리 매니저
+ *
+ * @param {EditorOverlayManagerProps} props - 16대 모달, AI 초안, 달력, 새 문서, 날짜 피커, 인용구 드롭다운 제어 Props
+ * @returns {JSX.Element} 플로팅 오버레이 묶음
+ * ==========================================================================================
+ */
 export default function EditorOverlayManager({
   modals,
   deps,
@@ -166,7 +175,13 @@ export default function EditorOverlayManager({
           };
 
           recognition.onerror = (e: any) => {
-            console.error('Speech recognition error:', e);
+            logError({
+              file: 'frontend/src/components/editor/EditorOverlayManager.tsx',
+              func: 'handleSpeechToText',
+              doing: '모바일 음성 인식(SpeechRecognition) 처리 작업',
+              target: 'SpeechRecognition',
+              error: e?.error || e
+            });
             setIsRecording(false);
             showToast("음성 인식에 실패했습니다.", 'error');
           };

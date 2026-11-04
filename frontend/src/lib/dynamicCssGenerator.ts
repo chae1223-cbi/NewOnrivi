@@ -1,11 +1,13 @@
 /**
- * ====================================================================
- * 📊 [OMD-LIB-dynamicCssGenerator] dynamicCssGenerator.ts
- * 🎯 @KICK  : 활성 CSS 프로필 기반 동적 CSS(타이포그래피, 코드블록, 표, 체크박스 등) 생성 엔진
- * 🛡️ @GUARD : 기본 프로필 분기 및 @layer 캐스케이드 격리
- * 🚨 @PATCH : 2026-11-04 - [MainEditorApp 모듈화] MainEditorApp에서 1,234줄 인라인 CSS 생성기를 독립 라이브러리로 분리
- * 🔗 @CALLS : documentBookProfile, resolveCssProfile, reportNumberingCss, headingNumberingCss
- * ====================================================================
+ * ============================================================================
+ * 🏷️ 파일명 : dynamicCssGenerator.ts
+ * 🎯 주요기능 :
+ *   - 활성 서식 프로필(CssProfile) 기반 동적 CSS(타이포그래피, 코드블록, 표, 체크박스, 구분선, 다크모드 재정의 등) 생성 엔진
+ *   - @layer 캐스케이드 격리 및 그림책(Story Book) 프로필 연동
+ * 🚨 @PATCH :
+ *   - 2026-11-04 : 주석 표준화(1·2단계) 적용
+ *   - 2026-11-04 : MainEditorApp에서 1,234줄 인라인 CSS 생성기를 독립 라이브러리로 분리
+ * ============================================================================
  */
 
 import { CssProfile } from '@/types/cssProfile';
@@ -14,6 +16,18 @@ import { reportNumberingCss } from '@/lib/reportNumbering';
 import { headingNumberingCss } from '@/lib/headingNumbering';
 import { documentBookProfile } from '@/lib/picturebook';
 
+/**
+ * ============================================================================
+ * [generateDynamicCss]
+ * 활성 서식 프로필(CssProfile)과 보기 모드를 바탕으로 미리보기/문서보기용 동적 CSS 문자열을 생성합니다.
+ *
+ * @param {CssProfile[]} profiles - 전체 서식 프로필 목록
+ * @param {string} activeProfileId - 현재 활성 서식 프로필 ID
+ * @param {string} [previewMode] - 현재 미리보기 모드
+ * @param {boolean} [isStyleModalOpen] - 서식 관리 모달 열림 여부
+ * @returns {string} 생성된 동적 CSS 스타일시트 문자열
+ * ============================================================================
+ */
 export function generateDynamicCss(
   profiles: CssProfile[],
   activeProfileId: string,

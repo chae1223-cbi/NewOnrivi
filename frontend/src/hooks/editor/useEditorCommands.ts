@@ -1,13 +1,12 @@
-/**
- * ====================================================================
- * 📊 [OMD-HOOK-useEditorCommands] useEditorCommands.ts
- * 🎯 @KICK  : 에디터 툴바, 플로팅 툴바, 슬래시 메뉴 및 단축키 통합 명령 디스패처
- * 🛡️ @GUARD : 비인증 사용자 제한 명령 차단, 모드별(WYSIWYG/Monaco) 분기 및 자동 포커스 보장
- * 🚨 @PATCH : 2026-11-04 - [setIsAboutModalOpen 미정의 식별자 제거] 사용되지 않던 setIsAboutModalOpen 옵션 속성을 제거하여 런타임 ReferenceError 해결
- * 🚨 @PATCH : 2026-11-04 - [MainEditorApp 모듈화] MainEditorApp에서 435줄의 명령 디스패처를 독립 훅으로 분리
- * 🔗 @CALLS : handlers, editorRef, previewRef, visualCommandRef, showToast
- * ====================================================================
- */
+// ====================================================================
+// 📊 [OMD-HOOK-useEditorCommands] frontend/src/hooks/editor/useEditorCommands.ts
+// 🎯 @KICK  : 에디터 툴바, 플로팅 툴바, 슬래시 메뉴 및 단축키 통합 명령 디스패처
+// 🛡️ @GUARD : 비인증 사용자 제한 명령 차단, 모드별(WYSIWYG/Monaco) 분기 및 자동 포커스 보장
+// 🚨 @PATCH : 2026-11-04 — [주석 표준화] 1단계 파일 헤더 및 2단계 useEditorCommands/dispatchCommand JSDoc 표준화 적용
+//             2026-11-04 — [setIsAboutModalOpen 미정의 식별자 제거] 사용되지 않던 setIsAboutModalOpen 옵션 속성을 제거하여 런타임 ReferenceError 해결
+//             2026-11-04 — [MainEditorApp 모듈화] MainEditorApp에서 435줄의 명령 디스패처를 독립 훅으로 분리
+// 🔗 @CALLS : handlers, editorRef, previewRef, visualCommandRef, showToast
+// ====================================================================
 
 import { useCallback } from 'react';
 import { EditorCommandType } from '@/types/editorCommand';
@@ -70,6 +69,14 @@ export interface UseEditorCommandsOptions {
   setIsCalendarModalOpen: (b: boolean) => void;
 }
 
+/**
+ * ========================================================================================
+ * [함수명] useEditorCommands - 에디터 툴바·플로팅 툴바·슬래시 메뉴·단축키 통합 명령 디스패처 훅
+ *
+ * @param {UseEditorCommandsOptions} options - 에디터 핸들러, 모달 제어 함수 및 뷰 모드 참조
+ * @returns {{ dispatchCommand: (type: EditorCommandType, payload?: any) => void }}
+ * ==========================================================================================
+ */
 export function useEditorCommands({
   isRestrictedUser,
   handlers,
@@ -127,6 +134,15 @@ export function useEditorCommands({
   setYoutubeInitialUrl,
   setIsCalendarModalOpen,
 }: UseEditorCommandsOptions) {
+  /**
+   * ========================================================================================
+   * [함수명] dispatchCommand - 명령 타입(EditorCommandType)과 페이로드를 받아 적절한 에디터/모달 동작을 실행합니다.
+   *
+   * @param {EditorCommandType} type - 실행할 에디터 명령 식별자
+   * @param {any} [payload] - 명령 부가 데이터 (예: 날짜 문자열, 인용문 타입 등)
+   * @returns {void}
+   * ==========================================================================================
+   */
   const dispatchCommand = useCallback((type: EditorCommandType, payload?: any) => {
     const restrictedCommands = [
       'OPEN_FILE', 'OPEN_WORKSPACE', 'EXIT', 'GLOBAL_SEARCH', 'COPY_ALL',

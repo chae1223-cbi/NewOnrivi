@@ -1,13 +1,14 @@
 // ====================================================================
-// 📊 [OMD-HOOK-useFileExplorer-0001] useFileExplorer.ts ➔ 워크스페이스 파일 탐색 통합 파사드 훅
+// 📊 [OMD-HOOK-useFileExplorer-0001] frontend/src/hooks/useFileExplorer.ts
 // 🎯 @KICK  : useDriveSync, useLocalVfs, useDocumentOpener 서브 훅들을 조율하고 일관된 단일 I/O 인터페이스 제공
 // 🛡️ @GUARD : Rule 3(역할 기반 분리)에 따라 2,590줄의 거대 훅을 3대 도메인 서브 훅으로 전면 모듈화 분리하고 기존 API 계약 100% 보존
+// 🚨 @PATCH : 2026-11-04 — [주석 표준화]: onrivi-source-comments 2단계 표준 양식(파일 헤더 및 내부 함수 JSDoc 구분선) 전면 반영
 // 🚨 @PATCH : 2026-11-04 — [에디터 실행 시 로컬/클라우드 탐색기 자동 리프레시 복원]: rootFolder 연결/복원 시 refreshFileList(true) 즉시 호출, 작업장 절대경로(onrivi_workspace_path) 자동 보강 및 사이드바 자동 표시 연동
 // 🚨 @PATCH : 2026-11-04 — [런타임 버그 수정]: useLocalVfs에 setIsDriveAuthExpired, setIsDriveConnected, setCurrentFileNode, currentFileName, currentFileParentHandleRef, setActiveTabId, setContent 전달 및 useDocumentOpener에 sessionRestoringRef 전달
 // 🚨 @PATCH : 2026-11-04 — [useFileExplorer 2,590줄 ➔ 3대 도메인 서브 훅 모듈화 분리]:
-//             1) 구글 드라이브 동기화 ➔ useDriveSync.ts (~400줄)
-//             2) 문서 열기 및 경로 점프 ➔ useDocumentOpener.ts (~1,300줄)
-//             3) 로컬 VFS 및 물리 저장 ➔ useLocalVfs.ts (~850줄)
+//             1) 구글 드라이브 동기화 ➔ useDriveSync.ts
+//             2) 문서 열기 및 경로 점프 ➔ useDocumentOpener.ts
+//             3) 로컬 VFS 및 물리 저장 ➔ useLocalVfs.ts
 //             4) useFileExplorer.ts는 상위 조합 및 이벤트 리스너 골격만 유지하는 슬림 파사드 훅으로 경량화 (Rule 3 준수)
 // 🔗 @CALLS : useDriveSync, useLocalVfs, useDocumentOpener
 // ====================================================================
@@ -19,6 +20,17 @@ import { useDriveSync } from '@/hooks/fileExplorer/useDriveSync';
 import { useDocumentOpener } from '@/hooks/fileExplorer/useDocumentOpener';
 import { useLocalVfs } from '@/hooks/fileExplorer/useLocalVfs';
 
+/**
+ * ========================================================================================
+ * [함수명] useFileExplorer - 워크스페이스 파일 탐색·저장·열기·클라우드 동기화 통합 파사드 훅
+ *
+ * @param {object} params - 에디터 참조, 탭 상태, 워크스페이스 상태 및 모달/토스트 제어 콜백
+ * @returns {object} refreshFileList, selectRootFolder, restoreFolderPermission, handleFileOpenByPath, handleFileClick, saveFile, connectGoogleDrive, disconnectGoogleDrive, isDriveAuthExpired, isDriveConnected
+ *
+ * @example
+ * const { refreshFileList, handleFileClick, saveFile } = useFileExplorer({ editorRef, contentRef, ... });
+ * ==========================================================================================
+ */
 export const useFileExplorer = ({
   editorRef,
   contentRef,
@@ -71,6 +83,13 @@ export const useFileExplorer = ({
   const driveEnvironmentRef = useRef<any>(null);
   const storageSwitchRef = useRef(false);
 
+  /**
+   * ========================================================================================
+   * [함수명] captureEnvironment - 로컬↔클라우드 작업장 전환 전 현재 열린 탭·콘텐츠·폴더 스냅샷을 캡처합니다.
+   *
+   * @returns {object} 루트 폴더, 탭 목록, 활성 탭 ID, 본문 및 파일 노드 스냅샷 객체
+   * ==========================================================================================
+   */
   const captureEnvironment = useCallback(() => ({
     root: rootFolderRef.current,
     tabs: tabsRef.current.map(t => ({
@@ -85,6 +104,14 @@ export const useFileExplorer = ({
     savedContent: lastSavedContentRef.current,
   }), [tabsRef, activeTabIdRef, contentRef, currentFileNode, currentFileName, currentFileParentHandleRef, lastSavedContentRef]);
 
+  /**
+   * ========================================================================================
+   * [함수명] restoreEnvironment - 저장된 작업장 환경 스냅샷으로부터 탭·활성 문서·본문 상태를 복원합니다.
+   *
+   * @param {any} environment - captureEnvironment로 저장된 스냅샷 객체
+   * @returns {void}
+   * ==========================================================================================
+   */
   const restoreEnvironment = useCallback((environment: any) => {
     const tabs = environment?.tabs || [];
     tabsRef.current = tabs;

@@ -2,8 +2,9 @@
 // 📊 [OMD-HOOK-useEditorResourceFolder] frontend/src/hooks/editor/useEditorResourceFolder.ts
 // 🎯 @KICK  : 공통 리소스 폴더(Local/Browser/Google Drive) 선택·해제, IndexedDB 핸들 복원, MCP 컨텍스트 동기화, .bib 참고문헌 로드, AI 자격증명 실시간 리로드 및 자가 치유 전담 훅
 // 🛡️ @GUARD : 리소스 폴더 해제 시 로컬/세션스토리지 및 IndexedDB 핸들 완전 소거, 비동기 요청 순서 역전 방어(revision 가드)
-// 🚨 @PATCH : **2026-11-04** — [MainEditorApp 모듈화 및 훅 의존성 정합화]: selectResourceFolder, clearResourceFolder, IndexedDB 핸들 복원, MCP 동기화, .bib 로드, AI 자격증명 자동 로드 및 자가 치유 이펙트를 MainEditorApp.tsx에서 분리 위임하고 ESLint exhaustive-deps 경고를 0건으로 해소 (동작 변경 없음)
-// 🔗 @CALLS : getResourceSettings, saveResourceSettings, getResourceEnvironment, getEffectiveResourceFolder, loadBibliographyFiles, loadResourceAICredentials, deleteResourceAICredentials, purgeLocalStorageAICredentials, ensureDecryptedApiKey, normalizeAIModelName, idb, saveSecureData
+// 🚨 @PATCH : 2026-11-04 — [표준화 및 에러 처리 강화] logError 5대 진단 필드 선제 기록 적용 및 2단계 함수 JSDoc 표준화
+//             2026-11-04 — [MainEditorApp 모듈화 및 훅 의존성 정합화]: selectResourceFolder, clearResourceFolder, IndexedDB 핸들 복원, MCP 동기화, .bib 로드, AI 자격증명 자동 로드 및 자가 치유 이펙트를 MainEditorApp.tsx에서 분리 위임하고 ESLint exhaustive-deps 경고를 0건으로 해소 (동작 변경 없음)
+// 🔗 @CALLS : getResourceSettings, saveResourceSettings, getResourceEnvironment, getEffectiveResourceFolder, loadBibliographyFiles, loadResourceAICredentials, deleteResourceAICredentials, purgeLocalStorageAICredentials, ensureDecryptedApiKey, normalizeAIModelName, idb, saveSecureData, logError
 // ====================================================================
 
 import { useEffect } from 'react';
@@ -16,6 +17,7 @@ import { ensureDecryptedApiKey, normalizeAIModelName } from '@/lib/gemini';
 import { idb } from '@/lib/indexedDbHelper';
 import { saveSecureData } from '@/lib/secureStorage';
 import { SYSTEM_PROFILES } from '@/constants/cssProfile';
+import { logError } from '@/lib/errorDiagnostics';
 
 export interface UseEditorResourceFolderProps {
   mounted: boolean;
@@ -178,6 +180,13 @@ export function useEditorResourceFolder(props: UseEditorResourceFolderProps) {
     return()=>{disposed=true;window.removeEventListener('onrivi:bibliography-updated',load);};
   },[workspaceType,resourceFolder,resourceFolderHandle,setBibContent]);
 
+  /**
+   * ========================================================================================
+   * [함수명] selectResourceFolder - 클라우드(Google Drive)·데스크톱(Electron)·브라우저(File System Access) 환경에 맞춰 공통 리소스 폴더를 선택하고 초기화합니다.
+   *
+   * @returns {Promise<void>}
+   * ==========================================================================================
+   */
   const selectResourceFolder = async () => {
     if (workspaceType === 'cloud') {
       try {
@@ -193,14 +202,36 @@ export function useEditorResourceFolder(props: UseEditorResourceFolderProps) {
         setProfileStorageRevision(r => r + 1);
         setResourceFolderHandle(null);(window as any).__resourceFolderHandle=null;
         showToast(`드라이브 리소스 폴더가 '${folderName}'(으)로 변경되었습니다.`,'success');
-      } catch(error:any) {showToast(error.message,'error');}
+      } catch(error:any) {
+        logError({
+          file: 'frontend/src/hooks/editor/useEditorResourceFolder.ts',
+          func: 'selectResourceFolder',
+          doing: '개인 웹드라이브(Google Drive) 리소스 폴더 선택 및 5대 하위 폴더 초기화 중',
+          target: workspaceType,
+          error,
+        });
+        showToast(error.message,'error');
+      }
       return;
     }
     const api = (window as any).electronAPI;
     if (api && api.selectFolder) {
       const result = await api.selectFolder(resourceFolder || '');
       if (result && result.status !== 'canceled' && result.path) {
-        if (api.initResourceFolder) { const initialized=await api.initResourceFolder(result.path, SYSTEM_PROFILES);if(initialized?.success===false) {showToast(initialized.error || '리소스 폴더 초기화 실패','error');return;} }
+        if (api.initResourceFolder) {
+          const initialized=await api.initResourceFolder(result.path, SYSTEM_PROFILES);
+          if(initialized?.success===false) {
+            logError({
+              file: 'frontend/src/hooks/editor/useEditorResourceFolder.ts',
+              func: 'selectResourceFolder',
+              doing: 'Electron 데스크톱 로컬 리소스 폴더 초기화(api.initResourceFolder) 중',
+              target: result.path,
+              error: new Error(initialized.error || '리소스 폴더 초기화 실패'),
+            });
+            showToast(initialized.error || '리소스 폴더 초기화 실패','error');
+            return;
+          }
+        }
         saveResourceSettings({kind:'local',path:result.path});
         setResourceFolder(result.path);
         setProfileStorageRevision(value => value + 1);
@@ -246,6 +277,13 @@ export function useEditorResourceFolder(props: UseEditorResourceFolderProps) {
         showToast('리소스 폴더가 설정되었습니다.', 'success');
       } catch (err: any) {
         if (err?.name !== 'AbortError') {
+          logError({
+            file: 'frontend/src/hooks/editor/useEditorResourceFolder.ts',
+            func: 'selectResourceFolder',
+            doing: '브라우저 showDirectoryPicker를 통한 로컬 리소스 폴더 선택 및 기본 디렉토리 생성 중',
+            target: workspaceType,
+            error: err,
+          });
           showToast('폴더 선택 중 오류가 발생했습니다.', 'error');
         }
       }
@@ -254,13 +292,13 @@ export function useEditorResourceFolder(props: UseEditorResourceFolderProps) {
     }
   };
 
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0025b ✅ FIXED] MainEditorApp.tsx ➔ clearResourceFolder
-  // 🎯 @KICK  : 공통 자원 관리 폴더 연결 해제 및 로컬/IndexedDB 영구 스토리지 데이터 완전 소거
-  // 🛡️ @GUARD : idb.del 및 idb.set(null) 이중 방어, localStorage/sessionStorage 클린업
-  // 🚨 @PATCH : **2026-09-05** — 공통 리소스 폴더 연결 해제 시 IndexedDB 및 로컬/세션스토리지 완전 소거, 모달 중첩 방어 및 안내 문구 순화('폴더 해제')
-  // 🔗 @CALLS : saveSecureData, localStorage.removeItem, idb.del, idb.set, showToast
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] clearResourceFolder - 공통 리소스 폴더 연결을 해제하고 로컬/IndexedDB 스토리지를 정리합니다.
+   *
+   * @returns {Promise<void>}
+   * ==========================================================================================
+   */
   const clearResourceFolder = async () => {
     const clearingLocal = getResourceEnvironment() === 'local';
     saveResourceSettings(null);

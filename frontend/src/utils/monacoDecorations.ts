@@ -1,24 +1,25 @@
-// ====================================================================
-// 📊 [OMD-UTIL-monacoDecorations] frontend/src/utils/monacoDecorations.ts
-// 🎯 @KICK  : 마크다운 구문 강조(코드블록/인용문/표/제목/굵게/기울임/취소선)용 Monaco 인라인·라인 데코레이션 계산 및 적용
-// 🛡️ @GUARD : editor/window.monaco/model 미존재 시 즉시 반환, CommonMark 코드블록 마스크로 코드 내부 오탐 방지
-// 🚨 @PATCH : **2026-11-04** — [MainEditorApp 모듈화]: MainEditorApp.updateDecorations 본문을 순수 유틸 applyMarkdownDecorations로 분리 이관 (동작 변경 없음)
-// 🔗 @CALLS : getCodeBlockLineMask, decorationsCollection.set
-// ====================================================================
+/**
+ * ============================================================================
+ * 🏷️ 파일명 : monacoDecorations.ts
+ * 🎯 주요기능 :
+ *   - 마크다운 구문 강조(코드블록, 인용문, 표, 제목, 굵게, 기울임, 취소선)용 Monaco 에디터 인라인·라인 데코레이션 계산 및 적용
+ *   - CommonMark 코드블록 마스크(getCodeBlockLineMask) 기반으로 코드 내부 구문 오탐 원천 방지
+ * 🚨 @PATCH :
+ *   - 2026-11-04 : 주석 표준화(1·2단계) 적용
+ *   - 2026-11-04 : MainEditorApp.updateDecorations 본문을 순수 유틸 applyMarkdownDecorations로 분리 이관
+ * ============================================================================
+ */
 
 import { getCodeBlockLineMask } from '@/lib/editorUtils';
 
 /**
- * ========================================================================================
- * [함수명] applyMarkdownDecorations - Monaco 모델 전체 라인을 스캔하여 마크다운 구문 강조 데코레이션을 적용합니다.
+ * ============================================================================
+ * [applyMarkdownDecorations]
+ * Monaco 모델 전체 라인을 스캔하여 마크다운 구문 강조 데코레이션을 적용합니다.
  *
  * @param {any} editor - Monaco 에디터 인스턴스
- * @param {React.MutableRefObject<any>} decorationsCollectionRef - editor.createDecorationsCollection() 결과를 담은 ref
- * @returns {void}
- *
- * @example
- * applyMarkdownDecorations(editorRef.current, decorationsCollectionRef);
- * ==========================================================================================
+ * @param {{ current: any }} decorationsCollectionRef - editor.createDecorationsCollection() 결과를 담은 Ref
+ * ============================================================================
  */
 export function applyMarkdownDecorations(editor: any, decorationsCollectionRef: { current: any }): void {
   if (!editor || typeof window === 'undefined' || !(window as any).monaco) return;

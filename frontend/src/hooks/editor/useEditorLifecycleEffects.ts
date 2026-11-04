@@ -2,7 +2,8 @@
 // 📊 [OMD-HOOK-useEditorLifecycleEffects] frontend/src/hooks/editor/useEditorLifecycleEffects.ts
 // 🎯 @KICK  : 탭 이름 변경·삭제·라인 점프 이벤트 리스너, 분할 화면 읽기 전용 가드, 에디터 테마·옵션 동기화, 제한사용자 웰컴 정리, 사이드바 리사이즈, 탭 전환 모드/미리보기 동기화, 자동 저장(autoSave), 목차(TOC) 생성 훅
 // 🛡️ @GUARD : 동일 파일명 타 경로 오종료 방어, 5초 자동저장 무한루프 및 번들 도움말 덮어쓰기 차단, 코드블록 내부 헤딩 오탐 방지
-// 🚨 @PATCH : **2026-11-04** — [MainEditorApp 모듈화 및 훅 의존성 정합화]: 탭/파일 생명주기 이벤트, 에디터 설정 동기화, 제한사용자 웰컴 정리, 자동 저장, TOC 계산을 MainEditorApp.tsx에서 분리 위임하고 ESLint exhaustive-deps 경고를 0건으로 해소 (동작 변경 없음)
+// 🚨 @PATCH : 2026-11-04 — [주석 표준화] 내부 핸들러 함수(handleMouseMove, stopResizing, startResizing) 2단계 JSDoc 표준화 적용
+//             2026-11-04 — [MainEditorApp 모듈화 및 훅 의존성 정합화]: 탭/파일 생명주기 이벤트, 에디터 설정 동기화, 제한사용자 웰컴 정리, 자동 저장, TOC 계산을 MainEditorApp.tsx에서 분리 위임하고 ESLint exhaustive-deps 경고를 0건으로 해소 (동작 변경 없음)
 // 🔗 @CALLS : applySafeMarkdownMonarchTokenizer, syncPreviewToTargetLine, syncPreviewFromEditorScroll, getCodeBlockLineMask, createHeadingNumberer, isBundledDocumentPath
 // ====================================================================
 
@@ -597,14 +598,14 @@ export function useEditorLifecycleEffects(props: UseEditorLifecycleEffectsProps)
   // 💡 [OMD-CORE-MainEditorApp-0041] previewHighlightLine 훅은 processedContent 선언 이후(Line 4870)로 이동되었습니다 (TDZ 방어).
   // 💡 [OMD-SYNC-DEPRECATED] 스크롤 동기화 및 휠 차단 로직은 Monaco Setup 내부 단일 리스너(onDidScrollChange)로 완전히 마이그레이션되어 이곳의 중복 훅은 삭제되었습니다.
 
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0043] MainEditorApp.tsx ➔ handleMouseMove
-  // 🎯 @KICK  : 사이드바 크기 조정 드래그 mousemove 이벤트 처리
-  // 🛡️ @GUARD : 너비를 150-600px 사이로 제한
-  // 🚨 @PATCH : None
-  // 🔗 @CALLS : setSidebarWidth, localStorage.setItem
-  // ====================================================================
-
+  /**
+   * ========================================================================================
+   * [함수명] handleMouseMove - 사이드바 크기 조정 드래그 시 너비(150px~600px)를 계산하여 반영합니다.
+   *
+   * @param {MouseEvent} e - 마우스 이동 이벤트
+   * @returns {void}
+   * ==========================================================================================
+   */
   const handleMouseMove = useCallback((e: MouseEvent) => {
     if (!isResizing.current) return;
     const newWidth = e.clientX;
@@ -615,15 +616,13 @@ export function useEditorLifecycleEffects(props: UseEditorLifecycleEffectsProps)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // fontSize 및 wordWrap 저장은 통합 환경설정 저장 가드에서 처리
-
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0044] MainEditorApp.tsx ➔ stopResizing
-  // 🎯 @KICK  : 사이드바 크기 조정 종료: 리스너 제거, 커서 및 user-select 복원
-  // 🛡️ @GUARD : None
-  // 🚨 @PATCH : None
-  // 🔗 @CALLS : document.removeEventListener, document.body.style.cursor/userSelect
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] stopResizing - 사이드바 크기 조정을 종료하고 전역 마우스 리스너 및 커서를 복원합니다.
+   *
+   * @returns {void}
+   * ==========================================================================================
+   */
   const stopResizing = useCallback(() => {
     isResizing.current = false;
     document.removeEventListener('mousemove', handleMouseMove);
@@ -632,13 +631,14 @@ export function useEditorLifecycleEffects(props: UseEditorLifecycleEffectsProps)
     document.body.style.userSelect = 'auto';
   }, [handleMouseMove, isResizing]);
 
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0045] MainEditorApp.tsx ➔ startResizing
-  // 🎯 @KICK  : 사이드바 크기 조정 시작: 리스너 추가, col-resize 커서 설정
-  // 🛡️ @GUARD : None
-  // 🚨 @PATCH : None
-  // 🔗 @CALLS : document.addEventListener, document.body.style
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] startResizing - 사이드바 크기 조정 드래그를 시작하고 전역 마우스 리스너를 등록합니다.
+   *
+   * @param {React.MouseEvent} e - 마우스 다운 이벤트
+   * @returns {void}
+   * ==========================================================================================
+   */
   const startResizing = useCallback((e: React.MouseEvent) => {
     isResizing.current = true;
     document.addEventListener('mousemove', handleMouseMove);

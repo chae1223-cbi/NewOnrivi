@@ -2,12 +2,13 @@
 // 📊 [OMD-IO-export-image-0001] frontend/src/lib/export/imageExporter.ts
 // 🎯 @KICK  : PNG 긴 이미지 캡처(exportPNG) 및 SNS 카드뉴스 분할 출력(exportSNSCardNews)
 // 🛡️ @GUARD : html-to-image 캡처 안정성, IME 커밋 강제, 인라인 코드 솟구침 방지, ZIP/낱장 일괄 저장
-// 🚨 @PATCH : **2026-11-04** — [모듈화 분리]: exportHandlers.ts에서 이미지/카드뉴스 내보내기 전용 모듈 분리
+// 🚨 @PATCH : **2026-11-04** — [모듈화 분리 & 에러/주석 표준화]: exportHandlers.ts에서 이미지/카드뉴스 내보내기 전용 모듈 분리 및 2단계 함수 JSDoc·logError 적용
 // 🔗 @CALLS : html-to-image, jszip, clonePreview, fixListMarkers, saveToDownloads
 // ====================================================================
 import { startExportProgress } from '../exportProgress';
 import { getExportDocumentRoot, prepareExportPreview, cleanExportDocument, waitForExportResources } from '../exportPreparation';
 import { PAPER_SIZES } from '@/constants/paperSizes';
+import { logError } from '@/lib/errorDiagnostics';
 import { msg } from '@/lib/systemMessages';
 import { generateExportCss } from './cssGenerator';
 import {
@@ -23,16 +24,14 @@ import {
 } from './common';
 import type { ExportOptions, SNSCardNewsOptions } from './types';
 
-// ─────────────────────────────────────────────
-// PNG 내보내기
-// ─────────────────────────────────────────────
-// ====================================================================
-// 📊 [OMD-IO-exportHandlers-0013] exportHandlers.ts ➔ exportPNG
-// 🎯 @KICK  : 미리보기 DOM을 html-to-image로 PNG 캡처 및 저장 (Electron/브라우저)
-// 🛡️ @GUARD : Electron IPC saveFileAs, overflow visible 강제, scrollHeight 측정 fallback
-// 🚨 @PATCH : **2026-06-20** — 이미지 내보내기 시 에디터 로컬 및 확장프로그램 스타일시트를 동기식 스타일 규칙 추출 전략(collectAllStyles)으로 추출하여 wrapper 내에 `<style>`로 주입함으로써 html-to-image 이미지 변환 시 CSP/CORS 차단으로 발생하던 서식(제목 색상 및 글꼴 등) 유실 현상을 완벽히 해결
-// 🔗 @CALLS : flushIME, clonePreview, inlineLocalImages, injectExportStyles, fixListMarkers, applyExportInlineStyles, saveToDownloads, collectAllStyles
-// ====================================================================
+/**
+ * ==== [exportPNG] ====
+ * 🎯 역할 : 미리보기 DOM을 html-to-image로 긴 이미지(PNG) 캡처 및 저장
+ * 📥 파라미터 :
+ *   - options (ExportOptions) : 내보내기 공통 옵션 (previewEl, currentFileName, paperSize, activeProfile 등)
+ * 📤 반환값 : Promise<void>
+ * 💡 비고 : 로컬/확장 스타일시트 동기 추출(collectAllStyles) 및 IME 강제 플러시 포함
+ */
 export async function exportPNG({ 
   previewEl, currentFileName, isDarkMode, showToast, dynamicCssString, 
   orientation, paperSize, marginTop, marginBottom, marginLeft, marginRight, backgroundColor, activeProfile 
@@ -279,18 +278,26 @@ export async function exportPNG({
       showToast(ok ? '다운로드 폴더에 PNG가 생성되었습니다.' : '이미지 내보내기가 완료되었습니다.', 'success');
     }
   } catch (err: any) {
+    logError({
+      file: 'frontend/src/lib/export/imageExporter.ts',
+      func: 'exportPNG',
+      doing: '미리보기 DOM을 PNG 이미지로 캡처 및 저장하는 작업',
+      target: currentFileName,
+      error: err
+    });
     msg.error('PNG export error', err);
     showToast('PNG 내보내기 실패: ' + err.message, 'error');
   }
 }
 
-// ====================================================================
-// 📊 [OMD-IO-exportHandlers-0015] exportHandlers.ts ➔ exportSNSCardNews
-// 🎯 @KICK  : 문서를 SNS 카드뉴스 규격(1:1 정사각 1080×1080, 4:5 세로형 1080×1350, 16:9 와이드 1920×1080)으로 카드별 분할 캡처하여 낱장 PNG 또는 ZIP으로 일괄 내보내기
-// 🛡️ @GUARD : 구분선(---), 대제목(# H1), 그림책 장면(:::scene) 및 자동 높이 분할 지원, 초과 본문 자동 스케일링으로 잘림 0% 보장
-// 🚨 @PATCH : **2026-10-27** — SNS 카드뉴스 전용 분할 출력 파이프라인 신설
-// 🔗 @CALLS : prepareExportPreview, getExportDocumentRoot, clonePreview, inlineLocalImages, injectExportStyles, fixListMarkers, applyExportInlineStyles
-// ====================================================================
+/**
+ * ==== [exportSNSCardNews] ====
+ * 🎯 역할 : 문서를 SNS 카드뉴스 규격(1:1 정사각, 4:5 세로형, 16:9 와이드)으로 카드별 분할 캡처하여 낱장 PNG 또는 ZIP으로 일괄 내보내기
+ * 📥 파라미터 :
+ *   - options (ExportOptions) : 내보내기 옵션 및 snsOptions(ratio, splitMode, showPageNumber, saveMode)
+ * 📤 반환값 : Promise<void>
+ * 💡 비고 : 구분선(---), 대제목(# H1), 그림책 장면(:::scene) 및 자동 높이 분할 지원, 초과 본문 자동 스케일링 적용
+ */
 export async function exportSNSCardNews({
   previewEl,
   currentFileName,
@@ -845,6 +852,13 @@ export async function exportSNSCardNews({
       }
     }
   } catch (err: any) {
+    logError({
+      file: 'frontend/src/lib/export/imageExporter.ts',
+      func: 'exportSNSCardNews',
+      doing: 'SNS 카드뉴스 분할 캡처 및 이미지/ZIP 일괄 저장 작업',
+      target: currentFileName,
+      error: err
+    });
     msg.error('SNS CardNews export error', err);
     showToast('SNS 카드뉴스 내보내기 실패: ' + err.message, 'error');
   } finally {

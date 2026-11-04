@@ -2,13 +2,14 @@
 // 📊 [OMD-IO-export-html-0001] frontend/src/lib/export/htmlExporter.ts
 // 🎯 @KICK  : 미리보기 DOM을 독립 단일 HTML 파일로 번들링하여 내보내기
 // 🛡️ @GUARD : Tailwind CDN + computed font + 인라인 스타일시트 완전 임베딩
-// 🚨 @PATCH : **2026-11-04** — [모듈화 분리]: exportHandlers.ts에서 HTML 내보내기 전용 모듈 분리
+// 🚨 @PATCH : **2026-11-04** — [모듈화 분리 & 에러/주석 표준화]: exportHandlers.ts에서 HTML 내보내기 전용 모듈 분리 및 2단계 함수 JSDoc·logError 적용
 // 🔗 @CALLS : clonePreview, inlineLocalImages, injectExportStyles, saveToDownloads
 // ====================================================================
 import { getExportDocumentRoot, prepareExportPreview } from '../exportPreparation';
 import { cssPx, EXPORT_FIGURE_HEIGHT_RATIO, EXPORT_LEAD_FIGURE_HEIGHT_RATIO, markLeadExportFigure } from '../docxFormatting';
 import { PRINT_TABLE_FLOW_CSS } from '../exportPagination';
 import { PAPER_SIZES } from '@/constants/paperSizes';
+import { logError } from '@/lib/errorDiagnostics';
 import { msg } from '@/lib/systemMessages';
 import { generateExportCss } from './cssGenerator';
 import {
@@ -22,16 +23,14 @@ import {
 } from './common';
 import type { ExportOptions } from './types';
 
-// ─────────────────────────────────────────────
-// HTML 내보내기
-// ─────────────────────────────────────────────
-// ====================================================================
-// 📊 [OMD-IO-exportHandlers-0011] exportHandlers.ts ➔ exportHTML
-// 🎯 @KICK  : 미리보기 DOM을 독립 HTML 파일로 내보내기 (Tailwind CDN + computed font 포함)
-// 🛡️ @GUARD : Electron saveFileAs, computed fontFamily 반영
-// 🚨 @PATCH : **2026-06-20** — HTML 내보내기 시 에디터 로컬 및 확장프로그램 스타일시트를 동기식 스타일 규칙 추출 전략(collectAllStyles)을 사용하여 헤더에 `<style>`로 인라인화(Embed)함으로써 오프라인 및 로컬 환경에서도 미리보기와 100% 동일한 테마 서식이 누락 없이 적용되도록 조치
-// 🔗 @CALLS : clonePreview, inlineLocalImages, injectExportStyles, saveToDownloads, collectAllStyles
-// ====================================================================
+/**
+ * ==== [exportHTML] ====
+ * 🎯 역할 : 미리보기 DOM을 독립 단일 HTML 파일로 번들링하여 내보내기 (Tailwind CDN + computed font + 인라인 스타일시트 완전 임베딩)
+ * 📥 파라미터 :
+ *   - options (ExportOptions) : 내보내기 공통 옵션 (previewEl, currentFileName, activeProfile 등)
+ * 📤 반환값 : Promise<void>
+ * 💡 비고 : Electron saveFileAs 및 브라우저 다운로드(saveToDownloads) 분기 지원
+ */
 export async function exportHTML({ 
   previewEl, currentFileName, isDarkMode, showToast, dynamicCssString, 
   orientation, paperSize, marginTop, marginBottom, marginLeft, marginRight, backgroundColor, activeProfile 
@@ -230,6 +229,13 @@ export async function exportHTML({
       showToast(ok ? '다운로드 폴더에 HTML이 생성되었습니다.' : 'HTML 내보내기가 완료되었습니다.', 'success');
     }
   } catch (err: any) {
+    logError({
+      file: 'frontend/src/lib/export/htmlExporter.ts',
+      func: 'exportHTML',
+      doing: '미리보기 DOM을 독립 HTML 파일로 번들링 및 저장하는 작업',
+      target: currentFileName,
+      error: err
+    });
     msg.error('HTML export error', err);
     showToast('HTML 내보내기 실패: ' + err.message, 'error');
   }

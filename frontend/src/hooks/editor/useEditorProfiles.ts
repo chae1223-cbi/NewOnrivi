@@ -2,8 +2,9 @@
 // 📊 [OMD-HOOK-useEditorProfiles] frontend/src/hooks/editor/useEditorProfiles.ts
 // 🎯 @KICK  : 서식 프로필(userCssProfiles.json) 로드/저장/디바운스, Frontmatter 동기화, 제목 번호 넘버링 및 가로형 그림책 프로필 관리 훅
 // 🛡️ @GUARD : 시스템 프로필 보호, 리소스 폴더/웹드라이브 분기 처리, 저장 실패 시 캐시 무효화 및 롤백, IME 조합 중 넘버링 지연 방어
-// 🚨 @PATCH : **2026-11-04** — [MainEditorApp 모듈화]: 서식 프로필 관리(profiles, activeProfileId, load, save, resolveEffectiveDocumentProfile, handleProfileChange, headingNumbering)를 useEditorProfiles로 분리 위임 (350줄 감축)
-// 🔗 @CALLS : fetchUserProfiles, persistUserProfiles, normalizeCssProfile, extractFrontmatter, updateCssProfileInFrontmatter, syncMarkdownHeadingNumbers
+// 🚨 @PATCH : 2026-11-04 — [표준화 및 에러 처리 강화] logError 5대 진단 필드 선제 기록 적용 및 내부 함수 JSDoc/식별 배너 표준화
+//             2026-11-04 — [MainEditorApp 모듈화]: 서식 프로필 관리(profiles, activeProfileId, load, save, resolveEffectiveDocumentProfile, handleProfileChange, headingNumbering)를 useEditorProfiles로 분리 위임 (350줄 감축)
+// 🔗 @CALLS : fetchUserProfiles, persistUserProfiles, normalizeCssProfile, extractFrontmatter, updateCssProfileInFrontmatter, syncMarkdownHeadingNumbers, logError
 // ====================================================================
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -16,6 +17,7 @@ import { setProfileReadStatus } from '@/lib/profileReadStatus';
 import { getResourceSettings, saveResourceSettings, getResourceEnvironment } from '@/lib/resourceSettings';
 import { getSavedDriveToken } from '@/lib/gdrive/googleDriveClient';
 import { syncMarkdownHeadingNumbers } from '@/lib/headingNumbering';
+import { logError } from '@/lib/errorDiagnostics';
 
 export interface UseEditorProfilesProps {
   mounted: boolean;
@@ -60,8 +62,11 @@ export interface UseEditorProfilesReturn {
 
 /**
  * ========================================================================================
- * [함수명] useEditorProfiles - 에디터 서식 프로필 및 프론트매터 동기화 전담 훅
- * ========================================================================================
+ * [함수명] useEditorProfiles - 에디터 서식 프로필(userCssProfiles.json) 로드/저장 및 Frontmatter 동기화 전담 훅
+ *
+ * @param {UseEditorProfilesProps} props - 리소스 폴더, 워크스페이스 환경, 탭 및 에디터 상태
+ * @returns {UseEditorProfilesReturn} 서식 프로필 목록, 활성 프로필 ID 및 변경/해석 핸들러
+ * ==========================================================================================
  */
 export function useEditorProfiles({
   mounted,
@@ -133,7 +138,7 @@ export function useEditorProfiles({
   }, [showToast]);
 
   // ====================================================================
-  // 📊 [OMD-CORE-MainEditorApp-0007] loadUserProfiles
+  // 📊 [OMD-HOOK-useEditorProfiles-loadUserProfiles] loadUserProfiles
   // ====================================================================
   useEffect(() => {
     if (!mounted) return;
@@ -204,7 +209,13 @@ export function useEditorProfiles({
       } catch (error) {
         if (cancelled || requestRevision !== loadRevision) return false;
         console.info('[STARTUP timing] profile load failed after ms=%d', Math.round(performance.now() - profilesStartedAt));
-        console.error('[loadUserProfiles] userCssProfiles.json 읽기 실패:', error);
+        logError({
+          file: 'frontend/src/hooks/editor/useEditorProfiles.ts',
+          func: 'loadUserProfiles',
+          doing: `리소스 폴더(${targetEnv})에서 userCssProfiles.json 서식 프로필 파일 읽기 중`,
+          target: folder || targetEnv,
+          error,
+        });
         setProfileReadStatus({ ...destination, state: 'error', error: error instanceof Error ? error.message : '서식 파일을 읽지 못했습니다.' });
         if (folder) {
           showToast(error instanceof Error ? error.message : 'userCssProfiles.json을 읽지 못했습니다. 리소스 폴더 연결과 파일을 확인해 주세요.', 'error');
@@ -223,7 +234,7 @@ export function useEditorProfiles({
   }, [mounted, resourceFolder, resourceFolderHandle, profileStorageRevision, workspaceType]);
 
   // ====================================================================
-  // 📊 [OMD-CORE-MainEditorApp-0035] profilesSave
+  // 📊 [OMD-HOOK-useEditorProfiles-profilesSave] profilesSave
   // ====================================================================
   useEffect(() => {
     if (!mounted || !isProfilesLoaded) return;
@@ -242,6 +253,13 @@ export function useEditorProfiles({
         if (ok) {
           source.hash = hash;
         } else {
+          logError({
+            file: 'frontend/src/hooks/editor/useEditorProfiles.ts',
+            func: 'profilesSave',
+            doing: `리소스 폴더(${targetEnv})에 userCssProfiles.json 서식 프로필 저장 중`,
+            target: folder || targetEnv,
+            error: new Error('persistUserProfiles returned false'),
+          });
           showToast('userCssProfiles.json 저장에 실패했습니다. 리소스 폴더 연결과 쓰기 권한을 확인해 주세요.', 'error');
         }
       });
@@ -251,7 +269,7 @@ export function useEditorProfiles({
   }, [mounted, isProfilesLoaded, profiles, resourceFolder, resourceFolderHandle, workspaceType]);
 
   // ====================================================================
-  // 📊 [OMD-CORE-MainEditorApp-0036] activeProfileSave
+  // 📊 [OMD-HOOK-useEditorProfiles-activeProfileSave] activeProfileSave
   // ====================================================================
   useEffect(() => {
     if (mounted && activeProfileId) {
@@ -259,9 +277,14 @@ export function useEditorProfiles({
     }
   }, [activeProfileId, mounted]);
 
-  // ====================================================================
-  // 📊 [OMD-CORE-MainEditorApp-0000] resolveEffectiveDocumentProfile
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] resolveEffectiveDocumentProfile - 문서 Frontmatter 및 현재 편집 모드를 기반으로 유효 서식 프로필을 결정합니다.
+   *
+   * @param {string} docText - 마크다운 문서 본문 텍스트
+   * @returns {CssProfile} 문서에 최종 적용될 CSS 서식 프로필 객체
+   * ==========================================================================================
+   */
   const resolveEffectiveDocumentProfile = useCallback((docText: string) => {
     const preferLive = previewMode === 'css-style' || isStyleModalOpen;
     const stateProfile = profiles.find(p => p.id === activeProfileId) || DEFAULT_PROFILE;
@@ -326,7 +349,15 @@ export function useEditorProfiles({
     }
   }, [content, activeProfileId, profiles, isStyleModalOpen]);
 
-  // 사이드바 UI에서 서식 변경 시 핸들러
+  /**
+   * ========================================================================================
+   * [함수명] handleProfileChange - 사이드바 또는 서식 모달에서 문서 서식 프로필을 변경하고 Frontmatter 및 제목 번호를 동기화합니다.
+   *
+   * @param {string} newProfileId - 적용할 서식 프로필 ID
+   * @param {CssProfile} [appliedProfile] - 직접 전달된 서식 프로필 객체 (선택)
+   * @returns {void}
+   * ==========================================================================================
+   */
   const handleProfileChange = useCallback((newProfileId: string, appliedProfile?: CssProfile) => {
     setActiveProfileId(newProfileId);
     const selectedProfile = appliedProfile ?? profiles.find(p => p.id === newProfileId);

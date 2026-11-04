@@ -1,23 +1,23 @@
+// ====================================================================
+// 📊 [OMD-HOOK-useEditorPaste] frontend/src/hooks/editor/useEditorPaste.ts
+// 🎯 @KICK  : 에디터 클립보드 붙여넣기(HTML 표, 리치 텍스트, 이미지 파일/Blob) 및 리소스/R2 저장 파이프라인
+// 🛡️ @GUARD : 비동기 DataTransferItem 즉시 추출, CSP connect-src 대응 base64 변환, 동일 이미지 반복 삽입 보장
+// 🚨 @PATCH : 2026-11-04 — [표준화 및 에러 처리 강화] logError 5대 진단 필드 선제 기록 적용 및 1·2단계 주석 표준화
+//             2026-11-04 — [isImageLikeFile 반환 추가] EditorCore 이미지 필터링에 필요한 isImageLikeFile 헬퍼 반환 및 미정의 런타임 크래시 방지
+//             2026-11-04 — [MainEditorApp 모듈화] MainEditorApp에서 450여 줄의 붙여넣기 및 이미지 업로드 파이프라인을 독립 훅으로 분리
+// 🔗 @CALLS : resolveClipboardImage, handlePasteImageFile, insertWithR2Fallback, webUploadImage, utilsEditorActions, logError
+// ====================================================================
+
+import { useRef } from 'react';
 import { htmlToImportMarkdown, importHtmlWithImages } from '@/lib/importHtmlMarkdown';
 import { getResourceSettings, requireResourceSettings } from '@/lib/resourceSettings';
 import { getSavedDriveToken, getSavedWorkspaceInfo, uploadDriveImage } from '@/lib/gdrive/googleDriveClient';
-/**
- * ====================================================================
- * 📊 [OMD-HOOK-useEditorPaste] useEditorPaste.ts
- * 🎯 @KICK  : 에디터 클립보드 붙여넣기(HTML 표, 리치 텍스트, 이미지 파일/Blob) 및 리소스/R2 저장 파이프라인
- * 🛡️ @GUARD : 비동기 DataTransferItem 즉시 추출, CSP connect-src 대응 base64 변환, 동일 이미지 반복 삽입 보장
- * 🚨 @PATCH : 2026-11-04 - [isImageLikeFile 반환 추가] EditorCore 이미지 필터링에 필요한 isImageLikeFile 헬퍼 반환 및 미정의 런타임 크래시 방지
- * 🚨 @PATCH : 2026-11-04 - [MainEditorApp 모듈화] MainEditorApp에서 450여 줄의 붙여넣기 및 이미지 업로드 파이프라인을 독립 훅으로 분리
- * 🔗 @CALLS : resolveClipboardImage, handlePasteImageFile, insertWithR2Fallback, webUploadImage, utilsEditorActions
- * ====================================================================
- */
-
-import { useRef, useCallback } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { getApiUrl } from '@/lib/apiUrlBuilder';
 import { saveResourceMedia } from '@/lib/resourceMedia';
 import { imageResourceName } from '@/lib/imageResourceName';
 import * as utilsEditorActions from '@/utils/editorActions';
+import { logError } from '@/lib/errorDiagnostics';
 
 export interface UseEditorPasteOptions {
   editorRef: React.MutableRefObject<any>;
@@ -45,6 +45,14 @@ export interface UseEditorPasteReturn {
   isImageLikeFile: (file: File) => boolean;
 }
 
+/**
+ * ========================================================================================
+ * [함수명] useEditorPaste - 에디터 클립보드 붙여넣기(이미지·HTML 표·복합 문서·정제 텍스트) 전담 훅
+ *
+ * @param {UseEditorPasteOptions} options - 에디터 ref, 리소스 핸들, 텍스트 변환 및 토스트 콜백
+ * @returns {UseEditorPasteReturn} 붙여넣기 핸들러 및 이미지 삽입 유틸리티
+ * ==========================================================================================
+ */
 export function useEditorPaste({
   editorRef,
   lastSelectionRef,
@@ -62,8 +70,23 @@ export function useEditorPaste({
   parseHtmlTableToMarkdown,
   fixMarkdownTable,
 }: UseEditorPasteOptions): UseEditorPasteReturn {
+  /**
+   * ========================================================================================
+   * [함수명] insertImageMarkdown - 에디터 커서 위치에 마크다운 이미지 문법을 삽입합니다.
+   *
+   * @param {string} path - 삽입할 이미지 경로 또는 URL
+   * @returns {void}
+   * ==========================================================================================
+   */
   const insertImageMarkdown = (path: string) => {
     if (!editorRef.current) {
+      logError({
+        file: 'frontend/src/hooks/editor/useEditorPaste.ts',
+        func: 'insertImageMarkdown',
+        doing: '에디터 커서 위치에 이미지 마크다운 문법 삽입 중',
+        target: path,
+        error: new Error('editorRef.current is null'),
+      });
       showToast('에디터를 찾을 수 없어 이미지를 삽입할 수 없습니다.', 'error');
       return;
     }
@@ -80,7 +103,14 @@ export function useEditorPaste({
   };
 
 
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] dataUrlToBlob - Base64 Data URL 문자열을 Blob 객체로 변환합니다.
+   *
+   * @param {string} dataUrl - data:image/... 형식 문자열
+   * @returns {Blob} 변환된 이미지 Blob
+   * ==========================================================================================
+   */
   const dataUrlToBlob = (dataUrl: string): Blob => {
     const parts = dataUrl.split(',');
     const mimeMatch = parts[0].match(/:(.*?);/);
@@ -94,12 +124,29 @@ export function useEditorPaste({
     return new Blob([u8arr], { type: mime });
   };
 
+  /**
+   * ========================================================================================
+   * [함수명] isImageLikeFile - File 객체가 이미지 MIME 또는 이미지 확장자인지 판별합니다.
+   *
+   * @param {File} file - 검사할 파일 객체
+   * @returns {boolean} 이미지 파일 여부
+   * ==========================================================================================
+   */
   const isImageLikeFile = (file: File): boolean => {
     if (file.type && file.type.startsWith('image/')) return true;
     const ext = file.name ? file.name.toLowerCase().split('.').pop() : '';
     return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico', 'avif', 'tiff'].includes(ext || '');
   };
 
+  /**
+   * ========================================================================================
+   * [함수명] resolveClipboardImage - 클립보드 이벤트 및 네이티브/비동기 API에서 이미지 Blob을 추출합니다.
+   *
+   * @param {any} e - 클립보드 이벤트 객체
+   * @param {any} imageItemOrFile - DataTransferItem 또는 File 객체
+   * @returns {Promise<Blob | null>} 추출된 이미지 Blob (없으면 null)
+   * ==========================================================================================
+   */
   const resolveClipboardImage = async (e: any, imageItemOrFile: any): Promise<Blob | null> => {
       // 0) 이미 File/Blob 객체인 경우
       if (imageItemOrFile instanceof Blob || (typeof File !== 'undefined' && imageItemOrFile instanceof File)) {
@@ -176,14 +223,15 @@ export function useEditorPaste({
       return null;
     };
 
-    // ====================================================================
-    // 💡 [OMD-EDIT-MainEditorApp-0065] MainEditorApp.tsx 의 handleEditorPaste
-    // 📝 @KICK  : 붙여넣기 이벤트 처리: 이미지 업로드, HTML 표/복합 AI 문서 변환, 텍스트 정제
-    // 🛡️ @GUARD : AI 마크다운 복사 및 웹 문서(표+본문) 붙여넣기 시 표 외 텍스트 유실 원천 방어, 단일 표(엑셀) vs 복합 문서 분기
-    // 🚨 @PATCH : **2026-10-07** — AI 응답 및 웹 문서 마크다운 붙여넣기 시 표 외 텍스트 누락 결함 해결 (htmlToImportMarkdown 연동 및 단일 표/복합 문서 지능형 분기)
-    // 🔄 @CALLS : fetch, FileReader, htmlToImportMarkdown, parseHtmlTableToMarkdown, sanitizePastedText, fixMarkdownTable, insertAtCursor, updateContent, showToast
-    // ====================================================================
-    const handleEditorPaste = async (e: any) => {
+  /**
+   * ========================================================================================
+   * [함수명] handleEditorPaste - 붙여넣기 이벤트를 가로채어 이미지 업로드, HTML 표/복합 AI 문서 변환, 텍스트 정제를 수행합니다.
+   *
+   * @param {any} e - 클립보드 붙여넣기 이벤트 객체
+   * @returns {Promise<void>}
+   * ==========================================================================================
+   */
+  const handleEditorPaste = async (e: any) => {
     const items = e.clipboardData?.items;
     const files = e.clipboardData?.files;
     let hasText = false;
@@ -259,6 +307,13 @@ export function useEditorPaste({
         if (editorRef.current) updateContent(editorRef.current.getValue(), true);
         showToast('문서와 이미지를 붙여넣었습니다.', 'success');
       } catch (error) {
+        logError({
+          file: 'frontend/src/hooks/editor/useEditorPaste.ts',
+          func: 'handleEditorPaste',
+          doing: 'Base64 인라인 이미지가 포함된 HTML 문서를 리소스 폴더에 저장하고 마크다운으로 변환·삽입 중',
+          target: currentFileNode?.name || 'clipboard_html',
+          error,
+        });
         showToast(error instanceof Error ? error.message : '문서 붙여넣기에 실패했습니다.', 'error');
       }
       return;
@@ -415,6 +470,13 @@ export function useEditorPaste({
     if (textChanged) {
       const safeText=processedText.trim() ? processedText : textData;
       if (!insertAtCursor(safeText)) {
+        logError({
+          file: 'frontend/src/hooks/editor/useEditorPaste.ts',
+          func: 'handleEditorPaste',
+          doing: '정제된 클립보드 일반 텍스트를 에디터 커서 위치에 삽입 중',
+          target: currentFileNode?.name || 'clipboard_text',
+          error: new Error('insertAtCursor returned false'),
+        });
         showToast("텍스트를 삽입하지 못했습니다. 편집영역을 클릭한 뒤 다시 붙여넣어 주세요.", "error");
         return;
       }
@@ -425,38 +487,46 @@ export function useEditorPaste({
     }
   };
 
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0065] MainEditorApp.tsx ➔ handlePasteImageFile
-  // 🎯 @KICK  : 이미지 Blob/File을 받아 로컬(데스크탑) 또는 R2(웹)에 저장 후 에디터 커서 위치에 삽입
-  // 🛡️ @GUARD : FileReader onload/onerror 처리, 데스크탑/웹 분기, 동일 이미지 반복 삽입 100% 보장
-  // 🚨 @PATCH : **2026-10-02** 동일 이미지 반복 붙여넣기/드래그 차단 결함 완전 해결(해시 검사 및 타임스탬프 락 완전 소거)
-  // 🔗 @CALLS : fetch, FileReader, showToast
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] handlePasteImageFile - 이미지 Blob/File을 리소스 폴더(로컬/브라우저/드라이브)에 저장 후 커서 위치에 삽입합니다.
+   *
+   * @param {Blob} fileOrBlob - 저장할 이미지 Blob 또는 File
+   * @param {(path: string) => void} [onSaved=insertImageMarkdown] - 저장 완료 후 경로를 전달받을 콜백
+   * @returns {Promise<void>}
+   * ==========================================================================================
+   */
   const handlePasteImageFile = async (fileOrBlob: Blob, onSaved: (path: string) => void = insertImageMarkdown): Promise<void> => {
     try {
       const name = await imageResourceName(fileOrBlob);
       const path = await saveResourceMedia(fileOrBlob,name,resourceFolderHandle);
       onSaved(path);
       showToast('현재 리소스 폴더에 안전하게 저장했습니다.','success');
-    } catch(error) { showToast(error instanceof Error ? error.message : '이미지 저장 실패','error'); }
+    } catch(error) {
+      logError({
+        file: 'frontend/src/hooks/editor/useEditorPaste.ts',
+        func: 'handlePasteImageFile',
+        doing: '클립보드 또는 드롭된 이미지 파일을 리소스 폴더(media)에 저장 중',
+        target: (fileOrBlob as File)?.name || 'clipboard_image',
+        error,
+      });
+      showToast(error instanceof Error ? error.message : '이미지 저장 실패','error');
+    }
   };
   const handlePasteImageFileRef = useRef(handlePasteImageFile);
   handlePasteImageFileRef.current = handlePasteImageFile;
 
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0066] MainEditorApp.tsx ➔ insertWithR2Fallback
-  // 🎯 @KICK  : 데스크탑: 우선 R2 클라우드 업로드 시도, 실패 시 로컬 파일 시스템(assets/)에 fallback 저장
-  // 🛡️ @GUARD : R2 실패 시 api.saveImage 호출
-  // 🚨 @PATCH : 2026-07-06 우선 R2 클라우드 업로드 시도 후 실패 시 api.saveImage로 로컬 assets에 저장하도록 재설계
-  // 🔗 @CALLS : fetch, api.saveImage, showToast
-  // ====================================================================
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0031] MainEditorApp ➔ insertWithLocalSave
-  // 🎯 @KICK  : 데스크탑 이미지 붙여넣기 시 무조건 로컬(resourceFolder) 저장
-  // 🛡️ @GUARD : api.saveImage 실패 시 toast 안내
-  // 🚨 @PATCH : 2026-07-30 — R2 업로드 제거, 무조건 로컬 저장으로 단순화
-  // 🔗 @CALLS : api.saveImage, showToast
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] insertWithR2Fallback - 데스크톱 환경에서 이미지를 로컬 리소스 폴더에 저장하고 삽입합니다.
+   *
+   * @param {string} base64DataClean - Base64 인코딩된 이미지 문자열
+   * @param {string} targetFolder - 저장할 로컬 대상 폴더 경로
+   * @param {string} fileName - 저장할 파일명
+   * @param {(path: string) => void} [onSaved=insertImageMarkdown] - 저장 후 콜백
+   * @returns {Promise<void>}
+   * ==========================================================================================
+   */
   const insertWithR2Fallback = async (base64DataClean: string, targetFolder: string, fileName: string, onSaved: (path: string) => void = insertImageMarkdown) => {
     const api = (window as any).electronAPI;
     if (!api) return;
@@ -469,16 +539,25 @@ export function useEditorPaste({
       onSaved(finalPath);
       showToast('이미지가 로컬 폴더에 저장되었습니다.', 'success');
     } else {
+      logError({
+        file: 'frontend/src/hooks/editor/useEditorPaste.ts',
+        func: 'insertWithR2Fallback',
+        doing: 'Electron api.saveImage를 통한 로컬 폴더 이미지 저장 중',
+        target: fileName,
+        error: new Error(saveResult?.error || 'api.saveImage failed'),
+      });
       showToast('이미지 로컬 저장에 실패했습니다.', 'error');
     }
   };
 
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0067] MainEditorApp.tsx ➔ webUploadImage
-  // 🎯 @KICK  : 웹 브라우저: API를 통해 R2(또는 dev 로컬)에 이미지 업로드 후 에디터 삽입
-  // 🛡️ @GUARD : dev/production 엔드포인트 분기, JWT 인증
-  // 🔗 @CALLS : fetch, showToast
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] webUploadImage - 웹 브라우저 환경에서 API를 통해 이미지를 서버/R2에 업로드하고 삽입합니다.
+   *
+   * @param {string} base64Data - 업로드할 Base64 이미지 데이터
+   * @returns {Promise<void>}
+   * ==========================================================================================
+   */
   const webUploadImage = async (base64Data: string) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -498,24 +577,36 @@ export function useEditorPaste({
           insertImageMarkdown(data.relativePath);
           showToast(isDev ? '개발 환경: 로컬 assets 폴더에 저장되었습니다.' : '웹 환경: 클라우드 서버(R2)에 성공적으로 업로드되었습니다.', 'success');
         } else {
+          logError({
+            file: 'frontend/src/hooks/editor/useEditorPaste.ts',
+            func: 'webUploadImage',
+            doing: `웹 이미지 업로드 API(${uploadEndpoint}) 응답 검증 중`,
+            target: activeFilePath || 'web_upload',
+            error: new Error(data.error || 'Unknown upload response error'),
+          });
           showToast('이미지 업로드 실패: ' + (data.error || '알 수 없는 오류'), 'error');
         }
       } else {
+        logError({
+          file: 'frontend/src/hooks/editor/useEditorPaste.ts',
+          func: 'webUploadImage',
+          doing: `웹 이미지 업로드 API(${uploadEndpoint}) HTTP 요청 중`,
+          target: activeFilePath || 'web_upload',
+          error: new Error(`HTTP ${response.status}`),
+        });
         showToast(`서버 오류 발생 (${response.status})`, 'error');
       }
     } catch (err) {
-      console.error('[Web Upload Error]', err);
+      logError({
+        file: 'frontend/src/hooks/editor/useEditorPaste.ts',
+        func: 'webUploadImage',
+        doing: '웹 이미지 업로드 API 전송 중',
+        target: currentFileNode?.name || 'web_upload',
+        error: err,
+      });
       showToast('이미지 업로드 전송 중 네트워크 오류가 발생했습니다.', 'error');
     }
   };
-
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0068] MainEditorApp.tsx ➔ insertImageMarkdown
-  // 🎯 @KICK  : 에디터 커서 위치에 마크다운 이미지 문법 삽입 후 빈 줄 2행 추가 및 커서 이동
-  // 🛡️ @GUARD : editorRef.current null 체크, readOnly 우회
-  // 🚨 @PATCH : **2026-10-02** - insertMediaAtCursor에 updateContent 전달 및 insertAtCursor 안전 폴백 추가
-  // 🔗 @CALLS : insertMediaAtCursor(editorActions), updateContent
-  // ====================================================================
 
   return {
     handlePasteImageFile,

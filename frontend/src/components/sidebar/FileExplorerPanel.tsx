@@ -1,12 +1,14 @@
-// ====================================================================
-// 📊 [OMD-UI-FileExplorerPanel-0001] FileExplorerPanel.tsx ➔ 에디터 좌측 파일 탐색기 패널
-// 🎯 @KICK  : 워크스페이스 폴더 트리 탐색, 파일/폴더 CRUD(생성/수정/삭제/복사/이동), 외부 문서 가져오기
-// 🛡️ @GUARD : 브라우저 FSA, 로컬 VFS, 구글 드라이브(GDRIVE) 3대 환경 완벽 호환 및 실행 취소(Undo) 무결성 보장
-// 🚨 @PATCH : 2026-11-04 — [에디터 실행 시 탐색기 패널 자동 리프레시 보강]: 로컬/클라우드 드라이브(rootFolder) 연결 상태에서 탐색기 활성화 시 refreshFileList(true) 자동 실행 보장
-// 🚨 @PATCH : 2026-11-04 — [LeftSidebar 모듈화 분리]:
-//             1) LeftSidebar에서 파일 탐색기 트리, 워크스페이스 바, 파일/폴더 CRUD 및 컨텍스트 메뉴, 가져오기 로직을 독립 패널 컴포넌트로 분리 (Rule 3 준수)
-// 🔗 @CALLS : useEditorContext, FileTreeItem, PromptModal, NewDocumentModal, virtualFileSystem
-// ====================================================================
+/**
+ * ====================================================================
+ * 🏷️ 파일명 : FileExplorerPanel.tsx
+ * 🎭 역할(Role) : Core (핵심 도메인 뷰 — 좌측 사이드바 파일 탐색기 패널)
+ * 🎯 주요기능 : 워크스페이스 폴더 트리 탐색, 파일/폴더 CRUD(생성/수정/삭제/복사/이동), 실행 취소(Undo), 외부 문서 가져오기
+ * 🚨 @PATCH : 2026-11-04 — [에디터 실행 시 탐색기 패널 자동 리프레시 보강 & 주석/에러 표준화]
+ *             1) 로컬/클라우드 드라이브(rootFolder) 연결 상태에서 탐색기 활성화 시 refreshFileList(true) 자동 실행 보장
+ *             2) 1·2단계 표준 주석 및 모든 파일/폴더/가져오기 예외 경로에 logError/logWarn 적용 (규칙 3 Core 역할 준수)
+ * 🚨 @PATCH : 2026-11-04 — [LeftSidebar 모듈화 분리] LeftSidebar에서 파일 탐색기 트리, 워크스페이스 바, 파일/폴더 CRUD 및 컨텍스트 메뉴, 가져오기 로직을 독립 패널 컴포넌트로 분리
+ * ====================================================================
+ */
 // @ts-nocheck
 "use client";
 
@@ -26,6 +28,7 @@ import { vfsRename, vfsCopyItem, vfsMoveItem } from '@/lib/virtualFileSystem';
 import { getApiUrl } from '@/lib/apiUrlBuilder';
 import PromptModal from '@/components/PromptModal';
 import { Icon } from '@/components/icons/Icon';
+import { logError, logWarn } from '@/lib/errorDiagnostics';
 import { msg } from '@/lib/systemMessages';
 import { useUIStore } from '@/store/useUIStore';
 import { useEditorContext } from '@/context/EditorContext';
@@ -90,6 +93,14 @@ interface FileExplorerPanelProps {
   isDarkMode: boolean;
 }
 
+/**
+ * ========================================================================================
+ * [컴포넌트명] FileExplorerPanel - 좌측 사이드바 워크스페이스 파일 탐색기 패널
+ *
+ * @param {FileExplorerPanelProps} props - 탭 활성화 여부(isActive) 및 다크모드 상태(isDarkMode)
+ * @returns {JSX.Element} 파일 탐색기 패널 뷰
+ * ==========================================================================================
+ */
 export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorerPanelProps) {
   const {
     isSearchOpen, setIsSearchOpen,
@@ -120,7 +131,13 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
         await connectGoogleDrive(false);
       }
     } catch (err: any) {
-      console.error('[handleReconnectDrive Error]', err);
+      logError({
+        file: 'frontend/src/components/sidebar/FileExplorerPanel.tsx',
+        func: 'handleReconnectDrive',
+        doing: '만료된 구글 드라이브 세션을 재연결하는 작업',
+        target: rootFolder?.name || 'GDRIVE',
+        error: err
+      });
       showToast?.(err?.message || '구글 드라이브 재접속에 실패했습니다.', 'error');
     } finally {
       setIsReconnectingDrive(false);
@@ -532,6 +549,13 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
         }));
         showToast(`'${name}'을(를) 원래 위치로 되돌렸습니다.`, 'success');
       } catch (err: any) {
+        logError({
+          file: 'frontend/src/components/sidebar/FileExplorerPanel.tsx',
+          func: 'handleUndoMove',
+          doing: '이동된 파일/폴더를 원래 위치로 되돌리는(Undo) 작업',
+          target: destPath || name,
+          error: err
+        });
         showToast(`이동 되돌리기 실패: ${err.message || err}`, 'error');
         history.push(lastAction);
         setHasUndoableMove(true);
@@ -633,6 +657,13 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
           showToast(`삭제되었던 '${name}'을(를) 탐색기에 복원했습니다.`, 'success');
         }
       } catch (err: any) {
+        logError({
+          file: 'frontend/src/components/sidebar/FileExplorerPanel.tsx',
+          func: 'handleUndoMove',
+          doing: '삭제된 파일/폴더를 복원하는(Undo) 작업',
+          target: path || name,
+          error: err
+        });
         showToast(`삭제 되돌리기 실패: ${err.message || err}`, 'error');
         history.push(lastAction);
         setHasUndoableMove(true);
@@ -1113,6 +1144,13 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
         return;
       }
     } catch (e: any) {
+      logError({
+        file: 'frontend/src/components/sidebar/FileExplorerPanel.tsx',
+        func: 'handlePasteNode',
+        doing: `클립보드의 파일/폴더를 대상 경로로 ${isCut ? '이동' : '붙여넣기'}하는 작업`,
+        target: destDirPath || srcNode.name,
+        error: e
+      });
       showToast((isCut ? '이동' : '붙여넣기') + ' 실패: ' + (e.message || e), 'error');
     }
   }, [clipboardNode, rootFolder, workspaceType, showToast, refreshFileList, dispatchMovedEvent]);
@@ -1256,7 +1294,16 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
         });
         if (selected) chooseImportDestination(await readDriveImportFile(selected.token || token, selected));
       } catch (error: any) {
-        if (error?.name !== 'AbortError') showToast(error?.message || '웹드라이브 파일을 가져오지 못했습니다.', 'error');
+        if (error?.name !== 'AbortError') {
+          logError({
+            file: 'frontend/src/components/sidebar/FileExplorerPanel.tsx',
+            func: 'openImportPicker',
+            doing: '구글 드라이브에서 가져올 파일을 선택 및 로드하는 작업',
+            target: 'GDRIVE_IMPORT',
+            error
+          });
+          showToast(error?.message || '웹드라이브 파일을 가져오지 못했습니다.', 'error');
+        }
       } finally {
         prepared?.close();
         selectingImportRef.current = false;
@@ -1271,7 +1318,16 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
         const bytes = await api.readTransferFile(selected.path);
         chooseImportDestination(new File([bytes], selected.name));
       } catch (error: any) {
-        if (error?.name !== 'AbortError') showToast(error?.message || '파일 선택창을 열지 못했습니다.', 'error');
+        if (error?.name !== 'AbortError') {
+          logError({
+            file: 'frontend/src/components/sidebar/FileExplorerPanel.tsx',
+            func: 'openImportPicker',
+            doing: '데스크톱 파일 선택 대화상자로 가져올 문서를 읽는 작업',
+            target: start.localPath || 'LOCAL_IMPORT',
+            error
+          });
+          showToast(error?.message || '파일 선택창을 열지 못했습니다.', 'error');
+        }
       }
       return;
     }
@@ -1294,6 +1350,13 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
       chooseImportDestination(file);
     } catch (error: any) {
       if (error?.name !== 'AbortError') {
+        logError({
+          file: 'frontend/src/components/sidebar/FileExplorerPanel.tsx',
+          func: 'openImportPicker',
+          doing: '브라우저 showOpenFilePicker로 가져올 문서를 선택하는 작업',
+          target: 'BROWSER_IMPORT',
+          error
+        });
         showToast(error?.message || '파일 선택창을 열지 못했습니다.', 'error');
       }
     }
@@ -1657,6 +1720,13 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
         }
       }
     } catch (e) {
+      logError({
+        file: 'frontend/src/components/sidebar/FileExplorerPanel.tsx',
+        func: 'handleDropRoot',
+        doing: '드래그 앤 드롭한 항목을 최상위 루트 폴더로 이동하는 작업',
+        target: sourcePath || sourceName,
+        error: e
+      });
       showToast("이동 실패: " + e, 'error');
     }
   };
@@ -1672,13 +1742,13 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
     return () => window.removeEventListener('TRIGGER_IMPORT', handleTriggerImport);
   }, [isRestrictedUser, openImportPicker]);
 
-// ====================================================================
-// 📊 [OMD-FILE-LeftSidebar-0006] LeftSidebar ➔ onPromptConfirm
-// 🎯 @KICK  : PromptModal 확인 시 파일/폴더 생성 (브라우저/로컬/LocalStorage VFS 대응)
-// 🛡️ @GUARD : 이름 중복 체크 후 중복 시 에러 메시지 재표시
-// 🚨 @PATCH : 없음
-// 🔗 @CALLS : refreshFileList, openFile, vfsCreateFile, vfsCreateFolder, fetch, api.createFile, api.createFolder
-// ====================================================================
+  /**
+   * ==== [onPromptConfirm] ====
+   * 🎯 역할 : PromptModal 확인 시 루트 워크스페이스에 새 파일(.md/.bib) 또는 새 폴더 생성
+   * 📥 파라미터 :
+   *   - name (string) : 생성할 파일 또는 폴더 이름
+   * 📤 반환값 : Promise<void>
+   */
   const onPromptConfirm = async (name: string) => {
     const type = promptConfig.type;
     setPromptConfig({ ...promptConfig, isOpen: false });
@@ -1750,7 +1820,16 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
             openFile({ name: finalName, kind: 'file', path: finalName });
           }
         }
-      } catch(e) { showToast("생성 실패: " + e, 'error'); }
+      } catch(e) {
+        logError({
+          file: 'frontend/src/components/sidebar/FileExplorerPanel.tsx',
+          func: 'onPromptConfirm',
+          doing: '루트 워크스페이스에 새 마크다운 파일을 생성하는 작업',
+          target: finalName,
+          error: e
+        });
+        showToast("생성 실패: " + e, 'error');
+      }
     } else if (type === 'createFolder') {
       // 중복 체크
       if (fileList.some((c: any) => c.name.toLowerCase() === name.toLowerCase())) {
@@ -1794,7 +1873,16 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
         }
         await refreshFileList();
         window.dispatchEvent(new CustomEvent('file:refresh-all-directories'));
-      } catch(e) { showToast("생성 실패: " + e, 'error'); }
+      } catch(e) {
+        logError({
+          file: 'frontend/src/components/sidebar/FileExplorerPanel.tsx',
+          func: 'onPromptConfirm',
+          doing: '루트 워크스페이스에 새 폴더를 생성하는 작업',
+          target: name,
+          error: e
+        });
+        showToast("생성 실패: " + e, 'error');
+      }
     }
   };
 
@@ -1857,7 +1945,13 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
                 return `/media/${encodeURIComponent(uploaded.name)}?driveId=${encodeURIComponent(uploaded.id)}`;
               }
             } catch (gErr) {
-              console.error('[LeftSidebar GDrive upload error]', gErr);
+              logError({
+                file: 'frontend/src/components/sidebar/FileExplorerPanel.tsx',
+                func: 'handleImportFile.imageSaveCallback',
+                doing: '가져온 문서 내부 이미지를 구글 드라이브 미디어 폴더에 업로드하는 작업',
+                target: imgName,
+                error: gErr
+              });
               throw new Error('가져온 이미지를 구글 드라이브에 저장하지 못했습니다. 연결 상태를 확인해 주세요.');
             }
           }
@@ -2024,6 +2118,13 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
       }
       showToast(`'${file.name}' 문서가 성공적으로 변환되었습니다.`, 'success');
     } catch (error: any) {
+      logError({
+        file: 'frontend/src/components/sidebar/FileExplorerPanel.tsx',
+        func: 'handleImportFile',
+        doing: '외부 문서(DOCX/HWP/PDF/EPUB 등)를 마크다운으로 변환하여 저장하는 작업',
+        target: file.name,
+        error
+      });
       showToast(error.message || '파일을 변환하는 중 오류가 발생했습니다.', 'error');
     } finally {
       setIsImporting(false);
@@ -2033,24 +2134,16 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
     e.target.value = '';
   };
 
-// ====================================================================
-// 📊 [OMD-FILE-LeftSidebar-0005] LeftSidebar ➔ useEffect (isDesktop)
-// 🎯 @KICK  : 클라이언트 환경이 데스크톱(electron)인지 감지하여 isDesktop 상태 설정
-// 🛡️ @GUARD : 없음
-// 🚨 @PATCH : 없음
-// 🔗 @CALLS : setIsDesktop
-// ====================================================================
   useEffect(() => {
     setIsDesktop(typeof window !== 'undefined' && !!(window as any).electronAPI);
   }, []);
 
-// ====================================================================
-// 📊 [OMD-FILE-LeftSidebar-0004] LeftSidebar ➔ fetchDrives
-// 🎯 @KICK  : electronAPI 또는 REST API를 통해 시스템 드라이브 목록 조회
-// 🛡️ @GUARD : api 존재 여부에 따라 분기 처리
-// 🚨 @PATCH : 없음
-// 🔗 @CALLS : api.getDrives, fetch, msg.warn
-// ====================================================================
+  /**
+   * ==== [fetchDrives] ====
+   * 🎯 역할 : electronAPI 또는 REST API를 통해 시스템 드라이브 목록 조회
+   * 📥 파라미터 : 없음
+   * 📤 반환값 : Promise<void>
+   */
   const fetchDrives = async () => {
     setIsDrivesLoading(true);
     try {
@@ -2065,19 +2158,19 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
         }
       }
     } catch (err) {
+      logWarn({
+        file: 'frontend/src/components/sidebar/FileExplorerPanel.tsx',
+        func: 'fetchDrives',
+        doing: '시스템 로컬 드라이브 목록을 조회하는 작업',
+        target: '/api/drives',
+        error: err
+      });
       msg.warn('드라이브 목록 조회 실패', err);
     } finally {
       setIsDrivesLoading(false);
     }
   };
 
-// ====================================================================
-// 📊 [OMD-FILE-LeftSidebar-0003] LeftSidebar ➔ useEffect (drives fetch)
-// 🎯 @KICK  : 탐색기 탭이 활성화되고 데스크톱 환경일 때 드라이브 목록 자동 조회
-// 🛡️ @GUARD : sidebarTab === 'explorer' && isDesktop 조건 검사
-// 🚨 @PATCH : 없음
-// 🔗 @CALLS : fetchDrives
-// ====================================================================
   useEffect(() => {
     if (sidebarTab === 'explorer' && isDesktop) {
       fetchDrives();
@@ -2099,13 +2192,13 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
     }
   }, [isActive, rootFolder, refreshFileList]);
 
-// ====================================================================
-// 📊 [OMD-FILE-LeftSidebar-0002] LeftSidebar ➔ handleLazyLoad
-// 🎯 @KICK  : FileSystem API 또는 로컬 API로 폴더 내 .md 파일 목록을 지연 로딩
-// 🛡️ @GUARD : 파일 확장자가 .md/.markdown인 경우만 포함, NotFoundError 예외 억제 및 자동 정리
-// 🚨 @PATCH : **2026-09-16** — [삭제/이동된 폴더 NotFoundError 콘솔 경고 억제 및 onrivi_expanded_paths 자동 소거]: 폴더가 삭제되거나 이동되어 File System Access API에서 NotFoundError 발생 시 경고 스팸을 차단하고 localStorage 경로를 정리한 뒤 NotFoundError 예외를 전달하여 상위 컴포넌트가 트리를 즉시 정리하도록 보강
-// 🔗 @CALLS : fetch, getVfsFiles, listDirectory
-// ====================================================================
+  /**
+   * ==== [handleLazyLoad] ====
+   * 🎯 역할 : 하위 폴더 확장 시 Google Drive, 브라우저 FSA, VFS, Electron IPC 중 현재 환경에 맞춰 자식 노드 목록을 지연 로딩
+   * 📥 파라미터 :
+   *   - node (FileNode) : 지연 로딩할 대상 디렉터리 노드
+   * 📤 반환값 : Promise<FileNode[]> (하위 파일/폴더 노드 배열)
+   */
   const handleLazyLoad = async (node: FileNode): Promise<FileNode[]> => {
     try {
       // ☁️ [Google Drive 하위 폴더 지연 로딩]
@@ -2191,6 +2284,13 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
         }
         throw err;
       }
+      logWarn({
+        file: 'frontend/src/components/sidebar/FileExplorerPanel.tsx',
+        func: 'handleLazyLoad',
+        doing: '하위 폴더의 파일/디렉터리 목록을 지연 로딩하는 작업',
+        target: node.path || node.name,
+        error: err
+      });
       msg.warn('폴더 목록 조회 실패', err);
       return [];
     }

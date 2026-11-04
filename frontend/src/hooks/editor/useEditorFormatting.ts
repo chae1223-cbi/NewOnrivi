@@ -2,7 +2,8 @@
 // 📊 [OMD-HOOK-useEditorFormatting] frontend/src/hooks/editor/useEditorFormatting.ts
 // 🎯 @KICK  : Monaco 텍스트 삽입·서식 조작(접두사/감싸기/블록 태그/링크), 표 변환·붙여넣기 정제 위임, 문서 미디어 교체·편집, 날짜 삽입, AI 초안 적용을 담당하는 서식 조작 훅
 // 🛡️ @GUARD : 위지윅 수식 삽입 대기(visualFormulaInsertRef) 우선 처리, 활성 탭/원본 범위 불일치 시 미디어 교체 차단, 제한 사용자 편집 차단
-// 🚨 @PATCH : **2026-11-04** — [MainEditorApp 모듈화]: insertAtCursor, scrollToLine, insertBlockTag, wrapSelection, insertLink, parseHtmlTableToMarkdown, sanitizePastedText, fixMarkdownTable, replaceDocumentMedia, editDocumentMedia, applyLinePrefix, removePrefix, quickWrap, handleInsertFormattedDate, handleAIDraftApply를 MainEditorApp.tsx에서 분리 위임 (동작 변경 없음)
+// 🚨 @PATCH : 2026-11-04 — [주석 표준화] 내부 함수 2단계 JSDoc 표준화 및 식별 배너 파일명 최신화
+//             2026-11-04 — [MainEditorApp 모듈화]: insertAtCursor, scrollToLine, insertBlockTag, wrapSelection, insertLink, parseHtmlTableToMarkdown, sanitizePastedText, fixMarkdownTable, replaceDocumentMedia, editDocumentMedia, applyLinePrefix, removePrefix, quickWrap, handleInsertFormattedDate, handleAIDraftApply를 MainEditorApp.tsx에서 분리 위임 (동작 변경 없음)
 // 🔗 @CALLS : utilsEditorActions, utilsPasteHandlers, mediaSourceRange, visualImageDetails
 // ====================================================================
 
@@ -73,13 +74,14 @@ export function useEditorFormatting(props: UseEditorFormattingProps) {
     setIsAIDraftModalOpen,
   } = props;
 
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0048] MainEditorApp.tsx ➔ insertAtCursor
-  // 🎯 @KICK  : 커서 위치 텍스트 삽입을 utilsEditorActions에 위임
-  // 🛡️ @GUARD : None
-  // 🚨 @PATCH : None
-  // 🔗 @CALLS : utilsEditorActions.insertAtCursor
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] insertAtCursor - 커서 위치 텍스트 삽입을 수행합니다 (수식 삽입 대기 콜백 우선 처리).
+   *
+   * @param {string} text - 삽입할 텍스트
+   * @returns {boolean} 삽입 성공 여부
+   * ==========================================================================================
+   */
   const insertAtCursor = useCallback((text: string) => {
     if (visualFormulaInsertRef.current) {
       visualFormulaInsertRef.current(text);
@@ -121,48 +123,66 @@ export function useEditorFormatting(props: UseEditorFormattingProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showToast, insertAtCursor]);
 
-  // ====================================================================
-  // 📊 [OMD-CORE-MainEditorApp-0049] MainEditorApp.tsx ➔ findLineNumberByHeading
-  // 🎯 @KICK  : 제목 줄 검색을 utilsEditorActions에 위임
-  // 🔗 @CALLS : utilsEditorActions.findLineNumberByHeading
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] findLineNumberByHeading - 마크다운 본문에서 특정 제목 텍스트가 위치한 행 번호를 검색합니다.
+   *
+   * @param {string} content - 마크다운 원문
+   * @param {string} heading - 찾을 제목 텍스트
+   * @returns {number} 1-based 행 번호
+   * ==========================================================================================
+   */
   const findLineNumberByHeading = (content: string, heading: string): number => {
     return utilsEditorActions.findLineNumberByHeading(content, heading);
   };
 
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0050] MainEditorApp.tsx ➔ scrollToLine
-  // 🎯 @KICK  : 에디터 특정 줄로 스크롤을 utilsEditorActions에 위임
-  // 🔗 @CALLS : utilsEditorActions.scrollToLine
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] scrollToLine - Monaco 에디터를 지정한 행 번호로 스크롤 및 포커스 이동시킵니다.
+   *
+   * @param {number} lineNumber - 이동할 대상 행 번호
+   * @returns {void}
+   * ==========================================================================================
+   */
   const scrollToLine = (lineNumber: number) => {
     utilsEditorActions.scrollToLine(editorRef, lineNumber);
   };
 
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0052] MainEditorApp.tsx ➔ insertBlockTag
-  // 🎯 @KICK  : 블록 태그 감싸기를 utilsEditorActions에 위임
-  // 🔗 @CALLS : utilsEditorActions.insertBlockTag
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] insertBlockTag - 선택 영역을 블록 시작/종료 태그로 감쌉니다.
+   *
+   * @param {string} startTag - 시작 태그
+   * @param {string} endTag - 종료 태그
+   * @param {string} [defaultText=''] - 선택 영역이 없을 때 삽입할 기본 텍스트
+   * @returns {void}
+   * ==========================================================================================
+   */
   const insertBlockTag = (startTag: string, endTag: string, defaultText: string = "") => {
     utilsEditorActions.insertBlockTag(editorRef, startTag, endTag, defaultText);
   };
 
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0053] MainEditorApp.tsx ➔ wrapSelection
-  // 🎯 @KICK  : 선택 영역 감싸기/풀기를 utilsEditorActions에 위임
-  // 🔗 @CALLS : utilsEditorActions.wrapSelection
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] wrapSelection - 선택 영역을 인라인 서식 기호(예: **, *, ~~)로 감싸거나 해제합니다.
+   *
+   * @param {string} before - 앞쪽 감싸기 기호
+   * @param {string} [after=before] - 뒤쪽 감싸기 기호
+   * @param {string} [defaultText=''] - 기본 텍스트
+   * @returns {void}
+   * ==========================================================================================
+   */
   const wrapSelection = (before: string, after: string = before, defaultText: string = "") => {
     utilsEditorActions.wrapSelection(editorRef, lastSelectionRef, before, after, defaultText);
   };
 
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0054] MainEditorApp.tsx ➔ insertLink
-  // 🎯 @KICK  : 커서에 마크다운 링크 삽입, URL 플레이스홀더 텍스트 자동 선택
-  // 🛡️ @GUARD : 현재 선택이 비어있으면 lastSelectionRef 사용; 선택 텍스트와 빈 경우 모두 처리
-  // 🔗 @CALLS : editor.focus, editor.getSelection, editor.executeEdits, editor.setSelection
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] insertLink - 커서 위치에 마크다운 링크 문법을 삽입하고 URL 입력 위치를 선택합니다.
+   *
+   * @returns {void}
+   * ==========================================================================================
+   */
   const insertLink = () => {
     if (!editorRef.current) return;
     const editor = editorRef.current;
@@ -220,39 +240,52 @@ export function useEditorFormatting(props: UseEditorFormattingProps) {
     }
   };
 
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0061] MainEditorApp.tsx ➔ parseHtmlTableToMarkdown
-  // 🎯 @KICK  : HTML 표를 마크다운으로 변환하는 작업을 paste handlers에 위임
-  // 🔗 @CALLS : utilsPasteHandlers.parseHtmlTableToMarkdown
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] parseHtmlTableToMarkdown - HTML 표 마크업을 GFM 마크다운 표로 변환합니다.
+   *
+   * @param {string} html - HTML 문자열
+   * @returns {string} 변환된 마크다운 표 문자열
+   * ==========================================================================================
+   */
   const parseHtmlTableToMarkdown = (html: string) => {
     return utilsPasteHandlers.parseHtmlTableToMarkdown(html, showToast);
   };
 
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0062] MainEditorApp.tsx ➔ sanitizePastedText
-  // 🎯 @KICK  : 붙여넣기 텍스트 정제를 paste handlers에 위임
-  // 🔗 @CALLS : utilsPasteHandlers.sanitizePastedText
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] sanitizePastedText - 붙여넣은 텍스트의 불필요한 공백 및 TSV 표를 정제합니다.
+   *
+   * @param {string} text - 원본 텍스트
+   * @param {boolean} [skipTsvConversion=false] - TSV 표 자동 변환 생략 여부
+   * @returns {string} 정제된 텍스트
+   * ==========================================================================================
+   */
   const sanitizePastedText = (text: string, skipTsvConversion = false) => {
     return utilsPasteHandlers.sanitizePastedText(text, skipTsvConversion);
   };
 
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0063] MainEditorApp.tsx ➔ fixMarkdownTable
-  // 🎯 @KICK  : 마크다운 표 수정을 paste handlers에 위임
-  // 🔗 @CALLS : utilsPasteHandlers.fixMarkdownTable
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] fixMarkdownTable - 깨진 마크다운 표 구분선 및 열 개수를 자동 보정합니다.
+   *
+   * @param {string} text - 마크다운 텍스트
+   * @returns {string} 보정된 마크다운 텍스트
+   * ==========================================================================================
+   */
   const fixMarkdownTable = (text: string) => {
     return utilsPasteHandlers.fixMarkdownTable(text);
   };
 
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0064.1] MainEditorApp.tsx ➔ replaceDocumentMedia / editDocumentMedia
-  // 🎯 @KICK  : 미리보기에서 선택한 이미지/영상/지도 원본 코드를 찾아 교체하거나 편집 모달을 엽니다
-  // 🛡️ @GUARD : 활성 탭 ID 또는 원본 범위 텍스트가 달라졌으면 교체 거부; 제한 사용자 편집 차단
-  // 🔗 @CALLS : mediaSourceRange, visualImageDetails
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] replaceDocumentMedia - 문서 내 지정된 원본 미디어 코드 범위를 새 마크다운 코드로 교체합니다.
+   *
+   * @param {any} range - 원본 미디어 범위 정보 (documentId, from, to, source)
+   * @param {string} code - 교체할 새 마크다운 코드
+   * @returns {boolean} 교체 성공 여부
+   * ==========================================================================================
+   */
   const replaceDocumentMedia = (range: any, code: string) => {
     if (range.documentId !== activeTabIdRef.current || contentRef.current.slice(range.from,range.to) !== range.source) return false;
     const next = contentRef.current.slice(0,range.from) + code.trim() + contentRef.current.slice(range.to);
@@ -260,6 +293,17 @@ export function useEditorFormatting(props: UseEditorFormattingProps) {
     setTabs(previous=>previous.map(tab=>tab.id===range.documentId?{...tab,content:next,isModified:true}:tab));
     return true;
   };
+
+  /**
+   * ========================================================================================
+   * [함수명] editDocumentMedia - 미리보기에서 선택한 이미지·영상·지도 원본 범위를 찾아 편집 모달을 엽니다.
+   *
+   * @param {'image' | 'video' | 'map'} kind - 미디어 종류
+   * @param {string} path - 미디어 경로 또는 URL
+   * @param {number} line - 문서 행 번호
+   * @returns {void}
+   * ==========================================================================================
+   */
   const editDocumentMedia = (kind:'image'|'video'|'map',path:string,line:number) => {
     if (isRestrictedUser) return;
     const found = mediaSourceRange(contentRef.current,kind,path,line);
@@ -286,39 +330,53 @@ export function useEditorFormatting(props: UseEditorFormattingProps) {
     }
   };
 
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0065] MainEditorApp.tsx ➔ applyLinePrefix & removePrefix
-  // 🎯 @KICK  : 선택된 줄 접두사 서식 적용 및 서식 제거를 utilsEditorActions에 위임
-  // 🚨 @PATCH : 2026-11-04 - [MainEditorApp 모듈화] 440줄 Monaco 서식 조작부를 utilsEditorActions로 위임
-  // 🔗 @CALLS : utilsEditorActions.applyLinePrefix, utilsEditorActions.removePrefix
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] applyLinePrefix - 선택한 줄들에 목록·인용문·체크리스트·제목(H1~H6) 접두사 서식을 적용합니다.
+   *
+   * @param {'orderedList' | 'list' | 'quote' | 'check' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6'} prefixType - 접두사 종류
+   * @param {string} [alertType] - 인용문 알림 타입 (NOTE, TIP 등)
+   * @returns {void}
+   * ==========================================================================================
+   */
   const applyLinePrefix = useCallback((prefixType: 'orderedList' | 'list' | 'quote' | 'check' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6', alertType?: string) => {
     utilsEditorActions.applyLinePrefix(editorRef, lastSelectionRef, prefixType, alertType);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /**
+   * ========================================================================================
+   * [함수명] removePrefix - 선택한 줄들의 마크다운 블록/인라인 서식 기호를 제거합니다.
+   *
+   * @returns {void}
+   * ==========================================================================================
+   */
   const removePrefix = useCallback(() => {
     utilsEditorActions.removePrefix(editorRef, lastSelectionRef);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0069] MainEditorApp.tsx ➔ quickWrap
-  // 🎯 @KICK  : 빠른 서식 감싸기를 utilsEditorActions에 위임
-  // 🚨 @PATCH : 2026-11-04 - [MainEditorApp 모듈화] utilsEditorActions로 위임
-  // 🔗 @CALLS : utilsEditorActions.quickWrap
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] quickWrap - 선택한 영역에 빠른 블록 변환(H1~H3, 인용문, 코드블록)을 적용합니다.
+   *
+   * @param {'h1' | 'h2' | 'h3' | 'quote' | 'code'} format - 변환 서식 종류
+   * @returns {void}
+   * ==========================================================================================
+   */
   const quickWrap = useCallback((format: 'h1' | 'h2' | 'h3' | 'quote' | 'code') => {
     utilsEditorActions.quickWrap(editorRef, lastSelectionRef, format);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0070.1] MainEditorApp.tsx ➔ handleInsertFormattedDate
-  // 🎯 @KICK  : 선택한 날짜/시간 서식 문자열을 위지윅 편집기 또는 Monaco 커서 위치에 삽입
-  // 🛡️ @GUARD : 위지윅 편집기가 활성화된 경우 visualCommandRef 우선 사용
-  // 🔗 @CALLS : visualCommandRef, insertAtCursor
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] handleInsertFormattedDate - 포맷된 날짜/시간 문자열을 위지윅 또는 Monaco 커서 위치에 삽입합니다.
+   *
+   * @param {string} formattedDate - 삽입할 날짜/시간 문자열
+   * @returns {void}
+   * ==========================================================================================
+   */
   const handleInsertFormattedDate = useCallback((formattedDate: string) => {
     if (previewRef.current?.querySelector('.visual-document-editor') && visualCommandRef.current) {
       visualCommandRef.current('INSERT_TEXT:' + formattedDate);
@@ -328,12 +386,16 @@ export function useEditorFormatting(props: UseEditorFormattingProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [insertAtCursor]);
 
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0075] MainEditorApp.tsx ➔ handleAIDraftApply
-  // 🎯 @KICK  : AI 초안 모달 결과를 삽입/교체/덧붙이기 방식으로 Monaco 본문에 반영
-  // 🛡️ @GUARD : Monaco 모델/전역 객체 미존재 시 편집 생략; executeEdits로 Ctrl+Z 실행취소 보장
-  // 🔗 @CALLS : editor.executeEdits, updateContent, showToast
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] handleAIDraftApply - AI 초안 모달의 결과물을 삽입·교체·덧붙이기 방식으로 본문에 반영합니다.
+   *
+   * @param {string} draftContent - 반영할 AI 생성 마크다운 텍스트
+   * @param {'insert' | 'replace' | 'append'} action - 반영 방식
+   * @param {'selection' | 'document' | 'none'} [scope='none'] - 적용 범위
+   * @returns {void}
+   * ==========================================================================================
+   */
   const handleAIDraftApply = (draftContent: string, action: 'insert' | 'replace' | 'append', scope: 'selection' | 'document' | 'none' = 'none') => {
     setIsAIDraftModalOpen(false); // Close modal
 

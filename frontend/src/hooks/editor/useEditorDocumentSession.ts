@@ -1,17 +1,12 @@
-/**
- * 프로그램명 : OnriviAuthor
- * 파일명     : frontend/src/hooks/editor/useEditorDocumentSession.ts
- * 용도       : 에디터 탭 세션 복원, 자동 저장, 외부 파일 열기(OS 연동) 전담 훅
- * 작성일     : 2026-11-04
- * 
- * 🚨 @PATCH : **2026-11-04** — [isElectron 판별식 정정] const isElectron = Boolean(api)로 정정하여 웹 브라우저 환경에서 세션 복원 조기 반환 결함 방어
- * 🚨 @PATCH : **2026-11-04** — [MainEditorApp 모듈화] 세션 복원 및 외부 파일 오픈 파이프라인을 useEditorDocumentSession 훅으로 분리 위임
- *             1) restoreSessionTabs: 이전 세션 탭 목록 일괄 복원 및 Monaco 모델 바인딩 분리
- *             2) openExternalFile: OS 더블클릭/외부 파일 오픈 및 탭 자동 생성/포커스 분리
- *             3) electronAPI_listeners: Electron 메인 프로세스 IPC(더블클릭 파일 수신, 최초 세션 복구) 분리
- *             4) cross_platform_session_restore: 웹(웹드라이브 연결 시점 대기) 및 데스크톱 로컬 세션 복원 분리
- *             5) session_auto_save & beforeunload_safety_flush: 탭 세션 실시간 저장 및 브라우저 종료 직전 긴급 플러시 분리
- */
+// ====================================================================
+// 📊 [OMD-HOOK-useEditorDocumentSession] frontend/src/hooks/editor/useEditorDocumentSession.ts
+// 🎯 @KICK  : 에디터 탭 세션 복원, 자동 저장, 외부 파일 열기(OS 연동) 전담 훅
+// 🛡️ @GUARD : 비인증 사용자 복원 제한, 디스크 삭제 파일 예외 방어, 웹/데스크톱 플랫폼별 세션 동기화
+// 🚨 @PATCH : 2026-11-04 — [표준화 및 에러 처리 강화] openExternalFile logError 선제 기록 추가 및 1·2단계 주석 표준화
+//             2026-11-04 — [isElectron 판별식 정정] const isElectron = Boolean(api)로 정정하여 웹 브라우저 환경에서 세션 복원 조기 반환 결함 방어
+//             2026-11-04 — [MainEditorApp 모듈화] 세션 복원 및 외부 파일 오픈 파이프라인을 useEditorDocumentSession 훅으로 분리 위임
+// 🔗 @CALLS : captureEditorSession, readEditorSession, matchesSessionTab, hasValidDriveToken, logError, logWarn
+// ====================================================================
 
 import { useState, useRef, useEffect, MutableRefObject, Dispatch, SetStateAction } from 'react';
 import { EditorTab } from '@/components/UnifiedTabBar';
@@ -75,6 +70,14 @@ export interface UseEditorDocumentSessionReturn {
   openExternalFile: (filePath: string) => Promise<void>;
 }
 
+/**
+ * ========================================================================================
+ * [함수명] useEditorDocumentSession - 에디터 탭 세션 복원, 실시간 자동 저장 및 외부 파일 열기 훅
+ *
+ * @param {UseEditorDocumentSessionOptions} options - 탭 상태, 파일 열기 핸들러 및 드라이브/로컬 워크스페이스 상태
+ * @returns {UseEditorDocumentSessionReturn} 세션 준비 상태 및 세션 복원/외부 파일 열기 함수
+ * ==========================================================================================
+ */
 export function useEditorDocumentSession({
   mounted,
   tabs,
@@ -114,12 +117,18 @@ export function useEditorDocumentSession({
   const [desktopSessionReady, setDesktopSessionReady] = useState(false);
   const initialSessionCheckedRef = useRef(false);
 
-  // ====================================================================
-  // 📊 [OMD-FILE-MainEditorApp-0043] restoreSessionTabs
-  // 🎯 @KICK  : 앱 재시작 시, 이전 세션의 파일 목록 전체를 일괄 로드하여 탭 리스트를 생성 및 바인딩.
-  //             단일 일괄 트랜잭션 처리로 React 상태 갱신 배치 충돌 및 Monaco 모델 중복 방지.
-  // 🛡️ @GUARD : 비인증 사용자 복원 제한, 디스크 삭제 파일 예외 가드.
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] restoreSessionTabs - 앱 재시작 시 이전 세션의 파일 목록 전체를 일괄 로드하여 탭 리스트를 복원합니다.
+   *
+   * @param {string[]} openFilePaths - 복원할 파일 경로 배열
+   * @param {string | null} activeFilePath - 마지막 활성 파일 경로
+   * @param {SessionTab[]} [savedTabs] - 직렬화된 세션 탭 배열
+   * @param {string | null} [savedActiveId] - 마지막 활성 탭 ID
+   * @param {string} [savedMode] - 마지막 미리보기 모드
+   * @returns {Promise<void>}
+   * ==========================================================================================
+   */
   const restoreSessionTabs = async (
     openFilePaths: string[],
     activeFilePath: string | null,
@@ -240,11 +249,14 @@ export function useEditorDocumentSession({
     }
   };
 
-  // ====================================================================
-  // 📊 [OMD-FILE-MainEditorApp-0038] openExternalFile
-  // 🎯 @KICK  : OS 수준 더블클릭 또는 명령줄에서 파일 열기, Monaco 모델로 탭 생성
-  // 🛡️ @GUARD : 중복 탭 방지 및 기존 탭 발견 시 최신 컨텐츠 강제 플러시 갱신
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] openExternalFile - OS 더블클릭 또는 외부 명령줄에서 전달된 파일을 열어 탭으로 바인딩합니다.
+   *
+   * @param {string} filePath - 열 대상 파일 경로
+   * @returns {Promise<void>}
+   * ==========================================================================================
+   */
   const openExternalFile = async (filePath: string) => {
     try {
       const api = (window as any).electronAPI;
@@ -345,6 +357,13 @@ export function useEditorDocumentSession({
       }
       await handleFileOpenByPath(filePath);
     } catch (e) {
+      logError({
+        file: 'frontend/src/hooks/editor/useEditorDocumentSession.ts',
+        func: 'openExternalFile',
+        doing: 'OS 외부 파일 열기 요청 처리 및 탭 생성 중',
+        target: filePath,
+        error: e,
+      });
       showToast('파일을 열 수 없습니다.', 'error');
     }
   };

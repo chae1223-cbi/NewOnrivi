@@ -1,7 +1,8 @@
 // ====================================================================
-// 📊 [OMD-HOOK-useDriveSync-0001] useDriveSync.ts ➔ 구글 드라이브 실시간 연동 및 동기화 훅
+// 📊 [OMD-HOOK-useDriveSync-0001] frontend/src/hooks/fileExplorer/useDriveSync.ts
 // 🎯 @KICK  : 구글 드라이브 OAuth 인증, 작업장/리소스 폴더 생성·선택, 파일 트리 로드, 토큰 만료 시 긴급 로컬 보존 및 자동 복구
 // 🛡️ @GUARD : 토큰 만료 전/후 무손실 비상 초안 보존(EmergencyDriveSnapshot), 불량 토큰 즉시 소거, 로컬 작업장 100% 무손실 복구
+// 🚨 @PATCH : 2026-11-04 — [오류 처리 및 주석 표준화]: onrivi-error-handling 5대 진단 필드 기반 logError 적용(handleAuthExpired, handleTokenUpdated, disconnectGoogleDrive) 및 onrivi-source-comments 2단계 JSDoc 표준화
 // 🚨 @PATCH : 2026-11-04 — [토큰 갱신 시 탐색기 자동 리프레시 연동]: onrivi:drive_token_updated 수신 시 isDriveConnected 상태 복원 및 file:refresh-all-directories(force: true) 이벤트 디스패치로 클라우드 탐색기 즉시 갱신
 // 🚨 @PATCH : 2026-11-04 — [useFileExplorer 모듈화 분리]:
 //             1) useFileExplorer에서 구글 드라이브 OAuth 통신, 토큰 갱신 리스너, 연결/해제 및 비상 초안 동기화 로직을 useDriveSync 독립 서브 훅으로 분리 (Rule 3 준수)
@@ -52,6 +53,17 @@ export interface UseDriveSyncProps {
   storageSwitchRef: React.MutableRefObject<boolean>;
 }
 
+/**
+ * ========================================================================================
+ * [함수명] useDriveSync - 구글 드라이브 OAuth 연결·해제·비상 초안 백업 및 자동 복구 동기화 훅
+ *
+ * @param {UseDriveSyncProps} props - 워크스페이스 상태, 탭 참조, 환경 캡처/복원 함수 및 토스트 콜백
+ * @returns {object} isDriveAuthExpired, isDriveConnected, connectGoogleDrive, disconnectGoogleDrive 및 상태 제어 함수
+ *
+ * @example
+ * const { isDriveConnected, connectGoogleDrive, disconnectGoogleDrive } = useDriveSync({ ... });
+ * ==========================================================================================
+ */
 export function useDriveSync({
   rootFolderRef,
   setRootFolder,
@@ -157,7 +169,13 @@ export function useDriveSync({
         console.warn(`[useDriveSync] 🛡️ 구글 드라이브 인증 만료: ${snapshot.drafts.length}개 탭 비상 로컬 보존 완료`);
         showToast('☁️ 구글 드라이브 인증이 만료되었지만 작성 중인 내용은 안전하게 로컬에 보존되었습니다. 재인증 시 클라우드로 자동 동기화됩니다.', 'warning');
       } catch (e) {
-        console.error('[useDriveSync] 비상 초안 보존 실패:', e);
+        logError({
+          file: 'frontend/src/hooks/fileExplorer/useDriveSync.ts',
+          func: 'handleAuthExpired',
+          doing: '구글 드라이브 인증 만료 시 비상 로컬 초안 스냅샷 백업 중',
+          target: 'EmergencyDriveSnapshot',
+          error: e
+        });
       }
     };
 
@@ -199,7 +217,13 @@ export function useDriveSync({
           }
         }
       } catch (syncErr) {
-        console.error('[useDriveSync] 재연결 후 초안 동기화 중 예외:', syncErr);
+        logError({
+          file: 'frontend/src/hooks/fileExplorer/useDriveSync.ts',
+          func: 'handleTokenUpdated',
+          doing: '구글 드라이브 토큰 갱신 후 비상 초안 클라우드 복구 동기화 중',
+          target: 'EmergencyDriveSnapshot',
+          error: syncErr
+        });
       }
     };
 
@@ -215,7 +239,14 @@ export function useDriveSync({
     };
   }, [setTabs, setSaveStatus, showToast, activeTabIdRef, contentRef, lastSavedContentRef, tabsRef, rootFolderRef]);
 
-  // 📝 구글 드라이브 연결 핸들러
+  /**
+   * ========================================================================================
+   * [함수명] connectGoogleDrive - 구글 드라이브 OAuth 인증 및 작업장·참조폴더 연동, 파일 트리를 로드합니다.
+   *
+   * @param {boolean} [chooseFolder=false] - 작업장 폴더 선택 대화상자 강제 표시 여부
+   * @returns {Promise<void>}
+   * ==========================================================================================
+   */
   const connectGoogleDrive = useCallback(async (chooseFolder = false) => {
     if (storageSwitchRef.current) return;
     storageSwitchRef.current = true;
@@ -365,7 +396,13 @@ export function useDriveSync({
     }
   }, [setRootFolder, setWorkspaceType, setFileList, setIsSidebarOpen, showToast, workspaceType, activeTabIdRef, captureEnvironment, contentRef, lastSavedContentRef, restoreEnvironment, tabsRef, rootFolderRef, localEnvironmentRef, driveEnvironmentRef, storageSwitchRef]);
 
-  // 📝 구글 드라이브 연결 해제 및 로컬 복구 핸들러
+  /**
+   * ========================================================================================
+   * [함수명] disconnectGoogleDrive - 구글 드라이브 연결을 해제하고 이전 로컬 작업장 환경을 복구합니다.
+   *
+   * @returns {Promise<void>}
+   * ==========================================================================================
+   */
   const disconnectGoogleDrive = useCallback(async () => {
     if (storageSwitchRef.current || rootFolderRef.current?.type !== 'GDRIVE') return;
     storageSwitchRef.current = true;
@@ -438,7 +475,13 @@ export function useDriveSync({
       reportClientLog('구글 드라이브 연결 해제', 'INFO', 'DRIVE_DISCONNECT');
       window.dispatchEvent(new CustomEvent('onrivi:reload_profiles'));
     } catch (err: any) {
-      console.error('[disconnectGoogleDrive Error]', err);
+      logError({
+        file: 'frontend/src/hooks/fileExplorer/useDriveSync.ts',
+        func: 'disconnectGoogleDrive',
+        doing: '구글 드라이브 연결 해제 및 로컬 작업장 환경 복구 중',
+        target: rootFolderRef.current?.name || 'GoogleDrive',
+        error: err
+      });
       showToast(`연결 해제 실패: ${err.message || '다시 시도해 주세요.'}`, 'error');
     } finally {
       storageSwitchRef.current = false;

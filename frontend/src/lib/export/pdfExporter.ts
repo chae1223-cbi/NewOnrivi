@@ -2,7 +2,7 @@
 // 📊 [OMD-IO-export-pdf-0001] frontend/src/lib/export/pdfExporter.ts
 // 🎯 @KICK  : PagedJS 조판 및 브라우저/Electron 인쇄 기반 PDF 내보내기 엔진
 // 🛡️ @GUARD : 페이지 나누기 마커 정규화, 워터마크 안전 폴백, 원격 폰트/이미지 장애 내결함성
-// 🚨 @PATCH : **2026-11-04** — [모듈화 분리]: exportHandlers.ts에서 PDF 내보내기 전용 모듈 분리
+// 🚨 @PATCH : **2026-11-04** — [모듈화 분리 & 에러/주석 표준화]: exportHandlers.ts에서 PDF 내보내기 전용 모듈 분리 및 2단계 함수 JSDoc·logError 적용
 // 🔗 @CALLS : Paged.js, clonePreview, injectExportStyles, generateExportCss
 // ====================================================================
 import { startExportProgress } from '../exportProgress';
@@ -13,6 +13,7 @@ import { PAPER_SIZES } from '@/constants/paperSizes';
 import { DEFAULT_PROFILE } from '@/constants/cssProfile';
 import { resolvePageGeometry } from '../pageGeometry';
 import { DEFAULT_PRINT_SETTINGS, readEffectivePrintSettings, DocumentPrintSettings } from '../documentPrintSettings';
+import { logError } from '@/lib/errorDiagnostics';
 import { msg } from '@/lib/systemMessages';
 import { generateExportCss } from './cssGenerator';
 import {
@@ -31,6 +32,14 @@ import {
 } from './common';
 import type { ExportOptions } from './types';
 
+/**
+ * ==== [exportPDF] ====
+ * 🎯 역할 : PagedJS 조판 및 브라우저/Electron 인쇄 엔진 기반 PDF 내보내기 및 인쇄 미리보기 생성
+ * 📥 파라미터 :
+ *   - options (ExportOptions) : 내보내기 공통 옵션 (previewEl, currentFileName, previewOnly, printSettings, paginationSettings 등)
+ * 📤 반환값 : Promise<any> (previewOnly 모드일 때 조판 결과 반환)
+ * 💡 비고 : signal 취소(AbortSignal) 발생 시 에러 로그를 남기지 않고 상위로 전파
+ */
 export async function exportPDF({ 
   previewEl, currentFileName, isDarkMode, showToast, orientation, paperSize, 
   dynamicCssString, marginTop, marginBottom, marginLeft, marginRight, backgroundColor, 
@@ -792,6 +801,13 @@ export async function exportPDF({
     showToast('인쇄 대상에서 “PDF로 저장”을 선택해 저장해 주세요.', 'info');
   } catch (err: any) {
     if(signal?.aborted)throw err;
+    logError({
+      file: 'frontend/src/lib/export/pdfExporter.ts',
+      func: 'exportPDF',
+      doing: 'PagedJS 조판 및 인쇄 기반 PDF 내보내기 작업',
+      target: currentFileName,
+      error: err
+    });
     msg.error('PDF export error', err);
     showToast('PDF 내보내기 실패: ' + err.message, 'error');
     if(previewOnly)throw err;

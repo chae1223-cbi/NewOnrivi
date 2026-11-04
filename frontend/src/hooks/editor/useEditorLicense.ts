@@ -1,21 +1,21 @@
-/**
- * ====================================================================
- * 📊 [OMD-HOOK-useEditorLicense] useEditorLicense.ts
- * 🎯 @KICK  : 에디터 라이선스 검증, 다중 기기 세션 감시(Heartbeat/Takeover), 게스트 체험 타이머, 활성화 수신 관리 훅
- * 🛡️ @GUARD : 비인증 진입 시 자동 게스트 모드 전환 및 세션 탈취 시 즉각적인 읽기 전용/미리보기 제어
- * 🚨 @PATCH : 2026-11-04 - [formatTime 반환 추가] 게스트 체험 모드 남은 시간 포맷 함수(formatTime) 반환 목록에 추가하여 ReferenceError 해결
- * 🚨 @PATCH : 2026-11-04 - [MainEditorApp 모듈화] MainEditorApp에서 1,044줄의 라이선스/세션/게스트 관리 로직을 독립 훅으로 분리
- * 🔗 @CALLS : supabase, api.loadLicenseFull, api.saveLicenseFull, saveSecureData, loadSecureData, getApiUrl, browserSessionPolling
- * ====================================================================
- */
+// ====================================================================
+// 📊 [OMD-HOOK-useEditorLicense] frontend/src/hooks/editor/useEditorLicense.ts
+// 🎯 @KICK  : 에디터 라이선스 검증, 다중 기기 세션 감시(Heartbeat/Takeover), 게스트 체험 타이머, 활성화 수신 관리 훅
+// 🛡️ @GUARD : 비인증 진입 시 자동 게스트 모드 전환 및 세션 탈취 시 즉각적인 읽기 전용/미리보기 제어
+// 🚨 @PATCH : 2026-11-04 — [표준화 및 에러 처리 강화] logError/logWarn 5대 진단 필드 선제 기록 및 2단계 함수 JSDoc 표준화
+//             2026-11-04 — [formatTime 반환 추가] 게스트 체험 모드 남은 시간 포맷 함수(formatTime) 반환 목록에 추가하여 ReferenceError 해결
+//             2026-11-04 — [MainEditorApp 모듈화] MainEditorApp에서 1,044줄의 라이선스/세션/게스트 관리 로직을 독립 훅으로 분리
+// 🔗 @CALLS : supabase, api.loadLicenseFull, api.saveLicenseFull, saveSecureData, loadSecureData, getApiUrl, browserSessionPolling, logError, logWarn
+// ====================================================================
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { saveSecureData, loadSecureData } from '@/lib/secureStorage';
 import { getApiUrl } from '@/lib/apiUrlBuilder';
 import { browserSessionPolling } from '@/lib/sessionPolling';
 import { clearAuthSessionStorage, parseDateStringToMs } from '@/lib/authSessionHelper';
 import { LicenseStatus } from '@/hooks/editor/useEditorAuth';
+import { logError, logWarn } from '@/lib/errorDiagnostics';
 
 export interface UseEditorLicenseOptions {
   deviceId: string;
@@ -48,6 +48,14 @@ export interface UseEditorLicenseReturn {
   formatTime: (seconds: number) => string;
 }
 
+/**
+ * ========================================================================================
+ * [함수명] useEditorLicense - 에디터 라이선스 검증, 다중 기기 세션 감시, 제어권 인수 전담 훅
+ *
+ * @param {UseEditorLicenseOptions} options - 기기 ID, 라이선스 상태, 게스트 모드 상태 및 콜백
+ * @returns {UseEditorLicenseReturn} 라이선스 검증/활성화/제어권 인수 핸들러 및 타이머 포맷 함수
+ * ==========================================================================================
+ */
 export function useEditorLicense({
   deviceId,
   licenseKey,
@@ -70,7 +78,13 @@ export function useEditorLicense({
   isDuplicateInstance,
   takeOverControl,
 }: UseEditorLicenseOptions): UseEditorLicenseReturn {
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] loadAndVerifyLicense - 데스크톱(Electron) 및 웹(SaaS) 라이선스·세션 유효성을 검증하고 상태를 갱신합니다.
+   *
+   * @returns {Promise<void>}
+   * ==========================================================================================
+   */
   const loadAndVerifyLicense = useCallback(async () => {
     if (typeof window === 'undefined' || !deviceId) return;
     
@@ -182,6 +196,13 @@ export function useEditorLicense({
 
     // B. 시간 조작 가드
     if (savedLastRunTime > 0 && nowTime < savedLastRunTime) {
+      logError({
+        file: 'frontend/src/hooks/editor/useEditorLicense.ts',
+        func: 'loadAndVerifyLicense',
+        doing: '로컬 시스템 실행 시각과 마지막 실행 시각(savedLastRunTime) 무결성 비교 검증 중',
+        target: savedUserId || deviceId,
+        error: new Error(`System clock rollback detected: now=${nowTime} < savedLastRunTime=${savedLastRunTime}`),
+      });
       showToast("⚠️ 로컬 시스템 시간 조작이 감지되었습니다. 에디터 편집 기능이 제한됩니다.", "error");
       setLicenseStatus(prev => ({
         ...prev, isActivated: false, isExpired: true, planName: '시간 역전 제한 모드'
@@ -539,7 +560,13 @@ export function useEditorLicense({
                   isExpired = false; // 새로운 READER 구독이 활성화되었으므로 만료 아님 (하지만 READER 플랜이므로 insert시 제한됨)
                 }
               } catch (err) {
-                console.error('[LICENSE] Failed to execute expire API:', err);
+                logError({
+                  file: 'frontend/src/hooks/editor/useEditorLicense.ts',
+                  func: 'loadAndVerifyLicense',
+                  doing: '만료된 구독을 EXPIRED로 전환하고 READER 플랜을 발급하는 API(/api/subscription/expire) 호출 중',
+                  target: sub.id || savedUserId,
+                  error: err,
+                });
               }
             }
 
@@ -650,6 +677,13 @@ export function useEditorLicense({
   // ⚡ 다른 브라우저/기기 동시 접속 초과 시 현재 화면으로 편집 권한 인수 처리
   const [isTakingOver, setIsTakingOver] = useState(false);
 
+  /**
+   * ========================================================================================
+   * [함수명] handleCrossDeviceTakeover - 다른 기기/브라우저 동시 접속 초과 시 현재 화면으로 편집 제어권을 강제 인수합니다.
+   *
+   * @returns {Promise<void>}
+   * ==========================================================================================
+   */
   const handleCrossDeviceTakeover = useCallback(async () => {
     if (isTakingOver) return;
     setIsTakingOver(true);
@@ -674,6 +708,13 @@ export function useEditorLicense({
           showToast("🎉 현재 화면으로 편집 권한을 성공적으로 가져왔습니다!", "success");
           await loadAndVerifyLicense();
         } else {
+          logError({
+            file: 'frontend/src/hooks/editor/useEditorLicense.ts',
+            func: 'handleCrossDeviceTakeover',
+            doing: '데스크톱 환경 편집 제어권 강제 인수(/api/license/verify-desktop) 요청 중',
+            target: deviceId,
+            error: new Error(data.message || 'Desktop takeover failed'),
+          });
           showToast(`편집 권한 가져오기 실패: ${data.message || '알 수 없는 오류'}`, "error");
         }
       } else {
@@ -700,12 +741,25 @@ export function useEditorLicense({
                 }
               }
             } catch (e) {
-              console.warn('[handleTakeoverControl] user subscription lookup failed:', e);
+              logWarn({
+                file: 'frontend/src/hooks/editor/useEditorLicense.ts',
+                func: 'handleCrossDeviceTakeover',
+                doing: '편집 권한 전환을 위한 사용자 구독 ID(/api/subscription/get) 조회 중',
+                target: effectiveAuthUserId,
+                error: e,
+              });
             }
           }
         }
 
         if (!licenseId) {
+          logError({
+            file: 'frontend/src/hooks/editor/useEditorLicense.ts',
+            func: 'handleCrossDeviceTakeover',
+            doing: '웹 SaaS 편집 권한 전환을 위한 라이선스 ID 검증 중',
+            target: effectiveAuthUserId || savedUserId,
+            error: new Error('Missing licenseId for cross-device takeover'),
+          });
           showToast("라이선스 정보를 찾을 수 없어 편집 권한을 전환할 수 없습니다.", "error");
           setIsTakingOver(false);
           return;
@@ -728,17 +782,37 @@ export function useEditorLicense({
           showToast("🎉 현재 화면으로 편집 권한을 성공적으로 가져왔습니다!", "success");
           await loadAndVerifyLicense();
         } else {
+          logError({
+            file: 'frontend/src/hooks/editor/useEditorLicense.ts',
+            func: 'handleCrossDeviceTakeover',
+            doing: '웹 SaaS 편집 제어권 강제 인수(/api/license/activate) 요청 중',
+            target: licenseId,
+            error: new Error(data?.message || 'Web takeover failed'),
+          });
           showToast(`편집 권한 가져오기 실패: ${data?.message || '알 수 없는 오류'}`, "error");
         }
       }
     } catch (err: any) {
-      console.error('[handleCrossDeviceTakeover] Error:', err);
+      logError({
+        file: 'frontend/src/hooks/editor/useEditorLicense.ts',
+        func: 'handleCrossDeviceTakeover',
+        doing: '다른 기기/브라우저로부터 편집 제어권 인수 처리 중',
+        target: deviceId,
+        error: err,
+      });
       showToast("편집 권한 전환 중 오류가 발생했습니다.", "error");
     } finally {
       setIsTakingOver(false);
     }
   }, [deviceId, isTakingOver, licenseStatus.userId, loadAndVerifyLicense, showToast]);
 
+  /**
+   * ========================================================================================
+   * [함수명] handleTakeover - 동일 브라우저 중복 탭 또는 타 기기 동시 접속 상황에서 현재 화면으로 제어권을 가져옵니다.
+   *
+   * @returns {Promise<void>}
+   * ==========================================================================================
+   */
   const handleTakeover = useCallback(async () => {
     if (isDuplicateInstance) {
       takeOverControl();
@@ -752,6 +826,14 @@ export function useEditorLicense({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDuplicateInstance, licenseStatus.isConcurrentLimited, takeOverControl, handleCrossDeviceTakeover]);
 
+  /**
+   * ========================================================================================
+   * [함수명] formatTime - 초 단위 남은 시간을 MM:SS 형식 문자열로 변환합니다.
+   *
+   * @param {number} seconds - 남은 시간(초)
+   * @returns {string} MM:SS 포맷 문자열
+   * ==========================================================================================
+   */
   const formatTime = (seconds: number) => {
     const mm = String(Math.floor(seconds / 60)).padStart(2, '0');
     const ss = String(seconds % 60).padStart(2, '0');
@@ -1081,14 +1163,17 @@ export function useEditorLicense({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deviceId, licenseKey, licenseStatus.userId]);
 
-  // ====================================================================
-  // 📊 [OMD-AUTH-MainEditorApp-0018] MainEditorApp.tsx ➔ handleSuccessActivation
-  // 🎯 @KICK  : 성공적인 결제/활성화 후 모든 저장소 계층에 확인된 라이선스 활성화 유지
-  // 🛡️ @GUARD : 원자적 setLicenseStatus + 플랫폼 저장소 저장 (electronAPI, chrome.storage, localStorage) 및 실시간 동기화
-  // 🚨 @PATCH : 2026-06-28 — chrome.storage.local.set 제거 (로컬스토리지 격리)
-  //              결제번호(paymentNo) 인자 수용 및 loadAndVerifyLicense() 호출을 통한 상태 실시간 동기화
-  // 🔗 @CALLS : setLicenseStatus, api.saveLicenseFull, localStorage.setItem, loadAndVerifyLicense
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] handleSuccessActivation - 결제/활성화 완료 후 로컬·Electron 스토리지에 라이선스를 저장하고 즉시 검증합니다.
+   *
+   * @param {string} verifyKey - 라이선스 검증 키
+   * @param {string} userId - 사용자 이메일 또는 ID
+   * @param {string} paymentNo - 결제 번호
+   * @param {string} [explicitLicenseKey] - 명시적 라이선스 키
+   * @returns {Promise<void>}
+   * ==========================================================================================
+   */
   const handleSuccessActivation = async (verifyKey: string, userId: string, paymentNo: string, explicitLicenseKey?: string) => {
     const api = (window as any).electronAPI;
     const finalLicenseKey = explicitLicenseKey || licenseKey;

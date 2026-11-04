@@ -2,8 +2,9 @@
 // 📊 [OMD-HOOK-useEditorPreviewSync] frontend/src/hooks/editor/useEditorPreviewSync.ts
 // 🎯 @KICK  : 미리보기 전처리(processedContent/lineMap), 에디터→미리보기 위치 동기화, 활성 행 하이라이트, 휠 확대/축소, 클릭 이동, 체크박스 토글, 서식 복사를 담당하는 미리보기 연동 훅
 // 🛡️ @GUARD : Sync Engine 단일 진입(syncPreviewToTargetLine) 경유, 미리보기 측 스크롤 중·위지윅·그림책 모드에서는 강제 동기화 생략
-// 🚨 @PATCH : **2026-11-04** — [MainEditorApp 모듈화 및 훅 의존성 정합화]: handleCheckboxToggle, handlePreviewWheel, bindPreviewScrollContainer, handlePreviewClick, handleCopyPreviewContent, processedContent/lineMap/frontmatterLines, 미리보기 추종 레이아웃 이펙트, handlePreviewImageLoaded, previewHighlightLine 이펙트를 MainEditorApp.tsx에서 분리 위임하고 ESLint exhaustive-deps 경고를 0건으로 해소 (동작 변경 없음)
-// 🔗 @CALLS : preprocessMarkdownForPreview, syncPreviewToTargetLine, flashPreviewHighlight, importedCheckboxEdit, serializeDocumentForClipboard, copyFormattedDocumentToClipboard
+// 🚨 @PATCH : 2026-11-04 — [표준화 및 에러 처리 강화] logError 5대 진단 필드 선제 기록 적용 및 2단계 함수 JSDoc 표준화
+//             2026-11-04 — [MainEditorApp 모듈화 및 훅 의존성 정합화]: handleCheckboxToggle, handlePreviewWheel, bindPreviewScrollContainer, handlePreviewClick, handleCopyPreviewContent, processedContent/lineMap/frontmatterLines, 미리보기 추종 레이아웃 이펙트, handlePreviewImageLoaded, previewHighlightLine 이펙트를 MainEditorApp.tsx에서 분리 위임하고 ESLint exhaustive-deps 경고를 0건으로 해소 (동작 변경 없음)
+// 🔗 @CALLS : preprocessMarkdownForPreview, syncPreviewToTargetLine, flashPreviewHighlight, importedCheckboxEdit, serializeDocumentForClipboard, copyFormattedDocumentToClipboard, logError
 // ====================================================================
 
 import { useCallback, useEffect, useLayoutEffect, useMemo } from 'react';
@@ -12,6 +13,7 @@ import { importedCheckboxEdit } from '@/lib/importCheckboxes';
 import { serializeDocumentForClipboard, copyFormattedDocumentToClipboard } from '@/lib/clipboardExport';
 import { preprocessMarkdownForPreview } from '@/lib/editorUtils';
 import { syncPreviewToTargetLine } from '@/lib/syncEngine';
+import { logError } from '@/lib/errorDiagnostics';
 
 export interface UseEditorPreviewSyncProps {
   editorRef: React.MutableRefObject<any>;
@@ -54,13 +56,16 @@ export function useEditorPreviewSync(props: UseEditorPreviewSyncProps) {
     scrollToLine,
   } = props;
 
-  // ====================================================================
-  // 📊 [OMD-CORE-MainEditorApp-0029] MainEditorApp.tsx ➔ handleCheckboxToggle
-  // 🎯 @KICK  : 미리보기 체크박스 클릭을 에디터 모델 라인 콘텐츠에 동기화
-  // 🛡️ @GUARD : window.monaco 존재 확인, 라인 범위 검사, 정규식 검증으로 가드
-  // 🚨 @PATCH : None
-  // 🔗 @CALLS : editor.getModel, editor.pushUndoStop, editor.executeEdits
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] handleCheckboxToggle - 미리보기 체크박스 클릭을 에디터 모델 라인 콘텐츠에 동기화합니다.
+   *
+   * @param {number} lineNumber - 대상 행 번호
+   * @param {boolean} checked - 체크 여부
+   * @param {string} [importedId] - 가져온 체크박스 식별자
+   * @returns {void}
+   * ==========================================================================================
+   */
   const handleCheckboxToggle = useCallback((lineNumber: number, checked: boolean, importedId?: string) => {
     if (!editorRef.current || typeof window === 'undefined' || !(window as any).monaco) return;
     const editor = editorRef.current;
@@ -101,13 +106,14 @@ export function useEditorPreviewSync(props: UseEditorPreviewSyncProps) {
     }
   }, [editorRef]);
 
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0031] MainEditorApp.tsx ➔ previewWheelSync
-  // 🎯 @KICK  : 분할 모드의 미리보기 휠 입력을 에디터에 전달하고 에디터 스크롤만 동기화의 기준으로 사용
-  // 🛡️ @GUARD : 문서를 연 뒤 미리보기 DOM이 생성되는 데스크톱에서도 리스너가 반드시 연결되도록 callback ref 사용
-  // 🚨 @PATCH : 2026-09-28 — 미리보기 자체 스크롤 대신 에디터 스크롤로 휠 입력 전달
-  // 🔗 @CALLS : WheelEvent.preventDefault, editor.setScrollTop
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] handlePreviewWheel - Ctrl + Wheel 입력 시 미리보기 화면 배율(50% ~ 200%)을 조절합니다.
+   *
+   * @param {WheelEvent} event - 마우스 휠 이벤트
+   * @returns {void}
+   * ==========================================================================================
+   */
   const handlePreviewWheel = useCallback((event: WheelEvent) => {
     // 💡 [Ctrl + Wheel]: 미리보기 화면 배율 확대/축소 (50% ~ 200%)
     if (event.ctrlKey) {
@@ -125,19 +131,28 @@ export function useEditorPreviewSync(props: UseEditorPreviewSyncProps) {
     // Its scroll event synchronizes the Markdown panel.
   }, [setPreviewZoomScale]);
 
+  /**
+   * ========================================================================================
+   * [함수명] bindPreviewScrollContainer - 미리보기 스크롤 컨테이너 DOM ref를 바인딩하고 휠 리스너를 연결합니다.
+   *
+   * @param {HTMLDivElement | null} node - 미리보기 컨테이너 DOM 엘리먼트
+   * @returns {void}
+   * ==========================================================================================
+   */
   const bindPreviewScrollContainer = useCallback((node: HTMLDivElement | null) => {
     previewRef.current?.removeEventListener('wheel', handlePreviewWheel, true);
     previewRef.current = node;
     node?.addEventListener('wheel', handlePreviewWheel, { passive: false, capture: true });
   }, [handlePreviewWheel, previewRef]);
 
-  // ====================================================================
-  // 📊 [OMD-CORE-MainEditorApp-0051] MainEditorApp.tsx ➔ handlePreviewClick
-  // 🎯 @KICK  : 미리보기 클릭 시: 에디터를 일치하는 줄로 스크롤, 미리보기에서 줄 강조
-  // 🛡️ @GUARD : 중첩 요소 처리를 위해 DOM closest [data-line] 순회
-  // 🚨 @PATCH : None
-  // 🔗 @CALLS : scrollToLine, element.closest, classList.add/remove
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] handlePreviewClick - 미리보기 요소 클릭 시 에디터를 해당 줄로 이동시키고 하이라이트합니다.
+   *
+   * @param {React.MouseEvent} e - 마우스 클릭 이벤트
+   * @returns {void}
+   * ==========================================================================================
+   */
   const handlePreviewClick = (e: React.MouseEvent) => {
     const target = e.target as HTMLElement;
     const lineEl = target.closest('[data-line]');
@@ -161,14 +176,14 @@ export function useEditorPreviewSync(props: UseEditorPreviewSyncProps) {
     }
   };
 
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0063.1] MainEditorApp.tsx ➔ handleCopyPreviewContent
-  // 🎯 @KICK  : 문서보기(VisualDocumentEditor/MarkdownViewer)의 렌더링된 서식 본문을 CSS 인라인 스타일과 함께 클립보드에 안전하게 복사
-  // 🛡️ @GUARD : computedStyle 기반 CSS 인라인 주입, dynamicCss 포함, Word/블로그/노션 호환 HTML 조각 및 다중 Fallback 보장
-  // 🚨 @PATCH : **2026-10-24** — [CSS 서식 1:1 보존 클립보드 직렬화 엔진(clipboardExport) 연동]:
-  //             1) serializeDocumentForClipboard를 연동하여 각 요소의 실제 계산된 CSS(폰트, 크기, 색상, 테두리, 배경, 간격)를 인라인 주입
-  //             2) copyFormattedDocumentToClipboard를 통해 Electron native CF_HTML, Web ClipboardItem, execCommand 3중 복사 완비
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] handleCopyPreviewContent - 문서보기의 렌더링된 본문을 인라인 CSS 스타일과 함께 클립보드에 복사합니다.
+   *
+   * @returns {Promise<void>}
+   * @throws {Error} 클립보드 복사 실패 시 예외 발생
+   * ==========================================================================================
+   */
   const handleCopyPreviewContent = useCallback(async () => {
     if (!previewRef.current) return;
     try {
@@ -207,7 +222,13 @@ export function useEditorPreviewSync(props: UseEditorPreviewSyncProps) {
         throw new Error('클립보드 접근이 차단되었거나 복사 명령이 실패했습니다.');
       }
     } catch (err) {
-      console.error('[handleCopyPreviewContent] Copy failed:', err);
+      logError({
+        file: 'frontend/src/hooks/editor/useEditorPreviewSync.ts',
+        func: 'handleCopyPreviewContent',
+        doing: '미리보기/문서보기 본문을 인라인 CSS 서식과 함께 클립보드에 복사 중',
+        target: 'preview_clipboard',
+        error: err,
+      });
       showToast('클립보드 복사에 실패했습니다.', 'error');
       throw err;
     }
@@ -254,6 +275,13 @@ export function useEditorPreviewSync(props: UseEditorPreviewSyncProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [processedContent, previewMode]);
 
+  /**
+   * ========================================================================================
+   * [함수명] handlePreviewImageLoaded - 미리보기 이미지 비동기 로딩 완료 시 위치 동기화를 1회 미세 보정합니다.
+   *
+   * @returns {void}
+   * ==========================================================================================
+   */
   const handlePreviewImageLoaded = useCallback(() => {
     if(previewRef.current?.querySelector('.visual-document-editor'))return;
     // 💡 이미지 비동기 로딩 완료 시 최신 높이에 맞춰 위치 1회 미세 보정

@@ -1,7 +1,8 @@
 // ====================================================================
-// 📊 [OMD-HOOK-useDocumentOpener-0001] useDocumentOpener.ts ➔ 문서 오픈 및 경로 탐색 훅
+// 📊 [OMD-HOOK-useDocumentOpener-0001] frontend/src/hooks/fileExplorer/useDocumentOpener.ts
 // 🎯 @KICK  : 파일 트리 클릭(handleFileClick) 및 경로/링크 기반 문서 탐색·오픈(handleFileOpenByPath), 지식 DB 및 앵커 점프(#L..) 연동
 // 🛡️ @GUARD : 브라우저 FSA 재귀 탐색(findFileHandleInDirectoryDeep), 구글 드라이브 온디맨드 검색, VFS/도움말 폴백 및 세션 동기화
+// 🚨 @PATCH : 2026-11-04 — [오류 처리 및 주석 표준화]: onrivi-error-handling 5대 진단 필드 기반 logError 파일 경로(useDocumentOpener.ts) 정합화 및 예외 로깅 보강, onrivi-source-comments 2단계 JSDoc 표준화
 // 🚨 @PATCH : 2026-11-04 — [런타임 버그 수정]: getSavedWorkspaceInfo, EditorTab, helpContentRef, sessionRestoringRef 누락 식별자 보완 및 findFileHandleInDirectoryDeep 모듈 스코프 export
 // 🚨 @PATCH : 2026-11-04 — [useFileExplorer 모듈화 분리]:
 //             1) useFileExplorer에서 파일 클릭 및 경로 기반 문서 열기, 앵커 점프, 지식 DB 연계 로직을 useDocumentOpener 독립 서브 훅으로 분리 (Rule 3 준수)
@@ -71,7 +72,15 @@ export interface UseDocumentOpenerProps {
 
 
 /**
- * 브라우저 FileSystemDirectoryHandle 하위를 재귀 검색하여 파일명에 매칭되는 FileHandle과 상위 디렉토리 Handle을 반환합니다.
+ * ========================================================================================
+ * [함수명] findFileHandleInDirectoryDeep - 브라우저 FileSystemDirectoryHandle 하위를 재귀 검색하여 파일명에 매칭되는 FileHandle과 상위 디렉토리 Handle을 반환합니다.
+ *
+ * @param {FileSystemDirectoryHandle} dirHandle - 탐색을 시작할 루트 디렉토리 핸들
+ * @param {string} fileName - 찾을 대상 파일명
+ * @param {number} [depth=0] - 현재 탐색 깊이
+ * @param {number} [maxDepth=3] - 최대 허용 탐색 깊이
+ * @returns {Promise<{ fileHandle: FileSystemFileHandle; parentHandle: FileSystemDirectoryHandle } | null>}
+ * ==========================================================================================
  */
 export const findFileHandleInDirectoryDeep = async (
   dirHandle: FileSystemDirectoryHandle,
@@ -101,6 +110,14 @@ export const findFileHandleInDirectoryDeep = async (
   return null;
 };
 
+/**
+ * ========================================================================================
+ * [함수명] useDocumentOpener - 파일 트리 클릭 및 경로/링크 기반 문서 탐색·오픈·앵커 이동을 전담하는 서브 훅
+ *
+ * @param {UseDocumentOpenerProps} props - 에디터 참조, 탭 상태, 워크스페이스 정보 및 모달/토스트 콜백
+ * @returns {{ handleFileOpenByPath: (resolvedPath: string, hashPart?: string, strictLinkedDocument?: boolean) => Promise<void>, handleFileClick: (node: FileNode | null, parentHandle?: any) => Promise<void> }}
+ * ==========================================================================================
+ */
 export function useDocumentOpener({
   editorRef,
   contentRef,
@@ -145,6 +162,16 @@ export function useDocumentOpener({
   // ====================================================================
 
   // 4. 경로를 기반으로 한 파일 열기 핸들러
+  /**
+   * ========================================================================================
+   * [함수명] handleFileOpenByPath - 파일 경로 또는 마크다운 내부 문서 링크를 해석하여 문서를 열고 대상 헤딩/라인 앵커로 이동합니다.
+   *
+   * @param {string} resolvedPath - 열려는 대상 문서 경로
+   * @param {string} [hashPart] - 이동할 헤딩 슬러그 또는 라인 번호(#L10 등)
+   * @param {boolean} [strictLinkedDocument=false] - 엄격한 경로 일치 검증 여부
+   * @returns {Promise<void>}
+   * ==========================================================================================
+   */
   const handleFileOpenByPath = async (resolvedPath: string, hashPart?: string, strictLinkedDocument = false) => {
     let rawDecoded = resolvedPath || '';
     try {
@@ -290,7 +317,7 @@ export function useDocumentOpener({
       const api = (window as any).electronAPI;
       const helpPath = pathWithoutHash.startsWith('docs/') ? pathWithoutHash : 'docs/help/' + pathWithoutHash.replace(/^\//, '');
       // ====================================================================
-      // 📊 [OMD-FILE-USEFILEEXPLORER-0005] useFileExplorer.ts ➔ loadHelp
+      // 📊 [OMD-FILE-useDocumentOpener-0005] useDocumentOpener.ts ➔ loadHelp
       // 🎯 @KICK  : 도움말 파일 내용을 파싱하여 화면에 표시
       // 🛡️ @GUARD : 없음
       // 🚨 @PATCH : 없음
@@ -526,7 +553,7 @@ export function useDocumentOpener({
     }
 
     // ====================================================================
-    // 📊 [OMD-FILE-USEFILEEXPLORER-0004] useFileExplorer.ts ➔ findNodeByPath
+    // 📊 [OMD-FILE-useDocumentOpener-0004] useDocumentOpener.ts ➔ findNodeByPath
     // 🎯 @KICK  : 파일 경로로 파일 트리 노드를 재귀 탐색
     // 🛡️ @GUARD : 경로 정규화, 대소문자 무효화, 파일명 및 무확장자 3중 매칭
     // 🚨 @PATCH : **2026-09-12** — baseName 및 확장자 유무 상호 비교 지원으로 상대경로/절대경로 노드 매칭 100% 보장
@@ -1040,7 +1067,7 @@ export function useDocumentOpener({
   };
 
   // ====================================================================
-  // 📊 [OMD-FILE-USEFILEEXPLORER-0003 ✅ FIXED] useFileExplorer.ts ➔ handleFileClick
+  // 📊 [OMD-FILE-useDocumentOpener-0003 ✅ FIXED] useDocumentOpener.ts ➔ handleFileClick
   // 🎯 @KICK  : 파일 트리 노드 클릭 시 기존 탭 전환 또는 새 탭 생성 및 파일 내용 로딩
   // 🛡️ @GUARD : node null/kind directory early return, 파일 읽기 실패 시 오류 토스트
   // 🚨 @PATCH : disposed model 가드: 기존 탭 model.isDisposed() 시 스테일 탭 정리 (2026-06-18); **2026-07-06** — 브라우저 모드 핸들 재클릭 시 중복 탭 생성 버그 수정: 경로→핸들→파일명 3단계 fallback 비교로 existingTab 정확도 향상
@@ -1048,7 +1075,15 @@ export function useDocumentOpener({
   // ====================================================================
   const loadingFilesRef = useRef<Set<string>>(new Set());
 
-  // 5. 파일 트리 클릭 시 파일 열기 및 신규 탭 로딩
+  /**
+   * ========================================================================================
+   * [함수명] handleFileClick - 파일 트리 노드 클릭 시 기존 탭으로 전환하거나 새 탭을 생성하여 파일 본문을 로드합니다.
+   *
+   * @param {FileNode | null} node - 클릭한 파일 트리 노드
+   * @param {any} [parentHandle] - 브라우저 FSA 상위 디렉토리 핸들
+   * @returns {Promise<void>}
+   * ==========================================================================================
+   */
   const handleFileClick = async (node: FileNode | null, parentHandle?: any) => {
     if (previewModeRef.current === 'css-style') {
       const editor = editorRef.current;
@@ -1201,7 +1236,7 @@ export function useDocumentOpener({
             fileContent = await readDriveFileContent(token, driveId);
           } catch (e) {
             logError({
-              file: 'frontend/src/hooks/useFileExplorer.ts',
+              file: 'frontend/src/hooks/fileExplorer/useDocumentOpener.ts',
               func: 'handleFileClick',
               doing: '구글 드라이브 파일 본문 다운로드 중',
               target: node.name ? `${node.name} (ID: ${driveId})` : driveId,
@@ -1279,7 +1314,7 @@ export function useDocumentOpener({
             }
           } catch (e) {
             logError({
-              file: 'frontend/src/hooks/useFileExplorer.ts',
+              file: 'frontend/src/hooks/fileExplorer/useDocumentOpener.ts',
               func: 'handleFileClick',
               doing: '로컬 디스크 파일 읽기 중',
               target: node.path || node.name,
@@ -1392,7 +1427,7 @@ export function useDocumentOpener({
       setIsSidebarOpen(true);
     } catch (err) {
       logError({
-        file: 'frontend/src/hooks/useFileExplorer.ts',
+        file: 'frontend/src/hooks/fileExplorer/useDocumentOpener.ts',
         func: 'handleFileClick',
         doing: '파일 열기 및 탭 로딩 처리 중',
         target: node?.name || 'unknown',
@@ -1403,13 +1438,6 @@ export function useDocumentOpener({
       if (fileKey) loadingFilesRef.current.delete(fileKey);
     }
   };
-
-  // ====================================================================
-  // 📊 [OMD-FILE-USEFILEEXPLORER-0010] useFileExplorer.ts ➔ connectGoogleDrive
-  // 🎯 @KICK  : 구글 드라이브 원클릭 무설정 연동, 서재 폴더 자동 바인딩 및 0초 즉각 렌더링
-  // 🛡️ @GUARD : 기존 로컬 작업장 및 리소스 폴더 백업, 예외 발생 시 안내 토스트
-  // 🚨 @PATCH : **2026-10-07** — [구글 드라이브 연결 시 만료 토큰(401) 자동 감지 및 즉시 재인증 팝업 트리거]:
-  //             기존 저장된 토큰이 401 만료 상태인 경우 자동 폐기 후 requestGoogleDriveAuth 팝업을 즉시 띄워 새 토큰을 획득하도록 보강
 
   return {
     handleFileOpenByPath,

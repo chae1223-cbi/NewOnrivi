@@ -1,11 +1,11 @@
-// ====================================================================
-// 📊 [OMD-UI-GlobalSearchPanel-0001] GlobalSearchPanel.tsx ➔ 에디터 좌측 전역 검색 패널
-// 🎯 @KICK  : 전체 워크스페이스 문서 내용 및 파일명 검색과 검색 결과 파일 자동 열기 및 지정 줄 점프/하이라이트
-// 🛡️ @GUARD : React DOM 절대 불변(Zero Mutation) 보장 - CSS.highlights API를 통한 안전한 텍스트 하이라이트 및 브라우저 FSA/VFS/웹드라이브 3중 폴백
-// 🚨 @PATCH : 2026-11-04 — [LeftSidebar 모듈화 분리]:
-//             1) LeftSidebar에서 GlobalSearch 컴포넌트 래핑 및 executeJumpAndHighlight, onFileOpenAndJump 핸들러를 독립 패널 컴포넌트로 분리 (Rule 3 준수)
-// 🔗 @CALLS : useEditorContext, GlobalSearch, CSS.highlights, openFile, switchTab
-// ====================================================================
+/**
+ * ====================================================================
+ * 🏷️ 파일명 : GlobalSearchPanel.tsx
+ * 🎭 역할(Role) : Core (핵심 도메인 뷰 — 좌측 사이드바 전역 검색 패널)
+ * 🎯 주요기능 : 전체 워크스페이스 문서 내용 및 파일명 검색과 검색 결과 파일 자동 열기 및 지정 줄 점프/하이라이트
+ * 🚨 @PATCH : 2026-11-04 — [LeftSidebar 모듈화 분리 & 주석/에러 표준화] LeftSidebar에서 GlobalSearch 래핑 및 점프/하이라이트 핸들러를 독립 패널 컴포넌트로 분리하고 2단계 주석 및 logError 적용 (규칙 3 Core 역할 준수)
+ * ====================================================================
+ */
 // @ts-nocheck
 "use client";
 
@@ -13,6 +13,7 @@ import React, { useCallback, useRef, useEffect } from 'react';
 import GlobalSearch from '@/components/GlobalSearch';
 import { useEditorContext } from '@/context/EditorContext';
 import { FileNode } from '@/lib/indexedDbHelper';
+import { logError } from '@/lib/errorDiagnostics';
 
 const BROWSER_STORAGE_NAME = '브라우저 로컬 저장소';
 
@@ -21,6 +22,14 @@ interface GlobalSearchPanelProps {
   isDarkMode: boolean;
 }
 
+/**
+ * ========================================================================================
+ * [컴포넌트명] GlobalSearchPanel - 좌측 사이드바 워크스페이스 전역 검색 패널
+ *
+ * @param {GlobalSearchPanelProps} props - 탭 활성화 여부(isActive) 및 다크모드 상태(isDarkMode)
+ * @returns {JSX.Element} 전역 검색 패널 뷰
+ * ==========================================================================================
+ */
 export default function GlobalSearchPanel({ isActive, isDarkMode }: GlobalSearchPanelProps) {
   const {
     content,
@@ -479,6 +488,13 @@ export default function GlobalSearchPanel({ isActive, isDarkMode }: GlobalSearch
           }, 100);
         }
       } catch (e) {
+        logError({
+          file: 'frontend/src/components/sidebar/GlobalSearchPanel.tsx',
+          func: 'handleFileOpenAndJump',
+          doing: '브라우저 FSA 디렉터리 핸들을 추적하여 검색 결과 파일을 여는 작업',
+          target: filePath,
+          error: e
+        });
         showToast?.("파일을 찾지 못했습니다.", "error");
       }
     } else {
@@ -493,7 +509,22 @@ export default function GlobalSearchPanel({ isActive, isDarkMode }: GlobalSearch
           }, 100);
           return;
         }
-      } catch {}
+      } catch (vfsErr) {
+        logError({
+          file: 'frontend/src/components/sidebar/GlobalSearchPanel.tsx',
+          func: 'handleFileOpenAndJump',
+          doing: '가상 파일 시스템(VFS)에서 검색 결과 파일을 조회하는 작업',
+          target: filePath,
+          error: vfsErr
+        });
+      }
+      logError({
+        file: 'frontend/src/components/sidebar/GlobalSearchPanel.tsx',
+        func: 'handleFileOpenAndJump',
+        doing: '전역 검색 결과 문서를 탐색기/VFS에서 찾아 여는 작업',
+        target: filePath,
+        error: new Error('Target file not found in tree or VFS')
+      });
       showToast?.("파일을 찾지 못했습니다.", "error");
     }
   };

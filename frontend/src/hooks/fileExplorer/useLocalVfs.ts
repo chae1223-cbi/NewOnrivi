@@ -1,7 +1,8 @@
 // ====================================================================
-// 📊 [OMD-HOOK-useLocalVfs-0001] useLocalVfs.ts ➔ 로컬 VFS 및 파일 저장/스캔 훅
+// 📊 [OMD-HOOK-useLocalVfs-0001] frontend/src/hooks/fileExplorer/useLocalVfs.ts
 // 🎯 @KICK  : 로컬 폴더/브라우저 FSA/VFS/웹드라이브 파일 트리 스캔(refreshFileList), 워크스페이스 선택(selectRootFolder), 물리적 파일 저장(saveFile)
 // 🛡️ @GUARD : 지식 보관함 자동 재색인(triggerKnowledgeAutoSyncOnSave), 디바운스 새로고침, Electron 네이티브 API 및 브라우저 FSA 3중 호환
+// 🚨 @PATCH : 2026-11-04 — [오류 처리 및 주석 표준화]: onrivi-error-handling에 따라 logError/logWarn의 file 경로를 useLocalVfs.ts로 정합화하고 refreshFileList/selectRootFolder/restoreFolderPermission 예외 로깅 추가, onrivi-source-comments 2단계 JSDoc 표준화
 // 🚨 @PATCH : 2026-11-04 — [에디터 실행 시 로컬/클라우드 탐색기 자동 리프레시 강화]: GDRIVE 폴더 ID(wsInfo.workspaceFolderId || rootFolder.driveFolderId) 다중 폴백, 브라우저 IndexedDB 핸들 즉시 복구 스캔, 데스크톱 경로(path || name) 우선 스캔 보강
 // 🚨 @PATCH : 2026-11-04 — [런타임 ReferenceError 수정]: hasValidDriveToken, setIsDriveAuthExpired, setIsDriveConnected, setCurrentFileNode, findFileHandleInDirectoryDeep, logWarn, knowledgeClient 누락 식별자 및 바인딩 보완
 // 🚨 @PATCH : 2026-11-04 — [런타임 버그 수정]: useEffect import 누락으로 인한 rootFolder ReferenceError 해소
@@ -65,6 +66,14 @@ export interface UseLocalVfsProps {
 }
 
 
+/**
+ * ========================================================================================
+ * [함수명] useLocalVfs - 로컬 디스크(Electron), 브라우저 FSA, 가상 파일 시스템(VFS), 구글 드라이브의 파일 트리 스캔 및 저장을 담당합니다.
+ *
+ * @param {UseLocalVfsProps} props - 워크스페이스 상태, 탭 상태 및 드라이브/토스트 제어 함수
+ * @returns {{ refreshFileList: (force?: boolean) => Promise<void>, selectRootFolder: (type?: 'local' | 'browser' | 'cloud' | 'current', initialPath?: string | null) => Promise<void>, restoreFolderPermission: () => Promise<void>, saveFile: (targetContent: string, targetFile: FileNode | null) => Promise<boolean> }}
+ * ==========================================================================================
+ */
 export function useLocalVfs({
   rootFolder,
   setRootFolder,
@@ -95,9 +104,14 @@ export function useLocalVfs({
   const lastRefreshTimeRef = useRef<number>(0);
   const isRefreshingRef = useRef<boolean>(false);
 
-  // 🔗 @CALLS : scanDirectory, getVfsFiles, api.listDirectory, fetch, setFileList
-  // ====================================================================
-  // 1. 파일 목록 리프레시 헬퍼 함수
+  /**
+   * ========================================================================================
+   * [함수명] refreshFileList - 현재 활성화된 작업장(구글 드라이브 / 브라우저 FSA / VFS / 데스크톱)의 파일 트리를 스캔하여 갱신합니다.
+   *
+   * @param {boolean} [force=false] - 디바운스(250ms) 및 진행 중 락을 우회하여 즉시 강제 스캔할지 여부
+   * @returns {Promise<void>}
+   * ==========================================================================================
+   */
   const refreshFileList = useCallback(async (force = false) => {
     const now = Date.now();
     if (!force && (isRefreshingRef.current || now - lastRefreshTimeRef.current < 250)) {
@@ -132,7 +146,13 @@ export function useLocalVfs({
             window.dispatchEvent(new CustomEvent('onrivi:drive_connected', { detail: { nodes: driveNodes } }));
             console.log(`[refreshFileList] ✅ 구글 드라이브 파일 목록 갱신 완료 (${driveNodes.length}개 노드)`);
           } catch (err) {
-            console.error('[refreshFileList GDRIVE Error]', err);
+            logError({
+              file: 'frontend/src/hooks/fileExplorer/useLocalVfs.ts',
+              func: 'refreshFileList',
+              doing: '구글 드라이브 작업장 파일 트리 목록 조회 중',
+              target: targetFolderId,
+              error: err
+            });
             setIsDriveAuthExpired(true);
             setIsDriveConnected(false);
           }
@@ -162,7 +182,13 @@ export function useLocalVfs({
             const tree = await scanDirectory(handle);
             setFileList(tree);
           } catch (err) {
-            console.error('[refreshFileList scanDirectory Error]', err);
+            logError({
+              file: 'frontend/src/hooks/fileExplorer/useLocalVfs.ts',
+              func: 'refreshFileList',
+              doing: '브라우저 FSA 디렉토리 핸들 파일 트리 스캔 중',
+              target: rootFolderRef.current?.name || 'browser-handle',
+              error: err
+            });
           }
         } else {
           // 🛡️ [게스트 체험 모드 가이드] 첫 진입 시 가상 스페이스에 예쁜 체험용 웰컴 문서 탑재
@@ -201,7 +227,13 @@ export function useLocalVfs({
           const list = await api.listDirectory(targetDirPath);
           setFileList(list);
         } catch (e) {
-          console.error('[refreshFileList listDirectory Error]', e);
+          logError({
+            file: 'frontend/src/hooks/fileExplorer/useLocalVfs.ts',
+            func: 'refreshFileList',
+            doing: '데스크톱 로컬 작업장 디렉토리 목록 조회 중',
+            target: targetDirPath,
+            error: e
+          });
         }
       }
     } finally {
@@ -209,13 +241,15 @@ export function useLocalVfs({
     }
   }, [setFileList, rootFolderRef, setIsDriveAuthExpired, setIsDriveConnected]);
 
-  // ====================================================================
-  // 📊 [OMD-FILE-USEFILEEXPLORER-0008] useFileExplorer.ts ➔ selectRootFolder
-  // 🎯 @KICK  : 로컬/브라우저 워크스페이스 루트 폴더를 선택하고 연결
-  // 🛡️ @GUARD : Electron/file picker/로컬스토리지 각 환경별 예외 처리
-  // 🚨 @PATCH : 없음
-  // 🔗 @CALLS : scanDirectory, idb.set, showToast, setRootFolder, setWorkspaceType
-  // ====================================================================
+  /**
+   * ========================================================================================
+   * [함수명] selectRootFolder - 로컬/브라우저/클라우드 워크스페이스 루트 폴더를 선택하고 연결합니다.
+   *
+   * @param {'local' | 'browser' | 'cloud' | 'current'} [type='current'] - 연결할 스토리지 유형
+   * @param {string | null} [initialPath] - 데스크톱 폴더 선택기 시작 경로
+   * @returns {Promise<void>}
+   * ==========================================================================================
+   */
   const selectRootFolder = async (type: 'local' | 'browser' | 'cloud' | 'current' = 'current', initialPath?: string | null) => {
     // A generic workspace action follows the active storage; explicit local actions stay local.
     if (type === 'cloud' || (type === 'current' && rootFolderRef.current?.type === 'GDRIVE')) {
@@ -270,6 +304,13 @@ export function useLocalVfs({
             showToast("폴더 선택이 취소되었습니다.", "info");
           }
         } catch (err: any) {
+          logError({
+            file: 'frontend/src/hooks/fileExplorer/useLocalVfs.ts',
+            func: 'selectRootFolder',
+            doing: '데스크톱 로컬 작업장 폴더 선택 및 초기화 중',
+            target: initialPath || 'local-folder',
+            error: err
+          });
           showToast("폴더 선택 오류: " + err.message, "error");
         }
       } else if (typeof (window as any).showDirectoryPicker === 'function') {
@@ -334,6 +375,13 @@ export function useLocalVfs({
           showToast(`워크스페이스 연결 완료 (${handle.name})`, "success");
         } catch (err) {
           if ((err as any)?.name !== 'AbortError' && (err as any)?.name !== 'SecurityError') {
+            logError({
+              file: 'frontend/src/hooks/fileExplorer/useLocalVfs.ts',
+              func: 'selectRootFolder',
+              doing: '브라우저 디렉토리 피커(showDirectoryPicker) 작업장 선택 중',
+              target: 'browser-workspace',
+              error: err
+            });
             showToast('워크스페이스 선택 중 오류가 발생했습니다.', 'error');
           }
           showToast("폴더 선택이 취소되었습니다.", "info");
@@ -357,14 +405,7 @@ export function useLocalVfs({
     }
   };
 
-  // ====================================================================
-  // 📊 [OMD-FILE-USEFILEEXPLORER-0007] useFileExplorer.ts ➔ restoreFolderPermission
-  // 🎯 @KICK  : 브라우저 File System Access 권한을 복구하여 워크스페이스 재연결
-  // 🛡️ @GUARD : rootFolder.handle 미존재 시 early return, 권한 거부/AbortError 처리
-  // 🚨 @PATCH : 없음
-  // 🔗 @CALLS : showToast, setRootFolder
-  // ====================================================================
-  // 3. 브라우저 저장소 권한 복구 핸들러
+  // 3. 브라우저 저장소 초기화 및 권한 복구 핸들러
   useEffect(() => {
     let busy = false;
     const reset = async () => {
@@ -378,13 +419,29 @@ export function useLocalVfs({
         setWorkspaceType('browser');
         setIsSidebarOpen(true);
         showToast('작업장 연결을 기본 브라우저 작업장으로 초기화했습니다. 기존 파일과 열린 문서는 유지됩니다.', 'success');
-      } catch (error: any) { showToast(error.message || '작업장 초기화에 실패했습니다.', 'error'); }
+      } catch (error: any) {
+        logError({
+          file: 'frontend/src/hooks/fileExplorer/useLocalVfs.ts',
+          func: 'resetBrowserWorkspace',
+          doing: '브라우저 기본 작업장 초기화 중',
+          target: BROWSER_STORAGE_NAME,
+          error
+        });
+        showToast(error.message || '작업장 초기화에 실패했습니다.', 'error');
+      }
       finally { busy = false; }
     };
     window.addEventListener('onrivi:reset-browser-workspace', reset);
     return () => window.removeEventListener('onrivi:reset-browser-workspace', reset);
   }, [setRootFolder, setWorkspaceType, setIsSidebarOpen, showToast, rootFolderRef]);
 
+  /**
+   * ========================================================================================
+   * [함수명] restoreFolderPermission - 브라우저 File System Access API 폴더 읽기/쓰기 권한을 재요청하여 복구합니다.
+   *
+   * @returns {Promise<void>}
+   * ==========================================================================================
+   */
   const restoreFolderPermission = async () => {
     if (!rootFolder?.handle) return;
     try {
@@ -398,16 +455,27 @@ export function useLocalVfs({
       }
     } catch (err: any) {
       if (err?.name !== 'AbortError') {
+        logError({
+          file: 'frontend/src/hooks/fileExplorer/useLocalVfs.ts',
+          func: 'restoreFolderPermission',
+          doing: '브라우저 작업장 폴더 읽기/쓰기 권한 복구 요청 중',
+          target: rootFolder?.name || 'rootFolderHandle',
+          error: err
+        });
         showToast(`권한 복구 실패: ${err.message}`, "error");
       }
     }
   };
 
-  // 🛡️ @GUARD : targetFile null 시 false 반환, 권한 거부 시 오류 토스트
-  // 🚨 @PATCH : 없음
-  // 🔗 @CALLS : vfsWriteFile, api.saveFile, showToast, setTabs
-  // ====================================================================
-  // 6. 물리적 스토리지 저장 로직
+  /**
+   * ========================================================================================
+   * [함수명] saveFile - 대상 파일 노드(구글 드라이브 / 데스크톱 디스크 / 브라우저 FSA / 지식 DB / VFS)에 마크다운 본문을 물리 저장합니다.
+   *
+   * @param {string} targetContent - 저장할 마크다운 본문 텍스트
+   * @param {FileNode | null} targetFile - 저장 대상 파일 노드
+   * @returns {Promise<boolean>} 저장 성공 여부
+   * ==========================================================================================
+   */
   const saveFile = useCallback(async (targetContent: string, targetFile: FileNode | null) => {
     if (isBundledDocumentPath(targetFile?.path)) return false;
     if (!targetFile) return false;
@@ -431,7 +499,7 @@ export function useLocalVfs({
             success = true;
           } catch (driveErr) {
             logError({
-              file: 'frontend/src/hooks/useFileExplorer.ts',
+              file: 'frontend/src/hooks/fileExplorer/useLocalVfs.ts',
               func: 'saveFile',
               doing: '구글 드라이브 파일 저장(업로드) 중',
               target: targetFile.name ? `${targetFile.name} (ID: ${driveFileId})` : (targetFile.path || driveFileId),
@@ -455,7 +523,7 @@ export function useLocalVfs({
             success = await api.saveFile(targetFile.path, targetContent);
             if (!success) {
               logError({
-                file: 'frontend/src/hooks/useFileExplorer.ts',
+                file: 'frontend/src/hooks/fileExplorer/useLocalVfs.ts',
                 func: 'saveFile',
                 doing: '로컬 디스크 파일 저장(Electron API) 중',
                 target: targetFile.path || targetFile.name,
@@ -464,7 +532,7 @@ export function useLocalVfs({
             }
           } catch (electronErr) {
             logError({
-              file: 'frontend/src/hooks/useFileExplorer.ts',
+              file: 'frontend/src/hooks/fileExplorer/useLocalVfs.ts',
               func: 'saveFile',
               doing: '로컬 디스크 파일 저장(Electron API) 중',
               target: targetFile.path || targetFile.name,
@@ -486,7 +554,7 @@ export function useLocalVfs({
           success = true;
           } else {
             logError({
-              file: 'frontend/src/hooks/useFileExplorer.ts',
+              file: 'frontend/src/hooks/fileExplorer/useLocalVfs.ts',
               func: 'saveFile',
               doing: '로컬 개발 서버 파일 저장(HTTP POST) 중',
               target: targetFile.path || targetFile.name,
@@ -495,7 +563,7 @@ export function useLocalVfs({
           }
         } catch (localHttpErr) {
           logError({
-            file: 'frontend/src/hooks/useFileExplorer.ts',
+            file: 'frontend/src/hooks/fileExplorer/useLocalVfs.ts',
             func: 'saveFile',
             doing: '로컬 개발 서버 파일 저장(HTTP POST) 중',
             target: targetFile.path || targetFile.name,
@@ -534,7 +602,7 @@ export function useLocalVfs({
             success = true;
             } catch (writeErr) {
               logError({
-                file: 'frontend/src/hooks/useFileExplorer.ts',
+                file: 'frontend/src/hooks/fileExplorer/useLocalVfs.ts',
                 func: 'saveFile',
                 doing: '브라우저 파일 시스템(Handle) 쓰기 중',
                 target: targetFile.name || targetFile.path || 'unknown',
@@ -545,7 +613,7 @@ export function useLocalVfs({
             }
           } else {
             logWarn({
-              file: 'frontend/src/hooks/useFileExplorer.ts',
+              file: 'frontend/src/hooks/fileExplorer/useLocalVfs.ts',
               func: 'saveFile',
               doing: '브라우저 파일 쓰기 권한 요청 중',
               target: targetFile.name || targetFile.path || 'unknown',
@@ -619,7 +687,7 @@ export function useLocalVfs({
                 success = true;
               } catch (vfsErr) {
                 logError({
-                  file: 'frontend/src/hooks/useFileExplorer.ts',
+                  file: 'frontend/src/hooks/fileExplorer/useLocalVfs.ts',
                   func: 'saveFile',
                   doing: '브라우저 가상 파일 시스템(VFS) 쓰기 중',
                   target: targetFile.path || targetFile.name,
@@ -658,7 +726,7 @@ export function useLocalVfs({
       return success;
     } catch (e: any) {
       logError({
-        file: 'frontend/src/hooks/useFileExplorer.ts',
+        file: 'frontend/src/hooks/fileExplorer/useLocalVfs.ts',
         func: 'saveFile',
         doing: '물리 파일 저장(디스크/VFS) 처리 중',
         target: targetFile?.path || targetFile?.name || 'unknown',

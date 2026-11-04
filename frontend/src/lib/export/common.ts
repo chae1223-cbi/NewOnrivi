@@ -2,7 +2,7 @@
 // 📊 [OMD-IO-export-common-0001] frontend/src/lib/export/common.ts
 // 🎯 @KICK  : 문서 내보내기 공통 DOM 조작, 스타일 인젝션, 이미지/폰트 인라인화 및 다운로드 헬퍼
 // 🛡️ @GUARD : CORS 방어, 비식별화, IME 강제 플러시, 리스트 마커 및 표 서식 보존
-// 🚨 @PATCH : **2026-11-04** — [모듈화 분리]: exportHandlers.ts에서 공통 DOM 전처리 및 헬퍼 함수 분리
+// 🚨 @PATCH : **2026-11-04** — [모듈화 분리 & 에러/주석 표준화]: exportHandlers.ts에서 공통 DOM 전처리 및 헬퍼 함수 분리 및 2단계 JSDoc·logWarn/logError 적용
 // 🔗 @CALLS : materializeReportNumbers, materializeHeadingNumbers, embedExportFonts
 // ====================================================================
 import { getApiUrl } from '@/lib/apiUrlBuilder';
@@ -10,6 +10,7 @@ import { cleanExportDocument, EXPORT_DOCUMENT_CSS, stripExportViewportRules, get
 import { materializeHeadingNumbers } from '../headingNumbering';
 import { reportNumberingCss, materializeReportNumbers, CIRCLED_DECIMAL_LIST_STYLE, CIRCLED_NUMBERS, getBulletSymbolValue } from '../reportNumbering';
 import { embedExportFonts } from '../exportFonts';
+import { logError, logWarn } from '@/lib/errorDiagnostics';
 import { msg } from '@/lib/systemMessages';
 import { PAPER_SIZES } from '@/constants/paperSizes';
 import { DEFAULT_PROFILE, normalizeCssProfile } from '@/constants/cssProfile';
@@ -17,17 +18,15 @@ import { DocumentPrintSettings, DEFAULT_PRINT_SETTINGS, DEFAULT_WATERMARK_IMAGE,
 import type { CssProfile } from '@/types/cssProfile';
 import type { ExportOptions, SNSCardNewsOptions } from './types';
 
-// ====================================================================
-// 📊 [OMD-IO-exportHandlers-0000] exportHandlers.ts ➔ injectPageBreakMarkers
-// 🎯 @KICK  : 설정된 헤딩 레벨(exportPageBreakLevel)에 따라 DOM에 직접 page-break 마커를 삽입
-// 🛡️ @GUARD : CSS page-break 선택자 방식은 h3·h4 레벨에서 섹션 내부 이중 break가 발생하는 한계가 있어 DOM 직접 삽입 방식으로 대체
-// 🚨 @PATCH : **2026-08-16** — 신규 구현
-// 🔗 @CALLS : exportPDF
-// ====================================================================
-// 🔑 섹션 분할 정책 (EPUB과 동일한 버퍼 알고리즘):
-//   h(level) 헤딩이 등장할 때마다 이전까지의 내용이 하나의 단위가 됩니다.
-//   상위 레벨 헤딩(h1~h(level-1))은 버퍼에 쌓이다가, h(level)이 나올 때 함께 하나의 섹션을 구성합니다.
-//   예) h3 기준: [h2+h2내용+h3#1+내용] / [h3#2+내용] / [h2(새)+h2내용+h3#3+내용] / [h3#4+내용]
+/**
+ * ==== [injectPageBreakMarkers] ====
+ * 🎯 역할 : 설정된 헤딩 레벨(exportPageBreakLevel)에 따라 DOM에 직접 page-break 마커를 삽입
+ * 📥 파라미터 :
+ *   - containerEl (HTMLElement) : 대상 컨테이너 DOM 요소
+ *   - exportPageBreakLevel (string) : 페이지 분할 기준 헤딩 레벨 ('none' | 'h1' ~ 'h6')
+ * 📤 반환값 : void
+ * 💡 비고 : 상위 레벨 헤딩 다음에 오는 첫 하위 헤딩은 자르지 않고 묶는 Keep with Next 알고리즘 적용
+ */
 export function injectPageBreakMarkers(containerEl: HTMLElement, exportPageBreakLevel: string): void {
   if (!exportPageBreakLevel || exportPageBreakLevel === 'none') return;
   const levelNum = parseInt(exportPageBreakLevel.replace('h', ''));
@@ -68,15 +67,13 @@ export function injectPageBreakMarkers(containerEl: HTMLElement, exportPageBreak
     // 일반 콘텐츠(p, ul 등): bufferStartEl 상태 유지 (버퍼 계속 쌓임)
 }
 
-// [ONR-EXP-001] 로컬 PDF / HTML 파일 출력 처리: 현재 문서 본문 DOM을 클론하여 지도/동영상 요소를 정적 변환하고 프린트 출력 스타일을 입혀 PDF/HTML 내보내기를 핸들링합니다.
-/** IME 조합 버퍼 강제 커밋: export 직전 한글 입력이 완성되지 않은 상태로 캡처되는 현상 차단 */
-// ====================================================================
-// 📊 [OMD-IO-exportHandlers-0001] exportHandlers.ts ➔ flushIME
-// 🎯 @KICK  : IME 조합 버퍼 강제 커밋 — export 전 한글 미완성 입력 캡처 차단
-// 🛡️ @GUARD : 임시 input 생성/포커스/blur/제거
-// 🚨 @PATCH : 없음
-// 🔗 @CALLS : 없음
-// ====================================================================
+/**
+ * ==== [flushIME] ====
+ * 🎯 역할 : IME 조합 버퍼 강제 커밋 — export 직전 한글 미완성 입력이 누락된 채 캡처되는 현상 차단
+ * 📥 파라미터 : 없음
+ * 📤 반환값 : void
+ * 💡 비고 : 임시 input 생성 후 focus/blur 처리로 브라우저 조합 버퍼를 즉시 확정
+ */
 export function flushIME(): void {
   const input = document.createElement('input');
   input.style.cssText = 'position:fixed;top:-9999px;opacity:0;pointer-events:none;';
@@ -86,18 +83,14 @@ export function flushIME(): void {
   document.body.removeChild(input);
 }
 
-/** html2canvas 한계 완벽 우회: 인라인코드 높이 고정 및 상하 패딩 소거형 정렬
- *  (html2canvas of inline-block 높이 오계산 및 글자 처짐 버그를 해결하는 가장 완벽하고 수학적인 해법) */
-// ====================================================================
-// 📊 [OMD-IO-exportHandlers-0002] exportHandlers.ts ➔ applyExportInlineStyles
-// 🎯 @KICK  : 이미지/PDF 내보내기 시 인라인 코드 높이 오계산 및 상향 솟구침, 단어 쪼개짐 버그 해결
-// 🚨 @PATCH : **2026-10-01** — [미리보기 실시간 계산 스타일(Computed Style) 1:1 복제 엔진 도입]: sourceEl(미리보기 실제 DOM)의 각 table, th, td에서 브라우저가 렌더링한 실제 테두리·색상·배경·정렬(Computed Style)을 1:1로 복사하여, 미리보기의 외곽 테두리 및 가로선/세로선 구조를 이미지/PDF 내보내기 시 100% 동일하게 재현
-// 🚨 @PATCH : **2026-10-01** — [표 내보내기 시 외곽 테두리 및 행/열 테두리 인라인 주입]: html-to-image/canvas 캡처 시 외곽 테두리 소실을 막기 위해 table 및 셀의 최외곽 4면에 테두리를 직접 주입하고, colBorderWidth가 0px일 때 세로선을 완전 소거하여 미리보기와 100% 일치하도록 보장
-// 🚨 @PATCH : **2026-10-01** — display:inline-block 및 vertical-align:0으로 인한 인라인 코드 두 줄 쪼개짐 및 상단 솟구침 버그를 display:inline, vertical-align:baseline, white-space:nowrap(단어보호), box-decoration-break:clone으로 전면 개편하여 완벽 해결
-// 🚨 @PATCH : **2026-06-19** — PNG/HTML 내보내기 시 인라인 코드 스타일을 미리보기(globals.css)와 100% 동기화하기 위해 vertical-align:0, line-height:1.35, padding:1px 4.5px 규격으로 완전 치환
-// 🔗 @CALLS : 없음
-// ====================================================================
-// Keep PDF and EPUB table styling in sync with the rendered document.
+/**
+ * ==== [preserveRenderedTableStyles] ====
+ * 🎯 역할 : PDF 및 EPUB 내보내기 시 원본 DOM(sourceEl)의 표(table) 계산 스타일(Computed Style)을 복제본(clone)에 1:1 주입
+ * 📥 파라미터 :
+ *   - clone (HTMLElement) : 내보내기용 복제 DOM
+ *   - sourceEl (HTMLElement) : 실제 화면에 렌더링된 원본 미리보기 DOM
+ * 📤 반환값 : void
+ */
 export function preserveRenderedTableStyles(clone: HTMLElement, sourceEl: HTMLElement): void {
       const sourceTables = Array.from(sourceEl.querySelectorAll('table'));
       clone.querySelectorAll<HTMLElement>('table').forEach((table, index) => {
@@ -118,6 +111,15 @@ export function preserveRenderedTableStyles(clone: HTMLElement, sourceEl: HTMLEl
       });
 }
 
+/**
+ * ==== [applyExportInlineStyles] ====
+ * 🎯 역할 : 이미지/PDF/HTML 내보내기 시 인라인 코드 정렬, 표(table) 외곽·행·열 테두리, 코드블록 테마를 복제본 DOM에 인라인 주입
+ * 📥 파라미터 :
+ *   - clone (HTMLElement) : 내보내기용 복제 DOM
+ *   - activeProfile (CssProfile | undefined) : 활성 서식 프로필
+ *   - sourceEl (HTMLElement | undefined) : 원본 미리보기 DOM (Computed Style 참조용)
+ * 📤 반환값 : void
+ */
 export function applyExportInlineStyles(clone: HTMLElement, activeProfile?: CssProfile, sourceEl?: HTMLElement): void {
   // 🌟 querySelectorAll('code') + closest('pre') 조합으로 블록 코드블록을 제외한 모든 인라인 코드를 100% 포착
   clone.querySelectorAll('code').forEach((code) => {
@@ -509,14 +511,13 @@ export function applyExportInlineStyles(clone: HTMLElement, activeProfile?: CssP
   });
 }
 
-/** Yandex/Google 지도 복원 */
-// ====================================================================
-// 📊 [OMD-IO-exportHandlers-0003] exportHandlers.ts ➔ restoreMapsInClone
-// 🎯 @KICK  : 구글 지도 iframe 및 data-map-original-src 속성 기반 지도 복원 (Yandex 정적맵 fallback + Google Maps 링크)
-// 🛡️ @GUARD : URL 파싱 오류, center/zoom/q 추출 방어
-// 🚨 @PATCH : **2026-06-19** — iframe[src*="maps.google.com"] 요소를 추가로 감지하여 Yandex Static Maps 정적 이미지로 복원 치환함으로써 html2canvas의 CORS 제한으로 인한 지도 엑스박스(누락) 버그를 영구 해결
-// 🔗 @CALLS : msg.error
-// ====================================================================
+/**
+ * ==== [restoreMapsInClone] ====
+ * 🎯 역할 : 구글 지도 iframe 및 data-map-original-src 속성을 Yandex 정적 지도 이미지와 Google Maps 링크로 복원 치환
+ * 📥 파라미터 :
+ *   - clone (HTMLElement) : 내보내기용 복제 DOM
+ * 📤 반환값 : void
+ */
 export function restoreMapsInClone(clone: HTMLElement) {
   const mapContainers = Array.from(clone.querySelectorAll('[data-map-original-src], iframe[src*="maps.google.com"]'));
   mapContainers.forEach((container) => {
@@ -554,6 +555,13 @@ export function restoreMapsInClone(clone: HTMLElement) {
           finalSrc = `https://static-maps.yandex.ru/1.x/?ll=${lng},${lat}&z=${zoom}&size=600,360&l=map&lang=ko_KR`;
         }
       } catch (e) {
+        logWarn({
+          file: 'frontend/src/lib/export/common.ts',
+          func: 'restoreMapsInClone',
+          doing: '구글 지도 URL에서 위도/경도 좌표를 파싱하는 작업',
+          target: originalSrc,
+          error: e
+        });
         msg.error("Map restoration URL parse error", e);
       }
 
@@ -585,14 +593,13 @@ export function restoreMapsInClone(clone: HTMLElement) {
   });
 }
 
-/** 모든 유튜브 iframe(임베드) 요소를 썸네일 하이퍼링크로 자동 변환 */
-// ====================================================================
-// 📊 [OMD-IO-exportHandlers-0004] exportHandlers.ts ➔ convertYoutubeIframeToLink
-// 🎯 @KICK  : YouTube iframe 임베드를 썸네일 + 하이퍼링크 컨테이너로 변환
-// 🛡️ @GUARD : youtube.com / youtube-nocookie.com embed 감지, videoId 추출
-// 🚨 @PATCH : 없음
-// 🔗 @CALLS : 없음
-// ====================================================================
+/**
+ * ==== [convertYoutubeIframeToLink] ====
+ * 🎯 역할 : 복제된 DOM 내부의 YouTube iframe 임베드 요소를 정적 썸네일 이미지와 하이퍼링크 카드로 변환
+ * 📥 파라미터 :
+ *   - clone (HTMLElement) : 내보내기용 복제 DOM
+ * 📤 반환값 : void
+ */
 export function convertYoutubeIframeToLink(clone: HTMLElement) {
   const iframes = clone.querySelectorAll('iframe');
   iframes.forEach((iframe) => {
@@ -643,14 +650,14 @@ export function convertYoutubeIframeToLink(clone: HTMLElement) {
   });
 }
 
-/** 미리보기 DOM 복제 + 버튼 요소 정리 + 지도 복원 */
-// ====================================================================
-// 📊 [OMD-IO-exportHandlers-0005] exportHandlers.ts ➔ clonePreview
-// 🎯 @KICK  : 미리보기 DOM 복제 + 버튼 정리 + 지도 복원 + 유튜브 변환
-// 🛡️ @GUARD : cloneNode(true)로 전체 트리 복제
-// 🚨 @PATCH : 없음
-// 🔗 @CALLS : restoreMapsInClone, convertYoutubeIframeToLink
-// ====================================================================
+/**
+ * ==== [clonePreview] ====
+ * 🎯 역할 : 미리보기 DOM을 깊은 복제(cloneNode)하고 편집용 컨트롤 제거, 제목/보고서 번호 실체화, 지도·유튜브 정적 변환을 수행
+ * 📥 파라미터 :
+ *   - previewEl (HTMLElement) : 원본 미리보기 DOM
+ *   - captureWordLayout (boolean) : Word/한글 문서 내보내기용 레이아웃 속성(폭/패딩/공백) 기록 여부
+ * 📤 반환값 : HTMLElement (정리 완료된 복제 DOM)
+ */
 export function clonePreview(previewEl: HTMLElement, captureWordLayout = false): HTMLElement {
   const clone = previewEl.cloneNode(true) as HTMLElement;
   if (captureWordLayout) {
@@ -688,15 +695,14 @@ export function clonePreview(previewEl: HTMLElement, captureWordLayout = false):
   return clone;
 }
 
-/** html2canvas가 ::before/::after/counter()를 지원하지 않아 목록 마커가 소실되는 문제 해결:
- *  export 전 clone DOM에 직접 숫자/불릿 마커를 주입 */
-// ====================================================================
-// 📊 [OMD-IO-exportHandlers-0006] exportHandlers.ts ➔ fixListMarkers
-// 🎯 @KICK  : html2canvas ::before/counter() 미지원 문제 해결 — DOM에 숫자/불릿 마커 직접 주입
-// 🛡️ @GUARD : onrivi-empty-list-row / task-list-item 제외, start 속성 반영
-// 🚨 @PATCH : export-style-element 클래스로 스타일 및 마커 일괄 관리
-// 🔗 @CALLS : 없음
-// ====================================================================
+/**
+ * ==== [fixListMarkers] ====
+ * 🎯 역할 : html2canvas의 ::before/counter() 미지원 문제를 해결하기 위해 복제된 DOM의 리스트(ol/ul)에 직접 숫자/불릿 마커(span.export-list-marker)를 주입
+ * 📥 파라미터 :
+ *   - clone (HTMLElement) : 내보내기용 복제 DOM
+ *   - profile (CssProfile | undefined) : 활성 서식 프로필 (원문자/다단계 불릿 기호 참조용)
+ * 📤 반환값 : void
+ */
 export function fixListMarkers(clone: HTMLElement, profile?: CssProfile): void {
   const style = document.createElement('style');
   style.className = 'export-style-element';
@@ -761,14 +767,14 @@ export function fixListMarkers(clone: HTMLElement, profile?: CssProfile): void {
   });
 }
 
-/** 상대 경로(/~) 및 media:// 프로토콜 이미지를 Base64 Data URI로 인라인 임베딩 (내보내기 시 이미지 깨짐 방지) */
-// ====================================================================
-// 📊 [OMD-IO-exportHandlers-0007] exportHandlers.ts ➔ inlineLocalImages
-// 🎯 @KICK  : 상대 경로 / media:// 이미지를 Base64 Data URI로 인라인 임베딩
-// 🛡️ @GUARD : Electron IPC, Data URI/http(s) 스킵, 백엔드 /api/view 2차 fallback
-// 🚨 @PATCH : **2026-06-19** — PNG 및 EPUB 내보내기 시 외부 이미지 로딩 CSP/CORS 차단 해결을 위해 일렉트론 환경에서 외부 http/https URL을 media 프록시로 대리 fetch하여 base64 인라인 변환하도록 패치; Electron readImageAsBase64 IPC 우회, 백엔드 실패 시 프론트엔드 정적 서빙 재시도
-// 🔗 @CALLS : getApiUrl
-// ====================================================================
+/**
+ * ==== [inlineLocalImages] ====
+ * 🎯 역할 : 복제된 DOM 내의 상대 경로(/~), media:// 프로토콜 및 외부 이미지를 Base64 Data URI로 인라인 임베딩
+ * 📥 파라미터 :
+ *   - clone (HTMLElement) : 내보내기용 복제 DOM
+ * 📤 반환값 : Promise<void>
+ * 💡 비고 : 개별 이미지 로드 실패 시 전체 내보내기가 중단되지 않도록 경고 기록 후 건너뜀
+ */
 export async function inlineLocalImages(clone: HTMLElement): Promise<void> {
   const images = Array.from(clone.querySelectorAll('img'));
   const api = (window as any).electronAPI;
@@ -811,23 +817,28 @@ export async function inlineLocalImages(clone: HTMLElement): Promise<void> {
       }
       image.src = dataUrl;
     } catch (err) {
-      console.warn(`[inlineLocalImages] ${index + 1}번째 이미지 인라인 변환 건너뜀:`, err);
+      logWarn({
+        file: 'frontend/src/lib/export/common.ts',
+        func: 'inlineLocalImages',
+        doing: `${index + 1}번째 이미지를 Base64 Data URI로 인라인 변환하는 작업`,
+        target: src || `img[${index}]`,
+        error: err
+      });
     }
   }));
   await waitForExportResources(clone);
 }
 
 /**
- * 모든 export 포맷 공통: 복제된 DOM에 동적 CSS + 인쇄 스타일을 주입합니다.
- * hideIndicators: true 면 화면용 가상 페이지 구분선(빨간 점선/이모지)을 제거
+ * ==== [injectExportStyles] ====
+ * 🎯 역할 : 모든 내보내기 포맷 공통 — 복제된 DOM에 동적 CSS, 인쇄 보정 스타일, 페이지 구분선 숨김 규칙을 주입
+ * 📥 파라미터 :
+ *   - clone (HTMLElement) : 내보내기용 복제 DOM
+ *   - dynamicCssString (string | undefined) : 동적 서식 프로필 CSS 문자열
+ *   - options ({ hideIndicators?: boolean } | undefined) : 페이지 구분선 숨김 옵션
+ *   - pageBg (string | undefined) : 페이지 배경색
+ * 📤 반환값 : void
  */
-// ====================================================================
-// 📊 [OMD-IO-exportHandlers-0008] exportHandlers.ts ➔ injectExportStyles
-// 🎯 @KICK  : export 전 clone DOM에 동적 CSS + 인쇄 스타일 + 페이지 구분선 숨김 주입
-// 🛡️ @GUARD : hideIndicators 옵션, dynamicCssString 존재 여부, pageBg 배경색
-// 🚨 @PATCH : **2026-06-19** — PNG/HTML 내보내기 시 인라인 코드 스타일을 미리보기(globals.css)와 100% 동기화하기 위해 vertical-align:0, line-height:1.35, padding:1px 4.5px 규격으로 완전 치환; html2canvas 가상 iframe 내부의 html/body 글로벌 족쇄(overflow:hidden 및 height:100%) 오버라이드 해제 스타일 추가; custom-preview-container 클래스 추가로 사용자 CSS 우선 적용; 인라인 코드, 리스트 마커, 수식 겹침(KaTeX), 체크박스 정렬 불일치를 완벽 해결하기 위해 인쇄 스타일 가드 적용; KaTeX 웹폰트 CDN 강제 임포트로 수식 왜곡 및 가로 막힘 영구 해결
-// 🔗 @CALLS : 없음
-// ====================================================================
 export function injectExportStyles(
   clone: HTMLElement,
   dynamicCssString?: string,
@@ -947,14 +958,14 @@ html, body {
   clone.appendChild(styleEl);
 }
 
-/** 모든 로컬/크롬 확장프로그램/데스크탑 CSS 규칙을 동기식으로 추출하여 인라인 스타일로 변환 */
-// ====================================================================
-// 📊 [OMD-IO-exportHandlers-0014] exportHandlers.ts ➔ collectAllStyles
-// 🎯 @KICK  : 로컬 및 확장프로그램 CSS 규칙들을 SecurityError 없이 동기 추출하여 인라인화
-// 🛡️ @GUARD : chrome-extension://, file://, app:// 프로토콜 대응, 외부 CDN link 분리 보존
-// 🚨 @PATCH : **2026-06-20** — 신규 구현 (비동기 fetch 대신 브라우저 컴파일 완료된 cssRules 동기식 추출 방식)
-// 🔗 @CALLS : 없음
-// ====================================================================
+/**
+ * ==== [resolveExportWatermark] ====
+ * 🎯 역할 : 내보내기용 워터마크 설정을 검증하고 이미지 워터마크를 Base64 Data URI로 인라인 변환
+ * 📥 파라미터 :
+ *   - settings (DocumentPrintSettings) : 원본 문서 인쇄/워터마크 설정
+ * 📤 반환값 : Promise<DocumentPrintSettings> (검증 및 이미지 인라인화 완료된 설정)
+ * 💡 비고 : 리소스 폴더 변경 또는 이미지 로드 실패 시 기본 엠블럼으로 안전 폴백
+ */
 export async function resolveExportWatermark(settings: DocumentPrintSettings): Promise<DocumentPrintSettings> {
       const resolved = { ...settings };
       if(resolved.enabled){
@@ -990,7 +1001,13 @@ export async function resolveExportWatermark(settings: DocumentPrintSettings): P
                 resolved.image=img.src;
               }
             } catch (err) {
-              console.warn('[Watermark] 워터마크 이미지 로드 실패, 기본 엠블럼으로 안전 대체:', err);
+              logWarn({
+                file: 'frontend/src/lib/export/common.ts',
+                func: 'resolveExportWatermark',
+                doing: '워터마크 이미지를 로드하여 Data URI로 변환하는 작업',
+                target: resolved.image || 'watermark-image',
+                error: err
+              });
               resolved.image = DEFAULT_WATERMARK_IMAGE;
             }
           }
@@ -999,16 +1016,36 @@ export async function resolveExportWatermark(settings: DocumentPrintSettings): P
   return resolved;
 }
 
+/**
+ * ==== [prepareDocumentFonts] ====
+ * 🎯 역할 : 내보내기 대상 문서에서 사용 중인 글꼴을 추출하여 임베딩용 @font-face CSS 문자열 생성
+ * 📥 파라미터 :
+ *   - root (HTMLElement) : 글꼴 사용 여부를 스캔할 루트 DOM 요소
+ * 📤 반환값 : Promise<string> (@font-face CSS 문자열)
+ * 💡 비고 : 5초 타임아웃 적용, 실패 시 내보내기를 중단하지 않고 빈 문자열 반환
+ */
 export async function prepareDocumentFonts(root: HTMLElement): Promise<string> {
   const controller = new AbortController();
   try {
     return await withExportTimeout(embedExportFonts(root, controller.signal), '내보내기 글꼴', 5000);
   } catch (error) {
-    console.warn('[export] Font embedding skipped; using available fonts:', error);
+    logWarn({
+      file: 'frontend/src/lib/export/common.ts',
+      func: 'prepareDocumentFonts',
+      doing: '내보내기 문서의 사용 글꼴을 임베딩하는 작업',
+      target: 'embedExportFonts',
+      error
+    });
     return '';
   } finally { controller.abort(); }
 }
 
+/**
+ * ==== [collectAllStyles] ====
+ * 🎯 역할 : 현재 문서의 모든 로컬/확장프로그램 CSS 규칙을 SecurityError 없이 동기 추출하고 외부 CDN 링크를 수집
+ * 📥 파라미터 : 없음
+ * 📤 반환값 : { inlineStyles: string; linkTags: string }
+ */
 export function collectAllStyles(): { inlineStyles: string; linkTags: string } {
   const inlineStyles: string[] = [];
   const linkTags: string[] = [];
@@ -1045,14 +1082,15 @@ export function collectAllStyles(): { inlineStyles: string; linkTags: string } {
   };
 }
 
-/** 다운로드 폴더에 파일 백업 */
-// ====================================================================
-// 📊 [OMD-IO-exportHandlers-0009] exportHandlers.ts ➔ saveToDownloads
-// 🎯 @KICK  : 기존 호출자의 저장 결과 분기 호환. 웹 파일은 브라우저 다운로드로 저장한다.
-// 🛡️ @GUARD : 웹에서 존재하지 않는 백업 API를 추가 호출하지 않는다.
-// 🚨 @PATCH : 없음
-// 🔗 @CALLS : getApiUrl
-// ====================================================================
+/**
+ * ==== [saveToDownloads] ====
+ * 🎯 역할 : 기존 호출자의 다운로드 저장 결과 분기 호환 헬퍼 (Electron 데스크톱 모드에서는 true 반환, 웹에서는 브라우저 다운로드 사용)
+ * 📥 파라미터 :
+ *   - filename (string) : 저장할 파일명
+ *   - content (string) : 파일 내용
+ *   - type ('base64' | 'text') : 인코딩 타입
+ * 📤 반환값 : Promise<boolean>
+ */
 export async function saveToDownloads(filename: string, content: string, type: 'base64' | 'text') {
   // 💡 [일렉트론 환경 가드] 일렉트론 순수 데스크톱 모드에서는 Express 백엔드 포트 서빙이 실행되지 않으므로,
   // 불필요한 로컬 API fetch 시도를 즉시 스킵하여 콘솔의 ERR_CONNECTION_REFUSED 빨간색 에러 노출을 방지합니다.

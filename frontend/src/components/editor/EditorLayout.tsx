@@ -1,11 +1,11 @@
-// ====================================================================
-// 📊 [OMD-UI-EditorLayout-0001] EditorLayout.tsx ➔ 에디터 레이아웃 뼈대 컴포넌트
-// 🎯 @KICK  : 에디터 쉘(Shell), 메뉴바(MenuBar), 좌측 사이드바(LeftSidebar), 하단 상태바(StatusBar), 동시 접속 배너 및 지식 베이스 뷰의 상하좌우 골격 구조 배치
-// 🛡️ @GUARD : Rule 3(역할 기반 분리)에 따라 고정적인 화면 껍데기 UI 레이아웃을 격리하고 중앙 코어 렌더링 영역을 children으로 위임 (Layout 영역)
-// 🚨 @PATCH : 2026-11-04 — [MainEditorApp 모듈화 3단계]:
-//             1) MainEditorApp에서 상하좌우 UI 골격(MenuBar, LeftSidebar, StatusBar, KnowledgeHubView, 동시 접속 배너)을 EditorLayout으로 분리 (Rule 3 준수)
-// 🔗 @CALLS : MenuBar, LeftSidebar, StatusBar, KnowledgeHubView
-// ====================================================================
+/**
+ * ====================================================================
+ * 🏷️ 파일명 : EditorLayout.tsx
+ * 🎭 역할(Role) : Layout (구조 래퍼 — 에디터 상하좌우 UI 골격 배치)
+ * 🎯 주요기능 : 에디터 쉘(Shell), 메뉴바(MenuBar), 좌측 사이드바(LeftSidebar), 하단 상태바(StatusBar), 동시 접속 안내 배너 및 지식 베이스 뷰 배치
+ * 🚨 @PATCH : 2026-11-04 — [MainEditorApp 모듈화 3단계 & 주석 표준화] MainEditorApp에서 상하좌우 UI 골격(MenuBar, LeftSidebar, StatusBar, KnowledgeHubView, 동시 접속 배너)을 EditorLayout으로 분리 및 2단계 주석 적용 (규칙 3 Layout 역할 준수)
+ * ====================================================================
+ */
 // @ts-nocheck
 "use client";
 
@@ -36,6 +36,14 @@ export interface EditorLayoutProps {
   fileList: any[];
 }
 
+/**
+ * ========================================================================================
+ * [컴포넌트명] EditorLayout - 온리비 에디터 상하좌우 UI 골격 래퍼 컴포넌트
+ *
+ * @param {EditorLayoutProps} props - 레이아웃 구성에 필요한 자식 노드 및 상태 Props
+ * @returns {JSX.Element} 에디터 전체 레이아웃 프레임
+ * ==========================================================================================
+ */
 export default function EditorLayout({
   children,
   bottomBar,

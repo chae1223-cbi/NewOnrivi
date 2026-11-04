@@ -1,5 +1,12 @@
-// 🚨 @PATCH : **2026-11-04** — [formatTime 방어 가드 강화]: formatTime 호출 시 옵셔널 체이닝 및 안전 폴백 적용으로 게스트 타이머 미정의 런타임 오류 원천 차단
-// 🚨 @PATCH : **2026-11-04** — [Rule 3 역할 기반 분리 (4단계 EditorCore)]: Monaco Editor, MarkdownViewer/VisualDocumentEditor 스플릿뷰, 브레드크럼, 탭바, 플로팅 툴바, 문서링크 픽커를 포함하는 에디터 코어 렌더링 뷰를 MainEditorApp에서 독립 모듈로 분리
+/**
+ * ====================================================================
+ * 🏷️ 파일명 : EditorCore.tsx
+ * 🎭 역할(Role) : Core (핵심 도메인 뷰 — 마크다운 편집기 및 미리보기 스플릿뷰 렌더링)
+ * 🎯 주요기능 : Monaco Editor, MarkdownViewer/VisualDocumentEditor 스플릿뷰, 브레드크럼, 탭바, 플로팅 툴바, 문서 링크 픽커 렌더링
+ * 🚨 @PATCH : 2026-11-04 — [formatTime 방어 가드 강화 & 주석/에러 표준화] formatTime 안전 폴백 및 2단계 UI 컴포넌트 주석·logError 적용
+ * 🚨 @PATCH : 2026-11-04 — [Rule 3 역할 기반 분리 (4단계 EditorCore)] 에디터 코어 렌더링 뷰를 MainEditorApp에서 독립 모듈로 분리
+ * ====================================================================
+ */
 // @ts-nocheck
 "use client";
 
@@ -22,6 +29,7 @@ import { picturebookImageReference } from '@/lib/imageResourceName';
 import { parseBookScenes } from '@/lib/picturebook';
 import { extractFrontmatter } from '@/lib/frontmatter';
 import { FileNode } from '@/lib/indexedDbHelper';
+import { logError } from '@/lib/errorDiagnostics';
 
 export interface EditorCoreProps {
   isGuestMode?: boolean;
@@ -130,6 +138,14 @@ export interface EditorCoreProps {
   autoClosingBrackets?: boolean;
 }
 
+/**
+ * ========================================================================================
+ * [컴포넌트명] EditorCore - 마크다운 에디터(Monaco) 및 실시간 문서 보기(Preview) 핵심 도메인 뷰
+ *
+ * @param {EditorCoreProps} props - 에디터 및 미리보기 렌더링/상호작용에 필요한 Props
+ * @returns {JSX.Element} 에디터 중앙 코어 영역
+ * ==========================================================================================
+ */
 export default function EditorCore(props: EditorCoreProps) {
   const {
     isGuestMode,
@@ -1811,7 +1827,13 @@ export default function EditorCore(props: EditorCoreProps) {
                                         btn.innerHTML = '서식 복사 완료!';
                                         setTimeout(() => { btn.innerHTML = originalText; }, 2000);
                                       } catch (err) {
-                                        console.error("서식 복사 실패:", err);
+                                        logError({
+                                          file: 'frontend/src/components/editor/EditorCore.tsx',
+                                          func: 'handleCopyFormattedPreview',
+                                          doing: '미리보기 DOM의 서식 포함 내용을 클립보드로 복사하는 작업',
+                                          target: currentFileName || 'preview',
+                                          error: err
+                                        });
                                       }
                                     }}
                                     className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/90 dark:bg-zinc-800/90 border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 shadow-sm hover:bg-zinc-50 dark:hover:bg-zinc-700 backdrop-blur-sm active:scale-95 transition-all"

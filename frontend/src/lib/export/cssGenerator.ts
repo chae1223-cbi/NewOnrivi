@@ -2,7 +2,7 @@
 // 📊 [OMD-IO-export-css-0001] frontend/src/lib/export/cssGenerator.ts
 // 🎯 @KICK  : 서식 프로필(CssProfile) 기반 인쇄/내보내기 동적 CSS 생성기
 // 🛡️ @GUARD : 라이트모드 기준 고정, @layer 우선순위 계층 적용, 표/코드/제목 조판 동기화
-// 🚨 @PATCH : **2026-11-04** — [모듈화 분리]: exportHandlers.ts에서 서식 프로필 CSS 빌더 분리
+// 🚨 @PATCH : **2026-11-04** — [모듈화 분리 & 주석 표준화]: exportHandlers.ts에서 서식 프로필 CSS 빌더 분리 및 2단계 JSDoc 적용
 // 🔗 @CALLS : headingNumberingCss, reportNumberingCss, normalizeCssProfile
 // ====================================================================
 import { headingNumberingCss } from '../headingNumbering';
@@ -11,7 +11,14 @@ import { PRINT_TABLE_FLOW_CSS } from '../exportPagination';
 import { DEFAULT_PROFILE, normalizeCssProfile } from '@/constants/cssProfile';
 import type { CssProfile } from '@/types/cssProfile';
 
-/** 항상 라이트모드 기준으로 서식 프로필의 dynamic CSS를 재생성하는 헬퍼 함수 */
+/**
+ * ==== [generateExportCss] ====
+ * 🎯 역할 : 전달된 서식 프로필(CssProfile)을 항상 라이트모드 기준의 내보내기/인쇄용 동적 CSS 문자열로 변환
+ * 📥 파라미터 :
+ *   - rawProfile (any) : 정규화 전/후 서식 프로필 객체
+ * 📤 반환값 : string (생성된 CSS 문자열)
+ * 💡 비고 : @layer onrivi-settings, onrivi-extra 계층 우선순위 및 제목·표·코드블록·수식 조판 규칙 포함
+ */
 export function generateExportCss(rawProfile: any): string {
   if (!rawProfile || rawProfile.id === 'default') {
     return (rawProfile?.customCss && rawProfile.customCss.trim())

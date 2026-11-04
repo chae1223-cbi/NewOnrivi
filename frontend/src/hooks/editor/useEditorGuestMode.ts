@@ -1,10 +1,14 @@
-// ====================================================================
-// 📊 [OMD-HOOK-useEditorGuestMode] frontend/src/hooks/editor/useEditorGuestMode.ts
-// 🎯 @KICK  : 비로그인 즉시 체험판(Guest Mode) 5분(300초) 카운트다운 타이머, 5회 접속 제한(Paywall) 상태 및 인터랙티브 플로팅 가이드 단계 관리 훅
-// 🛡️ @GUARD : React Strict Mode 중복 카운팅 방어(guestCountedRef), 5회 초과 또는 만료 시 licenseStatus 즉시 만료 전환 및 로컬스토리지 낙인 보존
-// 🚨 @PATCH : **2026-11-04** — [MainEditorApp 모듈화]: 게스트 체험판 타이머·횟수 제한 상태 및 이펙트를 MainEditorApp.tsx에서 분리 위임 (동작 변경 없음)
-// 🔗 @CALLS : browserAccountStorage (localStorage), setLicenseStatus
-// ====================================================================
+/**
+ * ============================================================================
+ * 🏷️ 파일명 : useEditorGuestMode.ts
+ * 🎯 주요기능 :
+ *   - 비로그인 즉시 체험판(Guest Mode) 5분(300초) 카운트다운 타이머, 5회 접속 제한(Paywall) 상태 및 인터랙티브 플로팅 가이드 단계 관리 훅
+ *   - React Strict Mode 중복 카운팅 방어(guestCountedRef) 및 만료 시 licenseStatus 즉시 만료 전환
+ * 🚨 @PATCH :
+ *   - 2026-11-04 : 주석 표준화(1·2단계) 적용
+ *   - 2026-11-04 : 게스트 체험판 타이머·횟수 제한 상태 및 이펙트를 MainEditorApp.tsx에서 분리 위임
+ * ============================================================================
+ */
 
 import { useState, useRef, useEffect } from 'react';
 import { browserAccountStorage as localStorage } from '@/lib/browserAccountStorage';
@@ -14,15 +18,13 @@ export interface UseEditorGuestModeProps {
 }
 
 /**
- * ========================================================================================
- * [함수명] useEditorGuestMode - 비로그인 즉시 체험판 타이머 및 Paywall 상태를 관리합니다.
+ * ============================================================================
+ * [useEditorGuestMode]
+ * 비로그인 즉시 체험판 타이머 및 Paywall 상태를 관리합니다.
  *
  * @param {UseEditorGuestModeProps} props - 라이선스 상태 갱신 setter
  * @returns {object} isGuestMode, guestRemainingSeconds, isGuestExpired, guideStep, isGuideMinimized 및 각 setter
- *
- * @example
- * const { isGuestMode, isGuestExpired, guestRemainingSeconds } = useEditorGuestMode({ setLicenseStatus });
- * ==========================================================================================
+ * ============================================================================
  */
 export function useEditorGuestMode({ setLicenseStatus }: UseEditorGuestModeProps) {
   // ⏳ [게스트 즉시 체험판 시간 및 횟수 제한(Paywall) 상태]

@@ -2,8 +2,9 @@
 // 📊 [OMD-HOOK-useEditorDocLinks] frontend/src/hooks/editor/useEditorDocLinks.ts
 // 🎯 @KICK  : 문서 간 위키링크/상대경로 연결 팝업, 헤딩(H1~H6) 동적 파싱, 커서 위치 기반 팝업 좌표 계산 훅
 // 🛡️ @GUARD : 비동기 파일 트리 로딩, 상대 경로 정규화, 위지윅/모나코 양방향 삽입 지원 및 닫힐 때 상태 완전 소거
-// 🚨 @PATCH : **2026-11-04** — [MainEditorApp 모듈화]: 문서 연결(DocLinkPicker) 상태, 헤딩 파싱, 파일 읽기(readFileText), 팝업 좌표 계산을 useEditorDocLinks로 분리 위임 (460줄 감축)
-// 🔗 @CALLS : fetchAllMdFiles, getRelativePath, resolveNativeDocumentPath, readFileText, extractHeadings
+// 🚨 @PATCH : 2026-11-04 — [표준화 및 에러 처리 강화] logError 5대 진단 필드 선제 기록 적용 및 2단계 함수 JSDoc 표준화
+//             2026-11-04 — [MainEditorApp 모듈화]: 문서 연결(DocLinkPicker) 상태, 헤딩 파싱, 파일 읽기(readFileText), 팝업 좌표 계산을 useEditorDocLinks로 분리 위임 (460줄 감축)
+// 🔗 @CALLS : fetchAllMdFiles, getRelativePath, resolveNativeDocumentPath, readFileText, extractHeadings, logError
 // ====================================================================
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -15,6 +16,7 @@ import { getSavedDriveToken, readDriveFileContent } from '@/lib/gdrive/googleDri
 import { vfsReadFile } from '@/lib/virtualFileSystem';
 import { getApiUrl } from '@/lib/apiUrlBuilder';
 import { knowledgeClient } from '@/lib/knowledge/knowledgeClient';
+import { logError } from '@/lib/errorDiagnostics';
 
 export interface UseEditorDocLinksProps {
   workspaceType: string;
@@ -103,6 +105,13 @@ export function useEditorDocLinks({
   const visualDocLinkInsertRef = useRef<((targetUrl: string, displayTitle: string) => boolean) | null>(null);
   const visualDocLinkPositionRef = useRef<{ top: number; left: number } | null>(null);
 
+  /**
+   * ========================================================================================
+   * [함수명] closeDocLinkPicker - 문서 링크 선택 팝업을 닫고 검색/선택 상태를 초기화합니다.
+   *
+   * @returns {void}
+   * ==========================================================================================
+   */
   const closeDocLinkPicker = useCallback(() => {
     setShowDocLinkPicker(false);
     setDocLinkSearchText('');
@@ -153,7 +162,13 @@ export function useEditorDocLinks({
           setAllMdFiles(files);
           docLinkFilesRef.current = files;
         } catch (e) {
-          console.error(e);
+          logError({
+            file: 'frontend/src/hooks/editor/useEditorDocLinks.ts',
+            func: 'loadFiles',
+            doing: '문서 링크 선택기를 위한 작업장 전체 마크다운(.md) 파일 목록 조회 중',
+            target: rootFolder?.name || workspaceType,
+            error: e,
+          });
         } finally {
           setIsDocLinkLoading(false);
         }
@@ -190,7 +205,12 @@ export function useEditorDocLinks({
   }, [workspaceType, fileList, rootFolder, showDocLinkPicker, resourceFolder, resourceFolderHandle, currentFileNode, tabsRef, docLinkFilesRef]);
 
   /**
-   * [함수명] readFileText - 다양한 환경(브라우저, 로컬 Electron, 구글드라이브, 지식보관함)에서 파일 내용 읽기
+   * ========================================================================================
+   * [함수명] readFileText - 다양한 환경(브라우저, 로컬 Electron, 구글드라이브, 지식보관함)에서 파일 내용을 읽습니다.
+   *
+   * @param {FileNode} node - 읽을 대상 파일 노드
+   * @returns {Promise<string>} 파일 텍스트 본문
+   * ==========================================================================================
    */
   const readFileText = useCallback(async (node: FileNode): Promise<string> => {
     let fileContent = '';
@@ -279,7 +299,13 @@ export function useEditorDocLinks({
             fileContent = file.content;
           }
         } catch (e) {
-          console.error(e);
+          logError({
+            file: 'frontend/src/hooks/editor/useEditorDocLinks.ts',
+            func: 'readFileText',
+            doing: 'Electron api.readFromPath를 통한 로컬 마크다운 파일 읽기 중',
+            target: targetPath,
+            error: e,
+          });
         }
       } else {
         try {
@@ -289,7 +315,13 @@ export function useEditorDocLinks({
             fileContent = data.content;
           }
         } catch (e) {
-          console.error(e);
+          logError({
+            file: 'frontend/src/hooks/editor/useEditorDocLinks.ts',
+            func: 'readFileText',
+            doing: '로컬 파일 읽기 API(/api/file-content) 요청 중',
+            target: targetPath,
+            error: e,
+          });
         }
       }
     }
@@ -327,7 +359,12 @@ export function useEditorDocLinks({
   }, [readFileText, readFileTextRef]);
 
   /**
-   * [함수명] extractHeadings - 마크다운 텍스트를 파싱하여 제목 텍스트 줄(H1-H6) 추출
+   * ========================================================================================
+   * [함수명] extractHeadings - 마크다운 텍스트를 파싱하여 제목 텍스트 줄(H1-H6) 배열을 추출합니다.
+   *
+   * @param {string} text - 마크다운 원문 텍스트
+   * @returns {string[]} 추출된 제목 문자열 배열
+   * ==========================================================================================
    */
   const extractHeadings = useCallback((text: string): string[] => {
     if (!text) return [];
@@ -348,7 +385,12 @@ export function useEditorDocLinks({
   }, []);
 
   /**
-   * [함수명] handleDocFileClick - 선택된 마크다운 문서 파일에서 헤딩 목록을 로드
+   * ========================================================================================
+   * [함수명] handleDocFileClick - 선택된 마크다운 문서 파일에서 헤딩(H1-H6) 목록을 로드합니다.
+   *
+   * @param {FileNode} targetNode - 선택된 대상 파일 노드
+   * @returns {Promise<void>}
+   * ==========================================================================================
    */
   const handleDocFileClick = useCallback(async (targetNode: FileNode) => {
     setSelectedDocNode(targetNode);
@@ -358,7 +400,13 @@ export function useEditorDocLinks({
       const headings = extractHeadings(text);
       setDocHeadings(headings);
     } catch (e) {
-      console.error(e);
+      logError({
+        file: 'frontend/src/hooks/editor/useEditorDocLinks.ts',
+        func: 'handleDocFileClick',
+        doing: '선택한 문서 파일 본문 읽기 및 헤딩(H1-H6) 목록 파싱 중',
+        target: targetNode.path || targetNode.name,
+        error: e,
+      });
       setDocHeadings([]);
     } finally {
       setIsHeadingLoading(false);
@@ -366,7 +414,12 @@ export function useEditorDocLinks({
   }, [extractHeadings, readFileText]);
 
   /**
-   * [함수명] getDocLinkDefaultLabel - 문서 파일명으로부터 기본 표시 라벨 생성
+   * ========================================================================================
+   * [함수명] getDocLinkDefaultLabel - 문서 파일명으로부터 확장자를 제외한 기본 표시 라벨을 생성합니다.
+   *
+   * @param {FileNode} targetNode - 대상 파일 노드
+   * @returns {string} 기본 링크 표시 라벨
+   * ==========================================================================================
    */
   const getDocLinkDefaultLabel = useCallback((targetNode: FileNode): string => {
     let filename = (targetNode.path || targetNode.name).split(/[?#]/)[0].replace(/\\/g, '/').split('/').pop() || targetNode.name;
@@ -375,7 +428,13 @@ export function useEditorDocLinks({
   }, []);
 
   /**
-   * [함수명] buildDocLinkTarget - 현재 문서 기준 상대경로(+#헤딩) 계산
+   * ========================================================================================
+   * [함수명] buildDocLinkTarget - 현재 문서 기준 대상 문서의 상대경로(및 #헤딩 앵커)를 계산합니다.
+   *
+   * @param {FileNode} targetNode - 연결할 대상 파일 노드
+   * @param {string} [heading] - 연결할 섹션 헤딩 텍스트
+   * @returns {string} 생성된 상대경로 링크 문자열
+   * ==========================================================================================
    */
   const buildDocLinkTarget = useCallback((targetNode: FileNode, heading?: string): string => {
     const targetPath = targetNode.path || '';
@@ -425,7 +484,14 @@ export function useEditorDocLinks({
   }, [currentFileNode, rootFolder, workspaceType]);
 
   /**
-   * [함수명] handleDocLinkSelect - 문서 링크 선택 시 에디터 커서 또는 위지윅 본문에 삽입
+   * ========================================================================================
+   * [함수명] handleDocLinkSelect - 선택한 문서/헤딩 링크를 Monaco 에디터 커서 또는 위지윅 본문에 삽입합니다.
+   *
+   * @param {FileNode} targetNode - 대상 파일 노드
+   * @param {string} [heading] - 선택된 헤딩
+   * @param {string} [customTitle] - 사용자 지정 링크 텍스트
+   * @returns {void}
+   * ==========================================================================================
    */
   const handleDocLinkSelect = useCallback((targetNode: FileNode, heading?: string, customTitle?: string) => {
     const titleToUse = customTitle !== undefined ? customTitle : docLinkCustomTitle;

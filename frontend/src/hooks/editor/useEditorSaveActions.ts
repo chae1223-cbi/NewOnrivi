@@ -1,20 +1,17 @@
-/**
- * 프로그램명 : OnriviAuthor
- * 파일명     : frontend/src/hooks/editor/useEditorSaveActions.ts
- * 용도       : 에디터 외부 저장(내 PC 로컬 저장, 개인 웹드라이브 저장, 문서 전송 복사, 새 문서 생성) 전담 훅
- * 작성일     : 2026-11-04
- * 
- * 🚨 @PATCH : **2026-11-04** — [MainEditorApp 모듈화] 파일 저장 및 새 문서 생성 로직을 useEditorSaveActions 훅으로 분리 위임
- *             1) handleSaveToLocal: Electron/File System Access API/브라우저 다운로드 3단계 로컬 저장 분리
- *             2) handleSaveToWebDrive: Google Drive 대상 폴더/파일명 선택 및 업로드/덮어쓰기 분리
- *             3) handleCreateNewDocument: 드라이브/로컬/VFS 환경별 새 문서 파일 노드 생성 및 탭 바인딩 분리
- *             4) onrivi:save-as-target, onrivi:transfer-document 이벤트 리스너 통합 관리
- */
+// ====================================================================
+// 📊 [OMD-HOOK-useEditorSaveActions] frontend/src/hooks/editor/useEditorSaveActions.ts
+// 🎯 @KICK  : 에디터 외부 저장(내 PC 로컬 저장, 개인 웹드라이브 저장, 문서 전송 복사, 새 문서 생성) 전담 훅
+// 🛡️ @GUARD : 사용자 작업장(rootFolder, workspaceType) 절대 변경 금지, 중복 전송/저장 잠금(transferBusyRef), 파일명 유효성 및 덮어쓰기 사전 확인
+// 🚨 @PATCH : 2026-11-04 — [표준화 및 에러 처리 강화] 2단계 함수 JSDoc 표준화 및 logError 5대 진단 필드 선제 기록 적용
+//             2026-11-04 — [MainEditorApp 모듈화] 파일 저장 및 새 문서 생성 로직을 useEditorSaveActions 훅으로 분리 위임
+// 🔗 @CALLS : prepareGoogleDriveAuth, transferDocument, logError, vfsCreateFile
+// ====================================================================
 
 import { useState, useRef, useEffect, useCallback, RefObject } from 'react';
 import { FileNode } from '@/lib/indexedDbHelper';
 import { prepareGoogleDriveAuth } from '@/lib/gdrive/googleDriveClient';
 import { transferDocument } from '@/lib/documentTransfer';
+import { logError } from '@/lib/errorDiagnostics';
 
 export interface UseEditorSaveActionsOptions {
   isRestrictedUser: boolean;
@@ -44,6 +41,14 @@ export interface UseEditorSaveActionsReturn {
   transferBusyRef: RefObject<boolean>;
 }
 
+/**
+ * ========================================================================================
+ * [함수명] useEditorSaveActions - 에디터 문서 외부 저장(내 PC/구글 드라이브), 전송, 새 문서 생성 훅
+ *
+ * @param {UseEditorSaveActionsOptions} options - 에디터 참조, 현재 파일 상태 및 토스트/탭 제어 콜백
+ * @returns {UseEditorSaveActionsReturn} 저장/새 문서 생성 핸들러 및 전송 진행 상태
+ * ==========================================================================================
+ */
 export function useEditorSaveActions({
   isRestrictedUser,
   isDuplicateInstance,
@@ -66,7 +71,14 @@ export function useEditorSaveActions({
   const transferBusyRef = useRef(false);
   const [transferProgress, setTransferProgress] = useState('');
 
-  // 💾 [내PC(로컬)로 저장] — 작업장 변경 없이 원하는 로컬 폴더에 파일 저장
+  /**
+   * ========================================================================================
+   * [함수명] handleSaveToLocal - 작업장 변경 없이 내 PC 로컬 폴더에 현재 문서를 저장합니다.
+   * (Electron saveFileAs ➔ File System Access showSaveFilePicker ➔ 브라우저 Blob 다운로드 3단계 지원)
+   *
+   * @returns {Promise<void>}
+   * ==========================================================================================
+   */
   const handleSaveToLocal = useCallback(async () => {
     if (transferBusyRef.current || isRestrictedUser || isDuplicateInstance || isLicenseChecking) {
       showToast('현재 문서를 저장할 수 없습니다.', 'warning');
@@ -91,6 +103,13 @@ export function useEditorSaveActions({
           await refreshFileList();
         }
       } catch (e: any) {
+        logError({
+          file: 'frontend/src/hooks/editor/useEditorSaveActions.ts',
+          func: 'handleSaveToLocal',
+          doing: 'Electron 파일 저장 대화상자(saveFileAs)를 통한 내 PC 로컬 문서 저장 중',
+          target: suggestedName,
+          error: e,
+        });
         showToast(e.message || '내 PC 저장에 실패했습니다.', 'error');
       }
       return;
@@ -112,7 +131,16 @@ export function useEditorSaveActions({
         showToast(`내 PC에 저장되었습니다: ${handle.name}`, 'success');
         // ⚠️ [사용자 규칙] 작업장은 절대 변경하지 않는다!
       } catch (e: any) {
-        if (e.name !== 'AbortError') showToast(e.message || '내 PC 저장에 실패했습니다.', 'error');
+        if (e.name !== 'AbortError') {
+          logError({
+            file: 'frontend/src/hooks/editor/useEditorSaveActions.ts',
+            func: 'handleSaveToLocal',
+            doing: '브라우저 File System Access API(showSaveFilePicker)를 통한 내 PC 로컬 문서 저장 중',
+            target: suggestedName,
+            error: e,
+          });
+          showToast(e.message || '내 PC 저장에 실패했습니다.', 'error');
+        }
       }
       return;
     }
@@ -135,11 +163,24 @@ export function useEditorSaveActions({
       URL.revokeObjectURL(url);
       showToast(`내 PC에 저장되었습니다: ${a.download}`, 'success');
     } catch (e: any) {
+      logError({
+        file: 'frontend/src/hooks/editor/useEditorSaveActions.ts',
+        func: 'handleSaveToLocal',
+        doing: '브라우저 Blob 다운로드를 통한 내 PC 로컬 문서 저장 중',
+        target: suggestedName,
+        error: e,
+      });
       showToast(e.message || '내 PC 저장에 실패했습니다.', 'error');
     }
   }, [contentRef, currentFileName, editorRef, isDuplicateInstance, isLicenseChecking, isRestrictedUser, refreshFileList, rootFolder, showToast]);
 
-  // ☁️ [개인웹드라이브 저장] — 작업장 변경 없이 원하는 구글 드라이브 폴더 및 파일명으로 저장
+  /**
+   * ========================================================================================
+   * [함수명] handleSaveToWebDrive - 작업장 변경 없이 선택한 개인 웹드라이브 폴더 및 파일명으로 저장합니다.
+   *
+   * @returns {Promise<void>}
+   * ==========================================================================================
+   */
   const handleSaveToWebDrive = useCallback(async () => {
     if (transferBusyRef.current || isRestrictedUser || isDuplicateInstance || isLicenseChecking) {
       showToast('현재 문서를 저장할 수 없습니다.', 'warning');
@@ -210,6 +251,13 @@ export function useEditorSaveActions({
       }
     } catch (e: any) {
       if (e.name !== 'AbortError') {
+        logError({
+          file: 'frontend/src/hooks/editor/useEditorSaveActions.ts',
+          func: 'handleSaveToWebDrive',
+          doing: '개인 웹드라이브(Google Drive) 대상 폴더 선택 및 마크다운 문서 저장 중',
+          target: defaultName,
+          error: e,
+        });
         showToast(e.message || '개인웹드라이브 저장에 실패했습니다.', 'error');
       }
     } finally {
@@ -249,7 +297,16 @@ export function useEditorSaveActions({
         showToast(`복사 완료: ${result}`, 'success');
         await refreshFileList();
       } catch (error: any) {
-        if (error.name !== 'AbortError') showToast(error.message || '문서 전송에 실패했습니다. 다시 실행해 주세요.', 'error');
+        if (error.name !== 'AbortError') {
+          logError({
+            file: 'frontend/src/hooks/editor/useEditorSaveActions.ts',
+            func: 'transfer',
+            doing: `문서 및 연결 이미지 자산 전송(${direction}) 처리 중`,
+            target: name,
+            error,
+          });
+          showToast(error.message || '문서 전송에 실패했습니다. 다시 실행해 주세요.', 'error');
+        }
       } finally {
         transferBusyRef.current = false;
         setTransferProgress('');
@@ -259,7 +316,16 @@ export function useEditorSaveActions({
     return () => window.removeEventListener('onrivi:transfer-document', transfer);
   }, [contentRef, currentFileName, editorRef, isDuplicateInstance, isLicenseChecking, isRestrictedUser, refreshFileList, showToast]);
 
-  // 📝 [새 문서 생성 핸들러]
+  /**
+   * ========================================================================================
+   * [함수명] handleCreateNewDocument - 드라이브/로컬/VFS 환경에 새 마크다운 문서를 생성하고 탭으로 엽니다.
+   *
+   * @param {string} fileName - 생성할 새 문서 파일명
+   * @param {FileNode | null} targetFolderNode - 생성 대상 폴더 노드 (없으면 루트 작업장 폴더)
+   * @returns {Promise<void>}
+   * @throws {Error} 권한 부족, 잘못된 파일명, 중복 파일명 또는 파일 생성 실패 시 예외 발생
+   * ==========================================================================================
+   */
   const handleCreateNewDocument = useCallback(async (fileName: string, targetFolderNode: FileNode | null) => {
     if (isRestrictedUser || isDuplicateInstance || isLicenseChecking) {
       throw new Error('현재 문서를 생성할 수 없습니다. 로그인·사용 권한을 확인해 주세요.');
@@ -272,42 +338,53 @@ export function useEditorSaveActions({
     const folder = targetFolderNode || rootFolder;
     let node: FileNode;
 
-    if (rootFolder?.type === 'GDRIVE' || rootFolder?.driveFolderId) {
-      const { getSavedDriveToken, getSavedWorkspaceInfo, listDriveChildren, createDriveMarkdownFile } = await import('@/lib/gdrive/googleDriveClient');
-      const token = getSavedDriveToken();
-      const folderId = targetFolderNode?.driveId || targetFolderNode?.id || rootFolder?.driveFolderId || rootFolder?.id || getSavedWorkspaceInfo()?.workspaceFolderId;
-      if (!token || !folderId) throw new Error('구글 드라이브 연결을 확인해 주세요.');
-      const children = await listDriveChildren(token, folderId);
-      if (children.some(child => child.name.toLowerCase() === finalName.toLowerCase())) throw new Error('같은 이름의 파일이 있습니다.');
-      const created = await createDriveMarkdownFile(token, folderId, finalName, '');
-      node = { name: finalName, kind: 'file', driveId: created.id, id: created.id, path: `${folder?.path || 'GoogleDrive'}/${finalName}` };
-    } else if (folder?.handle) {
-      for await (const [existing] of folder.handle.entries()) {
-        if (existing.toLowerCase() === finalName.toLowerCase()) throw new Error('같은 이름의 파일이 있습니다.');
-      }
-      const handle = await folder.handle.getFileHandle(finalName, { create: true });
-      node = { name: finalName, kind: 'file', handle, path: `${folder?.path || folder?.name || ''}/${finalName}` };
-    } else if ((window as any).electronAPI?.createFile) {
-      const parent = folder?.path || rootFolder?.path;
-      if (!parent) throw new Error('먼저 작업장 폴더를 선택해 주세요.');
-      const created = await (window as any).electronAPI.createFile(parent, finalName);
-      if (!created?.success) throw new Error('파일을 생성하지 못했습니다.');
-      node = { name: finalName, kind: 'file', path: created.path };
-    } else {
-      const { vfsCreateFile, getVfsFiles } = await import('@/lib/virtualFileSystem');
-      const parent = targetFolderNode?.path || '';
-      const allFiles = getVfsFiles();
-      const findFolder = (nodes: FileNode[]): FileNode | undefined => {
-        for (const item of nodes) {
-          if (item.path === parent) return item;
-          const found = item.children && findFolder(item.children);
-          if (found) return found;
+    try {
+      if (rootFolder?.type === 'GDRIVE' || rootFolder?.driveFolderId) {
+        const { getSavedDriveToken, getSavedWorkspaceInfo, listDriveChildren, createDriveMarkdownFile } = await import('@/lib/gdrive/googleDriveClient');
+        const token = getSavedDriveToken();
+        const folderId = targetFolderNode?.driveId || targetFolderNode?.id || rootFolder?.driveFolderId || rootFolder?.id || getSavedWorkspaceInfo()?.workspaceFolderId;
+        if (!token || !folderId) throw new Error('구글 드라이브 연결을 확인해 주세요.');
+        const children = await listDriveChildren(token, folderId);
+        if (children.some(child => child.name.toLowerCase() === finalName.toLowerCase())) throw new Error('같은 이름의 파일이 있습니다.');
+        const created = await createDriveMarkdownFile(token, folderId, finalName, '');
+        node = { name: finalName, kind: 'file', driveId: created.id, id: created.id, path: `${folder?.path || 'GoogleDrive'}/${finalName}` };
+      } else if (folder?.handle) {
+        for await (const [existing] of folder.handle.entries()) {
+          if (existing.toLowerCase() === finalName.toLowerCase()) throw new Error('같은 이름의 파일이 있습니다.');
         }
-      };
-      const siblings = parent ? findFolder(allFiles)?.children || [] : allFiles;
-      if (siblings.some((item: any) => item.name?.toLowerCase() === finalName.toLowerCase())) throw new Error('같은 이름의 파일이 있습니다.');
-      vfsCreateFile(parent, finalName);
-      node = { name: finalName, kind: 'file', path: parent ? `${parent}/${finalName}` : finalName };
+        const handle = await folder.handle.getFileHandle(finalName, { create: true });
+        node = { name: finalName, kind: 'file', handle, path: `${folder?.path || folder?.name || ''}/${finalName}` };
+      } else if ((window as any).electronAPI?.createFile) {
+        const parent = folder?.path || rootFolder?.path;
+        if (!parent) throw new Error('먼저 작업장 폴더를 선택해 주세요.');
+        const created = await (window as any).electronAPI.createFile(parent, finalName);
+        if (!created?.success) throw new Error('파일을 생성하지 못했습니다.');
+        node = { name: finalName, kind: 'file', path: created.path };
+      } else {
+        const { vfsCreateFile, getVfsFiles } = await import('@/lib/virtualFileSystem');
+        const parent = targetFolderNode?.path || '';
+        const allFiles = getVfsFiles();
+        const findFolder = (nodes: FileNode[]): FileNode | undefined => {
+          for (const item of nodes) {
+            if (item.path === parent) return item;
+            const found = item.children && findFolder(item.children);
+            if (found) return found;
+          }
+        };
+        const siblings = parent ? findFolder(allFiles)?.children || [] : allFiles;
+        if (siblings.some((item: any) => item.name?.toLowerCase() === finalName.toLowerCase())) throw new Error('같은 이름의 파일이 있습니다.');
+        vfsCreateFile(parent, finalName);
+        node = { name: finalName, kind: 'file', path: parent ? `${parent}/${finalName}` : finalName };
+      }
+    } catch (err) {
+      logError({
+        file: 'frontend/src/hooks/editor/useEditorSaveActions.ts',
+        func: 'handleCreateNewDocument',
+        doing: '새 마크다운 문서 파일 생성 및 중복 검증 중',
+        target: finalName,
+        error: err,
+      });
+      throw err;
     }
 
     createNewTab('', finalName, false, node.path || null, node);

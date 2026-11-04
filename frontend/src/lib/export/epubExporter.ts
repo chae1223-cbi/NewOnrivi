@@ -2,12 +2,13 @@
 // 📊 [OMD-IO-export-epub-0001] frontend/src/lib/export/epubExporter.ts
 // 🎯 @KICK  : 미리보기 DOM 기반 표준 EPUB 전자책 패키징 및 내보내기
 // 🛡️ @GUARD : 리더기 뷰포트 맞춤형 이미지/Mermaid 리사이징 및 코드블록 테마 보존
-// 🚨 @PATCH : **2026-11-04** — [모듈화 분리]: exportHandlers.ts에서 EPUB 내보내기 전용 모듈 분리
+// 🚨 @PATCH : **2026-11-04** — [모듈화 분리 & 에러/주석 표준화]: exportHandlers.ts에서 EPUB 내보내기 전용 모듈 분리 및 2단계 함수 JSDoc·logError 적용
 // 🔗 @CALLS : generateEpub, clonePreview, inlineLocalImages, injectExportStyles
 // ====================================================================
 import { startExportProgress } from '../exportProgress';
 import { getExportDocumentRoot, prepareExportPreview, cleanExportDocument } from '../exportPreparation';
 import { readEffectivePrintSettings } from '../documentPrintSettings';
+import { logError } from '@/lib/errorDiagnostics';
 import { msg } from '@/lib/systemMessages';
 import { generateExportCss } from './cssGenerator';
 import {
@@ -22,16 +23,14 @@ import {
 } from './common';
 import type { ExportOptions } from './types';
 
-// ─────────────────────────────────────────────
-// EPUB 내보내기
-// ─────────────────────────────────────────────
-// ====================================================================
-// 📊 [OMD-IO-exportHandlers-0012] exportHandlers.ts ➔ exportEPUB
-// 🎯 @KICK  : 미리보기 DOM을 EPUB으로 내보내기 (generateEpub 호출, 이미지 인라인)
-// 🛡️ @GUARD : Electron saveFileAs 브랜치, fontFamily computed 적용, export-style-element 제거
-// 🚨 @PATCH : **2026-07-21** — EPUB 내보내기 시 배경색 누락 방지를 위해 activeCss 문자열 자체에 백그라운드 컬러 룰 명시적 병합 탑재; **2026-06-19** — EPUB 내보내기 가로폭 제약 초기화 패치: clone 객체의 인라인 가로폭 제약을 제거하여 리더기 뷰포트에 맞게 자연스러운 흐름을 보장하도록 보정
-// 🔗 @CALLS : clonePreview, inlineLocalImages, injectExportStyles, generateEpub, downloadBlob, saveToDownloads
-// ====================================================================
+/**
+ * ==== [exportEPUB] ====
+ * 🎯 역할 : 미리보기 DOM을 표준 EPUB 전자책으로 패키징 및 내보내기 (이미지/Mermaid 인라인 및 뷰포트 맞춤 스케일링)
+ * 📥 파라미터 :
+ *   - options (ExportOptions) : 내보내기 공통 옵션 (previewEl, currentFileName, activeProfile, printSettings 등)
+ * 📤 반환값 : Promise<void>
+ * 💡 비고 : 그림책(picturebook) 고정 레이아웃 및 일반 리플로우 레이아웃 분기 지원
+ */
 export async function exportEPUB({ previewEl, currentFileName, isDarkMode, showToast, dynamicCssString, backgroundColor, activeProfile, printSettings, markdownContent }: ExportOptions) {
   const effectiveWatermark = { ...(printSettings ?? (markdownContent ? readEffectivePrintSettings(markdownContent) : readEffectivePrintSettings(''))) };
   let progress: ReturnType<typeof startExportProgress> | undefined;
@@ -225,6 +224,13 @@ export async function exportEPUB({ previewEl, currentFileName, isDarkMode, showT
               resolve(false);
             }
           } catch (err: any) {
+            logError({
+              file: 'frontend/src/lib/export/epubExporter.ts',
+              func: 'exportEPUB.reader.onloadend',
+              doing: 'Electron saveFileAs IPC를 통해 EPUB 파일을 디스크에 저장하는 작업',
+              target: filename,
+              error: err
+            });
             showToast('EPUB 저장 실패: ' + err.message, 'error');
             resolve(false);
           }
@@ -244,6 +250,13 @@ export async function exportEPUB({ previewEl, currentFileName, isDarkMode, showT
       reader.readAsDataURL(blob);
     }
   } catch (err: any) {
+    logError({
+      file: 'frontend/src/lib/export/epubExporter.ts',
+      func: 'exportEPUB',
+      doing: '미리보기 DOM 기반 EPUB 전자책을 생성 및 저장하는 작업',
+      target: currentFileName,
+      error: err
+    });
     msg.error('EPUB export error', err);
     const errMsg = err?.message || err?.toString() || '알 수 없는 오류';
     showToast('EPUB 내보내기 실패: ' + errMsg, 'error');

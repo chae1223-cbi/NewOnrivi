@@ -1,11 +1,14 @@
-// ====================================================================
-// 📊 [OMD-HOOK-useEditorKeybindings-0001] useEditorKeybindings.ts ➔ 에디터 단축키 및 키바인딩 제어 훅
-// 🎯 @KICK  : Monaco Editor 단축키 액션 등록(customHotkeys) 및 전역 키보드 이벤트(handleGlobalKeyDown) 분기 라우팅
-// 🛡️ @GUARD : IME 한글 229 keyCode 복원, Windows Meta(Win) 키 가드, Shift+방향키 선택 보호, 비표준 이벤트 무시 (Rule 3 비즈니스 로직 훅)
-// 🚨 @PATCH : 2026-11-04 — [MainEditorApp 모듈화 2단계]:
-//             1) MainEditorApp에서 Monaco 액션 바인딩 및 전역 keydown 리스너 로직을 useEditorKeybindings 독립 훅으로 분리 (Rule 3 준수)
-// 🔗 @CALLS : TOOLBAR_ITEMS, configuredHotkeyItem, dispatchCommand, mapIdToCommandType
-// ====================================================================
+/**
+ * ============================================================================
+ * 🏷️ 파일명 : useEditorKeybindings.ts
+ * 🎯 주요기능 :
+ *   - Monaco 에디터 단축키 액션 등록(customHotkeys) 및 전역 키보드 이벤트(handleGlobalKeyDown) 분기 라우팅 제어 훅
+ *   - Windows Meta(Win) 키 가드, Shift+방향키 선택 보호, 비주얼 에디터/그림책 단축키 연동
+ * 🚨 @PATCH :
+ *   - 2026-11-04 : 주석 표준화(1·2단계) 적용
+ *   - 2026-11-04 : MainEditorApp에서 Monaco 액션 바인딩 및 전역 keydown 리스너 로직을 독립 훅으로 분리
+ * ============================================================================
+ */
 // @ts-nocheck
 import { useEffect, useRef } from 'react';
 import { TOOLBAR_ITEMS, configuredHotkeyItem } from '@/lib/toolbarConfig';
@@ -30,6 +33,14 @@ export interface UseEditorKeybindingsProps {
   isRestrictedUser?: boolean;
 }
 
+/**
+ * ============================================================================
+ * [useEditorKeybindings]
+ * Monaco 에디터 사용자 정의 단축키 바인딩 및 전역 키보드 단축키 캡처 리스너를 등록합니다.
+ *
+ * @param {UseEditorKeybindingsProps} props - 에디터 참조, 단축키 설정, 명령 디스패처 등
+ * ============================================================================
+ */
 export function useEditorKeybindings({
   editorRef,
   customHotkeys,
