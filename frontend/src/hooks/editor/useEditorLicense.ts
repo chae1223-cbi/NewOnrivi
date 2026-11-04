@@ -3,6 +3,7 @@
  * 📊 [OMD-HOOK-useEditorLicense] useEditorLicense.ts
  * 🎯 @KICK  : 에디터 라이선스 검증, 다중 기기 세션 감시(Heartbeat/Takeover), 게스트 체험 타이머, 활성화 수신 관리 훅
  * 🛡️ @GUARD : 비인증 진입 시 자동 게스트 모드 전환 및 세션 탈취 시 즉각적인 읽기 전용/미리보기 제어
+ * 🚨 @PATCH : 2026-11-04 - [formatTime 반환 추가] 게스트 체험 모드 남은 시간 포맷 함수(formatTime) 반환 목록에 추가하여 ReferenceError 해결
  * 🚨 @PATCH : 2026-11-04 - [MainEditorApp 모듈화] MainEditorApp에서 1,044줄의 라이선스/세션/게스트 관리 로직을 독립 훅으로 분리
  * 🔗 @CALLS : supabase, api.loadLicenseFull, api.saveLicenseFull, saveSecureData, loadSecureData, getApiUrl, browserSessionPolling
  * ====================================================================
@@ -44,6 +45,7 @@ export interface UseEditorLicenseReturn {
   handleTakeover: () => Promise<void>;
   handleSuccessActivation: (verifyKey: string, userId: string, paymentNo: string, explicitLicenseKey?: string) => Promise<void>;
   loadAndVerifyLicense: () => Promise<void>;
+  formatTime: (seconds: number) => string;
 }
 
 export function useEditorLicense({
@@ -1115,5 +1117,6 @@ export function useEditorLicense({
     handleTakeover,
     handleSuccessActivation,
     loadAndVerifyLicense,
+    formatTime,
   };
 }

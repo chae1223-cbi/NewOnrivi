@@ -6,6 +6,7 @@ import { getSavedDriveToken, getSavedWorkspaceInfo, uploadDriveImage } from '@/l
  * 📊 [OMD-HOOK-useEditorPaste] useEditorPaste.ts
  * 🎯 @KICK  : 에디터 클립보드 붙여넣기(HTML 표, 리치 텍스트, 이미지 파일/Blob) 및 리소스/R2 저장 파이프라인
  * 🛡️ @GUARD : 비동기 DataTransferItem 즉시 추출, CSP connect-src 대응 base64 변환, 동일 이미지 반복 삽입 보장
+ * 🚨 @PATCH : 2026-11-04 - [isImageLikeFile 반환 추가] EditorCore 이미지 필터링에 필요한 isImageLikeFile 헬퍼 반환 및 미정의 런타임 크래시 방지
  * 🚨 @PATCH : 2026-11-04 - [MainEditorApp 모듈화] MainEditorApp에서 450여 줄의 붙여넣기 및 이미지 업로드 파이프라인을 독립 훅으로 분리
  * 🔗 @CALLS : resolveClipboardImage, handlePasteImageFile, insertWithR2Fallback, webUploadImage, utilsEditorActions
  * ====================================================================
@@ -41,6 +42,7 @@ export interface UseEditorPasteReturn {
   handleEditorPaste: (e: any) => Promise<void>;
   insertImageMarkdown: (path: string) => void;
   handlePasteImageFileRef: React.MutableRefObject<(fileOrBlob: Blob, onSaved?: (path: string) => void) => Promise<void>>;
+  isImageLikeFile: (file: File) => boolean;
 }
 
 export function useEditorPaste({
@@ -520,5 +522,6 @@ export function useEditorPaste({
     handleEditorPaste,
     insertImageMarkdown,
     handlePasteImageFileRef,
+    isImageLikeFile,
   };
 }

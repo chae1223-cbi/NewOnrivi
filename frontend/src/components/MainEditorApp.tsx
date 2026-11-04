@@ -1,5 +1,7 @@
 /**
  * 프로그램명 : OnriviAuthor 
+// 🚨 @PATCH : **2026-11-04** — [formatTime 미정의 런타임 오류 수정]:
+//             1) useEditorLicense로부터 formatTime(게스트 남은 시간 포맷터)을 구조분해 할당하여 EditorCore 전달 시 ReferenceError 브라우저 크래시 완전 해결
 // 🚨 @PATCH : **2026-11-04** — [미정의 setIsAboutModalOpen 런타임 오류 수정]:
 //             1) useEditorCommands 옵션 및 호출부에서 불필요하게 선언되어 있던 setIsAboutModalOpen 미정의 식별자를 제거하여 ReferenceError 브라우저 크래시 완전 해결
 //             2) 컴포넌트 상단 미사용 AboutModal dead import 제거
@@ -673,7 +675,7 @@ if (typeof window !== 'undefined') { // @window : 브라우저에서만 사용�
       const vsPath = getExtensionUrl('/monaco-editor/min/vs');
       loader.config({ paths: { vs: vsPath } });
     } catch (err) {
-      showToast('에디터 로드 실패. 오프라인 모드로 안전 복구합니다.', 'warning');
+      console.warn('[Monaco loader] 에디터 로드 실패:', err);
     }
   } else {
     // 🌐 Electron / Local Web: 로컬 또는 CDN Monaco 워커 설정
@@ -2864,6 +2866,7 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     handleTakeover,
     handleSuccessActivation,
     loadAndVerifyLicense,
+    formatTime,
   } = useEditorLicense({
     deviceId,
     licenseKey,
@@ -4548,6 +4551,7 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     handleEditorPaste,
     insertImageMarkdown,
     handlePasteImageFileRef,
+    isImageLikeFile,
   } = useEditorPaste({
     editorRef,
     lastSelectionRef,
