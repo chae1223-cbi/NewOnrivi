@@ -1,5 +1,7 @@
 /**
  * 프로그램명 : OnriviAuthor 
+// 🚨 @PATCH : **2026-11-04** — [Monaco 텍스트 삽입·서식 조작 모듈화]:
+//             1) insertAtCursor(+커서 삽입 이벤트 리스너), scrollToLine, insertBlockTag, wrapSelection, insertLink, 표 변환/붙여넣기 정제 위임, replaceDocumentMedia/editDocumentMedia, applyLinePrefix/removePrefix, quickWrap, handleInsertFormattedDate, handleAIDraftApply를 useEditorFormatting 훅으로 분리 위임 (동작 변경 없음)
 // 🚨 @PATCH : **2026-11-04** — [서식 프로필 및 프론트매터 동기화 모듈화]:
 //             1) profiles, activeProfileId, isProfilesLoaded, profileStorageRevision 및 로드/저장/디바운스 로직을 useEditorProfiles 훅으로 분리 위임
 //             2) resolveEffectiveDocumentProfile, handleProfileChange, 제목 넘버링(headingNumbering) 동기화를 useEditorProfiles 훅으로 분리 위임 (350줄 감축)
@@ -598,6 +600,7 @@ import UnifiedTabBar, { EditorTab } from '@/components/UnifiedTabBar';
 import * as utilsPasteHandlers from '@/utils/pasteHandlers';
 import { htmlToImportMarkdown, importHtmlWithImages } from '@/lib/importHtmlMarkdown';
 import * as utilsEditorActions from '@/utils/editorActions';
+import { useEditorFormatting } from '@/hooks/editor/useEditorFormatting';
 import { useEditorTabs } from '@/hooks/useEditorTabs';
 import { useEditorSettings } from '@/hooks/useEditorSettings';
 import { useEditorHandlers } from '@/hooks/useEditorHandlers';
@@ -3310,73 +3313,48 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
   }, [content, autoSave, currentFileNode, saveFile, licenseStatus.isActivated, currentFileName]);
 
   // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0048] MainEditorApp.tsx ➔ insertAtCursor
-  // 🎯 @KICK  : 커서 위치 텍스트 삽입을 utilsEditorActions에 위임
-  // 🛡️ @GUARD : None
-  // 🚨 @PATCH : None
-  // 🔗 @CALLS : utilsEditorActions.insertAtCursor
+  // 📊 [OMD-HOOK-useEditorFormatting] Monaco 텍스트 삽입 및 서식 조작 분리 훅
+  // 🚨 @PATCH : 2026-11-04 - [MainEditorApp 모듈화] insertAtCursor/scrollToLine/wrapSelection/insertLink/표 변환/미디어 편집/접두사/quickWrap/날짜 삽입/AI 초안 적용을 useEditorFormatting으로 분리 위임
   // ====================================================================
-  const insertAtCursor = useCallback((text: string) => {
-    if (visualFormulaInsertRef.current) {
-      visualFormulaInsertRef.current(text);
-      visualFormulaInsertRef.current = null;
-      return true;
-    }
-    return utilsEditorActions.insertAtCursor(editorRef, lastSelectionRef, text);
-  }, []);
-
-  // 🧠 [ONRIVI-KNOWLEDGE-ENGINE-003.2] 지식 베이스 질의응답 답변 에디터 커서 삽입 리스너
-  useEffect(() => {
-    const handleInsert = (e: CustomEvent) => {
-      const text = e.detail;
-      if (text && typeof text === 'string') {
-        insertAtCursor(text);
-      }
-    };
-
-    // 📁 [탐색기 폴더 연결 커서 위치 삽입 리스너]
-    const handleInsertFolderLink = (e: CustomEvent) => {
-      const { link, folderName } = e.detail || {};
-      if (!link) return;
-      const editor = editorRef.current;
-      if (editor && activeTabIdRef.current && previewModeRef.current !== 'preview') {
-        insertAtCursor(link);
-        showToast(`'${folderName || '폴더'}' 폴더 연결이 커서 위치에 삽입되었습니다.`, 'success');
-      } else {
-        showToast(`'${folderName || '폴더'}' 폴더 연결 링크가 클립보드에 복사되었습니다.`, 'info');
-      }
-    };
-
-    window.addEventListener('app:insert-at-cursor', handleInsert as any);
-    window.addEventListener('app:insert-folder-link', handleInsertFolderLink as any);
-    return () => {
-      window.removeEventListener('app:insert-at-cursor', handleInsert as any);
-      window.removeEventListener('app:insert-folder-link', handleInsertFolderLink as any);
-    };
-  }, [showToast, insertAtCursor]);
-
-  // ====================================================================
-  // 📊 [OMD-CORE-MainEditorApp-0049] MainEditorApp.tsx ➔ findLineNumberByHeading
-  // 🎯 @KICK  : 제목 줄 검색을 utilsEditorActions에 위임
-  // 🛡️ @GUARD : None
-  // 🚨 @PATCH : None
-  // 🔗 @CALLS : utilsEditorActions.findLineNumberByHeading
-  // ====================================================================
-  const findLineNumberByHeading = (content: string, heading: string): number => {
-    return utilsEditorActions.findLineNumberByHeading(content, heading);
-  };
-
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0050] MainEditorApp.tsx ➔ scrollToLine
-  // 🎯 @KICK  : 에디터 특정 줄로 스크롤을 utilsEditorActions에 위임
-  // 🛡️ @GUARD : None
-  // 🚨 @PATCH : None
-  // 🔗 @CALLS : utilsEditorActions.scrollToLine
-  // ====================================================================
-  const scrollToLine = (lineNumber: number) => {
-    utilsEditorActions.scrollToLine(editorRef, lineNumber);
-  };
-
+  const {
+    insertAtCursor,
+    findLineNumberByHeading,
+    scrollToLine,
+    insertBlockTag,
+    wrapSelection,
+    insertLink,
+    parseHtmlTableToMarkdown,
+    sanitizePastedText,
+    fixMarkdownTable,
+    replaceDocumentMedia,
+    editDocumentMedia,
+    applyLinePrefix,
+    removePrefix,
+    quickWrap,
+    handleInsertFormattedDate,
+    handleAIDraftApply,
+  } = useEditorFormatting({
+    editorRef,
+    previewRef,
+    lastSelectionRef,
+    contentRef,
+    activeTabIdRef,
+    previewModeRef,
+    visualFormulaInsertRef,
+    visualMediaInsertRef,
+    visualCommandRef,
+    isRestrictedUser,
+    showToast,
+    updateContent,
+    setTabs,
+    setEditingImageInfo,
+    setIsImageModalOpen,
+    setMediaDialogSource,
+    setIsMapModalOpen,
+    setYoutubeInitialUrl,
+    setIsYoutubeModalOpen,
+    setIsAIDraftModalOpen,
+  });
   // ====================================================================
   // 📊 [OMD-CORE-MainEditorApp-0051] MainEditorApp.tsx ➔ handlePreviewClick
   // 🎯 @KICK  : 미리보기 클릭 시: 에디터를 일치하는 줄로 스크롤, 미리보기에서 줄 강조
@@ -3407,104 +3385,7 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     }
   };
 
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0052] MainEditorApp.tsx ➔ insertBlockTag
-  // 🎯 @KICK  : 블록 태그 감싸기를 utilsEditorActions에 위임
-  // 🛡️ @GUARD : None
-  // 🚨 @PATCH : None
-  // 🔗 @CALLS : utilsEditorActions.insertBlockTag
-  // ====================================================================
-  const insertBlockTag = (startTag: string, endTag: string, defaultText: string = "") => {
-    utilsEditorActions.insertBlockTag(editorRef, startTag, endTag, defaultText);
-  };
-
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0053] MainEditorApp.tsx ➔ wrapSelection
-  // 🎯 @KICK  : 선택 영역 감싸기/풀기를 utilsEditorActions에 위임
-  // 🛡️ @GUARD : None
-  // 🚨 @PATCH : None
-  // 🔗 @CALLS : utilsEditorActions.wrapSelection
-  // ====================================================================
-  const wrapSelection = (before: string, after: string = before, defaultText: string = "") => {
-    utilsEditorActions.wrapSelection(editorRef, lastSelectionRef, before, after, defaultText);
-  };
-
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0054] MainEditorApp.tsx ➔ insertLink
-  // 🎯 @KICK  : 커서에 마크다운 링크 삽입, URL 플레이스홀더 텍스트 자동 선택
-  // 🛡️ @GUARD : 현재 선택이 비어있으면 lastSelectionRef 사용; 선택 텍스트와 빈 경우 모두 처리
-  // 🚨 @PATCH : None
-  // 🔗 @CALLS : editor.focus, editor.getSelection, editor.executeEdits, editor.setSelection
-  // ====================================================================
-  const insertLink = () => {
-    if (!editorRef.current) return;
-    const editor = editorRef.current;
-    editor.focus();
-
-    let selection = editor.getSelection();
-    if ((!selection || selection.isEmpty()) && lastSelectionRef.current && !lastSelectionRef.current.isEmpty()) {
-      selection = lastSelectionRef.current;
-    }
-    if (!selection) return;
-    const model = editor.getModel();
-    const selectedText = model.getValueInRange(selection);
-
-    if (selectedText) {
-      const textToInsert = `[${selectedText}](https://)`;
-      const range = {
-        startLineNumber: selection.startLineNumber,
-        startColumn: selection.startColumn,
-        endLineNumber: selection.endLineNumber,
-        endColumn: selection.endColumn
-      };
-      editor.pushUndoStop();
-      editor.executeEdits("insertLink", [{ range, text: textToInsert, forceMoveMarkers: true }]);
-      editor.pushUndoStop();
-
-      const cursorColumn = selection.startColumn + 1 + selectedText.length + 2 + 8;
-
-      editor.setSelection({
-        startLineNumber: selection.startLineNumber,
-        startColumn: cursorColumn,
-        endLineNumber: selection.startLineNumber,
-        endColumn: cursorColumn
-      });
-    } else {
-      const textToInsert = `[홈페이지명](https://)`;
-      const range = {
-        startLineNumber: selection.startLineNumber,
-        startColumn: selection.startColumn,
-        endLineNumber: selection.endLineNumber,
-        endColumn: selection.endColumn
-      };
-      editor.pushUndoStop();
-      editor.executeEdits("insertLink", [{ range, text: textToInsert, forceMoveMarkers: true }]);
-      editor.pushUndoStop();
-
-      const startColumn = selection.startColumn + 1;
-      const endColumn = startColumn + 5;
-
-      editor.setSelection({
-        startLineNumber: selection.startLineNumber,
-        startColumn: startColumn,
-        endLineNumber: selection.startLineNumber,
-        endColumn: endColumn
-      });
-    }
-  };
-
   // 💡 [Step 2 리팩토링으로 readFileText, extractHeadings, handleDocFileClick, getDocLinkDefaultLabel, buildDocLinkTarget, handleDocLinkSelect는 useEditorDocLinks로 이관됨]
-
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0061] MainEditorApp.tsx ➔ parseHtmlTableToMarkdown
-  // 🎯 @KICK  : HTML 표를 마크다운으로 변환하는 작업을 paste handlers에 위임
-  // 🛡️ @GUARD : None
-  // 🚨 @PATCH : None
-  // 🔗 @CALLS : utilsPasteHandlers.parseHtmlTableToMarkdown
-  // ====================================================================
-  const parseHtmlTableToMarkdown = (html: string) => {
-    return utilsPasteHandlers.parseHtmlTableToMarkdown(html, showToast);
-  };
 
   // ====================================================================
   // 📊 [OMD-EDIT-MainEditorApp-0063.1] MainEditorApp.tsx ➔ handleCopyPreviewContent
@@ -3559,28 +3440,6 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
   }, [showToast]);
 
   // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0062] MainEditorApp.tsx ➔ sanitizePastedText
-  // 🎯 @KICK  : 붙여넣기 텍스트 정제를 paste handlers에 위임
-  // 🛡️ @GUARD : None
-  // 🚨 @PATCH : None
-  // 🔗 @CALLS : utilsPasteHandlers.sanitizePastedText
-  // ====================================================================
-  const sanitizePastedText = (text: string, skipTsvConversion = false) => {
-    return utilsPasteHandlers.sanitizePastedText(text, skipTsvConversion);
-  };
-
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0063] MainEditorApp.tsx ➔ fixMarkdownTable
-  // 🎯 @KICK  : 마크다운 표 수정을 paste handlers에 위임
-  // 🛡️ @GUARD : None
-  // 🚨 @PATCH : None
-  // 🔗 @CALLS : utilsPasteHandlers.fixMarkdownTable
-  // ====================================================================
-  const fixMarkdownTable = (text: string) => {
-    return utilsPasteHandlers.fixMarkdownTable(text);
-  };
-
-  // ====================================================================
   // 📊 [OMD-EDIT-MainEditorApp-0064] MainEditorApp.tsx ➔ resolveClipboardImage
   // 🎯 @KICK  : 클립보드에서 이미지 Blob/File 추출 (items → files → native read → navigator.clipboard 순)
   // 🛡️ @GUARD : 모든 경로 실패 시 null 반환, 성공 시 Blob 반환; dataUrlToBlob 인라인 변환으로 CSP connect-src 차단 방어
@@ -3614,58 +3473,7 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     fixMarkdownTable,
   });
 
-  const replaceDocumentMedia = (range, code: string) => {
-    if (range.documentId !== activeTabIdRef.current || contentRef.current.slice(range.from,range.to) !== range.source) return false;
-    const next = contentRef.current.slice(0,range.from) + code.trim() + contentRef.current.slice(range.to);
-    contentRef.current = next; updateContent(next);
-    setTabs(previous=>previous.map(tab=>tab.id===range.documentId?{...tab,content:next,isModified:true}:tab));
-    return true;
-  };
-  const editDocumentMedia = (kind:'image'|'video'|'map',path:string,line:number) => {
-    if (isRestrictedUser) return;
-    const found = mediaSourceRange(contentRef.current,kind,path,line);
-    if (!found) {showToast('원본 미디어 위치를 찾지 못했습니다.','warning');return;}
-    const range = {...found,documentId:activeTabIdRef.current,documentMedia:true};
-    if (kind==='image') {
-      const details = visualImageDetails(found.source);
-      const params = new URLSearchParams(details.path.split('?')[1] || '');
-      const captionPos = params.get('caption');
-      setEditingImageInfo({
-        path: details.path,
-        alt: details.alt,
-        width: params.get('width') || '',
-        height: params.get('height') || '',
-        align: params.get('align') || 'center',
-        captionPos: (captionPos === 'top' || captionPos === 'bottom') ? captionPos : undefined,
-        range
-      });
-      setIsImageModalOpen(true);
-    } else {
-      visualMediaInsertRef.current = {kind,documentId:range.documentId,insert:code=>replaceDocumentMedia(range,code)};
-      setMediaDialogSource({kind,source:found.source});
-      if(kind==='map')setIsMapModalOpen(true);else{setYoutubeInitialUrl(null);setIsYoutubeModalOpen(true);}
-    }
-  };
   // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0065] MainEditorApp.tsx ➔ applyLinePrefix
-  // 🎯 @KICK  : 선택된 줄에 순서 목록/글머리 기호/인용구/체크리스트 접두사 적용
-  // 🛡️ @GUARD : 이전 비어있지 않은 줄(최대 10줄)에서 연속 순서 번호 계산; 중첩 인용구 처리
-  // 🚨 @PATCH : 구문 강조 새로고침을 위해 편집 후 forceTokenization
-  // 🔗 @CALLS : editor.getSelection, editor.executeEdits, model.forceTokenization, editor.layout
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0065] MainEditorApp.tsx ➔ applyLinePrefix & removePrefix
-  // 🎯 @KICK  : 선택된 줄 접두사 서식 적용 및 서식 제거를 utilsEditorActions에 위임
-  // 🚨 @PATCH : 2026-11-04 - [MainEditorApp 모듈화] 440줄 Monaco 서식 조작부를 utilsEditorActions로 위임
-  // 🔗 @CALLS : utilsEditorActions.applyLinePrefix, utilsEditorActions.removePrefix
-  // ====================================================================
-  const applyLinePrefix = useCallback((prefixType: 'orderedList' | 'list' | 'quote' | 'check' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6', alertType?: string) => {
-    utilsEditorActions.applyLinePrefix(editorRef, lastSelectionRef, prefixType, alertType);
-  }, []);
-
-  const removePrefix = useCallback(() => {
-    utilsEditorActions.removePrefix(editorRef, lastSelectionRef);
-  }, []);
-
   // 📊 [OMD-CORE-MainEditorApp-0067] MainEditorApp.tsx ➔ processedContent_lineMap
   // 🎯 @KICK  : 미리보기를 위해 마크다운 콘텐츠를 전처리하고 스크롤 동기화를 위한 라인 매핑 생성
   // 🛡️ @GUARD : None
@@ -3817,22 +3625,6 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
   const dynamicCssString = useMemo(() => {
     return generateDynamicCss(profiles, activeProfileId, previewMode, isStyleModalOpen);
   }, [profiles, activeProfileId, previewMode, isStyleModalOpen]);
-
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0069] MainEditorApp.tsx ➔ quickWrap
-  // 🎯 @KICK  : 선택 영역 또는 현재 줄을 제목/인용구/코드 서식으로 빠르게 감쌉니다
-  // 🛡️ @GUARD : 선택 영역이 없으면 전체 줄 자동 선택; Monaco 가드 확인
-  // 🚨 @PATCH : None
-  // 🔗 @CALLS : wrapSelection, applyLinePrefix, insertBlockTag, editor.focus
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0069] MainEditorApp.tsx ➔ quickWrap
-  // 🎯 @KICK  : 빠른 서식 감싸기를 utilsEditorActions에 위임
-  // 🚨 @PATCH : 2026-11-04 - [MainEditorApp 모듈화] utilsEditorActions로 위임
-  // 🔗 @CALLS : utilsEditorActions.quickWrap
-  // ====================================================================
-  const quickWrap = useCallback((format: 'h1' | 'h2' | 'h3' | 'quote' | 'code') => {
-    utilsEditorActions.quickWrap(editorRef, lastSelectionRef, format);
-  }, []);
 
   const handlers = useEditorHandlers({
     editorRef,
@@ -3993,14 +3785,6 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     setPreviewMode,
     setIsNewDocumentModalOpen,
   });
-
-  const handleInsertFormattedDate = useCallback((formattedDate: string) => {
-    if (previewRef.current?.querySelector('.visual-document-editor') && visualCommandRef.current) {
-      visualCommandRef.current('INSERT_TEXT:' + formattedDate);
-    } else {
-      insertAtCursor(formattedDate);
-    }
-  }, [insertAtCursor]);
 
   // ====================================================================
   // 📊 [OMD-HOOK-useEditorCommands] 에디터 통합 명령 디스패처 훅
@@ -4298,65 +4082,6 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
   });
 
   // 💡 [Step 2 리팩토링으로 docLinkPickerStyle 계산 로직은 useEditorDocLinks 내부로 이관됨]
-  const handleAIDraftApply = (draftContent: string, action: 'insert' | 'replace' | 'append', scope: 'selection' | 'document' | 'none' = 'none') => {
-    setIsAIDraftModalOpen(false); // Close modal
-    
-    if (editorRef.current) {
-      const editor = editorRef.current;
-      const position = editor.getPosition() || { lineNumber: 1, column: 1 };
-      const selection = editor.getSelection();
-      const model = editor.getModel();
-      const monacoObj = typeof window !== 'undefined' && (window as any).monaco ? (window as any).monaco : null;
-      
-      if (model && monacoObj) {
-        if (action === 'insert') {
-          const insertText = `\n\n${draftContent}\n\n`;
-          editor.executeEdits("AI_DRAFT_INSERT", [{
-            range: new monacoObj.Range(position.lineNumber, position.column, position.lineNumber, position.column),
-            text: insertText,
-            forceMoveMarkers: true
-          }]);
-          editor.setPosition({ lineNumber: position.lineNumber + 2, column: 1 });
-          editor.revealPositionInCenter({ lineNumber: position.lineNumber + 2, column: 1 }, 1);
-          showToast("작성된 초안이 본문에 삽입되었습니다. (Ctrl+Z 실행취소 가능)", "success");
-        } else if (action === 'replace') {
-          if (scope === 'document') {
-            const fullRange = model.getFullModelRange();
-            editor.executeEdits("AI_MODAL_REPLACE_DOC", [{
-              range: fullRange,
-              text: draftContent,
-              forceMoveMarkers: true
-            }]);
-            showToast("문서 전체가 새로 작성된 내용으로 덮어씌워졌습니다.", "success");
-          } else if (selection && !selection.isEmpty()) {
-            editor.executeEdits("AI_MODAL_REPLACE", [{
-              range: selection,
-              text: draftContent,
-              forceMoveMarkers: true
-            }]);
-            showToast("기존 텍스트가 덮어씌워졌습니다. (Ctrl+Z 실행취소 가능)", "success");
-          }
-        } else if (action === 'append') {
-          let endLine = model.getLineCount();
-          if (selection && !selection.isEmpty() && scope !== 'document') {
-            endLine = selection.endLineNumber;
-          }
-          const endCol = model.getLineMaxColumn(endLine);
-          const insertRange = new monacoObj.Range(endLine, endCol, endLine, endCol);
-          
-          const formattedText = `\n\n---\n#### [AI 교정문]\n${draftContent}\n---\n`;
-          editor.executeEdits("AI_MODAL_APPEND", [{
-            range: insertRange,
-            text: formattedText,
-            forceMoveMarkers: true
-          }]);
-          showToast("선택된 내용 아래에 덧붙여졌습니다.", "success");
-        }
-      }
-      editor.focus();
-      updateContent(editor.getValue());
-    }
-  };
 
 
 
