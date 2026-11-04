@@ -1,5 +1,7 @@
 /**
  * 프로그램명 : OnriviAuthor 
+// 🚨 @PATCH : **2026-11-04** — [MainEditorApp 4단계 리팩토링 1단계: EditorOverlayManager 모달 분리]:
+//             1) 16개 이상의 모달(ModalManager) 및 AIDraftModal, NewDocumentModal, CalendarModal, DateTimePicker, QuoteDropdown, 로딩 오버레이 렌더링을 EditorOverlayManager로 통합 분리 (Rule 3 Manager 영역 준수)
 // 🚨 @PATCH : **2026-11-04** — [오류 진단 로깅 2단계]: restoreSessionTabs 최외곽 logError 연동, Monaco 바인딩 메타데이터(탭수/유형/ID) 강화, 세션 파싱 doing 표준화
 // 🚨 @PATCH : **2026-11-03** — [오류 진단 로깅 2단계]: cross_platform_session_restore, session_auto_save, restoreSessionTabs에 5대 메타데이터 기반 logError/logWarn 연동으로 세션 복원 및 자동저장 실패 정밀 추적
 // 🚨 @PATCH : **2026-11-03** — [웹드라이브 비연결 시 세션 복원 대기 및 연결 시점 즉시 복원]:
@@ -583,7 +585,7 @@ import { useEditorAuth } from '@/hooks/editor/useEditorAuth';
 import { useEditorModals } from '@/hooks/editor/useEditorModals';
 // import EditorLayout from '@/components/editor/layout/EditorLayout';
 // import EditorCore from '@/components/editor/core/EditorCore';
-import ModalManager from '@/components/editor/modals/ModalManager';
+import EditorOverlayManager from '@/components/editor/EditorOverlayManager';
 import NewDocumentModal from '@/components/NewDocumentModal';
 import { transferDocument } from '@/lib/documentTransfer';
 import { extractFrontmatter, updateCssProfileInFrontmatter } from '@/lib/frontmatter';
@@ -12049,26 +12051,8 @@ blockquote li p {
             isToolbarOpen={isToolbarOpen} />}
           <StatusBar />
 
-          {isAIDraftModalOpen && (
-            <AIDraftModal 
-              onClose={() => setIsAIDraftModalOpen(false)} 
-              onApply={handleAIDraftApply} 
-              geminiApiKey={geminiApiKey || ''}
-              aiModelName={aiModelName || 'gemini-3.8-flash'}
-              onModelChange={(newModel) => setAiModelName?.(newModel)}
-              initialMode={aiDraftInitialMode}
-              editorContext={{
-                selectedText: aiEditorContext?.selectedText ?? (editorRef.current && !editorRef.current.getSelection()?.isEmpty() ? editorRef.current.getModel()?.getValueInRange(editorRef.current.getSelection()!) : '') ?? '',
-                fullText: aiEditorContext?.fullText || editorRef.current?.getModel()?.getValue() || contentRef.current || content || '',
-              }}
-              resourceFolder={resourceFolder}
-              resourceFolderHandle={resourceFolderHandle}
-              rootFolder={rootFolder}
-            />
-          )}
-
-          {/* 💡 [Step 4 리팩토링 완료] 모든 모달 껍데기들을 ModalManager로 완벽하게 이관 완료! */}
-          <ModalManager
+          {/* 💡 [Rule 3 Manager 영역] 모든 모달 및 플로팅 오버레이를 EditorOverlayManager로 통합 위임 */}
+          <EditorOverlayManager
             modals={{
               isSettingsModalOpen, setIsSettingsModalOpen,
               settingsModalInitialTab, setSettingsModalInitialTab,
@@ -12121,7 +12105,7 @@ blockquote li p {
               userNickname, setUserNickname,
               updateContent,
               replaceDocumentMedia: (range,path,alt) => {
-                const escaped = alt.replace(/([\\\[\]])/g,'\\$1');
+                const escaped = alt.replace(/([\[]])/g,'\$1');
                 if (!replaceDocumentMedia(range,`![${escaped}](${path.includes(' ')?'<'+path+'>':path})`)) showToast('문서가 변경되었습니다. 다시 선택해 주세요.','warning');
               },
               mediaDialogSource,
@@ -12149,184 +12133,60 @@ blockquote li p {
                 } catch(error) { showToast(error.message,'warning'); }
               }
             }}
-          />
-
-          {transferProgress && <div role="status" aria-live="polite" className="fixed bottom-12 left-1/2 -translate-x-1/2 z-[999999] rounded-xl border bg-white dark:bg-zinc-900 px-5 py-3 shadow-xl text-sm">{transferProgress}</div>}
-          {/* 📄 [새 문서 생성 대화상자] 폴더 선택 및 파일명 지정 모달 */}
-          <NewDocumentModal
-            isOpen={isNewDocumentModalOpen}
-            onClose={() => setIsNewDocumentModalOpen(false)}
-            fileList={fileList}
-            rootFolder={rootFolder}
-            workspaceType={workspaceType}
-            onConfirm={handleCreateNewDocument}
-            isDarkMode={isDarkMode}
-          />
-
-          {/* 📅 [달력 모달] 인터랙티브 월별 달력 및 다양한 날짜/시간 포맷 삽입 */}
-          <CalendarModal
-            isOpen={isCalendarModalOpen}
-            onClose={() => setIsCalendarModalOpen(false)}
-            onInsert={handleInsertFormattedDate}
-            isDarkMode={isDarkMode}
-          />
-
-          {/* 🎙️ 모바일 플로팅 음성 비서 (STT) */}
-          {mounted && isMobile && (() => {
-            const handleSpeechToText = () => {
-              const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-              if (!SpeechRecognition) {
-                showToast("죄송합니다. 현재 브라우저는 음성 인식을 지원하지 않습니다.", 'error');
-                return;
-              }
-
-              if (isRecording) {
-                // 녹음 중지
-                setIsRecording(false);
-                return;
-              }
-
-              const recognition = new SpeechRecognition();
-              recognition.lang = 'ko-KR';
-              recognition.interimResults = false;
-              recognition.maxAlternatives = 1;
-
-              recognition.onstart = () => {
-                setIsRecording(true);
-                showToast("🎙️ 마이크가 켜졌습니다. 말씀해 주세요...", 'info');
-              };
-
-              recognition.onerror = (e: any) => {
-                console.error('Speech recognition error:', e);
-                setIsRecording(false);
-                showToast("음성 인식에 실패했습니다.", 'error');
-              };
-
-              recognition.onend = () => {
-                setIsRecording(false);
-              };
-
-              recognition.onresult = async (event: any) => {
-                const transcript = event.results[0][0].transcript;
-                if (!transcript.trim()) return;
-
-                showToast(`음성 감지: "${transcript}"`, 'success');
-
-                // 음성 인식 텍스트를 에디터 커서 위치에 바로 삽입
-                insertAtCursor(transcript);
-                showToast("음성 텍스트가 본문에 입력되었습니다.", 'info');
-              };
-
-              recognition.start();
-            };
-
-            return (
-              <button
-                onClick={handleSpeechToText}
-                className={`fixed bottom-20 right-6 z-[99999] w-14 h-14 rounded-full flex items-center justify-center text-white shadow-2xl transition-transform hover:scale-105 active:scale-95 cursor-pointer ${isRecording ? 'bg-rose-500 mic-pulse' : 'bg-gradient-to-tr from-purple-600 to-indigo-600 shadow-purple-500/20'}`}
-              >
-                {isRecording ? (
-                  <span className="w-4 h-4 bg-white rounded-full animate-ping" />
-                ) : (
-                  <span className="text-xl">🎙️</span>
-                )}
-              </button>
-            );
-          })()}
-
-          {isAiLoading && (
-            <div className="fixed inset-0 z-[99999] bg-black/25 dark:bg-black/55 flex items-center justify-center pointer-events-none select-none">
-              <div className="bg-white dark:bg-zinc-800 shadow-2xl border border-purple-500/20 rounded-2xl px-6 py-4 flex items-center gap-3.5 animate-in fade-in zoom-in-95 duration-200">
-                <Icon name="Loading" className="animate-spin text-purple-500" size={20} />
-                <span className="text-[13px] font-bold text-zinc-700 dark:text-zinc-200">
-                  AI가 문장을 다듬고 있습니다...
-                </span>
-              </div>
-            </div>
-          )}
-          {/* ── 인용구 Alert 드롭다운 팝업 (fixed 최상위 레이어 — Windows 작업표시줄 위로 노출) ── */}
-          {floatingQuoteDropdown.open && (
-            <div
-              id="floating-quote-dropdown-fixed"
-              tabIndex={-1}
-              onMouseDown={(e) => e.stopPropagation()}
-              onKeyDown={(e) => {
-                e.stopPropagation();
-                const buttons = Array.from(e.currentTarget.querySelectorAll('button:not([disabled])')) as HTMLButtonElement[];
-                const activeEl = document.activeElement as HTMLButtonElement;
-                const currentIndex = buttons.indexOf(activeEl);
-                if (e.key === 'Tab' || e.key === 'ArrowDown') {
-                  e.preventDefault();
-                  const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % buttons.length;
-                  buttons[nextIndex]?.focus();
-                } else if (e.key === 'ArrowUp' || (e.key === 'Tab' && e.shiftKey)) {
-                  e.preventDefault();
-                  const prevIndex = currentIndex === -1 ? buttons.length - 1 : (currentIndex - 1 + buttons.length) % buttons.length;
-                  buttons[prevIndex]?.focus();
-                } else if (e.key === 'Enter' || e.key === ' ') {
-                  if (activeEl && buttons.includes(activeEl)) {
-                    e.preventDefault();
-                    activeEl.click();
-                  }
-                } else if (e.key === 'Escape') {
-                  e.preventDefault();
-                  setFloatingQuoteDropdown(prev => ({ ...prev, open: false }));
-                  const trigger = document.getElementById('floating-quote-dropdown-container')?.querySelector('button');
-                  trigger?.focus();
-                }
-              }}
-              style={{
-                position: 'fixed',
-                zIndex: 2147483647,
-                left: floatingQuoteDropdown.x,
-                ...(floatingQuoteDropdown.dropUp
-                  ? { bottom: window.innerHeight - floatingQuoteDropdown.y + 4 }
-                  : { top: floatingQuoteDropdown.y + 4 }),
-                minWidth: '230px',
-              }}
-              className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-2xl py-1 flex flex-col overflow-y-auto outline-none"
-            >
-              {[
-                { id: 'QUOTE', label: '일반 인용구', icon: '❝', tag: '> ' },
-                { id: 'QUOTE_NOTE', label: '참고 (Note)', icon: 'ℹ️', tag: '[!참고] · [!NOTE]' },
-                { id: 'QUOTE_TIP', label: '팁 (Tip)', icon: '💡', tag: '[!팁] · [!TIP]' },
-                { id: 'QUOTE_IMPORTANT', label: '중요 (Important)', icon: '📢', tag: '[!중요] · [!IMPORTANT]' },
-                { id: 'QUOTE_WARNING', label: '주의 (Warning)', icon: '⚠️', tag: '[!주의] · [!WARNING]' },
-                { id: 'QUOTE_CAUTION', label: '경고 (Caution)', icon: '🚨', tag: '[!경고] · [!CAUTION]' },
-              ].map((opt) => (
-                <button
-                  key={opt.id}
-                  type="button"
-                  tabIndex={0}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => {
-                    executeFloatingItem(() => {
-                      dispatchCommand(opt.id as any);
-                      setFloatingQuoteDropdown(prev => ({ ...prev, open: false }));
-                    });
-                  }}
-                  className="w-full px-3 py-1.5 text-left text-xs hover:bg-blue-50 dark:hover:bg-blue-900/30 focus:bg-blue-100 dark:focus:bg-blue-900/50 focus:outline-none flex items-center justify-between gap-3 transition-colors cursor-pointer"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-[14px]">{opt.icon}</span>
-                    <span className="font-semibold text-zinc-800 dark:text-zinc-200">{opt.label}</span>
-                  </div>
-                  {opt.tag && (
-                    <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500 font-bold">
-                      {opt.tag}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-          {/* ── 날짜/시간 커서 위치 스마트 입력 팝업 ── */}
-          <DateTimeInsertPicker
-            isOpen={isMonacoDatePickerOpen}
-            position={monacoDatePickerPos}
-            onClose={() => setIsMonacoDatePickerOpen(false)}
-            onInsert={handleInsertFormattedDate}
-            isDarkMode={isDarkMode}
+            aiDraft={{
+              isOpen: isAIDraftModalOpen,
+              onClose: () => setIsAIDraftModalOpen(false),
+              onApply: handleAIDraftApply,
+              geminiApiKey: geminiApiKey || '',
+              aiModelName: aiModelName || 'gemini-3.8-flash',
+              onModelChange: (newModel) => setAiModelName?.(newModel),
+              initialMode: aiDraftInitialMode,
+              editorContext: {
+                selectedText: aiEditorContext?.selectedText ?? (editorRef.current && !editorRef.current.getSelection()?.isEmpty() ? editorRef.current.getModel()?.getValueInRange(editorRef.current.getSelection()!) : '') ?? '',
+                fullText: aiEditorContext?.fullText || editorRef.current?.getModel()?.getValue() || contentRef.current || content || '',
+              },
+              resourceFolder,
+              resourceFolderHandle,
+              rootFolder
+            }}
+            calendar={{
+              isOpen: isCalendarModalOpen,
+              onClose: () => setIsCalendarModalOpen(false),
+              onInsert: handleInsertFormattedDate,
+              isDarkMode
+            }}
+            newDocument={{
+              isOpen: isNewDocumentModalOpen,
+              onClose: () => setIsNewDocumentModalOpen(false),
+              fileList,
+              rootFolder,
+              workspaceType,
+              onConfirm: handleCreateNewDocument,
+              isDarkMode
+            }}
+            dateTimePicker={{
+              isOpen: isMonacoDatePickerOpen,
+              position: monacoDatePickerPos,
+              onClose: () => setIsMonacoDatePickerOpen(false),
+              onInsert: handleInsertFormattedDate,
+              isDarkMode
+            }}
+            floatingQuote={{
+              dropdown: floatingQuoteDropdown,
+              setDropdown: setFloatingQuoteDropdown,
+              executeFloatingItem,
+              dispatchCommand
+            }}
+            misc={{
+              transferProgress,
+              mounted,
+              isMobile,
+              isAiLoading,
+              isRecording,
+              setIsRecording,
+              showToast,
+              insertAtCursor
+            }}
           />
         </div>
       </EditorProvider>
