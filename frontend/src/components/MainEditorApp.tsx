@@ -1,9 +1,10 @@
 /**
  * 프로그램명 : OnriviAuthor 
-// 🚨 @PATCH : **2026-11-04** — [MainEditorApp 모듈화 및 TDZ 초기화 순서 수정]:
+// 🚨 @PATCH : **2026-11-04** — [MainEditorApp 모듈화 및 세션 관리 분리]:
 //             1) dynamicCssGenerator, useEditorLicense, useEditorCommands, useEditorPaste, useEditorSaveActions 분리 위임 완료
-//             2) handleSaveToLocal, handleSaveToWebDrive, handleCreateNewDocument, transferProgress를 useEditorSaveActions 훅으로 분리 (237줄 감축)
-//             3) useEditorLicense 호출부를 licenseKey/useEditorSettingsResult 선언부 뒤로 재배치하여 'Cannot access op before initialization' TDZ 런타임 오류 완전 해결
+//             2) restoreSessionTabs, openExternalFile, 세션 자동저장, 브라우저 종료 플러시, IPC 연동을 useEditorDocumentSession 훅으로 분리 (420줄 감축)
+//             3) handleSaveToLocal, handleSaveToWebDrive, handleCreateNewDocument, transferProgress를 useEditorSaveActions 훅으로 분리 (237줄 감축)
+//             4) useEditorLicense 호출부를 licenseKey/useEditorSettingsResult 선언부 뒤로 재배치하여 'Cannot access op before initialization' TDZ 런타임 오류 완전 해결
 // 🚨 @PATCH : **2026-11-04** — [MainEditorApp 4단계 리팩토링 4단계: EditorCore 코어 뷰 분리 완료]:
 //             1) MainEditorApp.tsx 내부의 1,779줄에 달하는 에디터/미리보기 스플릿 뷰, 브레드크럼, 탭바, 툴바 본체를 EditorCore.tsx 컴포넌트로 분리
 //             2) Container(MainEditorApp)는 순수 상태 조율 및 Context Provider 제공에만 집중하고, Layout(EditorLayout)의 중앙 렌더링을 EditorCore에 위임하여 역할 기반 아키텍처(Container-Layout-Core-Manager) 100% 완성
@@ -536,7 +537,6 @@ import { exportPDF, exportHTML, exportEPUB, exportPNG } from '@/lib/exportHandle
 import { serializeDocumentForClipboard, copyFormattedDocumentToClipboard } from '@/lib/clipboardExport';
 import { configureMonacoEnvironment } from '@/lib/monacoEnv'; // Monaco 환경 설정
 import { idb, FileNode, scanDirectory, scanDirectoryDeep, getFileIcon } from '@/lib/indexedDbHelper'; // indexedDB 헬퍼
-import { captureEditorSession, readEditorSession, matchesSessionTab, SessionTab, isPlaceholderWarning } from '@/lib/editorSession';
 import { knowledgeClient } from '@/lib/knowledge/knowledgeClient'; // 지식 베이스 클라이언트
 import { preprocessMarkdownForPreview, stripFrontmatter, getCodeBlockLineMask } from "@/lib/editorUtils"; // 마크다운 프리뷰
 import { syncPreviewFromEditorScroll, syncPreviewToTargetLine } from "@/lib/syncEngine"; // 동기화 엔진
@@ -600,6 +600,7 @@ import { useEditorLicense } from '@/hooks/editor/useEditorLicense';
 import { useEditorCommands } from '@/hooks/editor/useEditorCommands';
 import { useEditorPaste } from '@/hooks/editor/useEditorPaste';
 import { useEditorSaveActions } from '@/hooks/editor/useEditorSaveActions';
+import { useEditorDocumentSession } from '@/hooks/editor/useEditorDocumentSession';
 import { mapIdToCommandType as importedMapIdToCommandType } from '@/types/editorCommand';
 import { useEditorModals } from '@/hooks/editor/useEditorModals';
 // import EditorLayout from '@/components/editor/layout/EditorLayout';
@@ -623,8 +624,7 @@ import {
   getSavedWorkspaceInfo,
   readDriveFileContent,
   uploadDriveImage,
-  initDriveTokenAutoRefresh,
-  hasValidDriveToken
+  initDriveTokenAutoRefresh
 } from '@/lib/gdrive/googleDriveClient';
 
 
@@ -1793,10 +1793,7 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
 
   // 💡 [Step 2 리팩토링으로 promptConfig 삭제됨 (useEditorModals로 이관)]
 
-  const pendingExternalFileRef = useRef<string | null>(null); // 윈도우 파일 연결 경로 (마운트 전 확보용)
-  const sessionRestoredRef = useRef<boolean>(false); // 세션 복원 최초 1회 실행 가드
-  const [desktopSessionReady,setDesktopSessionReady]=useState(false);
-  const initialSessionCheckedRef=useRef(false);
+
   const sessionRestoringRef = useRef<boolean>(false); // 세션 복원 진행 중 스킵 락
   const [driveLetter, setDriveLetter] = useState('D:');
   const [webBasePath, setWebBasePath] = useState<string>(() => {
@@ -3567,197 +3564,6 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     }
   }, [content, activeProfileId, profiles, isStyleModalOpen]);
 
-  // ====================================================================
-  // 📊 [OMD-IO-MainEditorApp-0037] MainEditorApp.tsx ➔ electronAPI_listeners
-  // 🎯 @KICK  : 파일 작업 및 외부 파일 열기를 위한 Electron 메인 프로세스 IPC 리스너 등록
-  // 🛡️ @GUARD : 정리 시 리스너 제거, 보류 중인 외부 파일 참조 처리
-  // 🚨 @PATCH : **2026-06-28** — 최초 실행 시 api.getInitialFilePath() 호출을 추가하여 윈도우 탐색기/바탕화면에서
-  //             .md 파일 더블클릭 시 앱 기동 후 해당 파일이 자동으로 열리도록 IPC 연결 패치
-  // 🔗 @CALLS : api.onNewFileRequested, api.onSaveFileRequested, api.onSaveFileAsRequested, api.onReceiveFile, api.getInitialFilePath, openExternalFile, handlers.newFile, handlers.save, handlers.saveAs
-  // ====================================================================
-  useEffect(() => {
-    if (typeof window !== 'undefined' && (window as any).electronAPI) {
-      const api = (window as any).electronAPI;
-      api.onNewFileRequested(() => { });
-      api.onSaveFileRequested(() => handlers.save());
-      api.onSaveFileAsRequested(() => handlers.saveAs());
-
-      // 윈도우 파일 연결(더블클릭)로 외부 .md 파일 열기 요청 수신 (두 번째 실행부터)
-      let unsubscribeReceiveFile: (() => void) | undefined;
-      if (api.onReceiveFile) {
-        unsubscribeReceiveFile = api.onReceiveFile((filePath: string) => {
-          openExternalFile(filePath);
-        });
-      }
-
-      // 🆕 최초 실행 시: .md 더블클릭 파일 우선, 없으면 마지막 세션 파일 복원
-      // sessionRestoredRef로 effect 재실행 시 중복 호출 방지
-      if (mounted && api.getInitialFilePath && !sessionRestoredRef.current && !initialSessionCheckedRef.current) {
-        initialSessionCheckedRef.current=true;
-        api.getInitialFilePath().then(async (filePath: string | null) => {
-          if (filePath) {
-            sessionRestoredRef.current = true;
-            openExternalFile(filePath);
-          } else if (readEditorSession(localStorage.getItem('onrivi_tabs_session'))) {
-            setDesktopSessionReady(true);
-          } else if (api.getLastSession && (tabs.length === 0 || !tabs.some(t => !!t.path && !t.isStyleTab))) {
-            const sessionData = await api.getLastSession();
-            if (sessionData && Array.isArray(sessionData.openFilePaths) && sessionData.openFilePaths.length > 0) {
-              await restoreSessionTabs(sessionData.openFilePaths, sessionData.activeFilePath);
-            } else {
-              sessionRestoredRef.current = true; // 복원할 세션 없음
-            }
-          } else {
-            sessionRestoredRef.current = true; // 복원할 더블클릭 경로 없음
-          }
-        }).catch(() => { setDesktopSessionReady(true); });
-      }
-      if(mounted && !api.getInitialFilePath)setDesktopSessionReady(true);
-
-      // restoreSettings에서 확보해 둔 pending 파일 경로 처리 (폴백)
-      if (pendingExternalFileRef.current) {
-        const path = pendingExternalFileRef.current;
-        pendingExternalFileRef.current = null;
-        openExternalFile(path);
-      }
-
-      return () => {
-        api.removeListeners();
-        if (unsubscribeReceiveFile) unsubscribeReceiveFile();
-      };
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mounted, content, currentFileNode]);
-
-  // ====================================================================
-  // 📊 [OMD-IO-MainEditorApp-0044] MainEditorApp.tsx ➔ cross_platform_session_restore
-  // 🎯 @KICK  : 일반 웹 브라우저 및 데스크탑 공용으로 최초 기동 시 localStorage의 세션 정보를 읽어 탭 복원을 개시.
-  //             - 데스크톱(Electron): 로컬 파일시스템에 즉시 접근 가능하므로 기동 즉시 이전 최종 문서 및 탭 목록 복원.
-  //             - 일반 웹(SaaS/Web): 웹드라이브(Google Drive)가 연결되지 않은 상태에서는 최종 문서를 표시하지 않고 대기.
-  //               이후 웹드라이브가 연결되는 순간(connectGoogleDrive 완료 또는 파일 트리 로드 시점)에 이전 세션/최종 문서를 즉각 복원.
-  // 🛡️ @GUARD : 웹 환경에서 웹드라이브 미연결 시 세션 복원 보류 및 덮어쓰기 방지. 복원 완료 전까지 sessionRestoredRef 유지.
-  // 🚨 @PATCH : **2026-11-03** — [웹드라이브 비연결 시 세션 복원 대기 및 연결 시점 즉시 복원]:
-  //             웹 환경(!isElectron)에서 웹드라이브 미연결 상태일 때 이전 최종 문서를 노출하지 않고,
-  //             구글 웹드라이브가 정상 연결·인증되는 즉시 이전 최종 문서 및 탭 세션을 복원하도록 가드 분기 정밀화.
-  // 🔗 @CALLS : restoreSessionTabs, hasValidDriveToken
-  // ====================================================================
-  useEffect(() => {
-    if (!mounted) return;
-
-    const api = typeof window !== 'undefined' ? (window as any).electronAPI : null;
-    const isElectron = !api;
-
-    // 이미 복원 완료되었거나 복원 진행 중이면 중복 실행 차단
-    if (sessionRestoredRef.current || sessionRestoringRef.current) return;
-
-    // 1. 데스크톱(Electron) 환경: desktopSessionReady 완료 즉시 로컬 세션 복원
-    if (isElectron) {
-      if (!desktopSessionReady) return;
-      try {
-        const parsed = readEditorSession(localStorage.getItem('onrivi_tabs_session'));
-        if (parsed && parsed.tabs.length > 0) {
-          void restoreSessionTabs([], null, parsed.tabs, parsed.activeTabId, parsed.previewMode);
-          return;
-        }
-      } catch (e) {
-        logError({
-          file: 'frontend/src/components/MainEditorApp.tsx',
-          func: 'cross_platform_session_restore',
-          doing: 'localStorage 이전 세션 파싱 중',
-          target: 'localStorage/onrivi_tabs_session',
-          error: e
-        });
-      }
-      sessionRestoredRef.current = true;
-      return;
-    }
-
-    // 2. 일반 웹(Web SaaS) 환경:
-    try {
-      const parsed = readEditorSession(localStorage.getItem('onrivi_tabs_session'));
-      if (parsed && parsed.tabs.length > 0) {
-        const isDriveSession = (rootFolder as any)?.type === 'GDRIVE' ||
-          workspaceType === 'cloud' ||
-          parsed.tabs.some(t => t.driveFileId || (t.path && t.path.startsWith('GoogleDrive/')));
-
-        if (isDriveSession) {
-          // 🛡️ 웹드라이브가 아직 연결되지 않은 경우 최종 문서를 보여주지 않고 대기
-          const isDriveReady = (isDriveConnected || fileList.length > 0) &&
-            (rootFolder as any)?.type === 'GDRIVE' &&
-            hasValidDriveToken() &&
-            !isDriveAuthExpired;
-
-          if (!isDriveReady) {
-            // 웹드라이브 연결 전이므로 세션을 복원하지 않고 대기 (에디터에 최종 문서를 노출하지 않음)
-            return;
-          }
-        } else if (workspaceType === 'browser') {
-          // 브라우저 로컬 저장소 모드인 경우 핸들 준비 대기
-          if (!rootFolder || (rootFolder as any).needPermission || !rootFolder.handle) {
-            return;
-          }
-        }
-
-        // 웹드라이브가 연결되었거나 브라우저 핸들이 준비된 순간 이전 세션 문서 복원!
-        void restoreSessionTabs([], null, parsed.tabs, parsed.activeTabId, parsed.previewMode);
-        return;
-      }
-    } catch (e) {
-      logError({
-        file: 'frontend/src/components/MainEditorApp.tsx',
-        func: 'cross_platform_session_restore',
-        doing: 'localStorage 이전 세션 파싱 중',
-        target: 'localStorage/onrivi_tabs_session',
-        error: e,
-        context: { workspaceType, isDriveConnected }
-      });
-    }
-    sessionRestoredRef.current = true; // 복원할 세션 정보가 없으면 완료 처리
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mounted, desktopSessionReady, rootFolder, fileList, isDriveAuthExpired, isDriveConnected, workspaceType]);
-
-  // ====================================================================
-  // 📊 [OMD-IO-MainEditorApp-0039] MainEditorApp.tsx ➔ session_auto_save
-  // 🎯 @KICK  : 현재 열려있는 탭 목록 또는 활성 탭이 변경될 때마다 electronAPI.saveLastSession()을
-  //             호출하여 모든 열린 파일 경로와 활성 파일 경로를 session.json에 자동 저장.
-  //             앱 재시작 시 session:getLastSession IPC로 그대로 복원됨.
-  // 🛡️ @GUARD : Electron 환경에서만 동작. 저장할 파일 목록이 없으면 빈 세션 저장.
-  // 🚨 @PATCH : **2026-08-12** — 멀티 탭 전체 복원 동기화 기능으로 고도화 개편
-  // 🔗 @CALLS : api.saveLastSession
-  // ====================================================================
-  useEffect(() => {
-    // 💡 [치명적 버그 방어] 앱 마운트 초기 단계(세션 복원이 채 완료되지 않은 시점)에
-    // 초기 빈 탭 상태([])가 session.json이나 localStorage를 덮어씌워 날려버리는 결함을 차단합니다.
-    if (!mounted || !sessionRestoredRef.current || sessionRestoringRef.current) return;
-
-    const api = typeof window !== 'undefined' ? (window as any).electronAPI : null;
-
-    // 1. 브라우저 로컬 스토리지 보존 (웹 & 데스크탑 공용)
-    if (typeof window !== 'undefined') {
-      try {
-        localStorage.setItem('onrivi_tabs_session', JSON.stringify(captureEditorSession(tabs,activeTabId,contentRef.current,previewModeRef.current)));
-      } catch (e) {
-        logError({
-          file: 'frontend/src/components/MainEditorApp.tsx',
-          func: 'session_auto_save',
-          doing: '활성 탭 세션 자동저장 직렬화 중',
-          target: 'localStorage/onrivi_tabs_session',
-          error: e,
-          context: { tabCount: tabs.length }
-        });
-      }
-    }
-
-    // 2. 일렉트론 세션 보존 (데스크탑 전용 파일 백업)
-    if (api?.saveLastSession) {
-      const openFilePaths = tabs.map(t => t.path).filter((p): p is string => typeof p === 'string' && !!p);
-      const activeFilePath = currentFileNode?.path || null;
-      api.saveLastSession({
-        openFilePaths,
-        activeFilePath
-      }).catch(() => {});
-    }
-  }, [mounted, tabs, activeTabId, currentFileNode, previewMode]);
 
   // ====================================================================
   // 📊 [OMD-IO-MainEditorApp-0041] MainEditorApp.tsx ➔ a4_guard_auto_save
@@ -3772,44 +3578,6 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     }
   }, [isA4GuardEnabled]);
 
-  // ====================================================================
-  // 📊 [OMD-IO-MainEditorApp-0042] MainEditorApp.tsx ➔ beforeunload_safety_flush
-  // 🎯 @KICK  : 브라우저가 예기치 않게 닫히거나 강제 종료될 때, React 갱신 지연 상태를 무시하고
-  //             Ref(tabsRef, currentFileNodeRef)를 직접 읽어 localStorage 및 session.json에 즉각 플러시 저장.
-  // 🛡️ @GUARD : React 최신 Ref 참조로 동기화 누락 방지.
-  // 🚨 @PATCH : **2026-08-12** — 초기 생성 (강제 종료 유실 방지 가드)
-  // 🔗 @CALLS : api.saveLastSession
-  // ====================================================================
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      if(!sessionRestoredRef.current || sessionRestoringRef.current)return;
-      const api = typeof window !== 'undefined' ? (window as any).electronAPI : null;
-      
-      // 1. 브라우저 로컬 스토리지에 마지막 작성중인 문서 메타데이터 밀봉 플러시
-      if (typeof window !== 'undefined') {
-        try {
-          localStorage.setItem('onrivi_tabs_session', JSON.stringify(captureEditorSession(tabsRef.current,activeTabIdRef.current,contentRef.current,previewModeRef.current)));
-        } catch (e) {
-          logWarn({
-            file: 'frontend/src/components/MainEditorApp.tsx',
-            func: 'beforeunload_safety_flush',
-            doing: '브라우저 종료 직전 세션 플러시 직렬화 중',
-            target: 'localStorage/onrivi_tabs_session',
-            error: e
-          });
-        }
-      }
-
-      // 2. 데스크탑 파일 백업 플러시
-      if (api?.saveLastSession) {
-        const openFilePaths = tabsRef.current.map(t => t.path).filter((p): p is string => typeof p === 'string' && !!p);
-        const activeFilePath = currentFileNodeRef.current?.path || null;
-        api.saveLastSession({ openFilePaths, activeFilePath }).catch(() => {});
-      }
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, []);
 
 
   // 🎯 @KICK  : 사이드바 UI에서 서식을 변경했을 때, 에디터 본문에 Frontmatter를 주입/갱신하고 상태를 업데이트한다.
@@ -3932,244 +3700,6 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     });
   }, [mounted, isLicenseChecking, isDuplicateInstance, effectiveLicenseStatus]);
 
-  // ====================================================================
-  // 📊 [OMD-FILE-MainEditorApp-0043] MainEditorApp.tsx ➔ restoreSessionTabs
-  // 🎯 @KICK  : 앱 재시작 시, 이전 세션의 파일 목록 전체를 일괄 로드하여 탭 리스트를 생성 및 바인딩.
-  //             단일 일괄 트랜잭션 처리로 React 상태 갱신 배치 충돌 및 Monaco 모델 중복 방지.
-  // 🛡️ @GUARD : 비인증 사용자 복원 제한, 디스크 삭제 파일 예외 가드.
-  // 🚨 @PATCH : **2026-08-12** — 초기 생성 (멀티 탭 복원 충돌 버그 해결)
-  // 🔗 @CALLS : api.readFromPath, setTabs, setActiveTabId, setContent, showToast
-  // ====================================================================
-  const restoreSessionTabs = async (openFilePaths: string[], activeFilePath: string | null, savedTabs?:SessionTab[], savedActiveId?:string|null, savedMode?:string) => {
-    const restoreStartedAt = performance.now();
-    try {
-      sessionRestoringRef.current = true;
-      // 💡 [정식 문서 열기 적용] 단순히 탭만 임의로 배열에 쑤셔넣지 않고, 
-      // 기존 파일 탐색기의 실제 파일 오픈 파이프라인(handleFileOpenByPath)을 순차 구동시킵니다.
-      // 이렇게 해야 실제 로컬 파일 시스템 핸들 및 VFS 상태가 정상 바인딩되어 물리적 저장이 작동합니다.
-      // React 상태 배치 갱신 지연으로 인한 탭 유실을 방지하기 위해 탭당 150ms의 마이크로 대기 시간을 부여합니다.
-      
-      if(savedTabs){
-        const restored=new Map<string,string>();
-        for(const saved of savedTabs){
-          try{
-            if(saved.driveFileId){
-              await handleFileClick({name:saved.name,path:saved.path,kind:'file',driveFileId:saved.driveFileId} as any);
-            }else if(saved.path){
-              await handleFileOpenByPath(saved.path);
-            }else if(saved.draft!==undefined){
-              createNewTab(saved.draft,saved.name,false);
-            }else continue;
-            // Let the normal file-open pipeline bind its real file node/handle.
-            await new Promise(resolve=>setTimeout(resolve,150));
-            const opened=saved.path || saved.driveFileId
-              ? tabsRef.current.find(t=>matchesSessionTab(t,saved))
-              : tabsRef.current.find(t=>t.id===activeTabIdRef.current);
-            if(!opened)continue;
-            restored.set(saved.id,opened.id);
-            const isDraftWarning = isPlaceholderWarning(saved.draft);
-            if(saved.draft!==undefined && !isDraftWarning){
-              if(opened.model && !opened.model.isDisposed?.())opened.model.setValue(saved.draft);
-              if(activeTabIdRef.current===opened.id){contentRef.current=saved.draft;updateContent(saved.draft,false,true);}
-            }
-            setTabs(previous=>previous.map(t=>t.id===opened.id?{...t,
-              ...(saved.draft!==undefined && !isDraftWarning?{content:saved.draft,isModified:true}:{}),
-              scrollTop:saved.scrollTop,previewMode:saved.previewMode || t.previewMode
-            }:t));
-            await new Promise(resolve=>setTimeout(resolve,0));
-          }catch(error){
-            logWarn({
-              file: 'frontend/src/components/MainEditorApp.tsx',
-              func: 'restoreSessionTabs',
-              doing: '이전 세션 탭 복원 및 모델 바인딩 중',
-              target: saved.name || saved.path || saved.driveFileId,
-              error: error,
-              context: {
-                savedId: saved.id,
-                totalTabs: savedTabs.length,
-                tabType: saved.driveFileId ? 'GDRIVE' : (saved.path ? 'LOCAL' : 'DRAFT'),
-                hasDriveId: Boolean(saved.driveFileId)
-              }
-            });
-          }
-        }
-        const target=restored.get(savedActiveId || '');
-        if(target){
-          // Force normal switchTab to apply the restored scroll position/mode.
-          if(activeTabIdRef.current===target)activeTabIdRef.current=null;
-          switchTab(target);
-        }
-        if(savedMode && ['edit','both','preview'].includes(savedMode) && !isRestrictedUser)setPreviewMode(savedMode as any);
-        if(restored.size)showToast(`이전에 열어 둔 문서 ${restored.size}개를 복원했습니다.`,'info');
-        return;
-      }
-
-      // 💡 [중복 경로 사전 필터링] 정규화 기준 중복 파일 배제
-      const seenPaths = new Set<string>();
-      const uniqueFilePaths = openFilePaths.filter(p => {
-        if (!p) return false;
-        const norm = p.replace(/\\/g, '/').toLowerCase().normalize('NFC');
-        if (seenPaths.has(norm)) return false;
-        seenPaths.add(norm);
-        return true;
-      });
-
-      for (const filePath of uniqueFilePaths) {
-        if (handleFileOpenByPath) {
-          await handleFileOpenByPath(filePath);
-          await new Promise(resolve => setTimeout(resolve, 150));
-        }
-      }
-
-      // 마지막에 원래 활성화 상태였던 탭으로 이동 (이미 열린 탭이면 switchTab만 호출하여 2중 열림 원천 차단)
-      if (activeFilePath) {
-        const normActive = activeFilePath.replace(/\\/g, '/').toLowerCase().normalize('NFC');
-        const targetTab = tabsRef.current.find(t => (t.path || '').replace(/\\/g, '/').toLowerCase().normalize('NFC') === normActive);
-        if (targetTab) {
-          switchTab(targetTab.id);
-        } else if (handleFileOpenByPath) {
-          await handleFileOpenByPath(activeFilePath);
-        }
-      }
-      
-      showToast(`📂 이전 세션의 문서 ${uniqueFilePaths.length}개가 온전히 복원되었습니다.`, "info");
-    } catch (err) {
-      logError({
-        file: 'frontend/src/components/MainEditorApp.tsx',
-        func: 'restoreSessionTabs',
-        doing: '전체 세션 탭 복원 및 마운트 후속 처리 중',
-        target: activeFilePath || 'session_tabs',
-        error: err,
-        context: {
-          savedTabCount: savedTabs?.length ?? openFilePaths.length,
-          hasActiveFilePath: Boolean(activeFilePath)
-        }
-      });
-      console.error("[restoreSessionTabs] 오류:", err);
-    } finally {
-      console.info('[STARTUP timing] session restore ms=%d tabs=%d', Math.round(performance.now() - restoreStartedAt), savedTabs?.length ?? openFilePaths.length);
-      sessionRestoringRef.current = false;
-      sessionRestoredRef.current = true;
-      // Persist only after the entire restoration has completed.
-      setTabs(previous=>[...previous]);
-    }
-  };
-
-
-  // ====================================================================
-  // 📊 [OMD-FILE-MainEditorApp-0038] MainEditorApp.tsx ➔ openExternalFile
-  // 🎯 @KICK  : OS 수준 더블클릭 또는 명령줄에서 파일 열기, Monaco 모델로 탭 생성
-  // 🛡️ @GUARD : 중복 탭 방지 및 기존 탭 발견 시 최신 컨텐츠 강제 플러시 갱신
-  // 🚨 @PATCH : 동일 파일명/경로 재호출 시 무반응 버그 수정: setModel 및 content 강제 동기화 (2026-07-17)
-  // 🔗 @CALLS : api.readFromPath, switchTab, setContent, showToast
-  // ====================================================================
-  const openExternalFile = async (filePath: string) => {
-    try {
-      const api = (window as any).electronAPI;
-      if (api?.readFromPath) {
-        const file = await api.readFromPath(filePath);
-        if (file) {
-          const normFilePath = (file.path || '').replace(/\\/g, '/').toLowerCase().normalize('NFC');
-          const existingTab = tabsRef.current.find(t => {
-            if (!t.path) return false;
-            return t.path.replace(/\\/g, '/').toLowerCase().normalize('NFC') === normFilePath;
-          });
-
-          if (existingTab) {
-            if (existingTab.model && existingTab.model.isDisposed()) {
-              const cleaned = tabsRef.current.filter(t => t.id !== existingTab.id);
-              tabsRef.current = cleaned;
-              setTabs(cleaned);
-            } else {
-              // 🎯 [현행화 패치] 기존 탭이 존재하면 포커스를 이동하고 최신 원문 데이터를 강제 주입
-              switchTab(existingTab.id);
-              setContent(file.content);
-              setCurrentFileName(file.name);
-              setCurrentFileNode({ name: file.name, kind: 'file', path: file.path });
-
-              if (existingTab.model) {
-                // 기존 모델에 외부에서 바뀐 최신 텍스트를 강제로 덮어씌움
-                existingTab.model.setValue(file.content);
-                if (editorRef.current) {
-                  try {
-                    editorRef.current.setModel(existingTab.model);
-                  } catch (e) {
-                    console.warn("[Monaco] setModel failed on existing tab:", e);
-                  }
-                }
-              }
-
-              showToast(`📂 ${file.name} (최신화 완료)`, "info");
-              return;
-            }
-          }
-
-          // --- 이하 신규 탭 생성 로직은 기존과 동일 ---
-          // [Bug Fix] CRLF를 LF로 정규화하여 Monaco getValue()와의 비교 시 isModified가 오작동하는 문제 해결
-          file.content = file.content.replace(/\r\n/g, '\n');
-
-          const monaco = (window as any).monaco;
-          let model: any = null;
-          if (monaco) {
-            model = monaco.editor.createModel(file.content, 'markdown');
-            model.onDidChangeContent(() => {
-              const val = model.getValue();
-              setContent(val);
-              setTabs(prev => prev.map(t => t.id === file.path ? { ...t, content: val, isModified: val !== t.content } : t));
-            });
-          }
-
-          const newTabId = file.path;
-          const newTab: EditorTab = {
-            id: newTabId,
-            name: file.name,
-            path: file.path,
-            node: { name: file.name, kind: 'file', path: file.path },
-            content: file.content,
-            isModified: false,
-            model: model
-          };
-
-          setTabs(prev => {
-            const exists = prev.some(t => {
-              if (t.id === newTabId) return true;
-              if (t.path) {
-                return t.path.replace(/\\/g, '/').toLowerCase().normalize('NFC') === normFilePath;
-              }
-              return false;
-            });
-            if (exists) {
-              return prev.map(t => {
-                const normTab = (t.path || '').replace(/\\/g, '/').toLowerCase().normalize('NFC');
-                if (t.id === newTabId || normTab === normFilePath) {
-                  return { ...t, content: file.content, model: model || t.model };
-                }
-                return t;
-              });
-            }
-            return [...prev, newTab];
-          });
-          setActiveTabId(newTabId);
-          setContent(file.content);
-          setCurrentFileName(file.name);
-          setCurrentFileNode({ name: file.name, kind: 'file', path: file.path });
-
-          if (editorRef.current && model) {
-            try {
-              editorRef.current.setModel(model);
-            } catch (e) {
-              console.warn("[Monaco] setModel failed on new tab:", e);
-            }
-          }
-          showToast(`📂 ${file.name}`, "info");
-          return;
-        }
-      }
-      await handleFileOpenByPath(filePath);
-    } catch (e) {
-      showToast('파일을 열 수 없습니다.', 'error');
-    }
-  };
 
   // ====================================================================
   // 📊 [OMD-FILE-MainEditorApp-0039] MainEditorApp.tsx ➔ welcomeContentLoad
@@ -5339,6 +4869,51 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
       setDirectEditEnabled(true);
     }
   }, [isExportModalOpen, directEditEnabled]);
+
+  // ====================================================================
+  // 📊 [OMD-HOOK-useEditorDocumentSession] 에디터 세션 복원 및 외부 파일 열기 분리 훅
+  // 🚨 @PATCH : 2026-11-04 - [MainEditorApp 모듈화] 세션 복원/자동저장/IPC/openExternalFile을 useEditorDocumentSession으로 445줄 분리 위임
+  // ====================================================================
+  const {
+    desktopSessionReady,
+    sessionRestoredRef,
+    restoreSessionTabs,
+    openExternalFile,
+  } = useEditorDocumentSession({
+    mounted,
+    tabs,
+    tabsRef,
+    setTabs,
+    activeTabId,
+    activeTabIdRef,
+    setActiveTabId,
+    content,
+    contentRef,
+    setContent,
+    updateContent,
+    createNewTab,
+    switchTab,
+    currentFileNode,
+    currentFileNodeRef,
+    setCurrentFileNode,
+    currentFileName,
+    setCurrentFileName,
+    previewMode,
+    previewModeRef,
+    setPreviewMode,
+    handleFileClick,
+    handleFileOpenByPath,
+    rootFolder,
+    workspaceType,
+    fileList,
+    isDriveConnected,
+    isDriveAuthExpired,
+    isRestrictedUser,
+    editorRef,
+    showToast,
+    handlers,
+    sessionRestoringRef,
+  });
 
   // ====================================================================
   // 📊 [OMD-HOOK-useEditorSaveActions] 에디터 파일 저장 및 새 문서 생성 분리 훅
