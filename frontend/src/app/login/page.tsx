@@ -2,6 +2,7 @@
 // 📊 [OMD-AUTH-login-page-0001] page ➔ LoginPage
 // 🎯 @KICK  : Supabase Auth 기반 이메일/구글 소셜 로그인 및 마스킹 해제 기능 지원 로그인 화면
 // 🛡️ @GUARD : 이메일/비밀번호 빈 값 방지, Supabase 연동 검증 및 상용 계정 사전 검증
+// 🚨 @PATCH : **2026-11-04** — [오류 진단 로깅 3단계]: 로그인 5단계(사전조회, 비번인증, 세션조회, 구독조회, 기기활성화) doing 및 activate 실패 메타데이터 세분화
 // 🚨 @PATCH : **2026-11-02** — [로그인 파이프라인 주석 표준화 및 가독성 개편] 5단계 로그인 인증 흐름(사전검증 ➔ 비번인증 ➔ 유저동기화 ➔ 구독조회 ➔ 기기활성화) 상세 해설 주석 추가
 // 🚨 @PATCH : 2026-11-02 — [DB 접근 표준화 & Rule 9 준수] subscriptions 브라우저 직접 조회 및 임의 폴백 제거, /api/subscription/get 단일화
 // 🚨 @PATCH : **2026-09-16** — [로그인 시 세션 등록 기기 한도 초과 안내 콘솔 warn 전환]: 로그인 시 기기 한도 초과(EXCEED_MAX_DEVICES) 응답을 console.error 대신 console.warn으로 처리하여 정상 비즈니스 분기 시 콘솔 에러 오염 방지
@@ -59,6 +60,7 @@ export default function LoginPage() {
 
     reportClientLog('이메일 로그인 시작', 'INFO', 'LOGIN');
     setLoading(true);
+    let currentStep = '사전 회원 확인';
 
     try {
       // 1단계: users DB 사전 확인 (탈퇴한 회원이거나 존재하지 않는 이메일인지 체크)
@@ -67,7 +69,19 @@ export default function LoginPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ p_email: email.trim() }),
       });
-      const preUser = preUserRes.ok ? await preUserRes.json() : null;
+      if (!preUserRes.ok) {
+        logWarn({
+          file: 'frontend/src/app/login/page.tsx',
+          func: 'handleEmailLogin',
+          doing: '회원 사전 존재 확인(/api/user/check) 중',
+          target: email.trim(),
+          error: `HTTP ${preUserRes.status}`
+        });
+        showToast("일시적인 시스템 오류로 계정을 확인하지 못했습니다. 잠시 후 다시 시도해 주세요.", "error");
+        setLoading(false);
+        return;
+      }
+      const preUser = await preUserRes.json();
 
       if (!preUser?.exists || preUser.is_deleted) {
         showToast("회원가입 후 로그인하십시오.", "warning");
@@ -76,6 +90,7 @@ export default function LoginPage() {
       }
 
       // 2단계: Supabase Auth 비밀번호 인증 요청
+      currentStep = '비밀번호 인증';
       const { error } = await supabase.auth.signInWithPassword({
         email: email.trim(),
         password: password,
@@ -88,6 +103,7 @@ export default function LoginPage() {
       reportClientLog('이메일 인증 성공', 'INFO', 'LOGIN');
 
       // 3단계: 로그인 성공 후 세션 사용자 정보 조회
+      currentStep = '로그인 세션 사용자 조회';
       const { data: { user: loggedInUser } } = await supabase.auth.getUser();
       if (loggedInUser) {
         // 계정 존재 여부 재확인
@@ -143,6 +159,14 @@ export default function LoginPage() {
             if (subJson?.success && subJson.subscription) {
               subData = subJson.subscription;
             }
+          } else {
+            logWarn({
+              file: 'frontend/src/app/login/page.tsx',
+              func: 'handleEmailLogin',
+              doing: '구독 정보 조회(/api/subscription/get) 중',
+              target: loggedInUser.id,
+              error: `HTTP ${subRes.status}`
+            });
           }
         } catch (e) {
           logWarn({
@@ -181,15 +205,30 @@ export default function LoginPage() {
               headers: { "Content-Type": "application/json", ...(activationToken ? { Authorization: `Bearer ${activationToken}` } : {}) },
               body: JSON.stringify({ p_license_id: subData.id, p_device_uuid: sessionId, p_device_name: "Web SaaS", p_user_id: loggedInUser.id }),
             });
-            const actResult = await actRes.json();
-            if (!actResult.success) console.warn("[ACTIVATION] API note:", actResult.message);
+            const actResult = await actRes.json().catch(() => null);
+            if (!actRes.ok || !actResult?.success) {
+              logWarn({
+                file: 'frontend/src/app/login/page.tsx',
+                func: 'handleEmailLogin',
+                doing: '기기 세션 활성화(/api/license/activate) 중',
+                target: sessionId,
+                error: `HTTP ${actRes.status} (${actResult?.message || '활성화 실패'})`,
+                context: {
+                  status: actRes.status,
+                  sessionUuid: sessionId,
+                  licenseId: subData.id
+                }
+              });
+              if (!actResult?.success) console.warn("[ACTIVATION] API note:", actResult?.message);
+            }
           } catch (actError) {
             logWarn({
               file: 'frontend/src/app/login/page.tsx',
               func: 'handleEmailLogin',
               doing: '기기 세션 활성화(/api/license/activate) 중',
               target: sessionId,
-              error: actError
+              error: actError,
+              context: { sessionUuid: sessionId }
             });
           }
 
@@ -203,12 +242,18 @@ export default function LoginPage() {
         router.push(`/dashboard${window.location.search}`);
       }
     } catch (err: any) {
+      const stepDoingMap: Record<string, string> = {
+        '사전 회원 확인': '회원 사전 존재 확인(/api/user/check) 중',
+        '비밀번호 인증': 'Supabase 계정 비밀번호 인증 중',
+        '로그인 세션 사용자 조회': '로그인 사용자 세션 정보 조회 중',
+      };
       logError({
         file: 'frontend/src/app/login/page.tsx',
         func: 'handleEmailLogin',
-        doing: '이메일 계정 로그인 처리 중',
+        doing: stepDoingMap[currentStep] || '이메일 계정 로그인 처리 중',
         target: email.trim(),
-        error: err
+        error: err,
+        context: { step: currentStep }
       });
       showToast(err.message || "로그인에 실패했습니다. 정보를 다시 확인해 주세요.", "error");
     } finally {
