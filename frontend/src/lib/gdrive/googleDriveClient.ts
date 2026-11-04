@@ -2,6 +2,9 @@
 // 📊 [OMD-LIB-googleDriveClient-0001] src/lib/gdrive/googleDriveClient.ts
 // 🎯 @KICK  : 누구나 쉽게 사용하는 구글 드라이브 무설정(Zero-Config) 자동 연동 및 클라우드 작업장 클라이언트 모듈
 // 🛡️ @GUARD : Rule 1, Rule 2(대문자 코드값 GDRIVE), 최소 권한 원칙(drive.file 스코프 한정)
+// 🚨 @PATCH : **2026-11-04** — [Google OAuth 팝업 COOP(Cross-Origin-Opener-Policy) 콘솔 에러 원천 차단]:
+//             1) 구글 인증 페이지(accounts.google.com)의 COOP 정책으로 인해 부모 창에서 popup.closed 및 popup.close() 호출 시 발생하던 브라우저 콘솔 에러 제거
+//             2) 동일 오리진 BroadcastChannel('onrivi-drive-oauth') 수신 및 서버 세션 폴링(/api/gdrive/oauth/status) 기반으로 전환하고 창 닫기는 콜백 페이지 자체(self window.close)에서 수행하도록 개선
 // 🚨 @PATCH : **2026-11-04** — [오류 진단 로깅 1단계]: parseDriveError에 중복 로깅 방지 플래그(__logged) 적용 및 상위 파일 I/O 정밀 추적 연동
 // 🚨 @PATCH : **2026-11-03** — [오류 진단 로깅 1단계]: parseDriveError 내 정밀 진단 로거(logError) 연동으로 모든 구글 드라이브 API 통신 실패 실시간 추적
 // 🚨 @PATCH : **2026-10-24** — [구글 드라이브 실패 후 즉시 재접속 보장 & 무활동 시 무중단 자동 갱신(Auto-Keep-Alive) 지원]:
@@ -616,50 +619,81 @@ export async function requestGoogleDriveAuth(
       const popup = preparedPopup === undefined ? window.open(target, 'onrivi-drive-oauth', 'popup,width=560,height=720') : preparedPopup;
       if (!popup) { reject(new Error('Google Drive 로그인 창을 열 수 없습니다. 팝업을 허용해 주세요.')); return; }
       if (preparedPopup) {
-        if (popup.closed) { reject(new Error('Google Drive 인증 창이 닫혔습니다. 다시 연결해 주세요.')); return; }
-        popup.location.replace(target);
+        try {
+          popup.location.replace(target);
+        } catch {
+          reject(new Error('Google Drive 인증 창이 닫혔습니다. 다시 연결해 주세요.'));
+          return;
+        }
       }
       let finished = false;
       let polling = false;
+      const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('onrivi-drive-oauth') : null;
       const cleanup = () => {
         window.removeEventListener('message', receive);
-        clearInterval(closed); clearTimeout(timeout);
-      };
-      const receive = (event: MessageEvent) => {
-        if (finished || event.origin !== window.location.origin || event.source !== popup || event.data?.type !== 'onrivi:drive-oauth') return;
-        if (typeof event.data.access_token !== 'string' || !event.data.access_token) return;
-        finished = true; cleanup();
-        try { popup.close(); } catch {}
-        if (!isStandalone) {
-          saveDriveToken(event.data.access_token, Number(event.data.expires_in) || 3600);
+        if (channel) {
+          channel.onmessage = null;
+          channel.close();
         }
-        void fetchGoogleUserInfo(event.data.access_token).then(info => {
+        clearInterval(statusPoll);
+        clearTimeout(timeout);
+      };
+      const handleAuthSuccess = (accessToken: string, expiresIn?: number) => {
+        if (finished || typeof accessToken !== 'string' || !accessToken) return;
+        finished = true;
+        cleanup();
+        if (!isStandalone) {
+          saveDriveToken(accessToken, Number(expiresIn) || 3600);
+        }
+        void fetchGoogleUserInfo(accessToken).then(info => {
           if (info?.email) {
             saveDriveAccount({
               email: info.email,
               name: info.name,
-              token: event.data.access_token,
-              expiresAt: Date.now() + (Number(event.data.expires_in) || 3600) * 1000,
+              token: accessToken,
+              expiresAt: Date.now() + (Number(expiresIn) || 3600) * 1000,
               isWorkspaceAccount: !isStandalone
             });
           }
         }).catch(() => {});
-        resolve(event.data.access_token);
+        resolve(accessToken);
+      };
+      const receive = (event: MessageEvent) => {
+        if (finished || event.origin !== window.location.origin) return;
+        const data = event.data;
+        if (data?.browserState && data.browserState !== browserState) return;
+        if (data?.type === 'onrivi:drive-oauth-error') {
+          finished = true;
+          cleanup();
+          reject(new Error(data.error || 'Google Drive 연결이 취소되었습니다.'));
+          return;
+        }
+        if (data?.type === 'onrivi:drive-oauth' && typeof data.access_token === 'string') {
+          handleAuthSuccess(data.access_token, data.expires_in);
+        }
       };
       window.addEventListener('message', receive);
-      // Google may sever window.opener through COOP. Poll the server cookie
-      // with a per-attempt nonce; an older connection cannot finish this login.
-      const closed = setInterval(async () => {
-        if (finished) return;
-        try {
-          if (popup && popup.closed) {
+      if (channel) {
+        channel.onmessage = (event: MessageEvent) => {
+          if (finished) return;
+          const data = event.data;
+          if (data?.browserState && data.browserState !== browserState) return;
+          if (data?.type === 'onrivi:drive-oauth-error') {
             finished = true;
             cleanup();
-            reject(new Error('Google Drive 인증 창이 닫혔습니다.'));
+            reject(new Error(data.error || 'Google Drive 연결이 취소되었습니다.'));
             return;
           }
-        } catch {}
-        if (polling) return;
+          if (data?.type === 'onrivi:drive-oauth' && typeof data.access_token === 'string') {
+            handleAuthSuccess(data.access_token, data.expires_in);
+          }
+        };
+      }
+      // Google severs window.opener and cross-origin WindowProxy methods (popup.closed / popup.close)
+      // through Cross-Origin-Opener-Policy (COOP). Poll the server status with a per-attempt nonce
+      // without touching popup.closed or popup.close() from the opener window.
+      const statusPoll = setInterval(async () => {
+        if (finished || polling) return;
         polling = true;
         try {
           const response = await fetch('/api/gdrive/oauth/status', {
@@ -669,29 +703,15 @@ export async function requestGoogleDriveAuth(
           if (response.status !== 200 || finished) return;
           const result = await response.json();
           if (finished || !result.access_token) return;
-          finished = true; cleanup();
-          try { popup.close(); } catch {}
-          if (!isStandalone) {
-            saveDriveToken(result.access_token, Number(result.expires_in) || 3600);
-          }
-          void fetchGoogleUserInfo(result.access_token).then(info => {
-            if (info?.email) {
-              saveDriveAccount({
-                email: info.email,
-                name: info.name,
-                token: result.access_token,
-                expiresAt: Date.now() + (Number(result.expires_in) || 3600) * 1000,
-                isWorkspaceAccount: !isStandalone
-              });
-            }
-          }).catch(() => {});
-          resolve(result.access_token);
+          handleAuthSuccess(result.access_token, result.expires_in);
         } catch { /* Wait for the callback until the login timeout. */ }
         finally { polling = false; }
       }, 2000);
       const timeout = setTimeout(() => {
         if (finished) return;
-        finished = true; cleanup(); popup.close(); reject(new Error('Google Drive 인증 시간이 초과되었습니다.'));
+        finished = true;
+        cleanup();
+        reject(new Error('Google Drive 인증 시간이 초과되었습니다.'));
       }, 120000);
     });
   };

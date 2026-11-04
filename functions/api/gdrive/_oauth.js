@@ -2,6 +2,7 @@
 // 📊 [OMD-API-gdrive-oauth-0001] functions/api/gdrive/_oauth.js
 // 🎯 @KICK  : Google Drive 서버 사이드 OAuth 인증 및 토큰 자동 연장 핸들러
 // 🛡️ @GUARD : Cloudflare Pages 미리보기(dev01 등 *.pages.dev) 및 프로덕션/로컬 다중 오리진 동적 허용, 리프레시 토큰 AES-GCM 암호화
+// 🚨 @PATCH : 2026-11-04 — [COOP(Cross-Origin-Opener-Policy) 대응 BroadcastChannel 연동]: 구글 OAuth 리디렉션 시 COOP에 의해 window.opener가 단절되더라도 동일 오리진 BroadcastChannel('onrivi-drive-oauth')을 통해 토큰 및 취소 이벤트를 즉시 전달하고 팝업 스스로 닫히도록 개선
 // 🚨 @PATCH : 2026-11-04 — [오류 진단 로깅 4단계]: 클라이언트 내부 스택 노출 차단(details 제거) 및 4xx 사전 로깅 정돈
 // 🚨 @PATCH : 2026-11-03 — [도메인 환경변수화] GOOGLE_DRIVE_ALLOWED_DOMAINS 환경변수 지원 (미설정 시 기본 도메인 안전 폴백)
 // 🚨 @PATCH : 2026-11-03 — [미리보기 오리진 지원] dev01 등 *.onriviauthor.pages.dev 서브도메인의 동적 리디렉션 URI 자동 바인딩
@@ -222,7 +223,14 @@ export async function handleDriveOAuth(request, env) {
       let state;
       try { state = await open(env, requestCookies[stateCookie] || ''); } catch { return page('인증 요청이 만료되었습니다. 앱에서 다시 연결해 주세요.'); }
       if (state.expires <= Date.now() || state.state !== url.searchParams.get('state')) return json({ error: '인증 요청 검증에 실패했습니다.' }, 400);
-      if (url.searchParams.has('error')) return page('Google Drive 연결이 취소되었습니다. 이 창을 닫고 다시 시도해 주세요.', '', { 'Set-Cookie': cookie(stateCookie, '', 0, secure) });
+      if (url.searchParams.has('error')) {
+        const cancelMessage = { type: 'onrivi:drive-oauth-error', browserState: state.browserState, error: 'Google Drive 연결이 취소되었습니다.' };
+        return page(
+          'Google Drive 연결이 취소되었습니다. 이 창을 닫고 다시 시도해 주세요.',
+          `try{if(typeof BroadcastChannel!=='undefined'){const bc=new BroadcastChannel('onrivi-drive-oauth');bc.postMessage(${safeScript(cancelMessage)});bc.close();}}catch{}finally{window.close();}`,
+          { 'Set-Cookie': cookie(stateCookie, '', 0, secure) }
+        );
+      }
       const code = url.searchParams.get('code');
       if (!code) return json({ error: '인증 코드가 없습니다.' }, 400);
       const tokens = await googleToken(env, { code, grant_type: 'authorization_code', redirect_uri: redirect.href, code_verifier: state.verifier });
@@ -240,9 +248,9 @@ export async function handleDriveOAuth(request, env) {
       }
       // Saving to another account must not replace the workspace refresh session.
       headers.append('Set-Cookie', cookie(state.standalone ? `${sessionCookie}_${state.browserState}` : sessionCookie, session, state.standalone ? 600 : 90 * 86400, secure));
-      const message = { type: 'onrivi:drive-oauth', access_token: tokens.access_token, expires_in: Number(tokens.expires_in) || 3600 };
+      const message = { type: 'onrivi:drive-oauth', browserState: state.browserState, access_token: tokens.access_token, expires_in: Number(tokens.expires_in) || 3600 };
       return page('Google Drive 연결이 완료되었습니다. 이 창을 닫아도 됩니다.',
-        `try{if(window.opener)window.opener.postMessage(${safeScript(message)},${safeScript(origin)});}finally{window.close();}`, headers);
+        `try{if(typeof BroadcastChannel!=='undefined'){const bc=new BroadcastChannel('onrivi-drive-oauth');bc.postMessage(${safeScript(message)});bc.close();}if(window.opener)window.opener.postMessage(${safeScript(message)},${safeScript(origin)});}catch{}finally{window.close();}`, headers);
     }
     if (request.method !== 'POST') return json({ error: '지원하지 않는 요청입니다.' }, 405);
     // Cookie sessions require same-origin requests; desktop sessions use a bearer capability.
