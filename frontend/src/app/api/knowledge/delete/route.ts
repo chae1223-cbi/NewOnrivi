@@ -2,6 +2,7 @@
 // 📊 [OMD-API-knowledgeDelete-0001] route.ts ➔ Knowledge Delete API Route
 // 🎯 @KICK  : 등록된 특정 지식 문서 및 관련 청크/FTS5 원자적 삭제
 // 🛡️ @GUARD : Node.js 서버 환경 보장, 트랜잭션 롤백 보장
+// 🚨 @PATCH : 2026-11-04 — [AI/지식문서 정밀 진단 로깅 연계] doing/target 컨텍스트 및 4xx 사전 경고 로깅 추가
 // 🚨 @PATCH : 2026-11-02 — [로컬 SQLite 공통 오류 표준화] knowledgeErrorResponse 연동 및 진단 ID 부여
 // 🚨 @PATCH : **2026-09-04** — [오류 문서 일괄 삭제 API 지원] deleteAllErrors 플래그 추가로 ERROR 상태 문서 원터치 일괄 청소 제공
 //             **2026-09-04** — [ONRIVI-KNOWLEDGE-ENGINE-003] 지식 문서 삭제 엔드포인트 구현
@@ -16,11 +17,13 @@ import path from 'node:path';
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
+  let targetDoc = 'DOC';
   try {
     const body = await req.json();
     const { documentId, filePath, resourceFolder, geminiApiKey, planCode, deleteAllErrors } = body;
-
-    if (!resourceFolder || !resourceFolder.trim()) {
+    targetDoc = documentId || (filePath ? path.basename(filePath) : 'DOC');
+if (!resourceFolder || !resourceFolder.trim()) {
+      console.warn('[ClientWarn] HTTP 400 · NO_RESOURCE_FOLDER · 리소스 폴더가 설정되지 않았습니다. [경로: /api/knowledge/delete]');
       return NextResponse.json(
         { ok: false, code: 'NO_RESOURCE_FOLDER', message: '공통 자원(리소스) 폴더가 설정되지 않았습니다. 환경설정에서 리소스 폴더를 먼저 지정해 주세요.', success: false },
         { status: 400 }
@@ -45,6 +48,7 @@ export async function POST(req: NextRequest) {
 
     // 2. 단일 문서 삭제 처리
     if (!documentId && !filePath) {
+      console.warn('[ClientWarn] HTTP 400 · INVALID_PARAMS · 삭제할 documentId 또는 filePath가 제공되지 않았습니다. [경로: /api/knowledge/delete]');
       return NextResponse.json(
         { ok: false, message: '삭제할 documentId 또는 filePath가 제공되지 않았습니다.' },
         { status: 400 }
@@ -67,6 +71,8 @@ export async function POST(req: NextRequest) {
     return knowledgeErrorResponse(err, {
       source: 'api/knowledge/delete',
       stage: 'delete_knowledge_document',
+      doing: '지식 문서 및 청크 삭제 중',
+      target: targetDoc,
     });
   }
 }

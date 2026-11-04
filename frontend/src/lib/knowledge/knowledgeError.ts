@@ -2,6 +2,7 @@
 // 📊 [OMD-CORE-knowledgeError-0001] knowledgeError.ts ➔ Local SQLite Error Standards
 // 🎯 @KICK  : 로컬 SQLite(지식 베이스) 공통 오류 분류, 안전한 한국어 메시지 변환 및 진단 ID 발급
 // 🛡️ @GUARD : 예외 원문/SQL/실제 디스크 경로 사용자 노출 원천 차단, 고유 진단 ID(requestId) 부여
+// 🚨 @PATCH : 2026-11-04 — [AI/지식문서 정밀 진단 로깅 연계] doing, target 컨텍스트 지원 및 PII/로컬 사용자 경로 안전 마스킹 탑재
 // 🚨 @PATCH : 2026-11-02 — [로컬 SQLite 공통 오류 표준화] skills/onrivi-error-handling 준수 공통 에러 모듈 신설
 // ====================================================================
 
@@ -40,6 +41,8 @@ export const KNOWLEDGE_SAFE_MESSAGES: Record<KnowledgeErrorCode, string> = {
 export interface KnowledgeErrorContext {
   source: string;
   stage: string;
+  doing?: string;
+  target?: string;
   status?: number;
   customMessage?: string;
 }
@@ -50,6 +53,25 @@ export interface StandardKnowledgeError {
   message: string;
   diagnosticId: string;
   stage: string;
+  doing?: string;
+  target?: string;
+}
+
+/**
+ * 로그 및 오류 문자열에서 로컬 파일 경로, PII 및 API 키를 안전하게 마스킹합니다.
+ */
+export function maskKnowledgeText(text: string): string {
+  if (!text) return '';
+  return String(text)
+    // Windows 사용자 홈 경로 마스킹
+    .replace(/([A-Z]:[/\\]Users[/\\])[^/\\\s]+/gi, '$1[사용자]')
+    // Unix/macOS 사용자 홈 경로 마스킹
+    .replace(/(\/(?:home|Users)\/)[^/\s]+/gi, '$1[사용자]')
+    // 이메일 주소 마스킹
+    .replace(/([a-zA-Z0-9_\-.+]+)@([a-zA-Z0-9-.]+)/gi, '[이메일]')
+    // API 키 및 인증 토큰 마스킹
+    .replace(/([?&]key=)[^&\s]+/gi, '$1***')
+    .replace(/((?:AIza|sk-ant-|sk-|Bearer\s+))[A-Za-z0-9_\-]{8,}/gi, '$1***');
 }
 
 /**
@@ -125,10 +147,13 @@ export function toKnowledgeError(err: any, context: KnowledgeErrorContext): Stan
   const code = classifyKnowledgeError(err);
   const diagnosticId = generateDiagnosticId();
   const message = context.customMessage || KNOWLEDGE_SAFE_MESSAGES[code];
+  const maskedRaw = maskKnowledgeText(err?.message || 'None');
+  const doing = context.doing || '지식 베이스 데이터 처리 중';
+  const target = context.target ? maskKnowledgeText(context.target) : undefined;
 
   // 안전한 진단 로그: 문서 본문, 실제 파일 절대경로, SQL문 등 민감 정보를 제외하고 메타데이터만 기록
   console.error(
-    `[Knowledge Error] [${diagnosticId}] ${context.source}#${context.stage} — Code: ${code} (Raw: ${err?.message || 'None'})`
+    `[Knowledge Error] [${diagnosticId}] ${context.source}#${context.stage} · doing: ${doing}${target ? ` · target: ${target}` : ''} — Code: ${code} (Detail: ${maskedRaw})`
   );
 
   return {
@@ -137,6 +162,8 @@ export function toKnowledgeError(err: any, context: KnowledgeErrorContext): Stan
     message,
     diagnosticId,
     stage: context.stage,
+    doing,
+    target,
   };
 }
 
@@ -156,6 +183,12 @@ export function knowledgeErrorResponse(err: any, context: KnowledgeErrorContext)
       : 500
   );
 
+  if (status >= 400 && status < 500) {
+    console.warn(
+      `[ClientWarn] HTTP ${status} · ${errorObj.code} · ${errorObj.message} [경로: ${context.source}]`
+    );
+  }
+
   return NextResponse.json(
     {
       ok: false,
@@ -163,6 +196,8 @@ export function knowledgeErrorResponse(err: any, context: KnowledgeErrorContext)
       message: errorObj.message,
       diagnosticId: errorObj.diagnosticId,
       stage: errorObj.stage,
+      doing: errorObj.doing,
+      target: errorObj.target,
     },
     {
       status,

@@ -2,6 +2,7 @@
 // 📊 [OMD-API-knowledgeIndex-0001] route.ts ➔ Knowledge Index API Route
 // 🎯 @KICK  : 웹 브라우저 환경에서 지식 베이스 등록 요청을 받아 Node.js 서버 런타임의 SQLite DB 색인 및 AI 분석 수행
 // 🛡️ @GUARD : Node.js 서버 환경 보장, 3대 가드 검증, 에러 JSON 응답
+// 🚨 @PATCH : 2026-11-04 — [AI/지식문서 정밀 진단 로깅 연계] 로컬 절대경로/PII 콘솔 노출 차단 및 knowledgeErrorResponse doing/target 연계
 // 🚨 @PATCH : 2026-11-02 — [로컬 SQLite 공통 오류 표준화] knowledgeErrorResponse 연동 및 진단 ID 부여
 // 🚨 @PATCH : **2026-09-16** — [디스크 파일 읽기 무결성 및 인코딩(UTF-8/EUC-KR) 안전 디코딩 보강]:
 //             1) 백엔드 파일 직접 읽기 시 fs.readFileSync 버퍼를 UTF-8 및 EUC-KR로 정밀 디코딩하여 클라우드 드라이브(G:/내 드라이브) 및 한글 문서 내용 누락 원천 방어
@@ -79,6 +80,7 @@ function decodeFileBuffer(buffer: Buffer): string {
 }
 
 export async function POST(req: NextRequest) {
+  let targetFile = 'DOC';
   try {
     const body = await req.json();
     let { filePath, fileContent, title, resourceFolder, geminiApiKey, planCode, aiModelName, workspacePath } = body;
@@ -87,6 +89,7 @@ export async function POST(req: NextRequest) {
     // workspacePath(클라이언트 localStorage rootFolder 절대경로)를 최우선 탐색 기준으로 활용
     if (filePath) {
       filePath = resolveDiskAbsolutePath(filePath, resourceFolder, workspacePath);
+      targetFile = path.basename(filePath);
     }
 
     // 🛡️ [본문 누락 방어 100% 보장]: fileContent가 비어있거나 디스크에 존재하는 경우 디스크에서 직접 바이너리 로드 & 정밀 디코딩
@@ -100,16 +103,16 @@ export async function POST(req: NextRequest) {
     }
 
     console.log('[/api/knowledge/index Received]:', {
-      filePath,
+      file: path.basename(filePath || ''),
       hasContent: Boolean(fileContent),
       contentLen: fileContent?.length,
-      resourceFolder,
       hasApiKey: Boolean(geminiApiKey),
       planCode,
       aiModelName: aiModelName || 'gemini-3.8-flash'
     });
 
     if (!filePath || !fileContent) {
+      console.warn('[ClientWarn] HTTP 400 · INVALID_PARAMS · filePath와 fileContent는 필수 항목입니다. [경로: /api/knowledge/index]');
       return NextResponse.json(
         { ok: false, message: 'filePath와 fileContent는 필수 항목입니다.' },
         { status: 400 }
@@ -118,6 +121,7 @@ export async function POST(req: NextRequest) {
 
     // 사용자 환경설정에 지정된 공통 자원(리소스) 폴더만 순수하게 사용 (프로젝트 폴더 임의 생성 원천 차단)
     if (!resourceFolder || !resourceFolder.trim()) {
+      console.warn('[ClientWarn] HTTP 400 · NO_RESOURCE_FOLDER · 리소스 폴더가 설정되지 않았습니다. [경로: /api/knowledge/index]');
       return NextResponse.json(
         { ok: false, code: 'NO_RESOURCE_FOLDER', message: '공통 자원(리소스) 폴더가 설정되지 않았습니다. 환경설정에서 리소스 폴더를 먼저 지정해 주세요.' },
         { status: 400 }
@@ -145,6 +149,8 @@ export async function POST(req: NextRequest) {
     return knowledgeErrorResponse(err, {
       source: 'api/knowledge/index',
       stage: 'index_knowledge_document',
+      doing: '지식 문서 로컬 SQLite 색인 및 AI 분석 중',
+      target: targetFile,
     });
   }
 }

@@ -2,6 +2,7 @@
 // 📊 [OMD-CORE-knowledgeClient-0001] knowledgeClient.ts ➔ Unified Knowledge Client Facade
 // 🎯 @KICK  : 데스크톱/로컬(Node SQLite)과 프로드 웹(WASM SQLite)을 자동 감지하여 동일한 지식 인터페이스를 제공하는 통합 클라이언트 파사드
 // 🛡️ @GUARD : Rule 1(문서/주석 동기화), Rule 2(대문자 코드값), Rule 7(선행 검증 후 원자적 트랜잭션 무결성), 404/405 자동 WASM 폴백
+// 🚨 @PATCH : 2026-11-04 — [AI/지식문서 정밀 진단 로깅 연계] logError/logWarn 통합 및 doing/target 구조화 진단 적용
 // 🚨 @PATCH : 2026-11-02 — [로컬 SQLite 공통 오류 표준화 & Rule 9 준수] API 진단 ID 연동 및 데스크톱 환경의 WASM 임의 폴백 전면 차단
 // 🚨 @PATCH : **2026-09-17** — [데스크톱 색인 실패 시 WASM 임의 폴백 원천 차단 및 명확한 에러 전파]: Rule 9 준수, 데스크톱 환경(isServerApiAvailable)에서 색인/상세조회 실패 시 WASM(sql.js)으로 임의 폴백하여 CSP 위반(CompileError)을 유발하는 결함을 방어하고 서버 실제 에러를 상위로 즉시 전파
 //             **2026-09-13** — [지식관리 기능 데스크톱 전용 전환]: canAccessKnowledgeDb를 데스크톱 환경(isServerApiAvailable) 전용으로 한정하여 웹 브라우저 WASM SQLite/IndexedDB 불필요 로딩 차단 및 경량화
@@ -46,6 +47,7 @@ import {
 } from './browserKnowledgeDb';
 import { resolveClientAbsolutePath } from './pathResolver';
 import { idb } from '../indexedDbHelper';
+import { logError, logWarn } from '@/lib/errorDiagnostics';
 
 /**
  * Node.js 기반 백엔드 API 라우트(/api/knowledge/*)를 사용할 수 있는 환경인지 판별합니다.
@@ -118,7 +120,13 @@ export const knowledgeClient = {
           }
         }
       } catch (err) {
-        console.warn('[knowledgeClient.listDocuments] Server API failed:', err);
+        logWarn({
+          file: 'src/lib/knowledge/knowledgeClient.ts',
+          func: 'listDocuments',
+          doing: '지식 문서 목록 조회 API 호출 중',
+          target: params.resourceFolder || 'DEFAULT',
+          error: err,
+        });
       }
     } else {
       // 🚀 웹 브라우저(SaaS) 환경: 지식 베이스는 데스크톱 전용 기능이므로 WASM 로드 없이 즉시 빈 목록 반환
@@ -155,7 +163,13 @@ export const knowledgeClient = {
           if (data.ok && data.detail) return data.detail;
         }
       } catch (err) {
-        console.warn('[knowledgeClient.getDocumentDetail] Server API failed:', err);
+        logWarn({
+          file: 'src/lib/knowledge/knowledgeClient.ts',
+          func: 'getDocumentDetail',
+          doing: '지식 문서 상세 정보 조회 API 호출 중',
+          target: params.documentId || (params.filePath ? (params.filePath.split(/[/\\]/).pop() || params.filePath) : (params.heading || 'UNKNOWN')),
+          error: err,
+        });
       }
       return null;
     }
@@ -236,7 +250,14 @@ export const knowledgeClient = {
         }
         throw formatApiError(data, `데스크톱 색인 실패 (HTTP ${res.status})`);
       } catch (err: any) {
-        console.error('[knowledgeClient.indexDocument] Desktop API error:', err);
+        const safeTarget = (params.filePath || '').split(/[/\\]/).pop() || params.filePath || 'DOC';
+        logError({
+          file: 'src/lib/knowledge/knowledgeClient.ts',
+          func: 'indexDocument',
+          doing: '지식 문서 데스크톱 색인 및 AI 분석 요청 중',
+          target: safeTarget,
+          error: err,
+        });
         throw err;
       }
     } else {
@@ -259,7 +280,13 @@ export const knowledgeClient = {
         params.resourceFolderHandle
       );
     } catch (err) {
-      console.error('[knowledgeClient.updateDocumentFast] Error:', err);
+      logWarn({
+        file: 'src/lib/knowledge/knowledgeClient.ts',
+        func: 'updateDocumentFast',
+        doing: '지식 문서 초고속 SQLite 갱신 중',
+        target: (params.filePathOrId || '').split(/[/\\]/).pop() || params.filePathOrId || 'DOC',
+        error: err,
+      });
       return false;
     }
   },
@@ -287,7 +314,13 @@ export const knowledgeClient = {
         if (res.ok && data.ok) return true;
         throw formatApiError(data, '지식 문서 삭제에 실패했습니다.');
       } catch (err) {
-        console.error('[knowledgeClient.deleteDocument] Desktop API error:', err);
+        logError({
+          file: 'src/lib/knowledge/knowledgeClient.ts',
+          func: 'deleteDocument',
+          doing: '지식 문서 삭제 요청 중',
+          target: params.documentId || (params.filePath ? (params.filePath.split(/[/\\]/).pop() || params.filePath) : 'DOC'),
+          error: err,
+        });
         throw err;
       }
     }
@@ -351,7 +384,13 @@ export const knowledgeClient = {
         }
         throw formatApiError(data, '지식 검색에 실패했습니다.');
       } catch (err) {
-        console.error('[knowledgeClient.searchKnowledge] Desktop API error:', err);
+        logError({
+          file: 'src/lib/knowledge/knowledgeClient.ts',
+          func: 'searchKnowledge',
+          doing: '지식 베이스 하이브리드 검색 중',
+          target: params.query ? params.query.slice(0, 30) : 'QUERY',
+          error: err,
+        });
         throw err;
       }
     } else {

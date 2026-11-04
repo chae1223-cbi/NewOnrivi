@@ -2,12 +2,18 @@
 // 📊 [OMD-AI-Server-0001] src/lib/ai/server.mjs
 // 🎯 @KICK  : Next.js API /api/ai/request 서버 핸들러 및 스트리밍 안전 프록시
 // 🛡️ @GUARD : Rule 1(단일 주석 관리), 인증 토큰 및 민감 키 유출 차단, 에러 투명화
+// 🚨 @PATCH : 2026-11-04 — [AI/지식문서 정밀 진단 로깅 연계] 4xx 클라이언트 경고 pre-logging 추가 및 doing 구조화 진단 적용
 // 🚨 @PATCH : **2026-10-20** — [safeError 에러 투명화 및 민감 파라미터 안전 마스킹]:
 //             1) URL(https://) 포함 에러 메시지 차단 결함 수정: 도움말 링크가 포함된 AI 공식 에러 메시지 정상 전달
 //             2) key= 및 Bearer 토큰만 정확히 ***로 마스킹하여 보안성과 오류 원인 가시성을 동시에 확보
 // ====================================================================
 import {generate,listModels,validateConnection} from './wire.mjs';
-const json=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store'}});
+const json = (data, status = 200) => {
+  if (status >= 400 && status < 500) {
+    console.warn(`[ClientWarn] HTTP ${status} · AI_REQUEST_WARN · ${data?.error || '클라이언트 요청 오류'} [경로: /api/ai/request]`);
+  }
+  return Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
+};
 export async function handleAIRequest(request,env,fetcher=fetch){
   if(request.method!=='POST')return json({error:'POST 요청만 지원합니다.'},405);
   const origin=request.headers.get('origin');
@@ -40,8 +46,9 @@ export async function handleAIRequest(request,env,fetcher=fetch){
       async cancel(){abort();cleanup();await iterator.return();}
     }),{headers:{'Content-Type':'application/x-ndjson; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
   }catch(error){
-    console.error('[handleAIRequest error]', error);
-    return json({error:safeError(error)},400);
+    const maskedMsg = safeError(error);
+    console.error(`[AI Server Error] src/lib/ai/server.mjs · doing: AI 모델 생성 스트림 처리 중 — (Detail: ${maskedMsg})`);
+    return json({error: maskedMsg}, 400);
   }
 }
 export function safeError(error){

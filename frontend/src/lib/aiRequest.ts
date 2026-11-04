@@ -1,5 +1,8 @@
+// 🚨 @PATCH : 2026-11-04 — [AI/지식문서 정밀 진단 로깅 연계] logError/logWarn 통합 및 AI 요청/재시도 구조화 진단 연계
 // Covers the complete response, including consumption of streaming bodies.
 export const AI_REQUEST_TIMEOUT_MS = 120_000;
+
+import { logError, logWarn } from '@/lib/errorDiagnostics';
 
 export interface AIRetryOptions {
   onRetry?: (attempt: number, delayMs: number) => void;
@@ -51,7 +54,13 @@ export async function runAIRequest<T>(
             if (controller.signal.aborted || attempt >= 3 || ![500, 503, 504].includes(serverStatus(error))) throw error;
             const baseDelayMs = retryOptions.baseDelayMs ?? 3000;
             const delayMs = baseDelayMs * 2 ** (attempt - 1) + (baseDelayMs ? Math.floor(Math.random() * 1000) : 0);
-            console.info('[AI request retry]', { model, attempt: attempt + 1, delayMs, status: serverStatus(error) });
+            logWarn({
+              file: 'src/lib/aiRequest.ts',
+              func: 'runAIRequest',
+              doing: `AI 요청 재시도 대기 중 (${attempt + 1}회차, 지연: ${delayMs}ms)`,
+              target: model,
+              error,
+            });
             retryOptions.onRetry?.(attempt + 1, delayMs);
             await new Promise<void>((resolve, reject) => {
               const onAbort = () => { clearTimeout(delay); reject(new Error('AI 응답 시간 초과')); };
@@ -73,7 +82,14 @@ export async function runAIRequest<T>(
     ]);
   } catch (error) {
     const reason = describeAIRequestError(error);
-    console.warn('[AI request failed]', { model, inputChars, elapsedMs: Date.now() - started, reason });
+    logError({
+      file: 'src/lib/aiRequest.ts',
+      func: 'runAIRequest',
+      doing: 'AI 모델 요청 및 응답 스트림 처리 중',
+      target: model,
+      error,
+      context: { reason },
+    });
     throw new Error(reason);
   } finally {
     if (timer !== undefined) clearTimeout(timer);
