@@ -1,5 +1,8 @@
 /**
  * 프로그램명 : OnriviAuthor 
+// 🚨 @PATCH : **2026-11-04** — [MainEditorApp 모듈화 및 TDZ 초기화 순서 수정]:
+//             1) dynamicCssGenerator, useEditorLicense, useEditorCommands, useEditorPaste 분리 위임 완료
+//             2) useEditorLicense 호출부를 licenseKey/useEditorSettingsResult 선언부 뒤로 재배치하여 'Cannot access op before initialization' TDZ 런타임 오류 완전 해결
 // 🚨 @PATCH : **2026-11-04** — [MainEditorApp 4단계 리팩토링 4단계: EditorCore 코어 뷰 분리 완료]:
 //             1) MainEditorApp.tsx 내부의 1,779줄에 달하는 에디터/미리보기 스플릿 뷰, 브레드크럼, 탭바, 툴바 본체를 EditorCore.tsx 컴포넌트로 분리
 //             2) Container(MainEditorApp)는 순수 상태 조율 및 Context Provider 제공에만 집중하고, Layout(EditorLayout)의 중앙 렌더링을 EditorCore에 위임하여 역할 기반 아키텍처(Container-Layout-Core-Manager) 100% 완성
@@ -2133,37 +2136,6 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
   //              2026-06-22 — payment_no 미존재 시 supabase Auth 세션 → subscriptions → software_licenses fallback;
   //              웹 SaaS: count 조회만 수행, upsert/device UUID 완전 제거 (auth callback에서 insert 담당)
   // 🔗 @CALLS : api.loadLicenseFull, fetch(/api/license/activate, /api/license/check-session), crypto.subtle.digest, saveSecureData, loadSecureData, setLicenseStatus, setLicenseKey
-  // ====================================================================
-  // 📊 [OMD-HOOK-useEditorLicense] 에디터 라이선스 및 세션 감시 분리 훅
-  // 🚨 @PATCH : 2026-11-04 - [MainEditorApp 모듈화] 라이선스 검증/하트비트/세션탈취/게스트타이머를 useEditorLicense로 1,044줄 분리 위임
-  // ====================================================================
-  const {
-    isTakingOver,
-    handleTakeover,
-    handleSuccessActivation,
-    loadAndVerifyLicense,
-  } = useEditorLicense({
-    deviceId,
-    licenseKey,
-    setLicenseKey,
-    licenseStatus,
-    setLicenseStatus,
-    isLicenseChecking,
-    setIsLicenseChecking,
-    showToast,
-    previewModeRef,
-    lastGeneralPreviewModeRef,
-    isGuestMode,
-    setIsGuestMode,
-    isGuestExpired,
-    setIsGuestExpired,
-    guestRemainingSeconds,
-    setGuestRemainingSeconds,
-    setPreviewModeRaw,
-    mounted,
-    isDuplicateInstance,
-    takeOverControl,
-  });
 
   // 📊 [OMD-CITATION-MainEditorApp] .bib 워크스페이스 자동 로드
   // 🎯 @KICK  : 워크스페이스 전체를 재귀 탐색하여 .bib 파일을 모두 병합 로드
@@ -2883,6 +2855,39 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     setAiModelName
   } = useEditorSettingsResult;
   const {editorTabSize,setEditorTabSize,spellCheck,setSpellCheck}=useEditorSettingsResult;
+
+  // ====================================================================
+  // 📊 [OMD-HOOK-useEditorLicense] 에디터 라이선스 및 세션 감시 분리 훅
+  // 🚨 @PATCH : 2026-11-04 - [MainEditorApp 모듈화] 라이선스 검증/하트비트/세션탈취/게스트타이머를 useEditorLicense로 1,044줄 분리 위임
+  // ====================================================================
+  const {
+    isTakingOver,
+    handleTakeover,
+    handleSuccessActivation,
+    loadAndVerifyLicense,
+  } = useEditorLicense({
+    deviceId,
+    licenseKey,
+    setLicenseKey,
+    licenseStatus,
+    setLicenseStatus,
+    isLicenseChecking,
+    setIsLicenseChecking,
+    showToast,
+    previewModeRef,
+    lastGeneralPreviewModeRef,
+    isGuestMode,
+    setIsGuestMode,
+    isGuestExpired,
+    setIsGuestExpired,
+    guestRemainingSeconds,
+    setGuestRemainingSeconds,
+    setPreviewModeRaw,
+    mounted,
+    isDuplicateInstance,
+    takeOverControl,
+  });
+
   // 🌟 [공통 리소스 폴더 동적 변경 실시간 감지 리스너] (구글 드라이브 ↔ 로컬 전환 등)
   useEffect(() => {
     const handleResourceFolderChange = async (e: any) => {
