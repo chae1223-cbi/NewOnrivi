@@ -1,5 +1,6 @@
 /**
  * 프로그램명 : OnriviAuthor 
+// 🚨 @PATCH : **2026-11-04** — [오류 진단 로깅 2단계]: restoreSessionTabs 최외곽 logError 연동, Monaco 바인딩 메타데이터(탭수/유형/ID) 강화, 세션 파싱 doing 표준화
 // 🚨 @PATCH : **2026-11-03** — [오류 진단 로깅 2단계]: cross_platform_session_restore, session_auto_save, restoreSessionTabs에 5대 메타데이터 기반 logError/logWarn 연동으로 세션 복원 및 자동저장 실패 정밀 추적
 // 🚨 @PATCH : **2026-11-03** — [웹드라이브 비연결 시 세션 복원 대기 및 연결 시점 즉시 복원]:
 //             웹 환경(!isElectron)에서 웹드라이브 미연결 상태일 때 이전 최종 문서를 노출하지 않고,
@@ -4662,7 +4663,7 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
         logError({
           file: 'frontend/src/components/MainEditorApp.tsx',
           func: 'cross_platform_session_restore',
-          doing: '데스크톱 이전 세션 파싱 및 탭 복원 중',
+          doing: 'localStorage 이전 세션 파싱 중',
           target: 'localStorage/onrivi_tabs_session',
           error: e
         });
@@ -4705,7 +4706,7 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
       logError({
         file: 'frontend/src/components/MainEditorApp.tsx',
         func: 'cross_platform_session_restore',
-        doing: '웹 세션 복원 중 (웹드라이브/로컬 스토리지)',
+        doing: 'localStorage 이전 세션 파싱 중',
         target: 'localStorage/onrivi_tabs_session',
         error: e,
         context: { workspaceType, isDriveConnected }
@@ -4788,7 +4789,15 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
       if (typeof window !== 'undefined') {
         try {
           localStorage.setItem('onrivi_tabs_session', JSON.stringify(captureEditorSession(tabsRef.current,activeTabIdRef.current,contentRef.current,previewModeRef.current)));
-        } catch (e) {}
+        } catch (e) {
+          logWarn({
+            file: 'frontend/src/components/MainEditorApp.tsx',
+            func: 'beforeunload_safety_flush',
+            doing: '브라우저 종료 직전 세션 플러시 직렬화 중',
+            target: 'localStorage/onrivi_tabs_session',
+            error: e
+          });
+        }
       }
 
       // 2. 데스크탑 파일 백업 플러시
@@ -4972,10 +4981,15 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
             logWarn({
               file: 'frontend/src/components/MainEditorApp.tsx',
               func: 'restoreSessionTabs',
-              doing: '이전 세션 탭 복원 중',
+              doing: '이전 세션 탭 복원 및 모델 바인딩 중',
               target: saved.name || saved.path || saved.driveFileId,
               error: error,
-              context: { savedId: saved.id, hasDriveId: Boolean(saved.driveFileId) }
+              context: {
+                savedId: saved.id,
+                totalTabs: savedTabs.length,
+                tabType: saved.driveFileId ? 'GDRIVE' : (saved.path ? 'LOCAL' : 'DRAFT'),
+                hasDriveId: Boolean(saved.driveFileId)
+              }
             });
           }
         }
@@ -5020,6 +5034,17 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
       
       showToast(`📂 이전 세션의 문서 ${uniqueFilePaths.length}개가 온전히 복원되었습니다.`, "info");
     } catch (err) {
+      logError({
+        file: 'frontend/src/components/MainEditorApp.tsx',
+        func: 'restoreSessionTabs',
+        doing: '전체 세션 탭 복원 및 마운트 후속 처리 중',
+        target: activeFilePath || 'session_tabs',
+        error: err,
+        context: {
+          savedTabCount: savedTabs?.length ?? openFilePaths.length,
+          hasActiveFilePath: Boolean(activeFilePath)
+        }
+      });
       console.error("[restoreSessionTabs] 오류:", err);
     } finally {
       console.info('[STARTUP timing] session restore ms=%d tabs=%d', Math.round(performance.now() - restoreStartedAt), savedTabs?.length ?? openFilePaths.length);
