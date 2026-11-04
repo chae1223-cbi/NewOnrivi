@@ -3,6 +3,8 @@ import { browserAccountStorage as localStorage } from '@/lib/browserAccountStora
 // 📊 [OMD-LIB-resourceSettings-0001] src/lib/resourceSettings.ts
 // 🎯 @KICK  : 리소스 폴더 설정(로컬 vs 구글 드라이브) 완벽 격리 및 독립 저장/로드 관리
 // 🛡️ @GUARD : Rule 1(단일 주석 관리), 로컬/클라우드 설정 교차 오염 100% 방어
+// 🚨 @PATCH : **2026-11-04** — [로컬 작업장 사용 시 웹드라이브 리소스 오작동 원천 차단]:
+//             1) getResourceEnvironment에서 현재 workspaceType이 'local' 또는 'browser'인 경우 과거 onrivi_active_resource_environment('cloud') 잔존 값보다 로컬 작업장 모드를 우선하여 'local'을 반환하도록 정합성 보강
 // 🚨 @PATCH : **2026-10-20** — [로컬 리소스 폴더 설정 복원 시 resourceFolder 키 폴백 추가]:
 //             1) getResourceSettings에서 localPath 탐색 시 localStorage.getItem('resourceFolder')를 후보에 포함하여 데스크톱 Electron 리소스 폴더(D:\Onrivi_Asset 등) 연결 누락 결함 해결
 // 🚨 @PATCH : **2026-10-07** — [내부 동기화 시 이벤트 무한 취소 루프 방어 silent 옵션 추가]:
@@ -40,12 +42,22 @@ export function activateDriveAccount(email: string) {
   else localStorage.removeItem('onrivi_cloud_resource_folder_path');
   return { isFirstConnection: !restored?.workspace && !restored?.resource };
 }
-// Resource storage can differ from the document workspace (including localhost).
+// Resource storage follows local environment when workspaceType or rootFolder is local/browser.
 export function getResourceEnvironment(): 'cloud' | 'local' {
   if (typeof window === 'undefined') return 'local';
+  const workspace = localStorage.getItem('workspaceType');
+  if (workspace === 'local' || workspace === 'browser') return 'local';
+  try {
+    const rawRoot = localStorage.getItem('rootFolder');
+    if (rawRoot) {
+      const parsedRoot = JSON.parse(rawRoot);
+      if (parsedRoot && parsedRoot.name && parsedRoot.type !== 'GDRIVE') {
+        return 'local';
+      }
+    }
+  } catch {}
   const selected = localStorage.getItem('onrivi_active_resource_environment');
   if (selected === 'cloud' || selected === 'local') return selected;
-  const workspace = localStorage.getItem('workspaceType');
   const lastWorkspace = localStorage.getItem('onrivi_last_workspace_mode');
   return workspace === 'cloud' || workspace === 'gdrive' || lastWorkspace === 'cloud' || lastWorkspace === 'gdrive' ? 'cloud' : 'local';
 }

@@ -2,6 +2,7 @@
 // 📊 [OMD-HOOK-useLocalVfs-0001] frontend/src/hooks/fileExplorer/useLocalVfs.ts
 // 🎯 @KICK  : 로컬 폴더/브라우저 FSA/VFS/웹드라이브 파일 트리 스캔(refreshFileList), 워크스페이스 선택(selectRootFolder), 물리적 파일 저장(saveFile)
 // 🛡️ @GUARD : 지식 보관함 자동 재색인(triggerKnowledgeAutoSyncOnSave), 디바운스 새로고침, Electron 네이티브 API 및 브라우저 FSA 3중 호환
+// 🚨 @PATCH : 2026-11-04 — [로컬/브라우저 작업장 선택 시 클라우드 상태 키 잔존 버그 수정]: selectRootFolder 및 resetBrowserWorkspace 시 onrivi_last_workspace_mode와 onrivi_active_resource_environment를 로컬 모드로 즉시 동기화하여 에디터 재시작 시 미접속 웹드라이브 오류 방지
 // 🚨 @PATCH : 2026-11-04 — [오류 처리 및 주석 표준화]: onrivi-error-handling에 따라 logError/logWarn의 file 경로를 useLocalVfs.ts로 정합화하고 refreshFileList/selectRootFolder/restoreFolderPermission 예외 로깅 추가, onrivi-source-comments 2단계 JSDoc 표준화
 // 🚨 @PATCH : 2026-11-04 — [에디터 실행 시 로컬/클라우드 탐색기 자동 리프레시 강화]: GDRIVE 폴더 ID(wsInfo.workspaceFolderId || rootFolder.driveFolderId) 다중 폴백, 브라우저 IndexedDB 핸들 즉시 복구 스캔, 데스크톱 경로(path || name) 우선 스캔 보강
 // 🚨 @PATCH : 2026-11-04 — [런타임 ReferenceError 수정]: hasValidDriveToken, setIsDriveAuthExpired, setIsDriveConnected, setCurrentFileNode, findFileHandleInDirectoryDeep, logWarn, knowledgeClient 누락 식별자 및 바인딩 보완
@@ -287,6 +288,8 @@ export function useLocalVfs({
             localStorage.setItem('onrivi_last_local_root_folder', JSON.stringify({ name: finalRoot, path: normFinalRoot }));
             localStorage.setItem('rootFolder', JSON.stringify({ name: finalRoot, path: normFinalRoot }));
             localStorage.setItem('workspaceType', 'local');
+            localStorage.setItem('onrivi_last_workspace_mode', 'local');
+            localStorage.setItem('onrivi_active_resource_environment', 'local');
 
             // 📁 로컬 작업장 복귀 시 리소스 폴더가 구글 드라이브였으면 로컬 작업장 참조파일로 원상복구
             await restoreLocalProfileFolder();
@@ -361,6 +364,8 @@ export function useLocalVfs({
           localStorage.setItem('onrivi_last_local_root_folder', JSON.stringify({ name: absolutePath, path: absolutePath, displayName: handle.name }));
           localStorage.setItem('rootFolder', JSON.stringify({ name: absolutePath, path: absolutePath, displayName: handle.name }));
           localStorage.setItem('workspaceType', 'browser');
+          localStorage.setItem('onrivi_last_workspace_mode', 'browser');
+          localStorage.setItem('onrivi_active_resource_environment', 'local');
 
           // 📁 로컬 작업장 복귀 시 리소스 폴더가 구글 드라이브였으면 로컬 작업장 참조파일로 원상복구
           await restoreLocalProfileFolder();
@@ -393,6 +398,10 @@ export function useLocalVfs({
         setWorkspaceType('browser');
         localStorage.setItem('rootFolder', JSON.stringify({ name: BROWSER_STORAGE_NAME }));
         localStorage.setItem('workspaceType', 'browser');
+        localStorage.setItem('onrivi_last_workspace_mode', 'browser');
+        localStorage.setItem('onrivi_active_resource_environment', 'local');
+        await restoreLocalProfileFolder();
+        saveResourceSettings(getResourceSettings('local'), 'local');
         setTabs([]);
         setActiveTabId(null);
         setContent('');

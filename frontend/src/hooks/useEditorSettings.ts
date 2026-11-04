@@ -21,6 +21,9 @@ import { readResourceShortcodes, writeResourceShortcodes } from '@/lib/resourceJ
 // ====================================================================
 // 📊 [OMD-EDIT-USEEDITORSETTINGS-0005] useEditorSettings.ts ➔ useEditorSettings
 // 🎯 @KICK  : 에디터 사용자 설정(테마, 단축키, 폰트크기 등)을 관리하고 영구 저장소에 동기화
+// 🚨 @PATCH : **2026-11-04** — [로컬 작업장 복원 시 과거 클라우드 모드(onrivi_last_workspace_mode) 덮어쓰기 버그 수정]:
+//             1) workspaceType이 'local' 또는 'browser'로 저장되어 있을 때 과거 onrivi_last_workspace_mode('cloud') 잔존 값으로 인해 강제로 클라우드 작업장으로 부팅되던 문제 해결
+//             2) 로컬/브라우저 작업장 복원 시 onrivi_last_workspace_mode 및 onrivi_active_resource_environment를 즉시 동기화하여 불필요한 구글 드라이브 API 호출 차단
 // 🚨 @PATCH : **2026-10-26** — [단축코드 정의서(shortcodes.json) 리소스 폴더 양방향 수화 및 실시간 동기화]:
 //             1) restoreSettings 시 리소스 폴더(settings/shortcodes.json)에서 사용자 단축키 및 슬래시 명령어를 우선 복원
 //             2) saveSettings 및 onrivi:resource_folder_changed 감지 시 리소스 폴더에 단축코드 정의서를 원자적으로 자동 동기화
@@ -381,10 +384,34 @@ export const useEditorSettings = (
         console.warn('[Onrivi Author] 브라우저 기본 저장소 초기화 실패:', error);
         showToast('브라우저 저장소를 준비하지 못했습니다. 작업장 폴더나 구글 드라이브를 연결해 주세요.', 'warning');
       }
-      const rawSavedWorkspaceType = localStorage.getItem('workspaceType') || localStorage.getItem('onrivi_last_workspace_mode') || 'local';
-      const isLastCloud = rawSavedWorkspaceType === 'cloud' || rawSavedWorkspaceType === 'gdrive' || localStorage.getItem('onrivi_last_workspace_mode') === 'cloud';
+      const savedWorkspaceType = localStorage.getItem('workspaceType');
+      const savedLastMode = localStorage.getItem('onrivi_last_workspace_mode');
+      let hasNonDriveRoot = false;
+      try {
+        const rawRoot = localStorage.getItem('rootFolder');
+        if (rawRoot) {
+          const parsedRoot = JSON.parse(rawRoot);
+          if (parsedRoot && parsedRoot.name && parsedRoot.type !== 'GDRIVE') {
+            hasNonDriveRoot = true;
+          }
+        }
+      } catch {}
+      const defaultLocalMode = typeof window !== 'undefined' && !(window as any).electronAPI ? 'browser' : 'local';
+      const rawSavedWorkspaceType = hasNonDriveRoot
+        ? (savedWorkspaceType === 'local' || savedWorkspaceType === 'browser' ? savedWorkspaceType : defaultLocalMode)
+        : (savedWorkspaceType || savedLastMode || defaultLocalMode);
+      const isLastCloud = !hasNonDriveRoot && (
+        savedWorkspaceType
+          ? (savedWorkspaceType === 'cloud' || savedWorkspaceType === 'gdrive')
+          : (savedLastMode === 'cloud' || savedLastMode === 'gdrive')
+      );
       const activeWorkspaceType = detectedAddon ? 'browser' : (isLastCloud ? 'cloud' : rawSavedWorkspaceType);
       setWorkspaceType(activeWorkspaceType as any);
+      if (activeWorkspaceType === 'local' || activeWorkspaceType === 'browser') {
+        localStorage.setItem('workspaceType', activeWorkspaceType);
+        localStorage.setItem('onrivi_last_workspace_mode', activeWorkspaceType);
+        localStorage.setItem('onrivi_active_resource_environment', 'local');
+      }
 
       if (activeWorkspaceType === 'gdrive' || activeWorkspaceType === 'cloud') {
         setPreviewMode('preview');

@@ -7,6 +7,7 @@
  *   - EditorProvider 컨텍스트 공급 및 하위 역할 컴포넌트(EditorLayout, EditorCore, EditorOverlayManager, GuestPaywallOverlay) 렌더링 위임
  *   - 보기 모드(edit / both / preview / css-style) 전환 가드, 탭 닫기, 다중 파일 병합 선택, 플로팅 툴바 실행 제어
  * 🚨 @PATCH :
+ *   - 2026-11-04 : 로컬 작업장 사용 시 미접속 웹드라이브 토큰 갱신(initDriveTokenAutoRefresh) 및 클라우드 모드 오인식 방어 가드 추가
  *   - 2026-11-04 : 주석 표준화(1·2단계) 및 Log-First(logError/logWarn) 에러 진단 로깅 일괄 반영, 분리 이관된 레거시 패치 주석 정리
  *   - 2026-11-04 : 역할 기반 아키텍처(Container-Layout-Core-Manager) 및 12개 도메인 훅(useEditor*) 모듈화 분리 위임 완료
  * ============================================================================
@@ -761,7 +762,18 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
 
   const [workspaceType, setWorkspaceType] = useState<'local' | 'cloud' | 'browser'>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('workspaceType') || localStorage.getItem('onrivi_last_workspace_mode');
+      try {
+        const rawRoot = localStorage.getItem('rootFolder');
+        if (rawRoot) {
+          const parsedRoot = JSON.parse(rawRoot);
+          if (parsedRoot && parsedRoot.name && parsedRoot.type !== 'GDRIVE') {
+            return !(window as any).electronAPI ? 'browser' : 'local';
+          }
+        }
+      } catch {}
+      const savedWorkspace = localStorage.getItem('workspaceType');
+      const savedLastMode = localStorage.getItem('onrivi_last_workspace_mode');
+      const saved = savedWorkspace || savedLastMode;
       if (saved === 'cloud' || saved === 'gdrive') return 'cloud';
       if (!(window as any).electronAPI) {
         return 'browser';
@@ -799,11 +811,11 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
   // 🔗 @CALLS : setTabs
   // ====================================================================
 
-  // ☁️ [구글 드라이브 무중단 토큰 자동 갱신 엔진 가동]
+  // ☁️ [구글 드라이브 무중단 토큰 자동 갱신 엔진 가동 — 클라우드 작업장 활성화 시에만 실행]
   useEffect(() => {
-    if (!mounted) return;
+    if (!mounted || (workspaceType !== 'cloud' && workspaceType !== 'gdrive')) return;
     initDriveTokenAutoRefresh();
-  }, [mounted]);
+  }, [mounted, workspaceType]);
 
   // ====================================================================
   useEffect(() => {

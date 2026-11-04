@@ -1,3 +1,10 @@
+// ====================================================================
+// 📊 [OMD-LIB-browserDefaultStorage-0001] frontend/src/lib/browserDefaultStorage.ts
+// 🎯 @KICK  : 웹 브라우저 내부 OPFS(Origin Private File System) 기본 작업장 및 참조파일 초기화·복구 관리
+// 🛡️ @GUARD : Rule 1(단일 주석 관리), 로컬/브라우저 작업장 초기화 시 클라우드 상태 키 잔존 방지
+// 🚨 @PATCH : 2026-11-04 — [브라우저 기본 작업장 초기화 시 클라우드 상태 키 동기화]: resetBrowserWorkspace 시 onrivi_active_resource_environment를 'local'로 동기화하고 initialize 시 workspaceType 우선 판정으로 과거 onrivi_last_workspace_mode('cloud') 간섭 차단
+// 🔗 @CALLS : idb.get, idb.set, getResourceSettings, saveResourceSettings
+// ====================================================================
 import { idb } from './indexedDbHelper';
 import { getResourceSettings, saveResourceSettings } from './resourceSettings';
 import { SYSTEM_PROFILES } from '@/constants/cssProfile';
@@ -29,6 +36,7 @@ export async function resetBrowserWorkspace() {
   localStorage.setItem('rootFolder', JSON.stringify({ name: folder.name, displayName: folder.displayName, storage: folder.storage }));
   localStorage.setItem('workspaceType', 'browser');
   localStorage.setItem('onrivi_last_workspace_mode', 'browser');
+  localStorage.setItem('onrivi_active_resource_environment', 'local');
   return folder;
 }
 
@@ -43,7 +51,8 @@ async function initialize() {
   if (typeof window === 'undefined' || (window as any).electronAPI || !navigator.storage?.getDirectory) return;
   const mode = localStorage.getItem('workspaceType');
   const lastMode = localStorage.getItem('onrivi_last_workspace_mode');
-  if (['cloud', 'gdrive'].includes(mode || '') || ['cloud', 'gdrive'].includes(lastMode || '')) return;
+  const isCloudMode = mode ? ['cloud', 'gdrive'].includes(mode) : ['cloud', 'gdrive'].includes(lastMode || '');
+  if (isCloudMode) return;
   const savedRoot = localStorage.getItem('rootFolder');
   const savedHandle = await idb.get('rootFolderHandle');
   const needsWorkspace = !savedRoot && !savedHandle && !localStorage.getItem('onrivi_workspace_path');

@@ -2,6 +2,7 @@
 // 📊 [OMD-HOOK-useDriveSync-0001] frontend/src/hooks/fileExplorer/useDriveSync.ts
 // 🎯 @KICK  : 구글 드라이브 OAuth 인증, 작업장/리소스 폴더 생성·선택, 파일 트리 로드, 토큰 만료 시 긴급 로컬 보존 및 자동 복구
 // 🛡️ @GUARD : 토큰 만료 전/후 무손실 비상 초안 보존(EmergencyDriveSnapshot), 불량 토큰 즉시 소거, 로컬 작업장 100% 무손실 복구
+// 🚨 @PATCH : 2026-11-04 — [웹드라이브 연결 해제 시 리소스 환경 로컬 복원 동기화]: disconnectGoogleDrive 시 onrivi_active_resource_environment 및 saveResourceSettings('local')를 함께 동기화하여 재실행 시 클라우드 리소스 잔존 호출 방지
 // 🚨 @PATCH : 2026-11-04 — [오류 처리 및 주석 표준화]: onrivi-error-handling 5대 진단 필드 기반 logError 적용(handleAuthExpired, handleTokenUpdated, disconnectGoogleDrive) 및 onrivi-source-comments 2단계 JSDoc 표준화
 // 🚨 @PATCH : 2026-11-04 — [토큰 갱신 시 탐색기 자동 리프레시 연동]: onrivi:drive_token_updated 수신 시 isDriveConnected 상태 복원 및 file:refresh-all-directories(force: true) 이벤트 디스패치로 클라우드 탐색기 즉시 갱신
 // 🚨 @PATCH : 2026-11-04 — [useFileExplorer 모듈화 분리]:
@@ -466,7 +467,9 @@ export function useDriveSync({
         localStorage.setItem('workspaceType', restoredType);
         if (restoredRoot.path) localStorage.setItem('onrivi_workspace_path', restoredRoot.path);
         localStorage.setItem('onrivi_last_workspace_mode', restoredType);
+        localStorage.setItem('onrivi_active_resource_environment', 'local');
         await restoreLocalProfileFolder();
+        saveResourceSettings(getResourceSettings('local'), 'local');
       }
 
       restoreEnvironment(localEnvironmentRef.current);
