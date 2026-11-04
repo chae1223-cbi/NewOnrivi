@@ -2,6 +2,8 @@
 // 📊 [OMD-LIB-googleDriveClient-0001] src/lib/gdrive/googleDriveClient.ts
 // 🎯 @KICK  : 누구나 쉽게 사용하는 구글 드라이브 무설정(Zero-Config) 자동 연동 및 클라우드 작업장 클라이언트 모듈
 // 🛡️ @GUARD : Rule 1, Rule 2(대문자 코드값 GDRIVE), 최소 권한 원칙(drive.file 스코프 한정)
+// 🚨 @PATCH : **2026-11-04** — [웹드라이브 연결 해제 시 불필요한 인증 만료 경고 이벤트 오발송 차단]:
+//             1) disconnectGoogleDrive(정상적인 사용자 연결 해제) 시 onrivi:drive_token_expired / onrivi:drive_auth_expired 대신 onrivi:drive_disconnected 이벤트를 발송하도록 분리하여 로컬 전환 중 오경고 토스트 및 비상 백업 워닝 방지
 // 🚨 @PATCH : **2026-11-04** — [Google OAuth 팝업 COOP(Cross-Origin-Opener-Policy) 콘솔 에러 원천 차단]:
 //             1) 구글 인증 페이지(accounts.google.com)의 COOP 정책으로 인해 부모 창에서 popup.closed 및 popup.close() 호출 시 발생하던 브라우저 콘솔 에러 제거
 //             2) 동일 오리진 BroadcastChannel('onrivi-drive-oauth') 수신 및 서버 세션 폴링(/api/gdrive/oauth/status) 기반으로 전환하고 창 닫기는 콜백 페이지 자체(self window.close)에서 수행하도록 개선
@@ -557,8 +559,7 @@ export function disconnectGoogleDrive(): void {
   // Keep the last workspace (no credentials) so a future connection can resume it.
   sessionStorage.removeItem(STORAGE_KEY_TOKEN);
   if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('onrivi:drive_token_expired'));
-    window.dispatchEvent(new CustomEvent('onrivi:drive_auth_expired'));
+    window.dispatchEvent(new CustomEvent('onrivi:drive_disconnected'));
   }
 }
 

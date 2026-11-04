@@ -2,7 +2,8 @@
 // 📊 [OMD-HOOK-useEditorProfiles] frontend/src/hooks/editor/useEditorProfiles.ts
 // 🎯 @KICK  : 서식 프로필(userCssProfiles.json) 로드/저장/디바운스, Frontmatter 동기화, 제목 번호 넘버링 및 가로형 그림책 프로필 관리 훅
 // 🛡️ @GUARD : 시스템 프로필 보호, 리소스 폴더/웹드라이브 분기 처리, 저장 실패 시 캐시 무효화 및 롤백, IME 조합 중 넘버링 지연 방어
-// 🚨 @PATCH : 2026-11-04 — [표준화 및 에러 처리 강화] logError 5대 진단 필드 선제 기록 적용 및 내부 함수 JSDoc/식별 배너 표준화
+// 🚨 @PATCH : 2026-11-04 — [웹드라이브 해제/로컬 전환 시 만료 경고 토스트 오발송 차단]: handleDriveTokenExpired에 getResourceEnvironment() === 'cloud' 가드를 추가하여 로컬 모드 전환 시 불필요한 경고 알림 방지
+//             2026-11-04 — [표준화 및 에러 처리 강화] logError 5대 진단 필드 선제 기록 적용 및 내부 함수 JSDoc/식별 배너 표준화
 //             2026-11-04 — [MainEditorApp 모듈화]: 서식 프로필 관리(profiles, activeProfileId, load, save, resolveEffectiveDocumentProfile, handleProfileChange, headingNumbering)를 useEditorProfiles로 분리 위임 (350줄 감축)
 // 🔗 @CALLS : fetchUserProfiles, persistUserProfiles, normalizeCssProfile, extractFrontmatter, updateCssProfileInFrontmatter, syncMarkdownHeadingNumbers, logError
 // ====================================================================
@@ -123,6 +124,7 @@ export function useEditorProfiles({
       setProfileStorageRevision(revision => revision + 1);
     };
     const handleDriveTokenExpired = () => {
+      if (getResourceEnvironment() !== 'cloud') return;
       showToast('☁️ 개인 웹드라이브 인증이 만료되었습니다. 파일 메뉴에서 [개인 웹드라이브 연결]을 눌러 재인증해 주세요.', 'warning');
     };
     if (typeof window !== 'undefined') {

@@ -2,6 +2,9 @@
 // 📊 [OMD-HOOK-useDriveSync-0001] frontend/src/hooks/fileExplorer/useDriveSync.ts
 // 🎯 @KICK  : 구글 드라이브 OAuth 인증, 작업장/리소스 폴더 생성·선택, 파일 트리 로드, 토큰 만료 시 긴급 로컬 보존 및 자동 복구
 // 🛡️ @GUARD : 토큰 만료 전/후 무손실 비상 초안 보존(EmergencyDriveSnapshot), 불량 토큰 즉시 소거, 로컬 작업장 100% 무손실 복구
+// 🚨 @PATCH : 2026-11-04 — [웹드라이브 연결 해제 시 오경고 및 0개 탭 비상 백업 워닝 제거]:
+//             1) handleAuthExpired에 storageSwitchRef.current 가드를 추가하여 연결 해제 도중 만료 경고가 뜨지 않도록 방어
+//             2) disconnectGoogleDrive에서 열린 탭이 있을 때만 비상 스냅샷을 저장하고, 로컬 작업장 상태 전환 후 드라이브 토큰을 해제하도록 순서 최적화
 // 🚨 @PATCH : 2026-11-04 — [웹드라이브 연결 해제 시 리소스 환경 로컬 복원 동기화]: disconnectGoogleDrive 시 onrivi_active_resource_environment 및 saveResourceSettings('local')를 함께 동기화하여 재실행 시 클라우드 리소스 잔존 호출 방지
 // 🚨 @PATCH : 2026-11-04 — [오류 처리 및 주석 표준화]: onrivi-error-handling 5대 진단 필드 기반 logError 적용(handleAuthExpired, handleTokenUpdated, disconnectGoogleDrive) 및 onrivi-source-comments 2단계 JSDoc 표준화
 // 🚨 @PATCH : 2026-11-04 — [토큰 갱신 시 탐색기 자동 리프레시 연동]: onrivi:drive_token_updated 수신 시 isDriveConnected 상태 복원 및 file:refresh-all-directories(force: true) 이벤트 디스패치로 클라우드 탐색기 즉시 갱신
@@ -144,7 +147,7 @@ export function useDriveSync({
     // 토큰 만료 또는 401 오류 발생 시: 현재 작업 중이던 모든 탭과 에디터 버퍼를 로컬에 긴급 백업
     let expiryHandled = false;
     const handleAuthExpired = () => {
-      if (rootFolderRef.current?.type !== 'GDRIVE' || expiryHandled) return;
+      if (storageSwitchRef.current || rootFolderRef.current?.type !== 'GDRIVE' || expiryHandled) return;
       expiryHandled = true;
       setIsDriveAuthExpired(true);
       setIsDriveConnected(false);
@@ -422,7 +425,9 @@ export function useDriveSync({
           savedAt: new Date().toISOString()
         }))
       };
-      saveEmergencyDriveDrafts(snapshot);
+      if (snapshot.drafts.length > 0) {
+        saveEmergencyDriveDrafts(snapshot);
+      }
       const hasUnsaved = tabsRef.current.some(t => t.isModified) ||
         (activeId && contentRef.current !== lastSavedContentRef.current);
       if (hasUnsaved) {
@@ -450,24 +455,27 @@ export function useDriveSync({
         saveResourceSettings(currentResourceSettings, 'cloud', { silent: true });
       }
 
-      await disconnectGDriveClient();
-      setIsDriveConnected(false);
-      setIsDriveAuthExpired(false);
-
       if (restoredRoot) {
         if (!restoredRoot.handle && restoredRoot.name !== BROWSER_STORAGE_NAME && !api) {
           const storedHandle = await idb.get('rootFolderHandle');
           if (storedHandle) restoredRoot.handle = storedHandle;
         }
         rootFolderRef.current = restoredRoot;
-        setRootFolder(restoredRoot);
         const restoredType = localStorage.getItem('onrivi_last_local_workspace_type') || (restoredRoot.type === 'desktop' ? 'local' : 'browser');
-        setWorkspaceType(restoredType);
         localStorage.setItem('rootFolder', JSON.stringify(restoredRoot.handle ? { ...restoredRoot, handle: undefined } : restoredRoot));
         localStorage.setItem('workspaceType', restoredType);
         if (restoredRoot.path) localStorage.setItem('onrivi_workspace_path', restoredRoot.path);
         localStorage.setItem('onrivi_last_workspace_mode', restoredType);
         localStorage.setItem('onrivi_active_resource_environment', 'local');
+        setRootFolder(restoredRoot);
+        setWorkspaceType(restoredType);
+      }
+
+      await disconnectGDriveClient();
+      setIsDriveConnected(false);
+      setIsDriveAuthExpired(false);
+
+      if (restoredRoot) {
         await restoreLocalProfileFolder();
         saveResourceSettings(getResourceSettings('local'), 'local');
       }
