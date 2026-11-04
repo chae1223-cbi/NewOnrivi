@@ -1,5 +1,7 @@
+// 🚨 @PATCH : 2026-11-04 — [공통 진단 로깅 연계] serverError 및 4xx [ClientWarn] 사전 로깅 연동
 // 🚨 @PATCH : 2026-11-02 — 3순위 DB 처리 표준화: 공통 _db.js(withDbTransaction) 적용
 import { withDbTransaction } from '../_db.js';
+import { serverError } from '../_server-error.js';
 
 const headers = {
   'Access-Control-Allow-Origin': '*',
@@ -8,7 +10,12 @@ const headers = {
   'Content-Type': 'application/json',
   'Cache-Control': 'no-store',
 };
-const reply = (body, status = 200) => new Response(JSON.stringify(body), { status, headers });
+const reply = (body, status = 200) => {
+  if (status >= 400 && status < 500) {
+    console.warn(`[ClientWarn] HTTP ${status} · ${body?.code || 'WARN'} · ${body?.message || '클라이언트 요청 경고'} [경로: /api/password/confirm]`);
+  }
+  return new Response(JSON.stringify(body), { status, headers });
+};
 
 export async function onRequestOptions() {
   return new Response(null, { headers });
@@ -67,8 +74,12 @@ export async function onRequestPost({ request, env }) {
     });
     return reply(result, result.success ? 200 : 400);
   } catch (error) {
-    console.error('[/api/password/confirm] failed', error);
-    const authError = error?.message === 'PW_UPDATE_ERROR';
-    return reply({ success: false, code: authError ? 'PW_UPDATE_ERROR' : 'DB_ERROR', message: authError ? '비밀번호 변경에 실패했습니다.' : '재설정 요청을 처리할 수 없습니다.' }, 500);
+    return serverError(request, error, {
+      source: 'functions/api/password/confirm.js',
+      stage: 'confirm_password_reset',
+      doing: '비밀번호 재설정 확인 및 갱신 중',
+      target: email || 'PASSWORD_RESET',
+      message: error?.message === 'PW_UPDATE_ERROR' ? '비밀번호 변경에 실패했습니다.' : '재설정 요청을 처리할 수 없습니다.'
+    });
   }
 }

@@ -2,6 +2,7 @@
 // 📊 [OMD-AUTH-reset-password-0001] page ➔ ResetPasswordPage
 // 🎯 @KICK  : Supabase Auth 기반 새로운 비밀번호 변경 입력창 및 패스워드 재설정 화면
 // 🛡️ @GUARD : 비밀번호 영문소문자/숫자/특수문자 조합 8~20자 유효성, 비밀번호 확인 일치성 검증 가드
+// 🚨 @PATCH : **2026-11-04** — [공통 진단 로깅 연계] logError/logWarn 통합 및 비밀번호 재설정 정밀 진단 추적
 // 🚨 @PATCH : **2026-09-11** — Modern Technical Editorial 디자인 시스템 적용 (Cobalt #1d4ed8, Inter / Plus Jakarta Sans)
 //             2026-09-03** — LDSG v5.0 디자인 시스템 및 웜 페이퍼 크림(#F9F8F6) 팔레트 전면 적용: 구형 인디고 룩/Material Symbols 제거, LINE Green(#1d4ed8) 버튼, 실시간 유효성 체크 뱃지 및 Lucide React 아이콘 교체
 //             **2026-09-28** — password_resets 기록은 DB 트랜잭션으로 처리하고, Supabase Auth 비밀번호 변경은 별도 외부 작업으로 처리
@@ -18,6 +19,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { useToast } from "@/components/ToastProvider";
+import { logError, logWarn } from "@/lib/errorDiagnostics";
 import { Lock, Eye, EyeOff, Check, ArrowRight, ArrowLeft } from "lucide-react";
 
 export default function ResetPasswordPage() {
@@ -69,7 +71,13 @@ export default function ResetPasswordPage() {
           refresh_token: refreshToken,
         }).then(({ data, error }) => {
           if (error) {
-            console.error("[RESET-PW] 세션 복원 실패:", error.message);
+            logWarn({
+              file: 'frontend/src/app/reset-password/page.tsx',
+              func: 'useEffect:sessionRestore',
+              doing: '재설정 토큰 세션 복원 중',
+              target: 'RESET_TOKEN',
+              error,
+            });
           } else if (data?.session) {
             setSessionAccessToken(data.session.access_token);
             setSessionEmail(data.session.user?.email || null);
@@ -96,10 +104,9 @@ export default function ResetPasswordPage() {
     }
 
     setLoading(true);
-
+    let email = sessionEmail;
     try {
       let accessToken = sessionAccessToken;
-      let email = sessionEmail;
 
       if (!accessToken) {
         const { data: { session } } = await supabase.auth.getSession();
@@ -136,7 +143,13 @@ export default function ResetPasswordPage() {
         router.push("/login");
       }, 2000);
     } catch (err: any) {
-      console.error("비밀번호 재설정 실패:", err);
+      logError({
+        file: 'frontend/src/app/reset-password/page.tsx',
+        func: 'handleSubmit',
+        doing: '새 비밀번호 변경 요청(/api/password/confirm) 중',
+        target: email || 'PASSWORD_RESET',
+        error: err,
+      });
       showToast(err.message || "비밀번호 재설정 중 오류가 발생했습니다.", "error");
     } finally {
       setLoading(false);

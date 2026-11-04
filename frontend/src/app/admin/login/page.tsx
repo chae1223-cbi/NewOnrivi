@@ -1,3 +1,4 @@
+/** 🚨 @PATCH : 2026-11-04 — [공통 진단 로깅 연계] logError 통합 및 관리자 MFA/OAuth 인증 플로우 정밀 진단 추적 */
 /** 🚨 @PATCH : 2026-11-02 — [DB 접근 서버 API 일원화] 브라우저 직접 supabase.from('admins')를 서버 /api/admin/role?pre_mfa=true 호출로 전환 */
 /** 🚨 @PATCH : 2026-09-28 — 관리자 로그인 화면의 배경·카드·버튼을 DESIGN.md의 앱 UI 토큰으로 통일 */
 'use client';
@@ -7,6 +8,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowRight } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { showToast } from '@/utils/toast';
+import { logError } from '@/lib/errorDiagnostics';
 
 type LoginStep = 'GOOGLE_OAUTH' | 'OTP_ENROLL' | 'OTP_VERIFY' | 'LOADING' | 'AUTH_ERROR';
 
@@ -79,7 +81,13 @@ export default function AdminLogin() {
           friendlyName: `Admin Device ${Date.now()}`
         });
         if (enrollError) {
-          console.error('Enroll Error:', enrollError);
+          logError({
+            file: 'frontend/src/app/admin/login/page.tsx',
+            func: 'checkAuthState:enroll',
+            doing: '관리자 OTP(MFA) 기기 등록 중',
+            target: 'ADMIN_MFA',
+            error: enrollError,
+          });
           showToast('OTP 등록 중 오류가 발생했습니다.', 'error');
           if (mounted) setStep('AUTH_ERROR');
           return;
@@ -93,7 +101,13 @@ export default function AdminLogin() {
         // 이미 등록된 기기가 있는 경우 -> 인증 챌린지 생성
         const { data: challengeData, error: challengeError } = await supabase.auth.mfa.challenge({ factorId: totpFactor.id });
         if (challengeError) {
-          console.error('Challenge Error:', challengeError);
+          logError({
+            file: 'frontend/src/app/admin/login/page.tsx',
+            func: 'checkAuthState:challenge',
+            doing: '관리자 OTP 인증 챌린지 생성 중',
+            target: 'ADMIN_MFA',
+            error: challengeError,
+          });
           showToast('인증 정보를 불러오는 중 오류가 발생했습니다.', 'error');
           if (mounted) setStep('AUTH_ERROR');
           return;
@@ -105,7 +119,13 @@ export default function AdminLogin() {
         }
       }
       } catch (error) {
-        console.error('Admin authentication check failed:', error);
+        logError({
+          file: 'frontend/src/app/admin/login/page.tsx',
+          func: 'checkAuthState',
+          doing: '관리자 세션 및 MFA 레벨 검증 중',
+          target: 'ADMIN_AUTH',
+          error,
+        });
         showToast('로그인 상태를 확인하지 못했습니다. 다시 시도해주세요.', 'error');
         if (mounted) setStep('AUTH_ERROR');
       }

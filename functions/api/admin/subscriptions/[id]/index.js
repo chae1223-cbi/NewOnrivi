@@ -1,7 +1,8 @@
+// 🚨 @PATCH : 2026-11-04 — [공통 진단 로깅 연계] adminServerError 연동
 // 🚨 @PATCH : 2026-11-02 — 3순위 DB 처리 표준화: 공통 _db.js(withDbTransaction) 적용
 // 🚨 @PATCH : 2026-10-08 — UUID 정규표현식 5그룹(8-4-4-4-12) 누락 수정
 import { withDbTransaction, apiJson } from '../../../_db.js';
-import { checkAdminAuth } from '../../_shared.js';
+import { checkAdminAuth, adminServerError } from '../../_shared.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -34,7 +35,6 @@ export async function onRequestGet({ request, env, params }) {
     });
     return result ? apiJson({ success: true, ...result }) : apiJson({ success: false, error: '구독을 찾을 수 없습니다.' }, 404);
   } catch (error) {
-    console.error('[admin/subscriptions] detail failed', error);
-    return apiJson({ success: false, error: '구독 상세를 불러오지 못했습니다.' }, 500);
+    return adminServerError(request, error, 'functions/api/admin/subscriptions/[id]/index.js', 'get_subscription_detail');
   }
 }

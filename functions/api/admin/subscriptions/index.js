@@ -1,7 +1,8 @@
+// 🚨 @PATCH : 2026-11-04 — [공통 진단 로깅 연계] adminServerError 및 4xx 사전 경고 로깅 연동
 // 🚨 @PATCH : 2026-11-02 — 3순위 DB 처리 표준화: 공통 _db.js(withDbTransaction) 적용
 // 🚨 @PATCH : 2026-10-08 — 상단 핵심 통계 카드 6종(ACTIVE, HAS_DEVICES 포함) 일대일 정합 필터링 완벽 지원
 import { withDbTransaction, apiJson } from '../../_db.js';
-import { checkAdminAuth } from '../_shared.js';
+import { checkAdminAuth, adminServerError } from '../_shared.js';
 
 export async function onRequestGet({ request, env }) {
   const auth = await checkAdminAuth(request, env);
@@ -63,7 +64,6 @@ export async function onRequestGet({ request, env }) {
     });
     return apiJson({ success: true, data: result.rows.map(({ total, ...row }) => row), total: result.rows[0]?.total || 0, stats: result.stats, canManage: auth.adminData.admin_role === 'SUPER', asOf: new Date().toISOString() });
   } catch (error) {
-    console.error('[admin/subscriptions] GET failed', error);
-    return apiJson({ success: false, error: '구독 현황을 불러오지 못했습니다.' }, 500);
+    return adminServerError(request, error, 'functions/api/admin/subscriptions/index.js', 'list_subscriptions');
   }
 }

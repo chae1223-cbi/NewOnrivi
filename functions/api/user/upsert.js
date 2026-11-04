@@ -2,12 +2,14 @@
 // 📊 [OMD-API-userUpsert-0001] functions/api/user/upsert.js ➔ onRequestPost
 // 🎯 @KICK  : 로그인된 사용자 정보를 users 테이블에 등록/갱신(UPSERT)하고, 최초 가입자에게 14일 무료체험(APPRENTICE) 구독권을 원자적(All-or-Nothing)으로 자동 발급
 // 🛡️ @GUARD : 본인 토큰 일치 검증(403 차단), 비밀번호 직접 변경 차단(400 거절), PostgreSQL 단일 트랜잭션(withDbTransaction) 적용
+// 🚨 @PATCH : 2026-11-04 — [공통 진단 로깅 연계] serverError 및 4xx [ClientWarn] 사전 로깅 연동
 // 🚨 @PATCH : **2026-11-02** — [소스 주석 표준화] 표준 OMD 블록 주석 및 UPSERT & 14일 무료체험 자동 발급 라인별 상세 해설 주석 추가
 // 🚨 @PATCH : 2026-11-02 — [3순위 DB 처리 표준화] Supabase REST 종속을 제거하고 공통 _db.js의 withDbTransaction(PostgreSQL 직접 연결) 적용
 // 🔗 @CALLS : getAuthUser, withDbTransaction (PostgreSQL public.users, public.subscriptions), Supabase Auth Admin API
 // ====================================================================
 
 import { getAuthUser, withDbTransaction } from '../_db.js';
+import { serverError } from '../_server-error.js';
 
 // ========================================================================================
 // 🌐 CORS 및 보안 응답 헤더 설정
@@ -26,7 +28,12 @@ const headers = {
  * @param {number} [status=200] - HTTP 상태 코드 (기본값: 200 OK)
  * @returns {Response}
  */
-const reply = (body, status = 200) => new Response(JSON.stringify(body), { status, headers });
+const reply = (body, status = 200) => {
+  if (status >= 400 && status < 500) {
+    console.warn(`[ClientWarn] HTTP ${status} · ${body?.code || 'WARN'} · ${body?.message || '클라이언트 요청 경고'} [경로: /api/user/upsert]`);
+  }
+  return new Response(JSON.stringify(body), { status, headers });
+};
 
 /**
  * 암호학적으로 안전한 랜덤 대문자 16진수 문자열을 생성하는 헬퍼 함수 (라이선스 키, 결제번호 등에 사용)
@@ -166,7 +173,12 @@ export async function onRequestPost({ request, env }) {
 
   } catch (error) {
     // 9. [서버 장애 예외 처리]
-    console.error('[/api/user/upsert] failed', error);
-    return reply({ success: false, code: 'DB_ERROR', message: '사용자 정보를 저장할 수 없습니다.' }, 500);
+    return serverError(request, error, {
+      source: 'functions/api/user/upsert.js',
+      stage: 'upsert_user_profile',
+      doing: '사용자 정보 DB 저장 및 무료체험 플랜 발급 중',
+      target: user?.id || 'USER',
+      message: '사용자 정보를 저장할 수 없습니다.'
+    });
   }
 }

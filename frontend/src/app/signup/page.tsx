@@ -2,6 +2,7 @@
 // 📊 [OMD-AUTH-signup-page-0001] page ➔ SignupPage
 // 🎯 @KICK  : Supabase Auth 기반 이메일/구글 소셜 가입 및 14일 무료 1대 라이선스(APPRENTICE) 자동 발급 병합 회원가입 화면
 // 🛡️ @GUARD : 비밀번호 영문소문자/숫자/특수문자 조합 8~20자 실시간 유효성, 비밀번호 확인 일치성 검증 및 필수 약관 동의 가드
+// 🚨 @PATCH : **2026-11-04** — [공통 진단 로깅 연계] logError/logWarn 통합 및 회원가입 6단계 파이프라인 정밀 진단 추적
 // 🚨 @PATCH : **2026-11-03** — [회원가입 파이프라인 표준 주석 및 라인별 해설 완비] 약관동의 ➔ 실시간유효성 ➔ Supabase Auth 가입 ➔ DB동기화 ➔ 14일 무료체험 자동발급 6단계 상세 해설 주석 체계화
 // 🚨 @PATCH : **2026-09-11** — Modern Technical Editorial 디자인 시스템 적용 (Cobalt #1d4ed8, Inter / Plus Jakarta Sans)
 //             2026-09-03** — LDSG v5.0 디자인 시스템 및 웜 페이퍼 크림(#F9F8F6) 팔레트 전면 적용: 구형 인디고 룩/Material Symbols 제거, LINE Green(#1d4ed8) 버튼, 실시간 유효성 체크 뱃지 및 Lucide React 아이콘 교체
@@ -20,7 +21,8 @@ import { Footer } from "@/components/layout/Footer";                  // 하단 
 import Link from "next/link";                                         // 페이지 간 이동을 위한 Next.js Link
 import { useRouter } from "next/navigation";                         // 프로그래밍 방식 화면 라우팅 제어 훅
 import { supabase } from "@/lib/supabaseClient";                      // Supabase 인증(Auth) 클라이언트 인스턴스
-import { useToast } from "@/components/ToastProvider";                // 사용자 알림 토스트 훅
+import { useToast } from "@/components/ToastProvider";
+import { logError, logWarn } from "@/lib/errorDiagnostics";                // 사용자 알림 토스트 훅
 import { User, Mail, Lock, Eye, EyeOff, Check, ArrowRight, LogIn } from "lucide-react"; // UI 아이콘 모음
 
 /**
@@ -264,7 +266,13 @@ export default function SignupPage() {
         }
       }, 1500);
     } catch (err: any) {
-      console.error("회원가입 에러:", err);
+      logError({
+        file: 'frontend/src/app/signup/page.tsx',
+        func: 'handleRegisterSubmit',
+        doing: '회원가입 및 14일 무료 체험 발급 처리 중',
+        target: email || 'NEW_USER',
+        error: err,
+      });
       showToast(err.message || "가입에 실패했습니다. 형식 오류를 확인해 주세요.", "error");
     } finally {
       setLoading(false);

@@ -1,5 +1,7 @@
+// 🚨 @PATCH : 2026-11-04 — [공통 진단 로깅 연계] serverError 및 4xx [ClientWarn] 사전 로깅 연동
 // 🚨 @PATCH : 2026-11-02 — 3순위 DB 처리 표준화: 공통 _db.js(withDbTransaction) 적용
 import { getAuthUser, withDbTransaction } from '../_db.js';
+import { serverError } from '../_server-error.js';
 
 const headers = {
   'Access-Control-Allow-Origin': '*',
@@ -8,7 +10,12 @@ const headers = {
   'Content-Type': 'application/json',
   'Cache-Control': 'no-store',
 };
-const reply = (body, status = 200) => new Response(JSON.stringify(body), { status, headers });
+const reply = (body, status = 200) => {
+  if (status >= 400 && status < 500) {
+    console.warn(`[ClientWarn] HTTP ${status} · ${body?.code || 'WARN'} · ${body?.message || '클라이언트 요청 경고'} [경로: /api/user/delete]`);
+  }
+  return new Response(JSON.stringify(body), { status, headers });
+};
 
 export async function onRequestOptions() {
   return new Response(null, { headers });
@@ -41,7 +48,12 @@ export async function onRequestPost({ request, env }) {
     });
     return reply({ success: true, code: 'SUCCESS', message: '회원 탈퇴가 처리되었습니다.' });
   } catch (error) {
-    console.error('[/api/user/delete] failed', error);
-    return reply({ success: false, code: 'DB_ERROR', message: '회원 탈퇴를 처리할 수 없습니다.' }, 500);
+    return serverError(request, error, {
+      source: 'functions/api/user/delete.js',
+      stage: 'delete_user_account',
+      doing: '회원 자진 탈퇴 및 세션 정리 트랜잭션 중',
+      target: user?.id || 'USER',
+      message: '회원 탈퇴를 처리할 수 없습니다.'
+    });
   }
 }

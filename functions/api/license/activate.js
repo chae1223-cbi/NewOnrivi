@@ -1,19 +1,26 @@
 // ====================================================================
 // 📊 [OMD-API-licenseActivate-0001] functions/api/license/activate.js
 // 🎯 @KICK  : Cloudflare Functions 기반 라이선스 기기 활성화 엔드포인트
+// 🚨 @PATCH : 2026-11-04 — [공통 진단 로깅 연계] serverError 및 4xx [ClientWarn] 사전 로깅 연동
 // 🚨 @PATCH : 2026-11-02 — 3순위 DB 처리 표준화: 공통 _db.js(withDbTransaction) 적용
 // 🚨 @PATCH : **2026-10-03** — [세션 제어권 인수 시 타 세션 제한사용자 유지]: force_takeover 시 기존 세션을 DELETE 하지 않고 is_active = false로 업데이트하여 타 세션이 세션아웃 없이 제한사용자(미리보기 전용) 상태로 전환되도록 지원
 // ====================================================================
 import { getAuthUser, withDbTransaction } from '../_db.js';
+import { serverError } from '../_server-error.js';
 
 // 웹 편집 좌석은 legacy max_devices와 무관하게 사용자당 1개다.
 // 데스크톱 지정 장치는 웹 좌석을 차지하지 않는다.
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const WEB_NAMES = new Set(['web saas', 'web browser']);
-const response = (data, status = 200) => new Response(JSON.stringify(data), {
-  status,
-  headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' },
-});
+const response = (data, status = 200) => {
+  if (status >= 400 && status < 500) {
+    console.warn(`[ClientWarn] HTTP ${status} · ${data?.code || 'WARN'} · ${data?.message || '클라이언트 요청 경고'} [경로: /api/license/activate]`);
+  }
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' },
+  });
+};
 
 export async function onRequestOptions() {
   return new Response(null, { headers: {
@@ -126,7 +133,12 @@ export async function onRequestPost({ request, env }) {
     });
     return response(result);
   } catch (error) {
-    console.error('[/api/license/activate] transaction failed', error);
-    return response({ success: false, code: 'SERVER_ERROR', message: '세션 등록 중 문제가 발생했습니다.' }, 500);
+    return serverError(request, error, {
+      source: 'functions/api/license/activate.js',
+      stage: 'activate_license_session',
+      doing: '기기 라이선스 세션 활성화 및 등록 중',
+      target: (typeof licenseId !== 'undefined' ? licenseId : 'LICENSE'),
+      message: '세션 등록 중 문제가 발생했습니다.'
+    });
   }
 }

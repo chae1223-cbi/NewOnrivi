@@ -2,12 +2,14 @@
 // 📊 [OMD-API-userCheck-0001] functions/api/user/check.js ➔ onRequestPost
 // 🎯 @KICK  : 이메일 또는 유저 UUID를 받아 users 테이블에서 회원 존재 여부 및 탈퇴 상태를 단일 쿼리로 사전 검증
 // 🛡️ @GUARD : 이메일과 UUID 둘 다 누락 시 400 거절, SQL 매개변수 바인딩($1)으로 인젝션 차단, 단일 원트랜잭션(withDbTransaction) 적용
+// 🚨 @PATCH : 2026-11-04 — [공통 진단 로깅 연계] serverError 및 4xx [ClientWarn] 사전 로깅 연동
 // 🚨 @PATCH : **2026-11-02** — [소스 주석 표준화] 표준 OMD 블록 주석 및 PostgreSQL 트랜잭션 쿼리 라인별 상세 해설 주석 추가
 // 🚨 @PATCH : 2026-11-02 — [3순위 DB 처리 표준화] Supabase REST 종속을 제거하고 공통 _db.js의 withDbTransaction(PostgreSQL 직접 연결) 적용
 // 🔗 @CALLS : withDbTransaction (PostgreSQL public.users)
 // ====================================================================
 
 import { withDbTransaction } from '../_db.js';
+import { serverError } from '../_server-error.js';
 
 // ========================================================================================
 // 🌐 CORS 및 보안 응답 헤더 설정
@@ -80,6 +82,7 @@ export async function onRequestPost({ request, env }) {
 
     // 4. [필수값 방어] 이메일도 없고 유효한 UUID도 없으면 400 Bad Request 반환
     if (!email && !byId) {
+      console.warn('[ClientWarn] HTTP 400 · INVALID_PARAMS · 이메일 또는 UUID 누락 [경로: /api/user/check]');
       return reply({ exists: false, is_deleted: false }, 400);
     }
 
@@ -102,7 +105,12 @@ export async function onRequestPost({ request, env }) {
 
   } catch (error) {
     // 7. [예외 처리] DB 연결 오류 또는 서버 장애 시 에러 로그 기록 후 500 에러 반환
-    console.error('[/api/user/check] failed', error);
-    return reply({ exists: false, code: 'DB_ERROR', message: '회원 정보를 확인할 수 없습니다.' }, 500);
+    return serverError(request, error, {
+      source: 'functions/api/user/check.js',
+      stage: 'check_user_exists',
+      doing: '회원 가입 여부 및 탈퇴 상태 사전 확인 중',
+      target: email || p_id || 'USER',
+      message: '회원 정보를 확인할 수 없습니다.'
+    });
   }
 }
