@@ -1,5 +1,9 @@
 /**
  * 프로그램명 : OnriviAuthor 
+// 🚨 @PATCH : **2026-11-04** — [문서 링크 및 헤딩 연결 모듈화]:
+//             1) 문서 연결(DocLinkPicker) 상태, 헤딩 파싱(extractHeadings), 파일 텍스트 읽기(readFileText), 팝업 좌표 계산(docLinkPickerStyle)을 useEditorDocLinks 훅으로 분리 위임 (460줄 감축)
+// 🚨 @PATCH : **2026-11-04** — [에디터 파일 유틸리티 모듈화]:
+//             1) getMdFiles, fetchAllMdFiles, resolveRelativeImagePath, getRelativePath를 editorFileUtils로 분리 위임 (326줄 감축)
 // 🚨 @PATCH : **2026-11-04** — [deleteResourceAICredentials 미임포트 런타임 오류 수정]:
 //             1) clearResourceFolder에서 호출하는 deleteResourceAICredentials 임포트 누락 보완하여 ReferenceError 방어
 // 🚨 @PATCH : **2026-11-04** — [formatTime 미정의 런타임 오류 수정]:
@@ -609,6 +613,7 @@ import { useEditorSaveActions } from '@/hooks/editor/useEditorSaveActions';
 import { useEditorDocumentSession } from '@/hooks/editor/useEditorDocumentSession';
 import { mapIdToCommandType as importedMapIdToCommandType } from '@/types/editorCommand';
 import { useEditorModals } from '@/hooks/editor/useEditorModals';
+import { useEditorDocLinks } from '@/hooks/editor/useEditorDocLinks';
 // import EditorLayout from '@/components/editor/layout/EditorLayout';
 // import EditorCore from '@/components/editor/core/EditorCore';
 import EditorOverlayManager from '@/components/editor/EditorOverlayManager';
@@ -711,332 +716,8 @@ export const parseDateStringToMs = (str?: string): number => {
   return isNaN(parsed) ? 0 : parsed;
 };
 
-// ====================================================================
-// 📊 [OMD-FILE-MainEditorApp-0001] MainEditorApp.tsx ➔ getMdFiles
-// 🎯 @KICK  : FileNode 트리를 순회하여 모든 .md 파일을 재귀적으로 수집합니다
-// 🛡️ @GUARD : None
-// 🚨 @PATCH : **2026-08-20** 하단 툴바에 가려지지 않도록 preview-page-sheet 및 custom-preview-container 하단 여백(padding-bottom) 대폭 확대.
-// 🚨 @PATCH : None
-// 🔗 @CALLS : None
-// ====================================================================
-const getMdFiles = (nodes: FileNode[]): FileNode[] => {
-  const result: FileNode[] = [];
-  const traverse = (list: FileNode[]) => {
-    for (const node of list) {
-      if (node.kind === 'file') {
-        const ext = node.name.split('.').pop()?.toLowerCase();
-        if (ext === 'md' && node.path) {
-          result.push(node);
-        }
-      } else if (node.kind === 'directory' && node.children) {
-        traverse(node.children);
-      }
-    }
-  };
-  traverse(nodes);
-  return result;
-};
-
-// ====================================================================
-// 📊 [OMD-FILE-MainEditorApp-0002] MainEditorApp.tsx ➔ fetchAllMdFiles
-// 🎯 @KICK  : 멀티 플랫폼 비동기 파일 트리 스캔: 브라우저(scanDirectoryDeep & WASM 지식 DB), 로컬/Electron 및 열린 탭 전 환경 마크다운 통합 수집
-// 🛡️ @GUARD : visited Set 무한 디렉토리 루프 방지, NFC 정규화 및 슬래시 표준화 기반 중복 제거, 📗 지식 문서 뱃지 태깅
-// 🚨 @PATCH : **2026-09-12** — [웹 환경 문서 연결 검색 완벽 지원] 브라우저 FileSystemDirectoryHandle 하위 미확장 폴더 scanDirectoryDeep 심층 재귀 스캔, Web WASM SQLite 지식 보관함 문서(knowledgeClient.listDocuments) 실시간 병합, 열린 탭 및 VFS 통합
-// 🔗 @CALLS : scanDirectoryDeep, knowledgeClient.listDocuments, getMdFiles, getVfsFiles, api.listDirectory
-// ====================================================================
-const fetchAllMdFiles = async (
-  workspaceType: string,
-  fileList: FileNode[],
-  rootFolder: { name: string; handle?: any } | null,
-  resourceFolder?: string | null,
-  resourceFolderHandle?: any,
-  currentFileNode?: FileNode | null,
-  tabs?: any[]
-): Promise<FileNode[]> => {
-  const api = (window as any).electronAPI;
-  const fileMap = new Map<string, FileNode>();
-
-  const addToFileMap = (node: FileNode, extra?: Partial<FileNode & { title?: string; isKnowledge?: boolean }>) => {
-    if (!node || !node.name) return;
-    if (node.kind === 'file') {
-      const ext = node.name.split('.').pop()?.toLowerCase();
-      if (ext !== 'md' && ext !== 'markdown') return;
-    } else {
-      return;
-    }
-    const normPath = (node.path || '').replace(/\\/g, '/').toLowerCase();
-    const pathSegments = normPath.split('/');
-    const excludedDirs = ['out', '.next', '.next-web-build', 'dist', 'build', 'release', 'node_modules', '_dev_api_backup', '.vscode', '.idea', 'scratch'];
-    if (pathSegments.some(seg => excludedDirs.includes(seg))) return;
-    const currentNorm = (currentFileNode?.path || '').replace(/\\/g, '/').toLowerCase();
-    const isCurrentInHelp = currentNorm.includes('docs/help/') || currentNorm.includes('/help/') || currentNorm.startsWith('help/');
-    const isHelpFile = normPath.startsWith('docs/help/') || normPath.includes('/docs/help/') ||
-                       normPath.startsWith('frontend/public/help/') || normPath.includes('/frontend/public/help/') ||
-                       normPath.startsWith('public/help/') || normPath.includes('/public/help/') ||
-                       /^(?:00_시작하기|help-\d+)/i.test(node.name || '');
-    if (!isCurrentInHelp && isHelpFile) return;
-    if (isCurrentInHelp && (normPath.includes('/public/help/') || normPath.startsWith('public/help/'))) {
-      // 로컬/데스크톱 작업장에서 docs/help와 public/help 복제본 동시 노출 방어
-      return;
-    }
-    const rawKey = (node.path || node.name).replace(/\\/g, '/').toLowerCase().normalize('NFC');
-    if (!fileMap.has(rawKey)) {
-      fileMap.set(rawKey, { ...node, ...extra });
-    } else if (extra) {
-      const existing = fileMap.get(rawKey)!;
-      fileMap.set(rawKey, { ...existing, ...extra });
-    }
-  };
-
-  const addTreeNodes = (nodes: FileNode[]) => {
-    if (!Array.isArray(nodes)) return;
-    for (const node of nodes) {
-      if (node.kind === 'file') {
-        addToFileMap(node);
-      } else if (node.kind === 'directory' && Array.isArray(node.children)) {
-        addTreeNodes(node.children);
-      }
-    }
-  };
-
-  // 1. 브라우저(Web) 환경 수집: FileSystemDirectoryHandle 심층 재귀 스캔
-  if (workspaceType === 'browser') {
-    if (rootFolder?.handle) {
-      try {
-        const deepFiles = await scanDirectoryDeep(rootFolder.handle, "", new Set(), false);
-        deepFiles.forEach(f => addToFileMap(f));
-      } catch (e) {
-        console.warn('[fetchAllMdFiles] scanDirectoryDeep failed:', e);
-      }
-    }
-
-    // 메모리 트리 및 가상 파일 시스템(VFS) 병합
-    addTreeNodes(fileList);
-
-    try {
-      const vfsFiles = getVfsFiles();
-      if (Array.isArray(vfsFiles)) {
-        vfsFiles.forEach((f: any) => {
-          addToFileMap({ name: f.name, path: f.path || f.name, kind: 'file' });
-        });
-      }
-    } catch {}
-  } else if (workspaceType === 'local') {
-    // 2. 데스크톱(Electron) 로컬 워크스페이스 수집
-    if (api?.listDirectory && rootFolder?.name) {
-      const visited = new Set<string>();
-      const scan = async (dirPath: string) => {
-        if (visited.has(dirPath)) return;
-        visited.add(dirPath);
-        try {
-          const list: FileNode[] = await api.listDirectory(dirPath);
-          for (const item of list) {
-            if (item.kind === 'file') {
-              const nameLower = item.name.toLowerCase();
-              if (nameLower.endsWith('.md') || nameLower.endsWith('.markdown')) {
-                addToFileMap(item);
-              }
-            } else if (item.kind === 'directory' && item.path) {
-              const dirName = (item.name || '').toLowerCase();
-              const isIgnored = dirName.startsWith('.') || 
-                ['node_modules', 'out', 'dist', 'build', 'release', '_dev_api_backup', '.wrangler', '.next-web-build', '.next', '.vscode', '.idea', 'scratch'].includes(dirName);
-              if (!isIgnored) {
-                await scan(item.path);
-              }
-            }
-          }
-        } catch (e: any) {
-          if (!e?.message?.includes('ENOENT') && !e?.message?.includes('EPERM')) {
-            console.warn('[fetchAllMdFiles] scan error for path:', dirPath, e);
-          }
-        }
-      };
-
-      await scan(rootFolder.name);
-    } else {
-      try {
-        const res = await fetch(getApiUrl(`/api/files?t=${Date.now()}`));
-        if (res.ok) {
-          const list = await res.json();
-          addTreeNodes(list);
-        }
-      } catch (err) {
-        console.error('[fetchAllMdFiles] fetch full files error:', err);
-      }
-    }
-    addTreeNodes(fileList);
-  } else {
-    addTreeNodes(fileList);
-  }
-
-  // 3. 현재 열려 있는 탭(tabs) 병합 (현재 작업 중인 파일 및 미저장 탭 포함)
-  if (tabs && Array.isArray(tabs)) {
-    tabs.forEach(t => {
-      if (t && t.name && (t.name.endsWith('.md') || t.name.endsWith('.markdown')) && (t.path || !Array.from(fileMap.values()).some(f => f.name.toLowerCase().normalize('NFC') === t.name.toLowerCase().normalize('NFC')))) {
-        addToFileMap({
-          name: t.name,
-          path: t.path || t.name,
-          kind: 'file',
-          handle: t.node?.handle
-        });
-      }
-    });
-  }
-
-  // 4. 지식 보관함(Knowledge Base) 문서 웹 WASM & 로컬 전면 통합
-  try {
-    const rfHandle = resourceFolderHandle || (typeof window !== 'undefined' ? (window as any).__resourceFolderHandle : null);
-    const knowDocs = await knowledgeClient.listDocuments({
-      resourceFolder,
-      resourceFolderHandle: rfHandle
-    });
-    if (Array.isArray(knowDocs)) {
-      for (const doc of knowDocs) {
-        if (!doc.filePath && !doc.title) continue;
-        const filePath = doc.filePath || `${doc.title}.md`;
-        const fileName = filePath.split(/[/\\]/).pop() || `${doc.title}.md`;
-        addToFileMap({
-          name: fileName,
-          path: filePath,
-          kind: 'file',
-        }, {
-          title: doc.title,
-          isKnowledge: true
-        });
-      }
-    }
-  } catch (err) {
-    console.warn('[fetchAllMdFiles] knowledgeClient.listDocuments failed:', err);
-  }
-
-  // 5. 로컬스토리지 등록 지식 문서 플래그 동기화
-  try {
-    const registered = JSON.parse(localStorage.getItem('onrivi_registered_knowledge_docs') || '[]');
-    if (Array.isArray(registered)) {
-      for (const reg of registered) {
-        const normReg = reg.replace(/\\/g, '/').toLowerCase().normalize('NFC');
-        for (const [key, node] of fileMap.entries()) {
-          if (key.includes(normReg) || normReg.includes(key) || (node.name && node.name.toLowerCase().normalize('NFC') === normReg)) {
-            (node as any).isKnowledge = true;
-          }
-        }
-      }
-    }
-  } catch {}
-
-  return Array.from(fileMap.values());
-};
-
-// ====================================================================
-// 📊 [OMD-CORE-MainEditorApp-0003] MainEditorApp.tsx ➔ resolveRelativeImagePath
-// 🎯 @KICK  : 상대 마크다운 이미지 경로를 절대 경로로 변환, 백슬래시 및 ../.. 세그먼트 정규화
-// 🛡️ @GUARD : http/https/data/blob URI, Windows 드라이브 문자, 빈 src 처리
-// 🚨 @PATCH : None
-// 🔗 @CALLS : None
-// ====================================================================
-const resolveRelativeImagePath = (srcPath: string, currentFileNodePath: string | undefined): string => {
-  if (!srcPath) return "";   // @srcPath : 이미지 경로 
-
-  if (srcPath.startsWith('http://') || srcPath.startsWith('https://') || srcPath.startsWith('data:') || srcPath.startsWith('blob:')) {
-    return srcPath;   // @srcPath : 절대 경로 (외부 링크, data URI, blob URI 등) 
-  }
-
-  // 💡 [윈도우 절대 경로 및 file:/// URI 방어]
-  let normalizedSrc = srcPath.replace(/\\/g, '/');
-  if (normalizedSrc.startsWith('file:///')) {
-    normalizedSrc = normalizedSrc.replace(/^file:\/\/\//, '');
-  }
-  const isAbsolute = /^[a-zA-Z]:\//.test(normalizedSrc) || normalizedSrc.startsWith('/');
-  if (isAbsolute) {
-    return normalizedSrc;
-  }
-
-  // @currentFileNodePath : 현재 파일의 노드 경로 
-  let baseFolder = "";
-  if (currentFileNodePath) {
-    const normalizedFile = currentFileNodePath.replace(/\\/g, '/'); // @normalizedFile : 현재 파일의 노드 경로 (정규화)
-    const lastSlash = normalizedFile.lastIndexOf('/'); // @lastSlash : 현재 파일의 노드 경로에서 마지막 슬래시의 위치 
-    if (lastSlash !== -1) {
-      baseFolder = normalizedFile.substring(0, lastSlash); // @baseFolder : 현재 파일의 노드 경로에서 마지막 슬래시 이전의 경로 
-    }
-  }
-
-  // @cleanSrc : 이미지 경로 (정규화) 
-  let cleanSrc = srcPath.replace(/\\/g, '/'); // @cleanSrc : 이미지 경로 (정규화) 
-  if (cleanSrc.startsWith('/')) {
-    cleanSrc = cleanSrc.substring(1); // @cleanSrc : 이미지 경로 (정규화) 
-  }
-
-  if (cleanSrc.startsWith('./')) {
-    cleanSrc = cleanSrc.substring(2); // @cleanSrc : 이미지 경로 (정규화) 
-  }
-
-  // @finalPath : 이미지 경로 (절대 경로) 
-  let finalPath = "";
-  if (baseFolder) {
-    finalPath = baseFolder + '/' + cleanSrc; // @finalPath : 이미지 경로 (절대 경로) 
-  } else {
-    finalPath = cleanSrc; // @finalPath : 이미지 경로 (절대 경로) 
-  }
-
-  // @segments : 이미지 경로 (분석된 경로) 
-  const segments = finalPath.split('/');
-  const stack: string[] = [];
-  for (const seg of segments) {
-    if (seg === '.' || seg === '') continue; // @seg : 이미지 경로 (분석된 경로) 
-    if (seg === '..') {
-      stack.pop(); // @stack : 이미지 경로 (분석된 경로) 
-    } else {
-      stack.push(seg); // @stack : 이미지 경로 (분석된 경로) 
-    }
-  }
-
-  return stack.join('/'); // @stack : 이미지 경로 (분석된 경로) 
-};
-
-// ====================================================================
-// 📊 [OMD-CORE-MainEditorApp-0004] MainEditorApp.tsx ➔ getRelativePath
-// 🎯 @KICK  : 위키 스타일 문서 링크를 위한 두 파일 간 상대 경로 계산
-// 🛡️ @GUARD : null fromPath 처리, 절대 경로가 아니면 ./로 시작하도록 보장
-// 🚨 @PATCH : None
-// 🔗 @CALLS : None
-// ====================================================================
-const getRelativePath = (fromPath: string | null | undefined, toPath: string): string => {
-  if (!fromPath) {
-    return toPath.startsWith('/') || toPath.startsWith('.') ? toPath : `./${toPath}`;
-  }
-  const normFrom = fromPath.replace(/\\/g, '/');
-  const normTo = toPath.replace(/\\/g, '/');
-
-  // 💡 [서로 다른 윈도우 드라이브 가드] D: 와 C: 간에는 물리적 상대 경로가 성립하지 않으므로 절대 경로 그대로 반환
-  const fromDrive = normFrom.match(/^[a-zA-Z]:/)?.[0]?.toUpperCase();
-  const toDrive = normTo.match(/^[a-zA-Z]:/)?.[0]?.toUpperCase();
-  if (fromDrive && toDrive && fromDrive !== toDrive) {
-    return normTo;
-  }
-
-  const fromParts = normFrom.split('/').filter(Boolean);
-  const toParts = normTo.split('/').filter(Boolean);
-
-  // 파일명을 제외한 폴더 경로만 추출
-  fromParts.pop();
-
-  let commonIndex = 0;
-  while (commonIndex < fromParts.length && commonIndex < toParts.length && fromParts[commonIndex] === toParts[commonIndex]) {
-    commonIndex++;
-  }
-
-  const upCount = fromParts.length - commonIndex;
-  const upParts = Array(upCount).fill('..');
-  const downParts = toParts.slice(commonIndex);
-
-  const relParts = [...upParts, ...downParts];
-  let relPath = relParts.join('/');
-  if (!relPath.startsWith('.') && !relPath.startsWith('/')) {
-    relPath = './' + relPath;
-  }
-  return relPath;
-};
+// 📊 [OMD-FILE-editorFileUtils] 파일 트리 탐색 및 상대 경로 계산 유틸리티 분리 임포트
+import { getMdFiles, fetchAllMdFiles, resolveRelativeImagePath, getRelativePath } from '@/utils/editorFileUtils';
 
 // ====================================================================
 // 📊 [OMD-CORE-MainEditorApp-0005] MainEditorApp.tsx ➔ MainEditorApp
@@ -1988,115 +1669,10 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
 
   // 💡 [Step 2 리팩토링으로 각종 모달 상태들 삭제됨 (useEditorModals로 이관)]
   const youtubeEditRangeRef = useRef<any>(null);
-
-  const [showDocLinkPicker, setShowDocLinkPicker] = useState(false);
-  const [docLinkSearchText, setDocLinkSearchText] = useState('');
-  const [allMdFiles, setAllMdFiles] = useState<FileNode[]>([]);
-  const [isDocLinkLoading, setIsDocLinkLoading] = useState(false);
-
-  // 💡 [다른 문서 헤딩 연결] 헤딩 파싱 및 UI 조작을 위한 상태값
-  const [selectedDocNode, setSelectedDocNode] = useState<FileNode | null>(null);
-  const [docHeadings, setDocHeadings] = useState<string[]>([]);
-  const [isHeadingLoading, setIsHeadingLoading] = useState(false);
-  const [docHeadingSearchText, setDocHeadingSearchText] = useState('');
-  const [docLinkCustomTitle, setDocLinkCustomTitle] = useState('');
-  const [isDocLinkTitleManuallyEdited, setIsDocLinkTitleManuallyEdited] = useState(false);
-  const visualDocLinkInsertRef = useRef<((targetUrl: string, displayTitle: string) => boolean) | null>(null);
-  const visualDocLinkPositionRef = useRef<{ top: number; left: number } | null>(null);
-
-  const closeDocLinkPicker = useCallback(() => {
-    setShowDocLinkPicker(false);
-    setDocLinkSearchText('');
-    setSelectedDocNode(null);
-    setDocHeadings([]);
-    setIsHeadingLoading(false);
-    setDocHeadingSearchText('');
-    setDocLinkCustomTitle('');
-    setIsDocLinkTitleManuallyEdited(false);
-    visualDocLinkInsertRef.current = null;
-    visualDocLinkPositionRef.current = null;
-  }, []);
-
-  useModalEscape(showDocLinkPicker, closeDocLinkPicker);
   const visualFormulaInsertRef = useRef<((formula: string) => boolean | void) | null>(null);
   const [formulaModalInitialLatex, setFormulaModalInitialLatex] = useState<string>('');
 
-  // ====================================================================
-  // 📊 [OMD-FILE-MainEditorApp-0014] MainEditorApp.tsx ➔ loadFilesForDocLinkPicker
-  // 🎯 @KICK  : 문서 링크 선택기 열릴 때 모든 .md 파일 로드, 닫힐 때 상태 정리
-  // 🛡️ @GUARD : 선택기 닫힐 때 모든 제목/파일 선택 상태 초기화
-  // 🚨 @PATCH : None
-  // 🔗 @CALLS : fetchAllMdFiles, setAllMdFiles
-  // ====================================================================
-  useEffect(() => {
-    if (showDocLinkPicker) {
-      if (!isDocLinkTitleManuallyEdited) {
-        let selText = '';
-        if (editorRef.current) {
-          const editor = editorRef.current;
-          let selection = editor.getSelection();
-          if ((!selection || selection.isEmpty()) && lastSelectionRef.current && !lastSelectionRef.current.isEmpty()) {
-            selection = lastSelectionRef.current;
-          }
-          if (selection) {
-            selText = editor.getModel()?.getValueInRange(selection)?.trim() || '';
-          }
-        }
-        if (selText) {
-          setDocLinkCustomTitle(selText);
-          setIsDocLinkTitleManuallyEdited(true);
-        }
-      }
-      const loadFiles = async () => {
-        setIsDocLinkLoading(true);
-        try {
-          const files = await fetchAllMdFiles(
-            workspaceType,
-            fileList,
-            rootFolder,
-            resourceFolder,
-            resourceFolderHandle,
-            currentFileNode,
-            tabsRef.current
-          );
-          setAllMdFiles(files);
-          docLinkFilesRef.current = files;
-        } catch (e) {
-          console.error(e);
-        } finally {
-          setIsDocLinkLoading(false);
-        }
-      };
-      loadFiles();
-    } else {
-      setAllMdFiles([]);
-      setDocLinkSearchText('');
-      setSelectedDocNode(null);
-      setDocHeadings([]);
-      setIsHeadingLoading(false);
-      setDocHeadingSearchText('');
-      visualDocLinkInsertRef.current = null;
-      visualDocLinkPositionRef.current = null;
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showDocLinkPicker, workspaceType, fileList, rootFolder, resourceFolder, resourceFolderHandle, currentFileNode]);
-
-  // 📊 [[ 자동완성용 파일 목록 로드
-  useEffect(() => {
-    if (workspaceType && (fileList.length > 0 || rootFolder?.handle) && !showDocLinkPicker) {
-      fetchAllMdFiles(
-        workspaceType,
-        fileList,
-        rootFolder,
-        resourceFolder,
-        resourceFolderHandle,
-        currentFileNode,
-        tabsRef.current
-      ).then(files => {
-        docLinkFilesRef.current = files;
-      }).catch(() => { });
-    }
-  }, [workspaceType, fileList, rootFolder, showDocLinkPicker, resourceFolder, resourceFolderHandle, currentFileNode]);
+  // 💡 [Step 2 리팩토링으로 문서 링크(DocLinkPicker) 상태 및 파일 로드 로직은 useEditorDocLinks로 이관됨]
 
   // 💡 [Step 2 리팩토링으로 세팅 및 스타일 모달 상태 삭제됨 (useEditorModals로 이관)]
 
@@ -3289,6 +2865,55 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
   const generationIdRef = useRef<number>(0);
   const readFileTextRef = useRef<(node: FileNode) => Promise<string>>(null!);
 
+  // 💡 [OMD-HOOK-useEditorDocLinks] 문서 연결(DocLinkPicker) 및 헤딩 파싱 전담 훅
+  const {
+    showDocLinkPicker,
+    setShowDocLinkPicker,
+    docLinkSearchText,
+    setDocLinkSearchText,
+    allMdFiles,
+    setAllMdFiles,
+    isDocLinkLoading,
+    setIsDocLinkLoading,
+    selectedDocNode,
+    setSelectedDocNode,
+    docHeadings,
+    setDocHeadings,
+    isHeadingLoading,
+    setIsHeadingLoading,
+    docHeadingSearchText,
+    setDocHeadingSearchText,
+    docLinkCustomTitle,
+    setDocLinkCustomTitle,
+    isDocLinkTitleManuallyEdited,
+    setIsDocLinkTitleManuallyEdited,
+    visualDocLinkInsertRef,
+    visualDocLinkPositionRef,
+    closeDocLinkPicker,
+    readFileText,
+    extractHeadings,
+    handleDocFileClick,
+    getDocLinkDefaultLabel,
+    buildDocLinkTarget,
+    handleDocLinkSelect,
+    docLinkPickerStyle,
+  } = useEditorDocLinks({
+    workspaceType,
+    fileList,
+    rootFolder,
+    rootFolderRef,
+    resourceFolder,
+    resourceFolderHandle,
+    resourceFolderHandleRef,
+    currentFileNode,
+    tabsRef,
+    editorRef,
+    lastSelectionRef,
+    docLinkFilesRef,
+    readFileTextRef,
+    floatingToolbar,
+  });
+
 
   // 📱 모바일 상태 관리를 Rules of Hooks에 따라 최상위(Top-level)로 상향 조정
   const [isMobile, setIsMobile] = useState(false);
@@ -4165,293 +3790,7 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     }
   };
 
-  // ====================================================================
-  // 📊 [OMD-FILE-MainEditorApp-0057] MainEditorApp.tsx ➔ readFileText
-  // 🎯 @KICK  : 브라우저 FileSystemHandle, rootFolder 심층 추적, 지식 베이스(knowledgeClient), 로컬 electronAPI, VFS에서 파일 내용 읽기
-  // 🛡️ @GUARD : 경로/핸들/지식문서 여부에 따라 활성 모드 결정; 브라우저 미확장 핸들 추적 및 오류 시 안전한 빈 문자열
-  // 🚨 @PATCH : **2026-09-12** — [웹 환경 readFileText 보강] 브라우저 환경에서 node.handle 부재 시 rootFolder.handle 경로 추적 자동 해결 및 지식 보관함(knowledgeClient.getDocumentDetail) 폴백 연동
-  // 🔗 @CALLS : node.handle.getFile, rootFolder.handle, knowledgeClient.getDocumentDetail, vfsReadFile, api.readFromPath, fetch
-  // ====================================================================
-  const readFileText = async (node: FileNode): Promise<string> => {
-    let fileContent = '';
-    const currentRoot = rootFolderRef.current;
-    const driveId = (node as any).driveFileId || (node as any).driveId ||
-      (currentRoot?.type === 'GDRIVE' ? (node as any).id : undefined);
-    if (driveId || currentRoot?.type === 'GDRIVE' || workspaceType === 'cloud') {
-      const token = getSavedDriveToken();
-      if (!token || !driveId) {
-        throw new Error('구글 드라이브 문서의 연결 정보가 없습니다. 파일 목록에서 다시 열어 주세요.');
-      }
-      return readDriveFileContent(token, driveId);
-    }
-    let activeMode = workspaceType;
-    if (workspaceType === 'browser') {
-      activeMode = 'browser';
-    } else if (node.path && !node.handle && /^(?:file:\/\/\/|[a-zA-Z]:[/\\]|\/)/i.test(node.path)) {
-      activeMode = 'local';
-    } else if (node.handle && !node.path) {
-      activeMode = 'browser';
-    }
-
-    if (activeMode === 'browser') {
-      if (node.handle) {
-        try {
-          const file = await node.handle.getFile();
-          fileContent = await file.text();
-        } catch (e) {
-          console.warn('[readFileText] node.handle.getFile failed:', e);
-        }
-      }
-
-      // 💡 [브라우저 rootFolder.handle 직접 추적 가드]
-      if (!fileContent && rootFolder?.handle && node.path) {
-        try {
-          const parts = node.path.replace(/\\/g, '/').split('/').filter(p => p && p !== '.');
-          if (parts.length > 0 && (parts[0] === rootFolder.handle.name || parts[0] === rootFolder.name)) {
-            parts.shift();
-          }
-          let currentDir = rootFolder.handle;
-          for (let i = 0; i < parts.length - 1; i++) {
-            currentDir = await currentDir.getDirectoryHandle(parts[i], { create: false });
-          }
-          if (parts.length > 0) {
-            const fileHandle = await currentDir.getFileHandle(parts[parts.length - 1], { create: false });
-            const file = await fileHandle.getFile();
-            fileContent = await file.text();
-            node.handle = fileHandle;
-          }
-        } catch (e) {
-          // 탐색 실패 시 다음 폴백으로 이동
-        }
-      }
-
-      // VFS 가상 파일 시스템 폴백
-      if (!fileContent && node.path) {
-        fileContent = vfsReadFile(node.path);
-        if (!fileContent && /^(?:file:\/\/\/|[a-zA-Z]:[/\\]|\/)/i.test(node.path)) {
-          try {
-            const res = await fetch(getApiUrl(`/api/file-content?path=${encodeURIComponent(node.path)}`));
-            if (res.ok) {
-              const data = await res.json();
-              if (data.ok && typeof data.content === 'string') {
-                fileContent = data.content;
-              }
-            }
-          } catch (e) {}
-        }
-      }
-    } else if (activeMode === 'local' && node.path) {
-      let targetPath = node.path;
-      if (!/^(?:file:\/\/\/|[a-zA-Z]:[/\\]|\/)/i.test(targetPath)) {
-        const rootPath = currentRoot?.name || '';
-        if (!/^(?:[a-zA-Z]:[/\\]|\/)/.test(rootPath)) {
-          const virtualContent = vfsReadFile(targetPath);
-          if (virtualContent) return virtualContent;
-          throw new Error('로컬 작업장 경로가 없습니다. 작업장을 연결한 뒤 문서를 다시 열어 주세요.');
-        }
-        targetPath = `${rootPath.replace(/[/\\]+$/, '')}/${targetPath.replace(/^[/\\]+/, '')}`;
-      }
-      const api = (window as any).electronAPI;
-      if (api?.readFromPath) {
-        try {
-          const file = await api.readFromPath(targetPath);
-          if (file) {
-            fileContent = file.content;
-          }
-        } catch (e) {
-          console.error(e);
-        }
-      } else {
-        try {
-          const res = await fetch(getApiUrl(`/api/file-content?path=${encodeURIComponent(targetPath)}`));
-          if (res.ok) {
-            const data = await res.json();
-            fileContent = data.content;
-          }
-        } catch (e) {
-          console.error(e);
-        }
-      }
-    }
-
-    // 💡 [지식 보관함 WASM & 로컬 폴백]
-    if (!fileContent && ((node as any).isKnowledge || node.path)) {
-      try {
-        const rfHandle = resourceFolderHandleRef.current || resourceFolderHandle || (typeof window !== 'undefined' ? (window as any).__resourceFolderHandle : null);
-        const detail = await knowledgeClient.getDocumentDetail({
-          filePath: node.path,
-          resourceFolder,
-          resourceFolderHandle: rfHandle
-        });
-        const docObj = detail ? (detail.title ? detail : (detail as any).document) : null;
-        if (docObj) {
-          const chunks = docObj.chunks || [];
-          const chunksText = chunks
-            .map((c: any) => c.chunkText || c.chunk_text || c.content || '')
-            .filter(Boolean)
-            .join('\n\n');
-          fileContent = chunksText.trim() || (docObj.summary ? `# ${docObj.title}\n\n${docObj.summary}\n\n` : `# ${docObj.title}\n\n`);
-        }
-      } catch (err) {
-        console.warn('[readFileText] knowledgeClient.getDocumentDetail fallback failed:', err);
-      }
-    }
-
-    return fileContent;
-  };
-  readFileTextRef.current = readFileText;
-
-  // ====================================================================
-  // 📊 [OMD-CORE-MainEditorApp-0058] MainEditorApp.tsx ➔ extractHeadings
-  // 🎯 @KICK  : 마크다운 텍스트를 파싱하여 제목 텍스트 줄(H1-H6) 추출
-  // 🛡️ @GUARD : 제목 텍스트에서 후행 # 문자 제거
-  // 🚨 @PATCH : None
-  // 🔗 @CALLS : None
-  // ====================================================================
-  const extractHeadings = (text: string): string[] => {
-    if (!text) return [];
-    const headingLines = text.split('\n');
-    const headings: string[] = [];
-    const headingRegex = /^(#{1,6})\s+(.*)$/;
-    headingLines.forEach(line => {
-      const trimmed = line.trim();
-      const match = trimmed.match(headingRegex);
-      if (match) {
-        const hText = match[2].replace(/#+\s*$/, '').trim(); // 뒤에 붙는 불필요한 샵 제거
-        if (hText) {
-          headings.push(hText);
-        }
-      }
-    });
-    return headings;
-  };
-
-  // ====================================================================
-  // 📊 [OMD-FILE-MainEditorApp-0059] MainEditorApp.tsx ➔ handleDocFileClick
-  // 🎯 @KICK  : 문서 링크 선택기를 위해 선택된 문서 파일에서 제목 로드
-  // 🛡️ @GUARD : 로딩 상태 설정, 오류 시 제목 초기화
-  // 🚨 @PATCH : None
-  // 🔗 @CALLS : readFileText, extractHeadings, setDocHeadings, setIsHeadingLoading
-  // ====================================================================
-  const handleDocFileClick = async (targetNode: FileNode) => {
-    setSelectedDocNode(targetNode);
-    setIsHeadingLoading(true);
-    try {
-      const text = await readFileText(targetNode);
-      const headings = extractHeadings(text);
-      setDocHeadings(headings);
-    } catch (e) {
-      console.error(e);
-      setDocHeadings([]);
-    } finally {
-      setIsHeadingLoading(false);
-    }
-  };
-
-  // ====================================================================
-  // 📊 [OMD-EDIT-MainEditorApp-0060] MainEditorApp.tsx ➔ handleDocLinkSelect
-  // 🎯 @KICK  : 커서에 [[relativePath#heading|text]] 마크다운 문서 간 링크 삽입
-  // 🛡️ @GUARD : 완료 시 모든 선택기 상태 초기화; lastSelectionRef로 폴백
-  // 🚨 @PATCH : **2026-09-30** — 문서 연결(DocLinkPicker)은 순수 마크다운 문서만 연결하도록 원복
-  // 🔗 @CALLS : getRelativePath, editor.focus, editor.getSelection, editor.executeEdits
-  // ====================================================================
-  // 💡 [문서연결 대상 경로 단일 계산] 현재 문서 기준 상대경로(+#헤딩)를 반환 — 목록 미리보기와 삽입에서 공통 사용
-  const getDocLinkDefaultLabel = (targetNode: FileNode): string => {
-    let filename = (targetNode.path || targetNode.name).split(/[?#]/)[0].replace(/\\/g, '/').split('/').pop() || targetNode.name;
-    try { filename = decodeURIComponent(filename); } catch {}
-    return filename.replace(/\.(md|markdown)$/i, '');
-  };
-
-  const buildDocLinkTarget = (targetNode: FileNode, heading?: string): string => {
-    const targetPath = targetNode.path;
-    const headingSuffix = heading && heading.trim() ? `#${heading.trim()}` : '';
-
-
-    // 💡 [도움말 및 형제 문서 상대경로 보장] 현재 문서와 대상 문서가 모두 도움말(00_시작하기, HELP-*)인 경우 깔끔한 상대경로(./파일명.md) 보장
-    if (typeof currentFileNode !== 'undefined' && currentFileNode?.path) {
-      const currentPath = (currentFileNode.path || '').replace(/\\/g, '/');
-      const isCurrentHelp = /(?:^|\/)(?:docs\/|frontend\/public\/)?help\/[^/]+\.md$/i.test(currentPath) || /^(?:00_시작하기|HELP-\d+)/i.test(currentFileNode.name || '');
-      const isTargetHelp = /(?:^|\/)(?:docs\/|frontend\/public\/)?help\/[^/]+\.md$/i.test(targetPath) || /^(?:00_시작하기|HELP-\d+)/i.test(targetNode.name || '');
-
-      if (isCurrentHelp && isTargetHelp) {
-        const targetFileName = targetNode.name || targetPath.split('/').pop() || targetPath;
-        return `./${targetFileName}${headingSuffix}`;
-      }
-    }
-    const nativeApi = (window as any).electronAPI;
-    if (nativeApi?.readFromPath && workspaceType !== 'cloud' && !targetPath.startsWith('knowledge://')) {
-      const absolutePath = resolveNativeDocumentPath(targetPath, rootFolder);
-      if (absolutePath) return absolutePath.replace(/\\/g, '/') + (heading?.trim() ? `#${heading.trim()}` : '');
-    }
-    let baseFromPath = currentFileNode?.path;
-    if (!baseFromPath) {
-      if (workspaceType === 'local' && rootFolder?.name) {
-        baseFromPath = rootFolder.name.replace(/\\/g, '/') + '/_workspace_root_.md';
-      } else {
-        baseFromPath = '_workspace_root_.md';
-      }
-    }
-    let relativePath = getRelativePath(baseFromPath, targetPath);
-
-    // 💡 [에디터 문서 연결 작업장 내 무조건 상대경로 보장]
-    if (rootFolder?.name && workspaceType === 'local') {
-      const normRoot = rootFolder.name.replace(/\\/g, '/').toLowerCase();
-      const normTarget = targetPath.replace(/\\/g, '/').toLowerCase();
-      if (normTarget.startsWith(normRoot)) {
-        const fromRef = baseFromPath || (rootFolder.name.replace(/\\/g, '/') + '/_workspace_root_.md');
-        relativePath = getRelativePath(fromRef, targetPath);
-      }
-    }
-
-    if (!relativePath.startsWith('.') && !relativePath.startsWith('/') && !relativePath.includes(':')) {
-      relativePath = './' + relativePath;
-    }
-
-    return `${relativePath}${headingSuffix}`;
-  };
-
-  const handleDocLinkSelect = (targetNode: FileNode, heading?: string, customTitle?: string) => {
-    const titleToUse = customTitle !== undefined ? customTitle : docLinkCustomTitle;
-    // Closing the picker clears its refs. Capture the visual insertion callback first.
-    const insertVisualLink = visualDocLinkInsertRef.current;
-    closeDocLinkPicker();
-
-    if (!targetNode || !targetNode.path) return;
-
-    // 💡 [웹/데스크톱 공통 표준 상대경로 링크 생성] [링크명](<문서경로>)
-    // 표시 이름: 사용자 입력 링크명 > (미입력 시) 최종 문서경로
-    const targetUrl = buildDocLinkTarget(targetNode, heading);
-    const displayTitle = (titleToUse || '').trim() || getDocLinkDefaultLabel(targetNode);
-    // 일반 링크 [네이버](url) 처럼 [문서명](<./상대경로.md#헤딩>) 형식으로 안전하게 삽입
-    const textToInsert = `[${displayTitle}](<${targetUrl}>)`;
-
-    // 💡 [VisualDocumentEditor 위지윅 모드 문서 링크 삽입 지원]
-    if (insertVisualLink) {
-      insertVisualLink(targetUrl, displayTitle);
-      return;
-    }
-
-    if (!editorRef.current) return;
-    const editor = editorRef.current;
-    editor.focus();
-
-    let selection = editor.getSelection();
-    if ((!selection || selection.isEmpty()) && lastSelectionRef.current && !lastSelectionRef.current.isEmpty()) {
-      selection = lastSelectionRef.current;
-    }
-    if (!selection) return;
-
-    const range = {
-      startLineNumber: selection.startLineNumber,
-      startColumn: selection.startColumn,
-      endLineNumber: selection.endLineNumber,
-      endColumn: selection.endColumn
-    };
-    editor.pushUndoStop();
-    editor.executeEdits("insertDocLink", [{ range, text: textToInsert, forceMoveMarkers: true }]);
-    editor.pushUndoStop();
-    editor.focus();
-  };
+  // 💡 [Step 2 리팩토링으로 readFileText, extractHeadings, handleDocFileClick, getDocLinkDefaultLabel, buildDocLinkTarget, handleDocLinkSelect는 useEditorDocLinks로 이관됨]
 
   // ====================================================================
   // 📊 [OMD-EDIT-MainEditorApp-0061] MainEditorApp.tsx ➔ parseHtmlTableToMarkdown
@@ -5255,64 +4594,7 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     isEditorMountedRef, updateContent, editorFontWeight, isRestrictedUser
   });
 
-  // Get docLinkPicker absolute screen coordinates based on cursor position
-  let docLinkPickerStyle: React.CSSProperties = { top: 0, left: 0 };
-  if (showDocLinkPicker && visualDocLinkPositionRef.current) {
-    let { top, left } = visualDocLinkPositionRef.current;
-    const pickerWidth = 420;
-    const pickerHeight = 420;
-    if (typeof window !== 'undefined') {
-      if (left + pickerWidth > window.innerWidth) {
-        left = Math.max(16, window.innerWidth - pickerWidth - 16);
-      }
-      if (left < 16) left = 16;
-      if (top + pickerHeight > window.innerHeight) {
-        top = Math.max(16, window.innerHeight - pickerHeight - 16);
-      }
-    }
-    docLinkPickerStyle = { top, left };
-  } else if (showDocLinkPicker && editorRef.current) {
-    const editor = editorRef.current;
-    const position = editor.getPosition();
-    if (position) {
-      const visiblePos = editor.getScrolledVisiblePosition(position);
-      if (visiblePos) {
-        const editorDom = editor.getContainerDomNode();
-        if (editorDom) {
-          const rect = editorDom.getBoundingClientRect();
-          let top = visiblePos.top + rect.top + 22;
-          let left = visiblePos.left + rect.left;
-          const pickerWidth = 420;
-          const pickerHeight = 420;
-          if (typeof window !== 'undefined') {
-            if (left + pickerWidth > window.innerWidth) {
-              left = Math.max(16, window.innerWidth - pickerWidth - 16);
-            }
-            if (left < 16) {
-              left = 16;
-            }
-            if (top + pickerHeight > window.innerHeight) {
-              top = Math.max(16, visiblePos.top + rect.top - pickerHeight - 6);
-            }
-          }
-          docLinkPickerStyle = { top, left };
-        }
-      }
-    }
-  }
-  if (docLinkPickerStyle.top === 0 && docLinkPickerStyle.left === 0) {
-    let fixedTop = floatingToolbar.top;
-    let fixedLeft = floatingToolbar.left;
-    if (editorRef.current) {
-      const editorDom = editorRef.current.getContainerDomNode();
-      if (editorDom) {
-        const rect = editorDom.getBoundingClientRect();
-        fixedTop += rect.top;
-        fixedLeft += rect.left;
-      }
-    }
-    docLinkPickerStyle = { top: fixedTop + 44, left: fixedLeft };
-  }
+  // 💡 [Step 2 리팩토링으로 docLinkPickerStyle 계산 로직은 useEditorDocLinks 내부로 이관됨]
   const handleAIDraftApply = (draftContent: string, action: 'insert' | 'replace' | 'append', scope: 'selection' | 'document' | 'none' = 'none') => {
     setIsAIDraftModalOpen(false); // Close modal
     
