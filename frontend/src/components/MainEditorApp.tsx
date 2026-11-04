@@ -1,5 +1,8 @@
 /**
  * 프로그램명 : OnriviAuthor 
+// 🚨 @PATCH : **2026-11-04** — [미정의 setIsAboutModalOpen 런타임 오류 수정]:
+//             1) useEditorCommands 옵션 및 호출부에서 불필요하게 선언되어 있던 setIsAboutModalOpen 미정의 식별자를 제거하여 ReferenceError 브라우저 크래시 완전 해결
+//             2) 컴포넌트 상단 미사용 AboutModal dead import 제거
 // 🚨 @PATCH : **2026-11-04** — [MainEditorApp 모듈화 및 세션 관리 분리]:
 //             1) dynamicCssGenerator, useEditorLicense, useEditorCommands, useEditorPaste, useEditorSaveActions 분리 위임 완료
 //             2) restoreSessionTabs, openExternalFile, 세션 자동저장, 브라우저 종료 플러시, IPC 연동을 useEditorDocumentSession 훅으로 분리 (420줄 감축)
@@ -573,7 +576,6 @@ import LeftSidebar from '@/components/LeftSidebar'; // 모달
 import FormulaModal from '@/components/FormulaModal'; // 모달
 import MergeModal from '@/components/MergeModal'; // 모달
 import YoutubeModal from '@/components/YoutubeModal'; // 모달
-import AboutModal from '@/components/AboutModal'; // 모달
 import LicenseModal from '@/components/LicenseModal'; // 라이선스 모달
 import AIDraftModal from '@/components/AIDraftModal'; // 초안 생성 모달
 import CalendarModal from '@/components/CalendarModal'; // 달력 모달
@@ -4989,7 +4991,6 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     setIsReferenceModalOpen,
     setIsSettingsModalOpen,
     setSettingsModalInitialTab,
-    setIsAboutModalOpen,
     setIsHelpModalOpen,
     setIsLicenseModalOpen,
     setFloatingToolbar,

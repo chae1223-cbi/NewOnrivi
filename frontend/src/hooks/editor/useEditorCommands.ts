@@ -3,6 +3,7 @@
  * 📊 [OMD-HOOK-useEditorCommands] useEditorCommands.ts
  * 🎯 @KICK  : 에디터 툴바, 플로팅 툴바, 슬래시 메뉴 및 단축키 통합 명령 디스패처
  * 🛡️ @GUARD : 비인증 사용자 제한 명령 차단, 모드별(WYSIWYG/Monaco) 분기 및 자동 포커스 보장
+ * 🚨 @PATCH : 2026-11-04 - [setIsAboutModalOpen 미정의 식별자 제거] 사용되지 않던 setIsAboutModalOpen 옵션 속성을 제거하여 런타임 ReferenceError 해결
  * 🚨 @PATCH : 2026-11-04 - [MainEditorApp 모듈화] MainEditorApp에서 435줄의 명령 디스패처를 독립 훅으로 분리
  * 🔗 @CALLS : handlers, editorRef, previewRef, visualCommandRef, showToast
  * ====================================================================
@@ -44,7 +45,6 @@ export interface UseEditorCommandsOptions {
   setIsReferenceModalOpen: (b: boolean) => void;
   setIsSettingsModalOpen: (b: boolean) => void;
   setSettingsModalInitialTab: (tab: any) => void;
-  setIsAboutModalOpen: (b: boolean) => void;
   setIsHelpModalOpen: (b: boolean) => void;
   setIsLicenseModalOpen: (b: boolean) => void;
   setFloatingToolbar: (updater: any) => void;
@@ -103,7 +103,6 @@ export function useEditorCommands({
   setIsReferenceModalOpen,
   setIsSettingsModalOpen,
   setSettingsModalInitialTab,
-  setIsAboutModalOpen,
   setIsHelpModalOpen,
   setIsLicenseModalOpen,
   setFloatingToolbar,
