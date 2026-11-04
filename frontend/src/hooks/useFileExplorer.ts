@@ -2,6 +2,7 @@
 // 📊 [OMD-HOOK-useFileExplorer-0001] useFileExplorer.ts ➔ 워크스페이스 파일 탐색 통합 파사드 훅
 // 🎯 @KICK  : useDriveSync, useLocalVfs, useDocumentOpener 서브 훅들을 조율하고 일관된 단일 I/O 인터페이스 제공
 // 🛡️ @GUARD : Rule 3(역할 기반 분리)에 따라 2,590줄의 거대 훅을 3대 도메인 서브 훅으로 전면 모듈화 분리하고 기존 API 계약 100% 보존
+// 🚨 @PATCH : 2026-11-04 — [에디터 실행 시 로컬/클라우드 탐색기 자동 리프레시 복원]: rootFolder 연결/복원 시 refreshFileList(true) 즉시 호출, 작업장 절대경로(onrivi_workspace_path) 자동 보강 및 사이드바 자동 표시 연동
 // 🚨 @PATCH : 2026-11-04 — [런타임 버그 수정]: useLocalVfs에 setIsDriveAuthExpired, setIsDriveConnected, setCurrentFileNode, currentFileName, currentFileParentHandleRef, setActiveTabId, setContent 전달 및 useDocumentOpener에 sessionRestoringRef 전달
 // 🚨 @PATCH : 2026-11-04 — [useFileExplorer 2,590줄 ➔ 3대 도메인 서브 훅 모듈화 분리]:
 //             1) 구글 드라이브 동기화 ➔ useDriveSync.ts (~400줄)
@@ -12,6 +13,8 @@
 // ====================================================================
 // @ts-nocheck
 import { useCallback, useRef, useEffect } from 'react';
+import { browserAccountStorage as localStorage } from '@/lib/browserAccountStorage';
+import { isAbsolutePath } from '@/lib/knowledge/pathResolver';
 import { useDriveSync } from '@/hooks/fileExplorer/useDriveSync';
 import { useDocumentOpener } from '@/hooks/fileExplorer/useDocumentOpener';
 import { useLocalVfs } from '@/hooks/fileExplorer/useLocalVfs';
@@ -59,6 +62,7 @@ export const useFileExplorer = ({
     licenseStatus?.planName?.includes('제한사용자');
 
   const rootFolderRef = useRef<any>(rootFolder);
+  rootFolderRef.current = rootFolder;
   useEffect(() => {
     rootFolderRef.current = rootFolder;
   }, [rootFolder]);
@@ -197,23 +201,49 @@ export const useFileExplorer = ({
     sessionRestoringRef,
   });
 
-  // 4. 전역 새로고침 이벤트 및 워크스페이스 감시자 등록
+  // 4. 전역 새로고침 이벤트 및 워크스페이스 감시자 등록 (에디터 실행 및 폴더 연결 시 탐색기 자동 리프레시)
   useEffect(() => {
     let unwatchElectron: (() => void) | null = null;
     let focusTimer: any = null;
 
-    const api = typeof window !== 'undefined' ? (window as any).electronAPI : null;
-    if (rootFolder && api && workspaceType === 'local') {
-      const targetWatchPath = rootFolder.path || rootFolder.name;
-      if (targetWatchPath && api.watchWorkspace) {
-        api.watchWorkspace(targetWatchPath);
-        unwatchElectron = api.onWorkspaceChanged?.(() => {
-          if (focusTimer) clearTimeout(focusTimer);
-          focusTimer = setTimeout(() => {
-            refreshFileList();
-          }, 80);
-        });
+    if (rootFolder) {
+      // 로컬스토리지 내 작업장 절대경로 자동 보강 (지식문서 하이라이트 직결용)
+      try {
+        const savedWs = localStorage.getItem('onrivi_workspace_path');
+        if (!savedWs || !isAbsolutePath(savedWs.replace(/\\/g, '/'))) {
+          const folderName = rootFolder.path || rootFolder.name || '';
+          if (folderName && isAbsolutePath(folderName.replace(/\\/g, '/'))) {
+            localStorage.setItem('onrivi_workspace_path', folderName.replace(/\\/g, '/'));
+          } else if (folderName && folderName !== 'browser-storage') {
+            const webBase = (localStorage.getItem('onrivi_web_base_path') || '').replace(/\\/g, '/').replace(/\/+$/, '');
+            const targetFolder = folderName.replace(/\\/g, '/').split('/').pop() || folderName;
+            if (webBase && isAbsolutePath(webBase)) {
+              const combined = `${webBase}/${targetFolder}`;
+              localStorage.setItem('onrivi_workspace_path', combined);
+            }
+          }
+        }
+      } catch {}
+
+      // 에디터 시작 또는 로컬/클라우드 드라이브 연결 복원 시 사이드바 열기 및 탐색기 즉시 강제 리프레시
+      setIsSidebarOpen?.(true);
+      refreshFileList(true);
+
+      const api = typeof window !== 'undefined' ? (window as any).electronAPI : null;
+      if (api && workspaceType === 'local') {
+        const targetWatchPath = rootFolder.path || rootFolder.name;
+        if (targetWatchPath && api.watchWorkspace) {
+          api.watchWorkspace(targetWatchPath);
+          unwatchElectron = api.onWorkspaceChanged?.(() => {
+            if (focusTimer) clearTimeout(focusTimer);
+            focusTimer = setTimeout(() => {
+              refreshFileList();
+            }, 80);
+          });
+        }
       }
+    } else {
+      setFileList([]);
     }
 
     const handleGlobalRefresh = (e?: Event) => {
@@ -243,7 +273,7 @@ export const useFileExplorer = ({
       window.removeEventListener('focus', handleFocusRefresh);
       document.removeEventListener('visibilitychange', handleFocusRefresh);
     };
-  }, [rootFolder, refreshFileList, setFileList, workspaceType]);
+  }, [rootFolder, refreshFileList, setFileList, setIsSidebarOpen, workspaceType]);
 
   return {
     refreshFileList,

@@ -2,6 +2,7 @@
 // 📊 [OMD-HOOK-useLocalVfs-0001] useLocalVfs.ts ➔ 로컬 VFS 및 파일 저장/스캔 훅
 // 🎯 @KICK  : 로컬 폴더/브라우저 FSA/VFS/웹드라이브 파일 트리 스캔(refreshFileList), 워크스페이스 선택(selectRootFolder), 물리적 파일 저장(saveFile)
 // 🛡️ @GUARD : 지식 보관함 자동 재색인(triggerKnowledgeAutoSyncOnSave), 디바운스 새로고침, Electron 네이티브 API 및 브라우저 FSA 3중 호환
+// 🚨 @PATCH : 2026-11-04 — [에디터 실행 시 로컬/클라우드 탐색기 자동 리프레시 강화]: GDRIVE 폴더 ID(wsInfo.workspaceFolderId || rootFolder.driveFolderId) 다중 폴백, 브라우저 IndexedDB 핸들 즉시 복구 스캔, 데스크톱 경로(path || name) 우선 스캔 보강
 // 🚨 @PATCH : 2026-11-04 — [런타임 ReferenceError 수정]: hasValidDriveToken, setIsDriveAuthExpired, setIsDriveConnected, setCurrentFileNode, findFileHandleInDirectoryDeep, logWarn, knowledgeClient 누락 식별자 및 바인딩 보완
 // 🚨 @PATCH : 2026-11-04 — [런타임 버그 수정]: useEffect import 누락으로 인한 rootFolder ReferenceError 해소
 // 🚨 @PATCH : 2026-11-04 — [useFileExplorer 모듈화 분리]:
@@ -118,12 +119,13 @@ export function useLocalVfs({
         }
         if (!token || !hasValidDriveToken()) {
           setIsDriveAuthExpired(true);
-      setIsDriveConnected(false);
+          setIsDriveConnected(false);
           return;
         }
-        if (wsInfo?.workspaceFolderId) {
+        const targetFolderId = wsInfo?.workspaceFolderId || rootFolderRef.current?.driveFolderId;
+        if (targetFolderId) {
           try {
-            const driveNodes = await fetchDriveFileNodes(token, wsInfo.workspaceFolderId);
+            const driveNodes = await fetchDriveFileNodes(token, targetFolderId);
             setFileList(driveNodes);
             setIsDriveAuthExpired(false);
             setIsDriveConnected(true);
@@ -132,7 +134,7 @@ export function useLocalVfs({
           } catch (err) {
             console.error('[refreshFileList GDRIVE Error]', err);
             setIsDriveAuthExpired(true);
-      setIsDriveConnected(false);
+            setIsDriveConnected(false);
           }
         }
         return;
@@ -142,7 +144,19 @@ export function useLocalVfs({
       const isDesktopApp = typeof window !== 'undefined' && !!api;
 
       if (!isDesktopApp) {
-        const handle = rootFolderRef.current?.handle;
+        let handle = rootFolderRef.current?.handle;
+        if (!handle && !rootFolderRef.current?.needPermission && rootFolderRef.current?.name && rootFolderRef.current?.name !== BROWSER_STORAGE_NAME) {
+          try {
+            const savedHandle = await idb.get('rootFolderHandle');
+            if (savedHandle) {
+              const perm = await savedHandle.queryPermission({ mode: 'read' });
+              if (perm === 'granted') {
+                handle = savedHandle;
+                rootFolderRef.current = { ...rootFolderRef.current, handle: savedHandle };
+              }
+            }
+          } catch (_) {}
+        }
         if (handle) {
           try {
             const tree = await scanDirectory(handle);
@@ -181,9 +195,10 @@ export function useLocalVfs({
         return;
       }
 
-      if (api?.listDirectory && rootFolderRef.current?.name) {
+      const targetDirPath = rootFolderRef.current?.path || rootFolderRef.current?.name;
+      if (api?.listDirectory && targetDirPath) {
         try {
-          const list = await api.listDirectory(rootFolderRef.current.name);
+          const list = await api.listDirectory(targetDirPath);
           setFileList(list);
         } catch (e) {
           console.error('[refreshFileList listDirectory Error]', e);

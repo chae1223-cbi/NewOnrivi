@@ -2,6 +2,7 @@
 // 📊 [OMD-HOOK-useDriveSync-0001] useDriveSync.ts ➔ 구글 드라이브 실시간 연동 및 동기화 훅
 // 🎯 @KICK  : 구글 드라이브 OAuth 인증, 작업장/리소스 폴더 생성·선택, 파일 트리 로드, 토큰 만료 시 긴급 로컬 보존 및 자동 복구
 // 🛡️ @GUARD : 토큰 만료 전/후 무손실 비상 초안 보존(EmergencyDriveSnapshot), 불량 토큰 즉시 소거, 로컬 작업장 100% 무손실 복구
+// 🚨 @PATCH : 2026-11-04 — [토큰 갱신 시 탐색기 자동 리프레시 연동]: onrivi:drive_token_updated 수신 시 isDriveConnected 상태 복원 및 file:refresh-all-directories(force: true) 이벤트 디스패치로 클라우드 탐색기 즉시 갱신
 // 🚨 @PATCH : 2026-11-04 — [useFileExplorer 모듈화 분리]:
 //             1) useFileExplorer에서 구글 드라이브 OAuth 통신, 토큰 갱신 리스너, 연결/해제 및 비상 초안 동기화 로직을 useDriveSync 독립 서브 훅으로 분리 (Rule 3 준수)
 // 🔗 @CALLS : googleDriveClient, logError, reportClientLog, saveResourceSettings
@@ -160,10 +161,14 @@ export function useDriveSync({
       }
     };
 
-    // 토큰 갱신 또는 재연결 시: 보존된 비상 초안이 있으면 클라우드로 자동 복구 동기화
+    // 토큰 갱신 또는 재연결 시: 보존된 비상 초안이 있으면 클라우드로 자동 복구 동기화 및 탐색기 즉시 리프레시
     const handleTokenUpdated = async () => {
       expiryHandled = false;
       setIsDriveAuthExpired(false);
+      setIsDriveConnected(true);
+      if (rootFolderRef.current?.type === 'GDRIVE') {
+        window.dispatchEvent(new CustomEvent('file:refresh-all-directories', { detail: { force: true } }));
+      }
       try {
         const emergencySnapshot = getEmergencyDriveDrafts();
         const token = getSavedDriveToken();

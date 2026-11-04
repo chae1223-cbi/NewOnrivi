@@ -2,6 +2,7 @@
 // 📊 [OMD-UI-FileExplorerPanel-0001] FileExplorerPanel.tsx ➔ 에디터 좌측 파일 탐색기 패널
 // 🎯 @KICK  : 워크스페이스 폴더 트리 탐색, 파일/폴더 CRUD(생성/수정/삭제/복사/이동), 외부 문서 가져오기
 // 🛡️ @GUARD : 브라우저 FSA, 로컬 VFS, 구글 드라이브(GDRIVE) 3대 환경 완벽 호환 및 실행 취소(Undo) 무결성 보장
+// 🚨 @PATCH : 2026-11-04 — [에디터 실행 시 탐색기 패널 자동 리프레시 보강]: 로컬/클라우드 드라이브(rootFolder) 연결 상태에서 탐색기 활성화 시 refreshFileList(true) 자동 실행 보장
 // 🚨 @PATCH : 2026-11-04 — [LeftSidebar 모듈화 분리]:
 //             1) LeftSidebar에서 파일 탐색기 트리, 워크스페이스 바, 파일/폴더 CRUD 및 컨텍스트 메뉴, 가져오기 로직을 독립 패널 컴포넌트로 분리 (Rule 3 준수)
 // 🔗 @CALLS : useEditorContext, FileTreeItem, PromptModal, NewDocumentModal, virtualFileSystem
@@ -2082,6 +2083,21 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
       fetchDrives();
     }
   }, [sidebarTab, isDesktop]);
+
+  // 🔄 에디터 실행 또는 탐색기 탭 활성화 시 연결된 로컬/클라우드 드라이브 목록 자동 리프레시
+  useEffect(() => {
+    if (!isActive || !rootFolder || (rootFolder as any)?.needPermission) return;
+    const isConnected = !!(
+      rootFolder.handle ||
+      rootFolder.type === 'GDRIVE' ||
+      rootFolder.name === BROWSER_STORAGE_NAME ||
+      rootFolder.path ||
+      rootFolder.name
+    );
+    if (isConnected && typeof refreshFileList === 'function') {
+      refreshFileList(true);
+    }
+  }, [isActive, rootFolder, refreshFileList]);
 
 // ====================================================================
 // 📊 [OMD-FILE-LeftSidebar-0002] LeftSidebar ➔ handleLazyLoad
