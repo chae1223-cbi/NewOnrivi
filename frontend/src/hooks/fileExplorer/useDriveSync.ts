@@ -241,7 +241,7 @@ export function useDriveSync({
       window.removeEventListener('onrivi:drive_token_expired', handleAuthExpired);
       window.removeEventListener('onrivi:drive_token_updated', handleTokenUpdated);
     };
-  }, [setTabs, setSaveStatus, showToast, activeTabIdRef, contentRef, lastSavedContentRef, tabsRef, rootFolderRef]);
+  }, [setTabs, setSaveStatus, showToast, activeTabIdRef, contentRef, lastSavedContentRef, tabsRef, rootFolderRef, storageSwitchRef]);
 
   /**
    * ========================================================================================
