@@ -1,3 +1,4 @@
+// 🚨 @PATCH : 2026-11-04 — [권한 확인창 표시 수정] 관리자 페이지 스크롤·애니메이션 영향을 받지 않도록 확인창을 body에 렌더링
 // 🚨 @PATCH : 2026-11-04 — [관리자 권한 해제·삭제 분리] 비활성 상태 표시와 재부여·삭제 메뉴 추가
 // 🚨 @PATCH : 2026-11-04 — [관리자 목록 오류 중복 기록 방지] 서버 500 응답은 서버 로그를 기준으로 추적하고 토스트의 별도 오류 로그는 생략
 /** 🚨 @PATCH : 2026-11-02 — [보안 리팩토링] 서버 응답의 is_root 플래그 기반 최상위 관리자 판별 지원 */
@@ -7,6 +8,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { ShieldCheck, Plus, Search, MoreVertical, ShieldAlert } from 'lucide-react';
 import { supabase } from '@/lib/supabaseClient';
 import { adminFetch } from '@/lib/adminFetch';
@@ -365,8 +367,8 @@ export default function AdminsTab() {
       )}
 
       {/* Confirm Modal */}
-      {confirmConfig?.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
+      {confirmConfig?.isOpen && typeof document !== 'undefined' && createPortal(
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
           <div className="bg-[var(--admin-surface)] rounded-2xl shadow-2xl w-full max-w-sm max-h-[90vh] flex flex-col overflow-hidden border border-[var(--admin-border)] my-auto animate-in zoom-in-95 duration-200">
             <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
               <div className="w-12 h-12 rounded-full flex items-center justify-center mb-4 mx-auto bg-[var(--admin-background)]">
@@ -401,7 +403,8 @@ export default function AdminsTab() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
