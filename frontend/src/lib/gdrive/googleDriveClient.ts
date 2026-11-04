@@ -2,6 +2,7 @@
 // 📊 [OMD-LIB-googleDriveClient-0001] src/lib/gdrive/googleDriveClient.ts
 // 🎯 @KICK  : 누구나 쉽게 사용하는 구글 드라이브 무설정(Zero-Config) 자동 연동 및 클라우드 작업장 클라이언트 모듈
 // 🛡️ @GUARD : Rule 1, Rule 2(대문자 코드값 GDRIVE), 최소 권한 원칙(drive.file 스코프 한정)
+// 🚨 @PATCH : **2026-11-04** — [오류 진단 로깅 1단계]: parseDriveError에 중복 로깅 방지 플래그(__logged) 적용 및 상위 파일 I/O 정밀 추적 연동
 // 🚨 @PATCH : **2026-11-03** — [오류 진단 로깅 1단계]: parseDriveError 내 정밀 진단 로거(logError) 연동으로 모든 구글 드라이브 API 통신 실패 실시간 추적
 // 🚨 @PATCH : **2026-10-24** — [구글 드라이브 실패 후 즉시 재접속 보장 & 무활동 시 무중단 자동 갱신(Auto-Keep-Alive) 지원]:
 //             1) requestGoogleDriveAuth 내 브라우저 팝업 창 닫힘(popup.closed) 즉시 감지하여 5분 잠금 없이 재연결 허용
@@ -777,28 +778,34 @@ async function parseDriveError(res: Response, defaultAction: string, requestToke
     });
   } catch {}
 
+  const makeError = (msg: string): Error => {
+    const err = new Error(msg);
+    (err as any).__logged = true;
+    return err;
+  };
+
   if (res.status === 401) {
     const currentToken = localStorage.getItem(STORAGE_KEY_TOKEN) || sessionStorage.getItem(STORAGE_KEY_TOKEN);
     if (currentToken !== requestToken) {
-      return new Error('이전 연결의 요청이 만료되었습니다. 다시 시도해 주세요.');
+      return makeError('이전 연결의 요청이 만료되었습니다. 다시 시도해 주세요.');
     }
     if (isRefreshingToken) {
-      return new Error('구글 드라이브 연결을 갱신하는 중입니다. 다시 시도해 주세요.');
+      return makeError('구글 드라이브 연결을 갱신하는 중입니다. 다시 시도해 주세요.');
     }
     const renewedToken = await refreshDriveTokenSilently(true);
     if (renewedToken) {
-      return new Error('구글 드라이브 연결을 갱신했습니다. 다시 시도해 주세요.');
+      return makeError('구글 드라이브 연결을 갱신했습니다. 다시 시도해 주세요.');
     }
     // Another request may have renewed the token while this request was waiting.
     if (getSavedDriveToken() !== requestToken) {
-      return new Error('이전 연결의 요청이 만료되었습니다. 다시 시도해 주세요.');
+      return makeError('이전 연결의 요청이 만료되었습니다. 다시 시도해 주세요.');
     }
     localStorage.removeItem(STORAGE_KEY_TOKEN);
     sessionStorage.removeItem(STORAGE_KEY_TOKEN);
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('onrivi:drive_auth_expired'));
     }
-    return new Error('구글 드라이브 인증이 만료되었습니다. 연결을 갱신한 뒤 다시 시도해 주세요.');
+    return makeError('구글 드라이브 인증이 만료되었습니다. 연결을 갱신한 뒤 다시 시도해 주세요.');
   }
   let detailMsg = '';
   try {
@@ -817,14 +824,14 @@ async function parseDriveError(res: Response, defaultAction: string, requestToke
       detailMsg.includes('Drive API') ||
       detailMsg.includes('has not been used in project')
     ) {
-      return new Error(
+      return makeError(
         `구글 클라우드 콘솔의 OnriviAuthor 프로젝트에서 'Google Drive API'가 활성화(Enable)되지 않았습니다.\n구글 클라우드 콘솔 [API 및 서비스 > 라이브러리]에서 'Google Drive API'를 [사용]으로 켜주세요.`
       );
     }
-    return new Error(`${defaultAction} 권한이 없습니다 (403 Forbidden): ${detailMsg || res.statusText}`);
+    return makeError(`${defaultAction} 권한이 없습니다 (403 Forbidden): ${detailMsg || res.statusText}`);
   }
 
-  return new Error(`${defaultAction} 실패 (${res.status}): ${detailMsg || res.statusText}`);
+  return makeError(`${defaultAction} 실패 (${res.status}): ${detailMsg || res.statusText}`);
 }
 
 /**

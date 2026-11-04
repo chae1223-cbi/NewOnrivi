@@ -2,7 +2,7 @@
 import { isBundledDocumentPath } from '@/lib/bundledDocument';
 import { browserAccountStorage as localStorage, browserAccountSessionStorage as sessionStorage } from '@/lib/browserAccountStorage';
 import { reportClientLog } from '@/lib/clientLogs';
-import { logError } from '@/lib/errorDiagnostics';
+import { logError, logWarn } from '@/lib/errorDiagnostics';
 import { getResourceSettings, saveResourceSettings, activateDriveAccount } from '@/lib/resourceSettings';
 import { restoreLocalProfileFolder } from '@/lib/profileStorage';
 import { useState, useEffect, useCallback, useRef } from 'react';
@@ -26,6 +26,7 @@ import {
  * [ONR-16-005] useFileExplorer 커스텀 훅
  * @description 워크스페이스 폴더 연결, IndexedDB 권한 복원, 파일 트리 스캔, 파일 열기 및 저장(I/O) 등의 책임을 전담합니다.
  */
+// 🚨 @PATCH : **2026-11-04** — [오류 진단 로깅 1단계]: connectGoogleDrive 4단계 doing 명시, handleFileClick 비식별 ID/파일명 강화, saveFile 스토리지 분기별 doing 세분화 및 중복 전송 방지
 // 🚨 @PATCH : **2026-11-03** — [오류 진단 로깅 1단계]: connectGoogleDrive, saveFile, handleFileClick에 5대 메타데이터 기반 logError 연동으로 파일 I/O 실패 정밀 추적
 // 🚨 @PATCH : **2026-11-03** — [웹드라이브(GDRIVE) 실시간 연결 상태 추적 및 isDriveConnected 노출]:
 //             connectGoogleDrive 및 refreshFileList 성공 시 isDriveConnected를 true로 갱신하고 onrivi:drive_connected 이벤트 디스패치.
@@ -1755,7 +1756,7 @@ export const useFileExplorer = ({
               file: 'frontend/src/hooks/useFileExplorer.ts',
               func: 'handleFileClick',
               doing: '구글 드라이브 파일 본문 다운로드 중',
-              target: node.name || driveId,
+              target: node.name ? `${node.name} (ID: ${driveId})` : driveId,
               error: e,
               context: { driveId }
             });
@@ -1829,6 +1830,13 @@ export const useFileExplorer = ({
               return;
             }
           } catch (e) {
+            logError({
+              file: 'frontend/src/hooks/useFileExplorer.ts',
+              func: 'handleFileClick',
+              doing: '로컬 디스크 파일 읽기 중',
+              target: targetPath || node.path || node.name,
+              error: e
+            });
             console.warn('[handleFileClick] 파일 읽기 실패:', node.path, e);
             if (!sessionRestoringRef?.current) {
               showToast('파일 읽기 실패', 'error');
@@ -1961,7 +1969,7 @@ export const useFileExplorer = ({
   const connectGoogleDrive = useCallback(async (chooseFolder = false) => {
     if (storageSwitchRef.current) return;
     storageSwitchRef.current = true;
-    let stage = '인증 확인';
+    let stage = '토큰 유효성 검증';
     try {
       const isLocal = rootFolderRef.current?.type !== 'GDRIVE';
       const localResourceBeforeConnect = getResourceSettings('local');
@@ -1988,7 +1996,7 @@ export const useFileExplorer = ({
       } else token = null;
 
       if (!token) {
-        stage = 'Google 인증';
+        stage = 'Google 인증 요청';
         token = await requestGoogleDriveAuth();
       }
       if (!token) {
@@ -2002,15 +2010,15 @@ export const useFileExplorer = ({
       // Account-specific settings -> validate/create resource folder -> initialize
       // children/files -> connect document workspace.
       const { resolveDriveResourceFolderByName, createDefaultDriveFolders } = await import('@/lib/gdrive/googleDriveClient');
-      stage = '참조폴더 복구';
+      stage = '작업장 폴더 검색';
       const resource = await resolveDriveResourceFolderByName(token);
       const selectedResource = { id: resource.folderId, name: resource.name };
       const initial = isFirstConnection ? await createDefaultDriveFolders(token, resource.name) : null;
-      stage = '작업장 복구';
+      stage = '작업장 폴더 검색';
       const selectedFolder = initial?.workspace || await selectOnriviWorkspaceFolder(token, !chooseFolder);
       if (!selectedFolder) return;
       const wsInfo = await setupOnriviDriveWorkspace(token, selectedFolder, selectedResource);
-      stage = '파일 목록 불러오기';
+      stage = '파일 트리 로드';
       const driveNodes = await fetchDriveFileNodes(token, selectedFolder.id);
 
       // Back up only when leaving local storage; cloud folder changes must not overwrite it.
@@ -2092,7 +2100,13 @@ export const useFileExplorer = ({
       logError({
         file: 'frontend/src/hooks/useFileExplorer.ts',
         func: 'connectGoogleDrive',
-        doing: `구글 드라이브 [${stage}] 단계 처리 중`,
+        doing: ({
+          '토큰 유효성 검증': '구글 드라이브 토큰 유효성 검증 중',
+          'Google 인증 요청': '구글 드라이브 사용자 인증 요청 중',
+          '계정 정보 확인': '구글 드라이브 계정 정보 확인 중',
+          '작업장 폴더 검색': '구글 드라이브 작업장 폴더 검색 중',
+          '파일 트리 로드': '구글 드라이브 파일 트리 로드 중',
+        } as Record<string, string>)[stage] || `구글 드라이브 [${stage}] 단계 처리 중`,
         target: 'GoogleDrive',
         error: err,
         context: { stage }
@@ -2264,8 +2278,8 @@ export const useFileExplorer = ({
             logError({
               file: 'frontend/src/hooks/useFileExplorer.ts',
               func: 'saveFile',
-              doing: '구글 드라이브 파일 저장 중',
-              target: targetFile.path || targetFile.name || driveFileId,
+              doing: '구글 드라이브 파일 저장(업로드) 중',
+              target: targetFile.name ? `${targetFile.name} (ID: ${driveFileId})` : (targetFile.path || driveFileId),
               error: driveErr,
               context: { driveFileId }
             });
@@ -2282,12 +2296,32 @@ export const useFileExplorer = ({
         const effectiveWorkspaceType = isWebOrAddon ? 'browser' : workspaceType;
 
         if (api) {
-          success = await api.saveFile(targetFile.path, targetContent);
+          try {
+            success = await api.saveFile(targetFile.path, targetContent);
+            if (!success) {
+              logError({
+                file: 'frontend/src/hooks/useFileExplorer.ts',
+                func: 'saveFile',
+                doing: '로컬 디스크 파일 저장(Electron API) 중',
+                target: targetFile.path || targetFile.name,
+                error: 'api.saveFile returned false'
+              });
+            }
+          } catch (electronErr) {
+            logError({
+              file: 'frontend/src/hooks/useFileExplorer.ts',
+              func: 'saveFile',
+              doing: '로컬 디스크 파일 저장(Electron API) 중',
+              target: targetFile.path || targetFile.name,
+              error: electronErr
+            });
+          }
           if (success) {
             lastSavedContentRef.current = targetContent;
           }
         } else if (effectiveWorkspaceType === 'local') {
-        const res = await fetch(getApiUrl('/api/save'), {
+        try {
+          const res = await fetch(getApiUrl('/api/save'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ path: targetFile.path, content: targetContent })
@@ -2295,6 +2329,23 @@ export const useFileExplorer = ({
         if (res.ok) {
           lastSavedContentRef.current = targetContent;
           success = true;
+          } else {
+            logError({
+              file: 'frontend/src/hooks/useFileExplorer.ts',
+              func: 'saveFile',
+              doing: '로컬 개발 서버 파일 저장(HTTP POST) 중',
+              target: targetFile.path || targetFile.name,
+              error: `HTTP ${res.status}`
+            });
+          }
+        } catch (localHttpErr) {
+          logError({
+            file: 'frontend/src/hooks/useFileExplorer.ts',
+            func: 'saveFile',
+            doing: '로컬 개발 서버 파일 저장(HTTP POST) 중',
+            target: targetFile.path || targetFile.name,
+            error: localHttpErr
+          });
         }
       } else if (effectiveWorkspaceType === 'browser') {
         if (!targetFile.handle && rootFolderRef.current?.handle) {
@@ -2320,12 +2371,31 @@ export const useFileExplorer = ({
             isGranted = (await targetFile.handle.requestPermission(permissionMode)) === 'granted';
           }
           if (isGranted) {
-            const writable = await targetFile.handle.createWritable();
+            try {
+              const writable = await targetFile.handle.createWritable();
             await writable.write(targetContent);
             await writable.close();
             lastSavedContentRef.current = targetContent;
             success = true;
+            } catch (writeErr) {
+              logError({
+                file: 'frontend/src/hooks/useFileExplorer.ts',
+                func: 'saveFile',
+                doing: '브라우저 파일 시스템(Handle) 쓰기 중',
+                target: targetFile.name || targetFile.path || 'unknown',
+                error: writeErr
+              });
+              showToast("파일 쓰기 중 오류가 발생했습니다.", "error");
+              return false;
+            }
           } else {
+            logWarn({
+              file: 'frontend/src/hooks/useFileExplorer.ts',
+              func: 'saveFile',
+              doing: '브라우저 파일 쓰기 권한 요청 중',
+              target: targetFile.name || targetFile.path || 'unknown',
+              error: '권한이 거부되었습니다.'
+            });
             showToast("파일 쓰기 권한이 거부되었습니다.", "error");
             return false;
           }
@@ -2388,9 +2458,19 @@ export const useFileExplorer = ({
               success = true;
               showToast(`'${targetFile.name}' 문서가 지식 보관함에 안전하게 저장되었습니다.`, 'success');
             } else {
-              vfsWriteFile(targetFile.path, targetContent);
-              lastSavedContentRef.current = targetContent;
-              success = true;
+              try {
+                vfsWriteFile(targetFile.path, targetContent);
+                lastSavedContentRef.current = targetContent;
+                success = true;
+              } catch (vfsErr) {
+                logError({
+                  file: 'frontend/src/hooks/useFileExplorer.ts',
+                  func: 'saveFile',
+                  doing: '브라우저 가상 파일 시스템(VFS) 쓰기 중',
+                  target: targetFile.path || targetFile.name,
+                  error: vfsErr
+                });
+              }
             }
           }
         }
