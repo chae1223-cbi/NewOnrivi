@@ -762,6 +762,10 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
 
   const [workspaceType, setWorkspaceType] = useState<'local' | 'cloud' | 'browser'>(() => {
     if (typeof window !== 'undefined') {
+      const savedWorkspace = localStorage.getItem('workspaceType');
+      const savedLastMode = localStorage.getItem('onrivi_last_workspace_mode');
+      const saved = savedWorkspace || savedLastMode;
+      if (saved === 'cloud' || saved === 'gdrive') return 'cloud';
       try {
         const rawRoot = localStorage.getItem('rootFolder');
         if (rawRoot) {
@@ -771,10 +775,6 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
           }
         }
       } catch {}
-      const savedWorkspace = localStorage.getItem('workspaceType');
-      const savedLastMode = localStorage.getItem('onrivi_last_workspace_mode');
-      const saved = savedWorkspace || savedLastMode;
-      if (saved === 'cloud' || saved === 'gdrive') return 'cloud';
       if (!(window as any).electronAPI) {
         return 'browser';
       }

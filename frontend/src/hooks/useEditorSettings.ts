@@ -21,6 +21,9 @@ import { readResourceShortcodes, writeResourceShortcodes } from '@/lib/resourceJ
 // ====================================================================
 // 📊 [OMD-EDIT-USEEDITORSETTINGS-0005] useEditorSettings.ts ➔ useEditorSettings
 // 🎯 @KICK  : 에디터 사용자 설정(테마, 단축키, 폰트크기 등)을 관리하고 영구 저장소에 동기화
+// 🚨 @PATCH : **2026-11-05** — [구글 드라이브 작업장 상태 보존 및 로컬 잔존 rootFolder 오버라이드 차단]:
+//             1) savedWorkspaceType이 'cloud'/'gdrive'일 때 로컬 rootFolder 캐시로 인해 클라우드 작업장이 'browser'/'local'로 변질되던 결함 원천 해결
+//             2) 클라우드 작업장 부팅 시 onrivi_active_resource_environment를 'cloud'로 확정하여 로컬 폴더 접근 만료 에러 차단
 // 🚨 @PATCH : **2026-11-04** — [로컬 작업장 복원 시 과거 클라우드 모드(onrivi_last_workspace_mode) 덮어쓰기 버그 수정]:
 //             1) workspaceType이 'local' 또는 'browser'로 저장되어 있을 때 과거 onrivi_last_workspace_mode('cloud') 잔존 값으로 인해 강제로 클라우드 작업장으로 부팅되던 문제 해결
 //             2) 로컬/브라우저 작업장 복원 시 onrivi_last_workspace_mode 및 onrivi_active_resource_environment를 즉시 동기화하여 불필요한 구글 드라이브 API 호출 차단
@@ -397,20 +400,21 @@ export const useEditorSettings = (
         }
       } catch {}
       const defaultLocalMode = typeof window !== 'undefined' && !(window as any).electronAPI ? 'browser' : 'local';
+      const isLastCloud = savedWorkspaceType === 'cloud' || savedWorkspaceType === 'gdrive' ||
+        (!savedWorkspaceType && (savedLastMode === 'cloud' || savedLastMode === 'gdrive') && !hasNonDriveRoot);
       const rawSavedWorkspaceType = hasNonDriveRoot
         ? (savedWorkspaceType === 'local' || savedWorkspaceType === 'browser' ? savedWorkspaceType : defaultLocalMode)
         : (savedWorkspaceType || savedLastMode || defaultLocalMode);
-      const isLastCloud = !hasNonDriveRoot && (
-        savedWorkspaceType
-          ? (savedWorkspaceType === 'cloud' || savedWorkspaceType === 'gdrive')
-          : (savedLastMode === 'cloud' || savedLastMode === 'gdrive')
-      );
       const activeWorkspaceType = detectedAddon ? 'browser' : (isLastCloud ? 'cloud' : rawSavedWorkspaceType);
       setWorkspaceType(activeWorkspaceType as any);
       if (activeWorkspaceType === 'local' || activeWorkspaceType === 'browser') {
         localStorage.setItem('workspaceType', activeWorkspaceType);
         localStorage.setItem('onrivi_last_workspace_mode', activeWorkspaceType);
         localStorage.setItem('onrivi_active_resource_environment', 'local');
+      } else if (activeWorkspaceType === 'cloud') {
+        localStorage.setItem('workspaceType', 'cloud');
+        localStorage.setItem('onrivi_last_workspace_mode', 'cloud');
+        localStorage.setItem('onrivi_active_resource_environment', 'cloud');
       }
 
       if (activeWorkspaceType === 'gdrive' || activeWorkspaceType === 'cloud') {

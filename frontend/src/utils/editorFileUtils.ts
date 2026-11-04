@@ -115,18 +115,22 @@ export const fetchAllMdFiles = async (
 
   // 1. 브라우저(Web) 환경 수집: FileSystemDirectoryHandle 심층 재귀 스캔
   if (workspaceType === 'browser') {
-    if (rootFolder?.handle) {
+    if (rootFolder?.handle && !(rootFolder as any).needPermission) {
       try {
-        const deepFiles = await scanDirectoryDeep(rootFolder.handle, "", new Set(), false);
-        deepFiles.forEach(f => addToFileMap(f));
-      } catch (e) {
-        logWarn({
-          file: 'src/utils/editorFileUtils.ts',
-          func: 'fetchAllMdFiles',
-          doing: '브라우저 작업장 폴더 핸들 심층 재귀 스캔(scanDirectoryDeep)',
-          target: rootFolder.name || 'browser_root',
-          error: e,
-        });
+        if (!rootFolder.handle.queryPermission || (await rootFolder.handle.queryPermission({ mode: 'read' })) === 'granted') {
+          const deepFiles = await scanDirectoryDeep(rootFolder.handle, "", new Set(), false);
+          deepFiles.forEach(f => addToFileMap(f));
+        }
+      } catch (e: any) {
+        if (e?.name !== 'NotAllowedError') {
+          logWarn({
+            file: 'src/utils/editorFileUtils.ts',
+            func: 'fetchAllMdFiles',
+            doing: '브라우저 작업장 폴더 핸들 심층 재귀 스캔(scanDirectoryDeep)',
+            target: rootFolder.name || 'browser_root',
+            error: e,
+          });
+        }
       }
     }
 

@@ -180,16 +180,21 @@ export function useLocalVfs({
         }
         if (handle) {
           try {
+            if (handle.queryPermission && (await handle.queryPermission({ mode: 'read' })) !== 'granted') {
+              return;
+            }
             const tree = await scanDirectory(handle);
             setFileList(tree);
-          } catch (err) {
-            logError({
-              file: 'frontend/src/hooks/fileExplorer/useLocalVfs.ts',
-              func: 'refreshFileList',
-              doing: '브라우저 FSA 디렉토리 핸들 파일 트리 스캔 중',
-              target: rootFolderRef.current?.name || 'browser-handle',
-              error: err
-            });
+          } catch (err: any) {
+            if (err?.name !== 'NotAllowedError') {
+              logError({
+                file: 'frontend/src/hooks/fileExplorer/useLocalVfs.ts',
+                func: 'refreshFileList',
+                doing: '브라우저 FSA 디렉토리 핸들 파일 트리 스캔 중',
+                target: rootFolderRef.current?.name || 'browser-handle',
+                error: err
+              });
+            }
           }
         } else {
           // 🛡️ [게스트 체험 모드 가이드] 첫 진입 시 가상 스페이스에 예쁜 체험용 웰컴 문서 탑재

@@ -39,7 +39,8 @@ export async function listWatermarkResources():Promise<WatermarkResource[]>{
  let handle=(window as any).__resourceFolderHandle;
  if(!handle||handle.name!==settings.path)handle=await idb.get('resourceFolderHandle');
  if(!handle||handle.name!==settings.path)throw Error('리소스 폴더를 다시 연결해 주세요.');
- let media;try{media=await handle.getDirectoryHandle('media');}catch(error:any){if(error.name==='NotFoundError')return [];throw error;}
+ if(handle.queryPermission && (await handle.queryPermission({ mode: 'read' })) !== 'granted') return [];
+ let media;try{media=await handle.getDirectoryHandle('media');}catch(error:any){if(error.name==='NotFoundError'||error.name==='NotAllowedError')return [];throw error;}
  const files:WatermarkResource[]=[];
  for await(const [name,child]of media.entries())if(child.kind==='file'&&accepted(name))files.push({name,reference:`/media/${encodeURIComponent(name)}`,read:()=>child.getFile()});
  return files.sort((a,b)=>a.name.localeCompare(b.name,'ko'));

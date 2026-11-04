@@ -123,8 +123,10 @@ export async function scanDirectory(dirHandle: any, parentPath: string = ""): Pr
     }
     // 모든 하위 디렉토리 스캔을 병렬로 기다림
     await Promise.all(dirPromises);
-  } catch (e) {
-    msg.error("Directory scan error", e);
+  } catch (e: any) {
+    if (e?.name !== 'NotAllowedError') {
+      msg.error("Directory scan error", e);
+    }
   }
   return entries.sort((a, b) => {
     if (a.kind === b.kind) {
@@ -174,7 +176,7 @@ export async function scanDirectoryDeep(dirHandle: any, parentPath: string = "",
       }
     }
   } catch (e: any) {
-    if (e?.name !== 'NotFoundError') {
+    if (e?.name !== 'NotFoundError' && e?.name !== 'NotAllowedError') {
       console.warn('[scanDirectoryDeep] directory scan error for path:', parentPath, e);
     }
   }

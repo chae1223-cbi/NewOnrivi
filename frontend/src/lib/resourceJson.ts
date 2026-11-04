@@ -61,10 +61,11 @@ export async function readResourceJson(name: 'ai_prompts.json' | 'ai_presets.jso
   const handle = explicitHandle || (typeof window !== 'undefined' ? (window as any).__resourceFolderHandle : null) || await idb.get('resourceFolderHandle');
   if (handle) {
     try {
+      if (handle.queryPermission && (await handle.queryPermission({ mode: 'read' })) !== 'granted') return name === 'ai_presets.json' ? [] : {};
       const dir = await handle.getDirectoryHandle('prompt');
       return JSON.parse(await (await (await dir.getFileHandle(name)).getFile()).text());
     } catch (e: any) {
-      if (e.name === 'NotFoundError') return name === 'ai_presets.json' ? [] : {};
+      if (e.name === 'NotFoundError' || e.name === 'NotAllowedError') return name === 'ai_presets.json' ? [] : {};
       throw e;
     }
   }
@@ -210,12 +211,13 @@ export async function readResourceShortcodes(explicitHandle?: any, explicitFolde
   const handle = explicitHandle || (typeof window !== 'undefined' ? (window as any).__resourceFolderHandle : null) || await idb.get('resourceFolderHandle');
   if (handle) {
     try {
+      if (handle.queryPermission && (await handle.queryPermission({ mode: 'read' })) !== 'granted') return null;
       const dir = await handle.getDirectoryHandle('settings');
       const file = await dir.getFileHandle('shortcodes.json');
       const text = await (await file.getFile()).text();
       return JSON.parse(text);
     } catch (e: any) {
-      if (e.name !== 'NotFoundError') console.warn('[readResourceShortcodes] Handle read warning:', e);
+      if (e.name !== 'NotFoundError' && e.name !== 'NotAllowedError') console.warn('[readResourceShortcodes] Handle read warning:', e);
     }
   }
 

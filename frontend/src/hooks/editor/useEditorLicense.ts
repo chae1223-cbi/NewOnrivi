@@ -2,6 +2,9 @@
 // 📊 [OMD-HOOK-useEditorLicense] frontend/src/hooks/editor/useEditorLicense.ts
 // 🎯 @KICK  : 에디터 라이선스 검증, 다중 기기 세션 감시(Heartbeat/Takeover), 게스트 체험 타이머, 활성화 수신 관리 훅
 // 🛡️ @GUARD : 비인증 진입 시 자동 게스트 모드 전환 및 세션 탈취 시 즉각적인 읽기 전용/미리보기 제어
+// 🚨 @PATCH : 2026-11-05 — [데스크톱 로컬 우선 라이선스 즉시 활성화 및 검증 타임아웃 단축]:
+//             1) 로컬 정품 라이선스 캐시 존재 시 0ms 즉시 활성화로 UI 락(멈춤/깜빡임) 원천 방어
+//             2) 데스크톱 온라인 검증 타임아웃 10초에서 2.5초로 대폭 단축하여 네트워크 지연 시 멈춤 체감 제거
 // 🚨 @PATCH : 2026-11-04 — [표준화 및 에러 처리 강화] logError/logWarn 5대 진단 필드 선제 기록 및 2단계 함수 JSDoc 표준화
 //             2026-11-04 — [formatTime 반환 추가] 게스트 체험 모드 남은 시간 포맷 함수(formatTime) 반환 목록에 추가하여 ReferenceError 해결
 //             2026-11-04 — [MainEditorApp 모듈화] MainEditorApp에서 1,044줄의 라이선스/세션/게스트 관리 로직을 독립 훅으로 분리
@@ -234,13 +237,29 @@ export function useEditorLicense({
         return;
       }
 
+      // 🚀 [Local-First Fast Activation] 이미 로컬 PC에 유효한 라이선스(Elite Pro 등)가 있으면 즉시 활성화하여 UI 락 원천 방어!
+      if (savedNextPaymentDate) {
+        const localExpiryMs = parseDateStringToMs(savedNextPaymentDate);
+        const localRemainingDays = Math.max(0, Math.ceil((localExpiryMs - Date.now()) / (24 * 60 * 60 * 1000)));
+        if (localRemainingDays > 0) {
+          console.log('[loadAndVerifyLicense] 🚀 Local-First 즉시 활성화 (D-%d, %s)', localRemainingDays, savedPlanName || 'Elite Pro 플랜');
+          setLicenseStatus({
+            isActivated: true, isExpired: false, remainingDays: localRemainingDays,
+            userId: savedUserId, licenseKey: savedLicenseKey, paymentNo: savedPaymentNo || '',
+            planName: savedPlanName || 'Elite Pro 플랜',
+            nextPaymentDate: savedNextPaymentDate
+          });
+          setIsLicenseChecking(false);
+        }
+      }
+
       try {
         const verifyStartedAt = performance.now();
         const verifyRes = await fetch(getApiUrl('/api/license/verify-desktop'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ p_email: savedUserId, p_device_uuid: deviceId }),
-          signal: AbortSignal.timeout(10000)
+          signal: AbortSignal.timeout(2500)
         });
         console.info('[STARTUP timing] desktop license verification ms=%d', Math.round(performance.now() - verifyStartedAt));
         const data = verifyRes.ok ? await verifyRes.json() : null;

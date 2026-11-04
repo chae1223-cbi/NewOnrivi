@@ -363,12 +363,13 @@ async function readRawCredentialsFromResource(resourceFolder?: string, resourceH
   const handle = resourceHandle || (typeof window !== 'undefined' ? (window as any).__resourceFolderHandle : null) || await idb.get('resourceFolderHandle');
   if (handle) {
     try {
+      if (handle.queryPermission && (await handle.queryPermission({ mode: 'read' })) !== 'granted') return null;
       const settingsDir = await handle.getDirectoryHandle('settings');
       const fileHandle = await settingsDir.getFileHandle('ai_credentials.enc');
       const file = await fileHandle.getFile();
       return await file.text();
     } catch (e: any) {
-      if (e.name !== 'NotFoundError') console.warn('[readRawCredentialsFromResource Handle Error]:', e);
+      if (e.name !== 'NotFoundError' && e.name !== 'NotAllowedError') console.warn('[readRawCredentialsFromResource Handle Error]:', e);
     }
   }
 

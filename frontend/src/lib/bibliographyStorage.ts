@@ -21,7 +21,8 @@ export async function loadBibliographyFiles(resourceFolderHandle?:any):Promise<B
   let handle=resourceFolderHandle;
   if(!handle || handle.name!==settings.path)handle=await idb.get('resourceFolderHandle');
   if(!handle || handle.name!==settings.path)throw Error('참고문헌 리소스 폴더를 다시 연결해 주세요.');
-  let dir;try{dir=await handle.getDirectoryHandle('bible');}catch(e:any){if(e.name==='NotFoundError')return [];throw e;}
+  if (handle.queryPermission && (await handle.queryPermission({ mode: 'read' })) !== 'granted') return [];
+  let dir;try{dir=await handle.getDirectoryHandle('bible');}catch(e:any){if(e.name==='NotFoundError'||e.name==='NotAllowedError')return [];throw e;}
   const files:BibliographyFile[]=[];
   for await(const [name,h]of dir.entries())if(h.kind==='file'&&/\.bib$/i.test(name))files.push({name,handle:h,content:await(await h.getFile()).text()});
   return files;
