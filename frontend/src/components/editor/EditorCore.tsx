@@ -1,3 +1,4 @@
+// 🚨 @PATCH : **2026-11-04** — [formatTime 방어 가드 강화]: formatTime 호출 시 옵셔널 체이닝 및 안전 폴백 적용으로 게스트 타이머 미정의 런타임 오류 원천 차단
 // 🚨 @PATCH : **2026-11-04** — [Rule 3 역할 기반 분리 (4단계 EditorCore)]: Monaco Editor, MarkdownViewer/VisualDocumentEditor 스플릿뷰, 브레드크럼, 탭바, 플로팅 툴바, 문서링크 픽커를 포함하는 에디터 코어 렌더링 뷰를 MainEditorApp에서 독립 모듈로 분리
 // @ts-nocheck
 "use client";
@@ -274,7 +275,7 @@ export default function EditorCore(props: EditorCoreProps) {
                     <button 
                       onClick={() => setIsGuideMinimized(false)}
                       className="w-10 h-10 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center shadow-lg transition duration-150 cursor-pointer border-none text-base font-bold"
-                      title={`체험판 가이드 열기 (남은 시간: ${formatTime(guestRemainingSeconds)})`}
+                      title={`체험판 가이드 열기 (남은 시간: ${formatTime ? formatTime(guestRemainingSeconds ?? 0) : ''})`}
                     >
                       🌟
                     </button>
@@ -296,7 +297,7 @@ export default function EditorCore(props: EditorCoreProps) {
                       <div className="mb-3.5 p-2.5 bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-100/50 dark:border-indigo-900/40 rounded-xl flex justify-between items-center text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
                         <div className="flex items-center gap-1.5 animate-pulse">
                           <span>⏱️ 남은 시간:</span>
-                          <span className="font-mono text-xs text-indigo-600 dark:text-indigo-400">{formatTime(guestRemainingSeconds)}</span>
+                          <span className="font-mono text-xs text-indigo-600 dark:text-indigo-400">{formatTime ? formatTime(guestRemainingSeconds ?? 0) : ''}</span>
                         </div>
                         <div className="flex items-center gap-1.5 border-l border-zinc-200 dark:border-zinc-800 pl-2.5">
                           <span>🔄 접속:</span>

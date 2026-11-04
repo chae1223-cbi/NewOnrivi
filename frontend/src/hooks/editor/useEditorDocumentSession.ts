@@ -4,6 +4,7 @@
  * 용도       : 에디터 탭 세션 복원, 자동 저장, 외부 파일 열기(OS 연동) 전담 훅
  * 작성일     : 2026-11-04
  * 
+ * 🚨 @PATCH : **2026-11-04** — [isElectron 판별식 정정] const isElectron = Boolean(api)로 정정하여 웹 브라우저 환경에서 세션 복원 조기 반환 결함 방어
  * 🚨 @PATCH : **2026-11-04** — [MainEditorApp 모듈화] 세션 복원 및 외부 파일 오픈 파이프라인을 useEditorDocumentSession 훅으로 분리 위임
  *             1) restoreSessionTabs: 이전 세션 탭 목록 일괄 복원 및 Monaco 모델 바인딩 분리
  *             2) openExternalFile: OS 더블클릭/외부 파일 오픈 및 탭 자동 생성/포커스 분리
@@ -408,7 +409,7 @@ export function useEditorDocumentSession({
     if (!mounted) return;
 
     const api = typeof window !== 'undefined' ? (window as any).electronAPI : null;
-    const isElectron = !api;
+    const isElectron = Boolean(api);
 
     if (sessionRestoredRef.current || sessionRestoringRef.current) return;
 

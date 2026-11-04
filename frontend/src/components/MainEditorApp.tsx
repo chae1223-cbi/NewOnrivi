@@ -1,5 +1,7 @@
 /**
  * 프로그램명 : OnriviAuthor 
+// 🚨 @PATCH : **2026-11-04** — [deleteResourceAICredentials 미임포트 런타임 오류 수정]:
+//             1) clearResourceFolder에서 호출하는 deleteResourceAICredentials 임포트 누락 보완하여 ReferenceError 방어
 // 🚨 @PATCH : **2026-11-04** — [formatTime 미정의 런타임 오류 수정]:
 //             1) useEditorLicense로부터 formatTime(게스트 남은 시간 포맷터)을 구조분해 할당하여 EditorCore 전달 시 ReferenceError 브라우저 크래시 완전 해결
 // 🚨 @PATCH : **2026-11-04** — [미정의 setIsAboutModalOpen 런타임 오류 수정]:
@@ -584,7 +586,7 @@ import CalendarModal from '@/components/CalendarModal'; // 달력 모달
 import DateTimeInsertPicker from '@/components/DateTimeInsertPicker';
 import { supabase } from '@/lib/supabaseClient';
 import { saveSecureData, loadSecureData } from '@/lib/secureStorage';
-import { loadResourceAICredentials, purgeLocalStorageAICredentials } from '@/lib/ai/resourceAICredentials';
+import { loadResourceAICredentials, deleteResourceAICredentials, purgeLocalStorageAICredentials } from '@/lib/ai/resourceAICredentials';
 import UnifiedTabBar, { EditorTab } from '@/components/UnifiedTabBar';
 import * as utilsPasteHandlers from '@/utils/pasteHandlers';
 import { htmlToImportMarkdown, importHtmlWithImages } from '@/lib/importHtmlMarkdown';

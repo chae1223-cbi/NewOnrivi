@@ -2,6 +2,7 @@
 // 📊 [OMD-UI-EditorPage-0001] editor/page.tsx ➔ Page
 // 🎯 @KICK  : MainEditorApp을 SSR 비활성화(Client-side only) 및 청크 로드 실패 시 자동 복구 가드를 통해 안전하게 마운트하는 최상위 에디터 진입 라우트
 // 🛡️ @GUARD : Next.js 빌드/HMR 청크 불일치 방어 및 비로그인 무단 에디터 직접 접근 차단 가드
+// 🚨 @PATCH : **2026-11-04** — [에디터 클라이언트 에러 바운더리 장착]: Next.js의 불투명한 'Application error' 백지 화면 대신 정밀 진단 스택 및 복구 UI를 표출하는 EditorErrorBoundary 장착
 // 🚨 @PATCH : **2026-11-02** — [비로그인 무단 접근 원천 차단] 웹 환경에서 로그인 세션이나 '체험하기' 플래그가 없으면 에디터 진입을 차단하고 /login으로 즉시 리다이렉트
 // 🚨 @PATCH : **2026-09-11** — Modern Technical Editorial 디자인 시스템 적용 (Cobalt #1d4ed8, Inter / Plus Jakarta Sans)
 //             2026-09-03** — ChunkLoadError 자동 복구 리트라이 가드 추가 및 LDSG v5.0 로딩 스피너 UI 통일
@@ -13,6 +14,51 @@ import dynamic from "next/dynamic";
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { activateBrowserAccount, getBrowserAccountScope } from '@/lib/browserAccountStorage';
+
+class EditorErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: Error | null; errorInfo: React.ErrorInfo | null }
+> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, error: null, errorInfo: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('🚨 [EditorErrorBoundary caught error]:', error, errorInfo);
+    this.setState({ errorInfo });
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ padding: 32, fontFamily: 'monospace', background: '#18181b', color: '#f43f5e', minHeight: '100vh', boxSizing: 'border-box' }}>
+          <h2 style={{ fontSize: 20, marginBottom: 16, color: '#fb7185' }}>🚨 Onrivi Editor Client-Side Error Caught</h2>
+          <div style={{ background: '#27272a', padding: 16, borderRadius: 8, marginBottom: 16, color: '#fff', whiteSpace: 'pre-wrap' }}>
+            <strong>Error:</strong> {this.state.error?.name}: {this.state.error?.message}
+            {'\n\n'}
+            <strong>Stack:</strong>{'\n'}
+            {this.state.error?.stack}
+          </div>
+          {this.state.errorInfo && (
+            <div style={{ background: '#27272a', padding: 16, borderRadius: 8, color: '#a1a1aa', whiteSpace: 'pre-wrap' }}>
+              <strong>Component Stack:</strong>{'\n'}
+              {this.state.errorInfo.componentStack}
+            </div>
+          )}
+          <button 
+            onClick={() => window.location.reload()}
+            style={{ marginTop: 16, padding: '8px 16px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontWeight: 'bold' }}
+          >
+            새로고침 (Reload)
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const MainEditorApp = dynamic(
   () =>
@@ -95,5 +141,9 @@ export default function Page() {
     return () => { cancelled = true; listener?.subscription.unsubscribe(); };
   }, []);
   if (!ready) return <div role="status" className="p-6">{error || '계정별 작업장을 준비하고 있습니다…'}</div>;
-  return <MainEditorApp />;
+  return (
+    <EditorErrorBoundary>
+      <MainEditorApp />
+    </EditorErrorBoundary>
+  );
 }
