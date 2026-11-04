@@ -136,8 +136,9 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
 
   // 언마운트 시 CSS 하이라이트 및 타이머 정리
   useEffect(() => {
+    const timer = searchHighlightTimeoutRef.current;
     return () => {
-      if (searchHighlightTimeoutRef.current) clearTimeout(searchHighlightTimeoutRef.current);
+      if (timer) clearTimeout(timer);
       if (typeof CSS !== 'undefined' && (CSS as any).highlights) {
         try {
           (CSS as any).highlights.delete('onrivi-search-text-highlight');

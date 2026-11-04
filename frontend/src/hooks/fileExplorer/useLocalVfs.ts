@@ -175,7 +175,7 @@ export function useLocalVfs({
     } finally {
       isRefreshingRef.current = false;
     }
-  }, [setFileList]);
+  }, [setFileList, rootFolderRef]);
 
   // ====================================================================
   // 📊 [OMD-FILE-USEFILEEXPLORER-0008] useFileExplorer.ts ➔ selectRootFolder
@@ -351,7 +351,7 @@ export function useLocalVfs({
     };
     window.addEventListener('onrivi:reset-browser-workspace', reset);
     return () => window.removeEventListener('onrivi:reset-browser-workspace', reset);
-  }, [setRootFolder, setWorkspaceType, setIsSidebarOpen, showToast]);
+  }, [setRootFolder, setWorkspaceType, setIsSidebarOpen, showToast, rootFolderRef]);
 
   const restoreFolderPermission = async () => {
     if (!rootFolder?.handle) return;

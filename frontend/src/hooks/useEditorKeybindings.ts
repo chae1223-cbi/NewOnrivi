@@ -197,7 +197,7 @@ export function useEditorKeybindings({
       }
     });
     hotkeyDisposablesRef.current.push(saveAsAction);
-  }, [customHotkeys, isEditorReady, dispatchCommand, mapIdToCommandType, geminiApiKey, showToast]);
+  }, [customHotkeys, isEditorReady, dispatchCommand, mapIdToCommandType, geminiApiKey, showToast, activeTabIdRef, contentRef, editorRef, previewModeRef, setAiDraftInitialMode, setAiEditorContext, setIsAIDraftModalOpen]);
 
   // 2. 전역 키보드 이벤트 리스너 (capture 단계)
   useEffect(() => {
@@ -350,5 +350,5 @@ export function useEditorKeybindings({
 
     window.addEventListener('keydown', handleGlobalKeyDown, true);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown, true);
-  }, [customHotkeys, dispatchCommand, mapIdToCommandType, floatingToolbar?.visible, setFloatingToolbar, floatingQuoteDropdown?.open, isRestrictedUser]);
+  }, [customHotkeys, dispatchCommand, mapIdToCommandType, floatingToolbar?.visible, setFloatingToolbar, floatingQuoteDropdown?.open, isRestrictedUser, editorRef, previewModeRef]);
 }
