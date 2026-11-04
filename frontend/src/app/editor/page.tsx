@@ -3,6 +3,7 @@
 // 🎯 @KICK  : MainEditorApp을 SSR 비활성화(Client-side only) 및 청크 로드 실패 시 자동 복구 가드를 통해 안전하게 마운트하는 최상위 에디터 진입 라우트
 // 🛡️ @GUARD : Next.js 빌드/HMR 청크 불일치 방어 및 비로그인 무단 에디터 직접 접근 차단 가드
 // 🚨 @PATCH : **2026-11-04** — [에디터 클라이언트 에러 바운더리 장착]: Next.js의 불투명한 'Application error' 백지 화면 대신 정밀 진단 스택 및 복구 UI를 표출하는 EditorErrorBoundary 장착
+// 🚨 @PATCH : **2026-11-04** — [웹드라이브 인증 초기화 순서 수정]: 계정 저장소 활성화 후 클라우드 리소스의 만료된 토큰을 갱신하고 에디터를 마운트하여 초기 파일 읽기 실패 방지
 // 🚨 @PATCH : **2026-11-02** — [비로그인 무단 접근 원천 차단] 웹 환경에서 로그인 세션이나 '체험하기' 플래그가 없으면 에디터 진입을 차단하고 /login으로 즉시 리다이렉트
 // 🚨 @PATCH : **2026-09-11** — Modern Technical Editorial 디자인 시스템 적용 (Cobalt #1d4ed8, Inter / Plus Jakarta Sans)
 //             2026-09-03** — ChunkLoadError 자동 복구 리트라이 가드 추가 및 LDSG v5.0 로딩 스피너 UI 통일
@@ -14,6 +15,8 @@ import dynamic from "next/dynamic";
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { activateBrowserAccount, getBrowserAccountScope } from '@/lib/browserAccountStorage';
+import { getResourceSettings } from '@/lib/resourceSettings';
+import { hasValidDriveToken, refreshDriveTokenSilently } from '@/lib/gdrive/googleDriveClient';
 
 class EditorErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -106,7 +109,7 @@ export default function Page() {
         window.location.reload();
       }
     });
-    void supabase.auth.getSession().then(({data, error}) => {
+    void supabase.auth.getSession().then(async ({data, error}) => {
       if (cancelled) return;
       if (error) throw error;
       owner = data.session?.user?.id || null;
@@ -134,6 +137,10 @@ export default function Page() {
       }
       activateBrowserAccount(effectiveAccount);
       initialized = true;
+      if (getResourceSettings()?.kind === 'drive' && !hasValidDriveToken()) {
+        await refreshDriveTokenSilently(true);
+        if (cancelled) return;
+      }
       setReady(true);
     }).catch(() => {
       if (!cancelled) setError('계정 저장소를 준비하지 못했습니다. 새로고침하거나 다시 로그인해 주세요.');
