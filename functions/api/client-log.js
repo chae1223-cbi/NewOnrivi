@@ -1,3 +1,4 @@
+// 🚨 @PATCH : **2026-11-04** — [오류 진단 로깅 0단계]: R2 클라이언트 로그 적재 조건을 ENABLE_R2_LOGS === 'true' (기본 false)로 명확화
 // 🚨 @PATCH : **2026-11-04** — [클라이언트 전달 source_file / source_function 우선 반영]: 실제 에러 발생 파일 및 함수명 자동 적재
 // 🚨 @PATCH : **2026-11-04** — [KST(한국표준시 UTC+9) 기준 일자 파티셔닝 적용]: UTC 자정 시차(00~09시)로 인한 날짜 불일치 해결
 // 🚨 @PATCH : **2026-11-04** — [R2 클라이언트 로그 적재 환경변수 스위치(ENABLE_R2_LOGS) 적용]: 기본 적재 비활성화(false) 및 console.warn 콘솔 출력 후 204 응답
@@ -85,7 +86,7 @@ export async function onRequestPost({request, env}) {
     console.warn(`[ClientLog] [${envType.toUpperCase()}] ${input.level} · ${action} · 대상: ${target} · ${message}`);
 
     // R2 저장은 ENABLE_R2_LOGS === 'true' 일 때만 수행 (기본값 false: R2 적재 중단)
-    if (env.DISABLE_R2_LOGS !== 'true' && env.R2_BUCKET) {
+    if (env.ENABLE_R2_LOGS === 'true' && env.R2_BUCKET) {
       const kstDate = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
       await env.R2_BUCKET.put(`_system-logs/${envType}/${kstDate}/${timestamp}_${id}.json`,JSON.stringify(entry));
     }

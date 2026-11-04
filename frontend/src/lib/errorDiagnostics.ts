@@ -1,3 +1,4 @@
+// 🚨 @PATCH : **2026-11-04** — [오류 진단 로깅 0단계]: Windows 및 Unix PC 경로 마스킹 정규식 버그 수정 ($1 치환 로직 개선 및 슬래시/백슬래시 지원)
 // 🚨 @PATCH : **2026-11-04** — [reportClientLog에 sourceFile 및 sourceFunction 매개변수 전달]: 원격 시스템 로그에 실제 소스 파일 및 함수명 반영
 // ====================================================================
 // 📊 [OMD-LIB-errorDiagnostics-0001] frontend/src/lib/errorDiagnostics.ts
@@ -79,8 +80,8 @@ export function maskSensitiveString(text: string): string {
     // 3. 이메일 주소 마스킹
     .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/gi, '[이메일가림]')
     // 4. Windows PC 사용자명 및 로컬 경로 마스킹 (예: C:\Users\홍길동\... -> C:\Users\[사용자]\...)
-    .replace(/([A-Z]:\\Users\\[^\\/\s]+)/gi, '$1'.replace(/Users\\[^\\/\s]+/i, 'Users\\[사용자]'))
-    .replace(/(\/(?:home|Users)\/[^\/\s]+)/gi, '/Users/[사용자]');
+    .replace(/([A-Z]:[/\\]Users[/\\])[^/\\\s]+/gi, '$1[사용자]')
+    .replace(/(\/(?:home|Users)\/)[^/\\\s]+/gi, '$1[사용자]');
 }
 
 /**

@@ -2,6 +2,7 @@
 // 📊 [OMD-ERR-CORE-0001] functions/api/_error.js
 // 🎯 @KICK  : 서버 런타임 및 PostgreSQL 예외에 대한 표준 500 에러 Response 및 진단 로그 생성
 // 🛡️ @GUARD : 내부 DB 스택 노출 차단, 추적용 requestId 부여, 헤더 기반 디버깅 메타데이터 주입
+// 🚨 @PATCH : 2026-11-04 — [오류 진단 로깅 0단계]: 서버 마스킹에 이메일 및 로컬 PC 경로 마스킹 정규식 추가
 // 🚨 @PATCH : 2026-11-03 — [전역 진단 메타데이터 전파]: X-Error-Target 및 X-Error-Doing 헤더 주입으로 미들웨어 HTTP 로그 100% 연동
 // 🚨 @PATCH : 2026-11-03 — [오류 진단 로깅 0단계]: DB 연결 URL 및 시크릿 인라인 마스킹 헬퍼 적용
 // 🚨 @PATCH : 2026-11-03 — [정밀 진단 필드 강화] doing(실행 작업), target(대상), errorMessage/errorStack 추가
@@ -22,7 +23,10 @@ function maskServerSecret(text) {
   return text
     .replace(/postgres(?:ql)?:\/\/[^:]+:[^@]+@[^/\s]+/gi, 'postgres://[DB접속가림]')
     .replace(/Bearer\s+[A-Za-z0-9_\-\.]+/gi, 'Bearer [토큰가림]')
-    .replace(/((?:password|secret|api[_-]?key)\s*[=:]\s*)[^\s,;&'"]+/gi, '$1[가림]');
+    .replace(/((?:password|secret|api[_-]?key)\s*[=:]\s*)[^\s,;&'"]+/gi, '$1[가림]')
+    .replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/gi, '[이메일가림]')
+    .replace(/([A-Z]:[/\\]Users[/\\])[^/\\\s]+/gi, '$1[사용자]')
+    .replace(/(\/(?:home|Users)\/)[^/\\\s]+/gi, '$1[사용자]');
 }
 
 

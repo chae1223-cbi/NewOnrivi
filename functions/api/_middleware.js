@@ -66,6 +66,8 @@ function redactLogMessage(value) {
     .replace(/((?:password|passwd|token|secret|authorization|api[_-]?key)\s*[=:]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, '$1[가림]')
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[이메일 가림]')
     .replace(/\b01[016789][- ]?\d{3,4}[- ]?\d{4}\b/g, '[전화번호 가림]')
+    .replace(/([A-Z]:[/\\]Users[/\\])[^/\\\s]+/gi, '$1[사용자]')
+    .replace(/(\/(?:home|Users)\/)[^/\\\s]+/gi, '$1[사용자]')
     .replace(/https?:\/\/[^\s]+/gi, '[URL 가림]')
     .replace(/\b(?:postgres(?:ql)?|mysql):\/\/[^\s]+/gi, '[연결정보 가림]');
 }
@@ -176,7 +178,7 @@ export async function onRequest(context) {
   catch (error) { exceptionMessage = redactLogMessage(error instanceof Error ? error.message : 'Unknown server exception'); unhandled = true; response = new Response('Internal server error', { status: 500 }); }
   // Temporary diagnostic window ends at 2026-10-10 00:00 KST.
   const captureAllToday = Date.now() < Date.parse('2026-10-10T00:00:00+09:00');
-  const enableR2Logs = context.env.DISABLE_R2_LOGS !== 'true';
+  const enableR2Logs = context.env.ENABLE_R2_LOGS === 'true';
   const shouldLog = (captureAllToday || response.status >= 400 || (context.request.method !== 'GET' && ['/api/subscription/create','/api/subscription/cancel','/api/subscription/subscribe-desktop','/api/admin/users/plan'].includes(url.pathname))) && !url.pathname.startsWith('/api/admin/system') && url.pathname !== '/api/client-log' && !(response.status < 400 && ['/api/device/session-status','/api/license/check-session'].includes(url.pathname));
 
   if (shouldLog) {
