@@ -10,6 +10,22 @@ import {
 } from '@/lib/browserAccountStorage';
 
 /**
+ * 날짜 문자열(YYYYMMDD 또는 ISO)을 ms 타임스탬프로 안전하게 파싱
+ */
+export const parseDateStringToMs = (str?: string): number => {
+  if (!str) return 0;
+  if (str === '99991231') return Number.MAX_SAFE_INTEGER;
+  if (/^\d{8}$/.test(str)) {
+    const y = parseInt(str.substring(0, 4), 10);
+    const m = parseInt(str.substring(4, 6), 10) - 1;
+    const d = parseInt(str.substring(6, 8), 10);
+    return new Date(y, m, d, 23, 59, 59, 999).getTime();
+  }
+  const parsed = new Date(str).getTime();
+  return isNaN(parsed) ? 0 : parsed;
+};
+
+/**
  * ========================================================================================
  * 프로그램명 : OnriviAuthor
  * 모듈명     : authSessionHelper.ts
