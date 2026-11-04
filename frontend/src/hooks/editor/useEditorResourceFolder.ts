@@ -2,7 +2,7 @@
 // 📊 [OMD-HOOK-useEditorResourceFolder] frontend/src/hooks/editor/useEditorResourceFolder.ts
 // 🎯 @KICK  : 공통 리소스 폴더(Local/Browser/Google Drive) 선택·해제, IndexedDB 핸들 복원, MCP 컨텍스트 동기화, .bib 참고문헌 로드, AI 자격증명 실시간 리로드 및 자가 치유 전담 훅
 // 🛡️ @GUARD : 리소스 폴더 해제 시 로컬/세션스토리지 및 IndexedDB 핸들 완전 소거, 비동기 요청 순서 역전 방어(revision 가드)
-// 🚨 @PATCH : **2026-11-04** — [MainEditorApp 모듈화]: selectResourceFolder, clearResourceFolder, IndexedDB 핸들 복원, MCP 동기화, .bib 로드, AI 자격증명 자동 로드 및 자가 치유 이펙트를 MainEditorApp.tsx에서 분리 위임 (동작 변경 없음)
+// 🚨 @PATCH : **2026-11-04** — [MainEditorApp 모듈화 및 훅 의존성 정합화]: selectResourceFolder, clearResourceFolder, IndexedDB 핸들 복원, MCP 동기화, .bib 로드, AI 자격증명 자동 로드 및 자가 치유 이펙트를 MainEditorApp.tsx에서 분리 위임하고 ESLint exhaustive-deps 경고를 0건으로 해소 (동작 변경 없음)
 // 🔗 @CALLS : getResourceSettings, saveResourceSettings, getResourceEnvironment, getEffectiveResourceFolder, loadBibliographyFiles, loadResourceAICredentials, deleteResourceAICredentials, purgeLocalStorageAICredentials, ensureDecryptedApiKey, normalizeAIModelName, idb, saveSecureData
 // ====================================================================
 
@@ -116,7 +116,7 @@ export function useEditorResourceFolder(props: UseEditorResourceFolderProps) {
       }
     };
     void restoreRF();
-  }, [mounted, resourceFolderHandle, resourceFolder]);
+  }, [mounted, resourceFolderHandle, resourceFolder, setResourceFolder, setResourceFolderHandle]);
 
   // Share only the active folder locations with the local MCP process.
   useEffect(() => {
@@ -162,7 +162,7 @@ export function useEditorResourceFolder(props: UseEditorResourceFolderProps) {
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [mounted, resourceFolder, resourceFolderHandle, licenseStatus.isActivated, licenseStatus?.isExpired, isDuplicateInstance, isRestrictedUser, isDismissedGuide]);
+  }, [mounted, resourceFolder, resourceFolderHandle, licenseStatus.isActivated, licenseStatus?.isExpired, isDuplicateInstance, isRestrictedUser, isDismissedGuide, setIsResourceGuideModalOpen]);
 
   // 📊 [OMD-CITATION-MainEditorApp] .bib 워크스페이스 자동 로드
   // 🎯 @KICK  : 워크스페이스 전체를 재귀 탐색하여 .bib 파일을 모두 병합 로드
@@ -176,7 +176,7 @@ export function useEditorResourceFolder(props: UseEditorResourceFolderProps) {
       catch(e){if(!disposed){setBibContent('');console.warn('[Bibliography]',e);}}};
     void load();window.addEventListener('onrivi:bibliography-updated',load);
     return()=>{disposed=true;window.removeEventListener('onrivi:bibliography-updated',load);};
-  },[workspaceType,resourceFolder,resourceFolderHandle]);
+  },[workspaceType,resourceFolder,resourceFolderHandle,setBibContent]);
 
   const selectResourceFolder = async () => {
     if (workspaceType === 'cloud') {
@@ -333,7 +333,7 @@ export function useEditorResourceFolder(props: UseEditorResourceFolderProps) {
       window.addEventListener('onrivi:resource_folder_changed', handleResourceFolderChange);
       return () => window.removeEventListener('onrivi:resource_folder_changed', handleResourceFolderChange);
     }
-  }, [setGeminiApiKey, setAiModelName, setProfileStorageRevision]);
+  }, [setGeminiApiKey, setAiModelName, setProfileStorageRevision, setResourceFolder, setResourceFolderHandle]);
 
   // 🛡️ [AI 암호화 키 및 모델명 자가 치유(Self-Healing) 파이프라인]
   // 과거 로컬스토리지에 AES 암호문(U2FsdGVkX1...) 형태로 저장되었던 API 키 및 모델명을 즉시 자동 감지하여 복호화/정상화

@@ -2,7 +2,7 @@
 // 📊 [OMD-HOOK-useEditorLifecycleEffects] frontend/src/hooks/editor/useEditorLifecycleEffects.ts
 // 🎯 @KICK  : 탭 이름 변경·삭제·라인 점프 이벤트 리스너, 분할 화면 읽기 전용 가드, 에디터 테마·옵션 동기화, 제한사용자 웰컴 정리, 사이드바 리사이즈, 탭 전환 모드/미리보기 동기화, 자동 저장(autoSave), 목차(TOC) 생성 훅
 // 🛡️ @GUARD : 동일 파일명 타 경로 오종료 방어, 5초 자동저장 무한루프 및 번들 도움말 덮어쓰기 차단, 코드블록 내부 헤딩 오탐 방지
-// 🚨 @PATCH : **2026-11-04** — [MainEditorApp 모듈화]: 탭/파일 생명주기 이벤트, 에디터 설정 동기화, 제한사용자 웰컴 정리, 자동 저장, TOC 계산을 MainEditorApp.tsx에서 분리 위임 (동작 변경 없음)
+// 🚨 @PATCH : **2026-11-04** — [MainEditorApp 모듈화 및 훅 의존성 정합화]: 탭/파일 생명주기 이벤트, 에디터 설정 동기화, 제한사용자 웰컴 정리, 자동 저장, TOC 계산을 MainEditorApp.tsx에서 분리 위임하고 ESLint exhaustive-deps 경고를 0건으로 해소 (동작 변경 없음)
 // 🔗 @CALLS : applySafeMarkdownMonarchTokenizer, syncPreviewToTargetLine, syncPreviewFromEditorScroll, getCodeBlockLineMask, createHeadingNumberer, isBundledDocumentPath
 // ====================================================================
 
@@ -229,7 +229,7 @@ export function useEditorLifecycleEffects(props: UseEditorLifecycleEffectsProps)
     };
     window.addEventListener('file:tab-renamed', handler);
     return () => window.removeEventListener('file:tab-renamed', handler);
-  }, []);
+  }, [activeTabIdRef, setActiveTabId, setCurrentFileName, setCurrentFileNode, setTabs, tabsRef]);
 
   // ====================================================================
   // 📊 [OMD-EDIT-MainEditorApp-0012c] MainEditorApp.tsx ➔ file:close-tab-by-path listener
@@ -321,7 +321,7 @@ export function useEditorLifecycleEffects(props: UseEditorLifecycleEffectsProps)
     };
     window.addEventListener('file:close-tab-by-path', handleCloseTabByPath);
     return () => window.removeEventListener('file:close-tab-by-path', handleCloseTabByPath);
-  }, [setTabs, switchTab, setContent, setCurrentFileName, setCurrentFileNode, setActiveTabId]);
+  }, [setTabs, switchTab, setContent, setCurrentFileName, setCurrentFileNode, setActiveTabId, activeTabIdRef, editorRef, tabsRef]);
 
   // 🧠 [ONRIVI-KNOWLEDGE-ENGINE-003] 지식 베이스 / 출처 링크 에디터 파일 열기 및 라인 점프 리스너
   useEffect(() => {
@@ -374,7 +374,7 @@ export function useEditorLifecycleEffects(props: UseEditorLifecycleEffectsProps)
 
     window.addEventListener('app:open-file-at-line', handleOpenFileAtLine as any);
     return () => window.removeEventListener('app:open-file-at-line', handleOpenFileAtLine as any);
-  }, [handleFileOpenByPath, currentFileNode, currentFileName, setPreviewModeRaw]);
+  }, [handleFileOpenByPath, currentFileNode, currentFileName, setPreviewModeRaw, editorRef, isEditorMountedRef, lastGeneralPreviewModeRef, previewModeRef]);
 
   useEffect(()=>{
     const isInsideMarkdownPane=(target:EventTarget|null)=>target instanceof Element && Boolean(target.closest('#onrivi-markdown-pane'));
@@ -414,7 +414,7 @@ export function useEditorLifecycleEffects(props: UseEditorLifecycleEffectsProps)
       document.removeEventListener('drop',blockMutationEvent,true);
       document.removeEventListener('keydown',blockKeyDown,true);
     };
-  },[previewMode,activeTabId,tabs.length,isRestrictedUser]);
+  },[previewMode,activeTabId,tabs.length,isRestrictedUser,editorRef,previewModeRef]);
 
   // 📊 [OMD-CORE-MainEditorApp-0032] MainEditorApp.tsx ➔ darkModeDOMClass
   // 🎯 @KICK  : Tailwind 다크 모드를 위해 documentElement에 'dark' 클래스 토글
@@ -507,7 +507,7 @@ export function useEditorLifecycleEffects(props: UseEditorLifecycleEffectsProps)
         }
       });
     }
-  }, [themePalette, fontSize, wordWrap, editorFontWeight, editorHighContrast, mounted, isEditorReady, isRestrictedUser, previewMode, tabs.length]);
+  }, [themePalette, fontSize, wordWrap, editorFontWeight, editorHighContrast, mounted, isEditorReady, isRestrictedUser, previewMode, tabs.length, editorRef]);
 
   // ====================================================================
   // 📊 [OMD-CORE-MainEditorApp-0034] MainEditorApp.tsx ➔ darkModePaletteSync
@@ -580,7 +580,7 @@ export function useEditorLifecycleEffects(props: UseEditorLifecycleEffectsProps)
       }
       return cleaned;
     });
-  }, [mounted, isLicenseChecking, isDuplicateInstance, effectiveLicenseStatus]);
+  }, [mounted, isLicenseChecking, isDuplicateInstance, effectiveLicenseStatus, lastGeneralPreviewModeRef, previewModeRef, setActiveTabId, setContent, setCurrentFileName, setCurrentFileNode, setPreviewModeRaw, setTabs]);
 
   // 📊 [OMD-EDIT-MainEditorApp-0040] MainEditorApp.tsx ➔ dynamicTitleBar
   // 🎯 @KICK  : document.title을 'Onrivi Author'로 고정 (탭 UI가 파일명 표시하므로)
@@ -630,7 +630,7 @@ export function useEditorLifecycleEffects(props: UseEditorLifecycleEffectsProps)
     document.removeEventListener('mouseup', stopResizing);
     document.body.style.cursor = 'default';
     document.body.style.userSelect = 'auto';
-  }, [handleMouseMove]);
+  }, [handleMouseMove, isResizing]);
 
   // ====================================================================
   // 📊 [OMD-EDIT-MainEditorApp-0045] MainEditorApp.tsx ➔ startResizing
@@ -645,7 +645,7 @@ export function useEditorLifecycleEffects(props: UseEditorLifecycleEffectsProps)
     document.addEventListener('mouseup', stopResizing);
     document.body.style.cursor = 'col-resize';
     document.body.style.userSelect = 'none';
-  }, [handleMouseMove, stopResizing]);
+  }, [handleMouseMove, stopResizing, isResizing]);
 
   // ====================================================================
   // 📊 [OMD-EDIT-MainEditorApp-0046] MainEditorApp.tsx ➔ tabModeSync
@@ -712,7 +712,7 @@ export function useEditorLifecycleEffects(props: UseEditorLifecycleEffectsProps)
           setCurrentFileNode(null);
         }
     }
-  }, [mounted, isLicenseChecking, isDuplicateInstance, effectiveLicenseStatus]);
+  }, [mounted, isLicenseChecking, isDuplicateInstance, effectiveLicenseStatus, sessionRestoringRef, setActiveTabId, setContent, setCurrentFileName, setCurrentFileNode, setTabs, tabsRef]);
   useEffect(() => {
     if (currentFileNode && activeTabId) {
       if (prevActiveTabRef.current !== activeTabId) {
@@ -734,7 +734,7 @@ export function useEditorLifecycleEffects(props: UseEditorLifecycleEffectsProps)
         );
       });
     }
-  }, [content, currentFileNode, activeTabId]);
+  }, [content, currentFileNode, activeTabId, lastSavedContentRef, prevActiveTabRef, setSaveStatus, setTabs, tabsRef]);
 
   // 💡 [탭 전환 시 에디터 기준 미리보기 1:1 완벽 동기화 보장]
   useEffect(() => {
@@ -826,7 +826,7 @@ export function useEditorLifecycleEffects(props: UseEditorLifecycleEffectsProps)
       }, autoSave * 1000); // 🕒 설정된 초(seconds) 기반 디바운스
       return () => clearTimeout(timer);
     }
-  }, [content, autoSave, currentFileNode, saveFile, licenseStatus.isActivated, currentFileName]);
+  }, [content, autoSave, currentFileNode, saveFile, licenseStatus.isActivated, currentFileName, activeTabIdRef, lastSavedContentRef, setSaveStatus, setTabs, tabsRef]);
 
   // ====================================================================
   // 📊 [OMD-CORE-MainEditorApp-0074] MainEditorApp.tsx ➔ toc

@@ -2,7 +2,7 @@
 // 📊 [OMD-HOOK-useEditorPreviewSync] frontend/src/hooks/editor/useEditorPreviewSync.ts
 // 🎯 @KICK  : 미리보기 전처리(processedContent/lineMap), 에디터→미리보기 위치 동기화, 활성 행 하이라이트, 휠 확대/축소, 클릭 이동, 체크박스 토글, 서식 복사를 담당하는 미리보기 연동 훅
 // 🛡️ @GUARD : Sync Engine 단일 진입(syncPreviewToTargetLine) 경유, 미리보기 측 스크롤 중·위지윅·그림책 모드에서는 강제 동기화 생략
-// 🚨 @PATCH : **2026-11-04** — [MainEditorApp 모듈화]: handleCheckboxToggle, handlePreviewWheel, bindPreviewScrollContainer, handlePreviewClick, handleCopyPreviewContent, processedContent/lineMap/frontmatterLines, 미리보기 추종 레이아웃 이펙트, handlePreviewImageLoaded, previewHighlightLine 이펙트를 MainEditorApp.tsx에서 분리 위임 (동작 변경 없음)
+// 🚨 @PATCH : **2026-11-04** — [MainEditorApp 모듈화 및 훅 의존성 정합화]: handleCheckboxToggle, handlePreviewWheel, bindPreviewScrollContainer, handlePreviewClick, handleCopyPreviewContent, processedContent/lineMap/frontmatterLines, 미리보기 추종 레이아웃 이펙트, handlePreviewImageLoaded, previewHighlightLine 이펙트를 MainEditorApp.tsx에서 분리 위임하고 ESLint exhaustive-deps 경고를 0건으로 해소 (동작 변경 없음)
 // 🔗 @CALLS : preprocessMarkdownForPreview, syncPreviewToTargetLine, flashPreviewHighlight, importedCheckboxEdit, serializeDocumentForClipboard, copyFormattedDocumentToClipboard
 // ====================================================================
 
@@ -99,7 +99,7 @@ export function useEditorPreviewSync(props: UseEditorPreviewSyncProps) {
       ]);
       editor.pushUndoStop();
     }
-  }, []);
+  }, [editorRef]);
 
   // ====================================================================
   // 📊 [OMD-EDIT-MainEditorApp-0031] MainEditorApp.tsx ➔ previewWheelSync
@@ -123,13 +123,13 @@ export function useEditorPreviewSync(props: UseEditorPreviewSyncProps) {
 
     // Normal wheel scrolling belongs to the document container.
     // Its scroll event synchronizes the Markdown panel.
-  }, []);
+  }, [setPreviewZoomScale]);
 
   const bindPreviewScrollContainer = useCallback((node: HTMLDivElement | null) => {
     previewRef.current?.removeEventListener('wheel', handlePreviewWheel, true);
     previewRef.current = node;
     node?.addEventListener('wheel', handlePreviewWheel, { passive: false, capture: true });
-  }, [handlePreviewWheel]);
+  }, [handlePreviewWheel, previewRef]);
 
   // ====================================================================
   // 📊 [OMD-CORE-MainEditorApp-0051] MainEditorApp.tsx ➔ handlePreviewClick
@@ -211,7 +211,7 @@ export function useEditorPreviewSync(props: UseEditorPreviewSyncProps) {
       showToast('클립보드 복사에 실패했습니다.', 'error');
       throw err;
     }
-  }, [showToast]);
+  }, [showToast, previewRef]);
 
   // ====================================================================
   // 📊 [OMD-CORE-MainEditorApp-0067] MainEditorApp.tsx ➔ processedContent_lineMap
@@ -234,7 +234,7 @@ export function useEditorPreviewSync(props: UseEditorPreviewSyncProps) {
   // useMonacoSetup 클로저 내부에서 항상 최신 frontmatter 오프셋을 참조할 수 있도록 합니다.
   useEffect(() => {
     frontmatterLinesRef.current = frontmatterLines;
-  }, [frontmatterLines]);
+  }, [frontmatterLines, frontmatterLinesRef]);
 
   // 💡 [실시간 타이핑 및 콘텐츠 갱신 시 미리보기 스크롤 즉시 추종 보장]
   // 사용자가 에디터 하단이나 마지막 행에서 타이핑할 때, 새 행/문단이 DOM에 렌더링된 직후
@@ -269,7 +269,7 @@ export function useEditorPreviewSync(props: UseEditorPreviewSyncProps) {
         syncPreviewToTargetLine(previewRef.current, p.lineNumber, c, { column: p.column });
       }
     }
-  }, []);
+  }, [previewRef, editorRef, isScrollingRef, contentRef]);
 
   // ====================================================================
   // 📊 [OMD-CORE-MainEditorApp-0041] MainEditorApp.tsx ➔ previewHighlightLine
@@ -346,7 +346,7 @@ export function useEditorPreviewSync(props: UseEditorPreviewSyncProps) {
     if (targetEl) {
       return flashPreviewHighlight(targetEl);
     }
-  }, [activeLine, previewMode, processedContent]);
+  }, [activeLine, previewMode, processedContent, previewRef]);
 
   return {
     handleCheckboxToggle,
