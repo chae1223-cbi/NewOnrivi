@@ -30,12 +30,6 @@ import { useUIStore } from '@/store/useUIStore';
 import { useEditorContext } from '@/context/EditorContext';
 import { hasValidDriveToken } from '@/lib/gdrive/googleDriveClient';
 import { canAccessKnowledgeDb } from '@/lib/knowledge/knowledgeClient';
-import {
-  saveDirectoryHandle,
-  restoreDirectoryHandle,
-  openDirectoryPicker,
-  isFileSystemAccessSupported,
-} from '@/lib/fileSystemAccess';
 import { normalizeDocxImagesForPreview } from '@/lib/docxImageHelper';
 
 const BROWSER_STORAGE_NAME = '브라우저 로컬 저장소';

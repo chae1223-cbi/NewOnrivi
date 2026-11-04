@@ -2,6 +2,7 @@
 // 📊 [OMD-HOOK-useDocumentOpener-0001] useDocumentOpener.ts ➔ 문서 오픈 및 경로 탐색 훅
 // 🎯 @KICK  : 파일 트리 클릭(handleFileClick) 및 경로/링크 기반 문서 탐색·오픈(handleFileOpenByPath), 지식 DB 및 앵커 점프(#L..) 연동
 // 🛡️ @GUARD : 브라우저 FSA 재귀 탐색(findFileHandleInDirectoryDeep), 구글 드라이브 온디맨드 검색, VFS/도움말 폴백 및 세션 동기화
+// 🚨 @PATCH : 2026-11-04 — [런타임 버그 수정]: getSavedWorkspaceInfo, EditorTab, helpContentRef, sessionRestoringRef 누락 식별자 보완 및 findFileHandleInDirectoryDeep 모듈 스코프 export
 // 🚨 @PATCH : 2026-11-04 — [useFileExplorer 모듈화 분리]:
 //             1) useFileExplorer에서 파일 클릭 및 경로 기반 문서 열기, 앵커 점프, 지식 DB 연계 로직을 useDocumentOpener 독립 서브 훅으로 분리 (Rule 3 준수)
 // 🔗 @CALLS : readDriveFileContent, vfsReadFile, resolveNativeDocumentPath, knowledgeClient
@@ -26,9 +27,11 @@ import {
 } from '@/lib/storage/externalFileStore';
 import {
   getSavedDriveToken,
+  getSavedWorkspaceInfo,
   readDriveFileContent,
   type EmergencyDriveSnapshot
 } from '@/lib/gdrive/googleDriveClient';
+import type { EditorTab } from '@/components/UnifiedTabBar';
 
 export interface UseDocumentOpenerProps {
   editorRef: any;
@@ -62,8 +65,41 @@ export interface UseDocumentOpenerProps {
   workspaceType: any;
   licenseStatus: any;
   isRestrictedUser: boolean;
+  helpContentRef?: any;
+  sessionRestoringRef?: any;
 }
 
+
+/**
+ * 브라우저 FileSystemDirectoryHandle 하위를 재귀 검색하여 파일명에 매칭되는 FileHandle과 상위 디렉토리 Handle을 반환합니다.
+ */
+export const findFileHandleInDirectoryDeep = async (
+  dirHandle: FileSystemDirectoryHandle,
+  fileName: string,
+  depth = 0,
+  maxDepth = 3
+): Promise<{ fileHandle: FileSystemFileHandle; parentHandle: FileSystemDirectoryHandle } | null> => {
+  if (depth > maxDepth) return null;
+  const targetNorm = fileName.toLowerCase().normalize('NFC');
+  const targetWithoutMd = targetNorm.replace(/\.md$/i, '');
+
+  try {
+    for await (const entry of (dirHandle as any).values()) {
+      const entryNorm = entry.name.toLowerCase().normalize('NFC');
+      if (entry.kind === 'file') {
+        if (entryNorm === targetNorm || entryNorm === `${targetWithoutMd}.md` || entryNorm.replace(/\.md$/i, '') === targetWithoutMd) {
+          return { fileHandle: entry as FileSystemFileHandle, parentHandle: dirHandle };
+        }
+      } else if (entry.kind === 'directory') {
+        if (!entry.name.startsWith('.') && !entry.name.startsWith('$') && entry.name !== 'node_modules') {
+          const subRes = await findFileHandleInDirectoryDeep(entry as FileSystemDirectoryHandle, fileName, depth + 1, maxDepth);
+          if (subRes) return subRes;
+        }
+      }
+    }
+  } catch {}
+  return null;
+};
 
 export function useDocumentOpener({
   editorRef,
@@ -96,7 +132,9 @@ export function useDocumentOpener({
   fileList,
   workspaceType,
   licenseStatus,
-  isRestrictedUser
+  isRestrictedUser,
+  helpContentRef,
+  sessionRestoringRef,
 }: UseDocumentOpenerProps) {
 
   // 🎯 @KICK  : 경로 문자열로 파일을 찾아 열거나 도움말/지식 문서를 로드
@@ -105,37 +143,6 @@ export function useDocumentOpener({
   //             **2026-09-12** — [웹 브라우저 출처 링크 파일 열기 및 헤딩 점프 결함 완벽 해결]: handleFileOpenByPath에서 decodeURIComponent 및 targetBaseName 3중 매칭, knowledgeClient heading 검색 연동, jumpToAnchor 에디터 모델 헤딩 검색, 미스캔 파일 신규 탭 자동 생성 폴백 지원
   // 🔗 @CALLS : findNodeByPath, handleFileClick, createNewTab, switchTab, setTabs, showToast, knowledgeClient.getDocumentDetail
   // ====================================================================
-
-  /**
-   * 브라우저 FileSystemDirectoryHandle 하위를 재귀 검색하여 파일명에 매칭되는 FileHandle과 상위 디렉토리 Handle을 반환합니다.
-   */
-  const findFileHandleInDirectoryDeep = async (
-    dirHandle: FileSystemDirectoryHandle,
-    fileName: string,
-    depth = 0,
-    maxDepth = 3
-  ): Promise<{ fileHandle: FileSystemFileHandle; parentHandle: FileSystemDirectoryHandle } | null> => {
-    if (depth > maxDepth) return null;
-    const targetNorm = fileName.toLowerCase().normalize('NFC');
-    const targetWithoutMd = targetNorm.replace(/\.md$/i, '');
-
-    try {
-      for await (const entry of (dirHandle as any).values()) {
-        const entryNorm = entry.name.toLowerCase().normalize('NFC');
-        if (entry.kind === 'file') {
-          if (entryNorm === targetNorm || entryNorm === `${targetWithoutMd}.md` || entryNorm.replace(/\.md$/i, '') === targetWithoutMd) {
-            return { fileHandle: entry as FileSystemFileHandle, parentHandle: dirHandle };
-          }
-        } else if (entry.kind === 'directory') {
-          if (!entry.name.startsWith('.') && !entry.name.startsWith('$') && entry.name !== 'node_modules') {
-            const subRes = await findFileHandleInDirectoryDeep(entry as FileSystemDirectoryHandle, fileName, depth + 1, maxDepth);
-            if (subRes) return subRes;
-          }
-        }
-      }
-    } catch {}
-    return null;
-  };
 
   // 4. 경로를 기반으로 한 파일 열기 핸들러
   const handleFileOpenByPath = async (resolvedPath: string, hashPart?: string, strictLinkedDocument = false) => {
@@ -1275,7 +1282,7 @@ export function useDocumentOpener({
               file: 'frontend/src/hooks/useFileExplorer.ts',
               func: 'handleFileClick',
               doing: '로컬 디스크 파일 읽기 중',
-              target: targetPath || node.path || node.name,
+              target: node.path || node.name,
               error: e
             });
             console.warn('[handleFileClick] 파일 읽기 실패:', node.path, e);

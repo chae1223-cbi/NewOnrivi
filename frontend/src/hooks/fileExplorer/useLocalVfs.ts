@@ -2,6 +2,7 @@
 // 📊 [OMD-HOOK-useLocalVfs-0001] useLocalVfs.ts ➔ 로컬 VFS 및 파일 저장/스캔 훅
 // 🎯 @KICK  : 로컬 폴더/브라우저 FSA/VFS/웹드라이브 파일 트리 스캔(refreshFileList), 워크스페이스 선택(selectRootFolder), 물리적 파일 저장(saveFile)
 // 🛡️ @GUARD : 지식 보관함 자동 재색인(triggerKnowledgeAutoSyncOnSave), 디바운스 새로고침, Electron 네이티브 API 및 브라우저 FSA 3중 호환
+// 🚨 @PATCH : 2026-11-04 — [런타임 ReferenceError 수정]: hasValidDriveToken, setIsDriveAuthExpired, setIsDriveConnected, setCurrentFileNode, findFileHandleInDirectoryDeep, logWarn, knowledgeClient 누락 식별자 및 바인딩 보완
 // 🚨 @PATCH : 2026-11-04 — [런타임 버그 수정]: useEffect import 누락으로 인한 rootFolder ReferenceError 해소
 // 🚨 @PATCH : 2026-11-04 — [useFileExplorer 모듈화 분리]:
 //             1) useFileExplorer에서 파일 목록 스캔, 루트 폴더 선택/복원, 물리적 파일 저장 및 지식 베이스 동기화 로직을 useLocalVfs 독립 서브 훅으로 분리 (Rule 3 준수)
@@ -12,7 +13,7 @@ import { useCallback, useRef, useEffect } from 'react';
 import { FileNode, scanDirectory, idb } from '@/lib/indexedDbHelper';
 import { isBundledDocumentPath } from '@/lib/bundledDocument';
 import { browserAccountStorage as localStorage } from '@/lib/browserAccountStorage';
-import { logError } from '@/lib/errorDiagnostics';
+import { logError, logWarn } from '@/lib/errorDiagnostics';
 import { getResourceSettings, saveResourceSettings } from '@/lib/resourceSettings';
 import { restoreLocalProfileFolder } from '@/lib/profileStorage';
 import { getVfsFiles, vfsWriteFile } from '@/lib/virtualFileSystem';
@@ -20,17 +21,14 @@ import { getApiUrl } from '@/lib/apiUrlBuilder';
 import { BROWSER_STORAGE_NAME } from '@/constants/storage';
 import { triggerKnowledgeAutoSyncOnSave } from '@/lib/knowledge/knowledgeAutoSync';
 import { isAbsolutePath } from '@/lib/knowledge/pathResolver';
-import {
-  saveDirectoryHandle,
-  restoreDirectoryHandle,
-  openDirectoryPicker,
-  isFileSystemAccessSupported,
-} from '@/lib/fileSystemAccess';
+import { knowledgeClient } from '@/lib/knowledge/knowledgeClient';
+import { findFileHandleInDirectoryDeep } from './useDocumentOpener';
 import {
   getSavedDriveToken,
   getSavedWorkspaceInfo,
   fetchDriveFileNodes,
-  saveDriveFileContent
+  saveDriveFileContent,
+  hasValidDriveToken
 } from '@/lib/gdrive/googleDriveClient';
 import {
   verifyHandlePermission,
@@ -54,6 +52,15 @@ export interface UseLocalVfsProps {
   setIsSidebarOpen: any;
   showToast: any;
   connectGoogleDrive: any;
+  setIsDriveAuthExpired?: (val: boolean) => void;
+  setIsDriveConnected?: (val: boolean) => void;
+  currentFileNode?: any;
+  setCurrentFileNode?: any;
+  currentFileName?: any;
+  setCurrentFileName?: any;
+  currentFileParentHandleRef?: any;
+  setActiveTabId?: any;
+  setContent?: any;
 }
 
 
@@ -73,7 +80,16 @@ export function useLocalVfs({
   setSaveStatus,
   setIsSidebarOpen,
   showToast,
-  connectGoogleDrive
+  connectGoogleDrive,
+  setIsDriveAuthExpired = () => {},
+  setIsDriveConnected = () => {},
+  currentFileNode,
+  setCurrentFileNode = () => {},
+  currentFileName,
+  setCurrentFileName = () => {},
+  currentFileParentHandleRef,
+  setActiveTabId = () => {},
+  setContent = () => {},
 }: UseLocalVfsProps) {
   const lastRefreshTimeRef = useRef<number>(0);
   const isRefreshingRef = useRef<boolean>(false);
@@ -176,7 +192,7 @@ export function useLocalVfs({
     } finally {
       isRefreshingRef.current = false;
     }
-  }, [setFileList, rootFolderRef]);
+  }, [setFileList, rootFolderRef, setIsDriveAuthExpired, setIsDriveConnected]);
 
   // ====================================================================
   // 📊 [OMD-FILE-USEFILEEXPLORER-0008] useFileExplorer.ts ➔ selectRootFolder

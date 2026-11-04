@@ -2,6 +2,7 @@
 // 📊 [OMD-HOOK-useFileExplorer-0001] useFileExplorer.ts ➔ 워크스페이스 파일 탐색 통합 파사드 훅
 // 🎯 @KICK  : useDriveSync, useLocalVfs, useDocumentOpener 서브 훅들을 조율하고 일관된 단일 I/O 인터페이스 제공
 // 🛡️ @GUARD : Rule 3(역할 기반 분리)에 따라 2,590줄의 거대 훅을 3대 도메인 서브 훅으로 전면 모듈화 분리하고 기존 API 계약 100% 보존
+// 🚨 @PATCH : 2026-11-04 — [런타임 버그 수정]: useLocalVfs에 setIsDriveAuthExpired, setIsDriveConnected, setCurrentFileNode, currentFileName, currentFileParentHandleRef, setActiveTabId, setContent 전달 및 useDocumentOpener에 sessionRestoringRef 전달
 // 🚨 @PATCH : 2026-11-04 — [useFileExplorer 2,590줄 ➔ 3대 도메인 서브 훅 모듈화 분리]:
 //             1) 구글 드라이브 동기화 ➔ useDriveSync.ts (~400줄)
 //             2) 문서 열기 및 경로 점프 ➔ useDocumentOpener.ts (~1,300줄)
@@ -145,7 +146,16 @@ export const useFileExplorer = ({
     setSaveStatus,
     setIsSidebarOpen,
     showToast,
-    connectGoogleDrive
+    connectGoogleDrive,
+    setIsDriveAuthExpired,
+    setIsDriveConnected,
+    currentFileNode,
+    setCurrentFileNode,
+    currentFileName,
+    setCurrentFileName,
+    currentFileParentHandleRef,
+    setActiveTabId,
+    setContent,
   });
 
   // 3. 문서 오픈 및 경로 탐색 서브 훅 연동
@@ -183,7 +193,8 @@ export const useFileExplorer = ({
     fileList,
     workspaceType,
     licenseStatus,
-    isRestrictedUser
+    isRestrictedUser,
+    sessionRestoringRef,
   });
 
   // 4. 전역 새로고침 이벤트 및 워크스페이스 감시자 등록
