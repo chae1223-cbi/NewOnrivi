@@ -1,3 +1,4 @@
+// 🚨 @PATCH : 2026-11-04 — [관리자 권한 해제 반영] 비활성 관리자 인증 거부
 /** 🚨 @PATCH : 2026-11-02 — 로그인 직후 MFA 이전 관리자 권한 사전 확인(allowPreMfa) 파라미터 지원 */
 /** 🚨 @PATCH : 2026-11-02 — Supabase Auth 토큰 검증은 유지하고 관리자 역할 조회만 PostgreSQL로 통일한다. */
 import { supabaseAdmin } from './supabaseAdmin';
@@ -30,9 +31,9 @@ export async function verifyAdmin(request: Request, requireSuper: boolean = fals
       return { user: null, error: 'Forbidden (MFA required)' };
     }
 
-    const adminRows = await sql`SELECT admin_role FROM public.admins WHERE user_id = ${user.id}::uuid LIMIT 1`;
+    const adminRows = await sql`SELECT admin_role, is_active FROM public.admins WHERE user_id = ${user.id}::uuid LIMIT 1`;
     const adminUser = adminRows[0];
-    if (!adminUser || ![DB_CODES.ADMIN_ROLE.SUPER, DB_CODES.ADMIN_ROLE.SUPPORT].includes(adminUser.admin_role)) {
+    if (!adminUser || !adminUser.is_active || ![DB_CODES.ADMIN_ROLE.SUPER, DB_CODES.ADMIN_ROLE.SUPPORT].includes(adminUser.admin_role)) {
       return { user: null, error: 'Forbidden (Not an admin)' };
     }
 

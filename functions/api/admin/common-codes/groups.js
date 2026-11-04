@@ -1,3 +1,4 @@
+// 🚨 @PATCH : 2026-11-04 — [관리자 권한 해제 반영] 비활성 관리자 공통 코드 변경 차단
 // 🚨 @PATCH : 2026-11-02 — 3순위 DB 처리 표준화: 공통 _db.js(withDbTransaction) 적용
 // 🚨 @PATCH : 2026-11-02 — 공통코드 그룹 CRUD와 권한 조회를 PostgreSQL로 통일한다.
 import { jsonResponse, handleOptions, adminServerError } from '../_shared.js';
@@ -9,10 +10,10 @@ export const onRequestOptions = handleOptions;
 async function checkAdmin(env, adminId, requiredRole = DB_CODES.ADMIN_ROLE.SUPPORT) {
   if (!env || !adminId) return false;
   const rows = await withDbTransaction(env, db => db.query(
-    'SELECT admin_role FROM public.admins WHERE user_id = $1 LIMIT 1', [adminId]
+    'SELECT admin_role, is_active FROM public.admins WHERE user_id = $1 LIMIT 1', [adminId]
   ));
   const data = rows.rows[0];
-  if (!data) return false;
+  if (!data || !data.is_active) return false;
   if (requiredRole === DB_CODES.ADMIN_ROLE.SUPER && data.admin_role !== DB_CODES.ADMIN_ROLE.SUPER) return false;
   return true;
 }

@@ -2,6 +2,7 @@
 // 📊 [OMD-API-messages-0001] functions/api/_messages.js
 // 🎯 @KICK  : 백엔드 API 공통 응답 메시지 및 표준 에러 코드 상수 (SSoT)
 // 🛡️ @GUARD : 응답 코드 대문자 통일, 사용자 친화적 한국어 안내문, 내부 기술 스택 노출 차단
+// 🚨 @PATCH : 2026-11-04 — [관리자 권한 해제·삭제 메시지] 승인된 성공 문구를 공통 메시지로 등록
 // 🚨 @PATCH : 2026-11-02 — [메시지 전면 확장] 관리자, 플랜, 고객지원, 계정, 공통코드 등 시스템 전역 표준 메시지 완전체 동기화
 // 🚨 @PATCH : 2026-11-01 — 백엔드 전역 시스템 메시지 상수 모듈 신설
 // ====================================================================
@@ -50,6 +51,8 @@ export const API_MESSAGES = Object.freeze({
   ADMIN_INVITE_SUCCESS: Object.freeze({ code: 'ADMIN_INVITE_OK', message: '관리자가 성공적으로 등록되었습니다.' }),
   ADMIN_ROLE_CHANGE_SUCCESS: Object.freeze({ code: 'ADMIN_ROLE_CHANGE_OK', message: '관리자 권한이 성공적으로 변경되었습니다.' }),
   ADMIN_REVOKE_SUCCESS: Object.freeze({ code: 'ADMIN_REVOKE_OK', message: '관리자 권한 및 MFA가 성공적으로 회수되었습니다.' }),
+  ADMIN_ACCESS_DISABLED_SUCCESS: Object.freeze({ code: 'ADMIN_REVOKE_OK', message: '관리자 권한이 해제되었습니다.' }),
+  ADMIN_DELETE_SUCCESS: Object.freeze({ code: 'ADMIN_REVOKE_OK', message: '관리자 목록에서 삭제되었습니다.' }),
   ADMIN_ALREADY_EXISTS: Object.freeze({ code: 'ERR_ADMIN_EXISTS', message: '이미 등록된 관리자입니다.' }),
   ADMIN_NOT_FOUND: Object.freeze({ code: 'ERR_ADMIN_NOT_FOUND', message: '해당 관리자를 찾을 수 없습니다.' }),
   ADMIN_INVALID_ROLE: Object.freeze({ code: 'ERR_ADMIN_INVALID_ROLE', message: '유효하지 않은 관리자 권한입니다.' }),

@@ -2,6 +2,7 @@
 // 📊 [OMD-ADMIN-admins-0003] functions/api/admin/admins.js
 // 🎯 @KICK  : 관리자 계정 목록 조회, 가입 회원 대상 관리자 임명, 권한 변경 및 권한 회수(OTP 초기화)
 // 🛡️ @GUARD : checkAdminAuth(MFA/Role) 통합 검증, ROOT_ADMIN 환경변수 보호, All-or-Nothing 단일 DB 트랜잭션
+// 🚨 @PATCH : 2026-11-04 — [관리자 권한 해제·삭제 분리] is_active로 접근을 차단하고 삭제는 관리자 레코드만 제거
 // 🚨 @PATCH : **2026-11-04** — [PostgreSQL 42703 undefined_column 오류 해결]: public.admins 테이블에 미존재하는 is_active, updated_at 컬럼 쿼리 제거
 // 🚨 @PATCH : 2026-11-02 — [주석 표준화] onrivi-source-comments 규격 준수: 전 함수 문서 주석(JSDoc) 및 라인별 해설 주석 전면 복원
 // 🚨 @PATCH : 2026-11-02 — [정책 표준화] "선 가입 후 권한 승격" 정책 확정: 외부 Auth 생성 제거 및 사전 가입된 회원(public.users)만 관리자로 임명
@@ -58,7 +59,7 @@ export async function onRequestGet(context) {
 
     // 2. PostgreSQL 데이터베이스에서 전체 관리자 목록 조회 (생성일시 역순 정렬)
     const result = await withDbTransaction(env, db => db.query(
-      'SELECT id, user_id, email, admin_role, created_at FROM public.admins ORDER BY created_at DESC'
+      'SELECT id, user_id, email, admin_role, is_active, created_at FROM public.admins ORDER BY created_at DESC'
     ));
 
     // 3. 환경변수(ROOT_ADMIN_EMAIL)와 대조하여 최상위 관리자 여부(is_root) 플래그를 동적으로 주입
@@ -187,11 +188,11 @@ export async function onRequestPost(context) {
 
 /**
  * ========================================================================================
- * [함수명] onRequestPatch - 기존 관리자의 권한 등급(SUPER/SUPPORT)을 변경합니다.
+ * [함수명] onRequestPatch - 기존 관리자의 권한 등급 또는 활성 상태를 변경합니다.
  * 대상 레코드 비관적 행 잠금(FOR UPDATE) 및 ROOT_ADMIN 보호 검증을 포함합니다.
  *
  * @param {object} context - Cloudflare Pages Functions 실행 컨텍스트
- * @param {Request} context.request - 인입된 HTTP PATCH Request 객체 (Body: { adminTargetId, newRole })
+ * @param {Request} context.request - 인입된 HTTP PATCH Request 객체 (Body: { adminTargetId, newRole } 또는 { adminTargetId, isActive })
  * @param {object} context.env - 환경 변수 및 Cloudflare 바인딩 객체 (ROOT_ADMIN_EMAIL 등)
  * @returns {Promise<Response>} 권한 변경 성공 메시지가 포함된 JSON 응답
  * @throws 400(파라미터 누락, 유효하지 않은 권한 코드), 401(미인증), 403(권한 없음, 최상위 관리자 권한 변경 차단), 404(관리자 미존재), 500(DB 트랜잭션 오류)
@@ -215,16 +216,16 @@ export async function onRequestPatch(context) {
 
     // 2. 요청 본문(JSON) 파싱 및 변경 파라미터 추출
     const body = await request.json().catch(() => ({}));
-    const { adminTargetId, newRole } = body;
+    const { adminTargetId, newRole, isActive } = body;
 
     // 3. 필수 입력값 검증 (변경 대상 관리자 식별자와 신규 역할 코드 필수)
-    if (!adminTargetId || !newRole) {
+    if (!adminTargetId || (typeof isActive !== 'boolean' && !newRole)) {
       return jsonResponse({ success: false, error: API_MESSAGES.INVALID_PARAMS.message }, 400);
     }
 
     // 4. 신규 역할 코드 표준 정규화 및 유효성 검증
-    const normalizedRole = String(newRole).trim().toUpperCase();
-    if (![DB_CODES.ADMIN_ROLE.SUPER, DB_CODES.ADMIN_ROLE.SUPPORT].includes(normalizedRole)) {
+    const normalizedRole = typeof isActive === 'boolean' ? null : String(newRole).trim().toUpperCase();
+    if (normalizedRole && ![DB_CODES.ADMIN_ROLE.SUPER, DB_CODES.ADMIN_ROLE.SUPPORT].includes(normalizedRole)) {
       return jsonResponse({ success: false, error: API_MESSAGES.ADMIN_INVALID_ROLE.message }, 400);
     }
 
@@ -251,19 +252,22 @@ export async function onRequestPatch(context) {
         return { success: false, error: API_MESSAGES.ROOT_ADMIN_PROTECTED.message, status: 403 };
       }
 
-      // 5-3. 관리자 테이블의 권한(admin_role) 수정
-      await db.query(
-        `UPDATE public.admins
-         SET admin_role = $1
-         WHERE id = $2`,
-        [normalizedRole, adminTargetId]
-      );
+      // 5-3. 권한 해제/재부여 또는 등급 변경. 일반 회원 계정과 MFA 요인은 유지한다.
+      if (typeof isActive === 'boolean') {
+        if (!isActive && targetAdmin.user_id === adminId) {
+          return { success: false, error: API_MESSAGES.SELF_REVOKE_PROHIBITED.message, status: 400 };
+        }
+        await db.query('UPDATE public.admins SET is_active = $1 WHERE id = $2', [isActive, adminTargetId]);
+      } else {
+        await db.query('UPDATE public.admins SET admin_role = $1 WHERE id = $2', [normalizedRole, adminTargetId]);
+      }
 
-      // 5-4. 권한 변경 감사 로그(public.user_audit_logs) 적재
+      // 5-4. 기존 감사 액션 코드로 관리자 변경 내역을 기록한다.
       await db.query(
         `INSERT INTO public.user_audit_logs (target_user_id, admin_id, action_type, reason)
-         VALUES ($1, $2, 'ADMIN_ROLE_CHANGE', $3)`,
-        [targetAdmin.user_id || null, adminId, `Changed role of ${targetAdmin.email} to ${normalizedRole}`]
+         VALUES ($1, $2, $3, $4)`,
+        [targetAdmin.user_id || null, adminId, typeof isActive === 'boolean' && !isActive ? DB_CODES.AUDIT_ACTION.ADMIN_REVOKE : DB_CODES.AUDIT_ACTION.ADMIN_ROLE_CHANGE,
+          typeof isActive === 'boolean' ? `Admin access ${isActive ? 'enabled' : 'disabled'} for ${targetAdmin.email}` : `Changed role of ${targetAdmin.email} to ${normalizedRole}`]
       );
 
       return { success: true };
@@ -275,7 +279,7 @@ export async function onRequestPatch(context) {
     }
 
     // 6. 권한 변경 성공 응답 반환
-    return jsonResponse({ success: true, message: API_MESSAGES.ADMIN_ROLE_CHANGE_SUCCESS.message });
+    return jsonResponse({ success: true, message: typeof isActive === 'boolean' ? (isActive ? API_MESSAGES.ADMIN_ROLE_CHANGE_SUCCESS.message : API_MESSAGES.ADMIN_ACCESS_DISABLED_SUCCESS.message) : API_MESSAGES.ADMIN_ROLE_CHANGE_SUCCESS.message });
   } catch (error) {
     // 시스템 예외 발생 시 표준 500 에러 응답 생성
     return adminServerError(context.request, error, 'functions/api/admin/admins.js', 'update_admin_role');
@@ -284,13 +288,13 @@ export async function onRequestPatch(context) {
 
 /**
  * ========================================================================================
- * [함수명] onRequestDelete - 관리자 권한을 영구 회수하고 등록된 OTP(MFA) 요인을 단일 트랜잭션으로 초기화합니다.
+ * [함수명] onRequestDelete - 관리자 등록 레코드만 삭제하고 일반 회원 계정과 OTP(MFA)는 유지합니다.
  * 최상위 관리자(ROOT_ADMIN) 보호 및 본인 계정 권한 회수(Self-Lockout) 방어 로직이 적용되어 있습니다.
  *
  * @param {object} context - Cloudflare Pages Functions 실행 컨텍스트
  * @param {Request} context.request - 인입된 HTTP DELETE Request 객체 (Query: ?adminTargetId=xxx)
  * @param {object} context.env - 환경 변수 및 Cloudflare 바인딩 객체 (ROOT_ADMIN_EMAIL 등)
- * @returns {Promise<Response>} 권한 회수 및 MFA 초기화 성공 메시지가 포함된 JSON 응답
+ * @returns {Promise<Response>} 관리자 등록 삭제 성공 메시지가 포함된 JSON 응답
  * @throws 400(파라미터 누락, 본인 권한 회수 시도), 401(미인증), 403(권한 없음, 최상위 관리자 회수 시도), 404(관리자 미존재), 500(DB 트랜잭션 오류)
  *
  * @example
@@ -318,7 +322,7 @@ export async function onRequestDelete(context) {
       return jsonResponse({ success: false, error: API_MESSAGES.INVALID_PARAMS.message }, 400);
     }
 
-    // 4. 단일 원자적 DB 트랜잭션 실행 (대상 행 잠금 -> ROOT 관리자 보호 -> 본인 방어 -> 권한 삭제 -> MFA 초기화 -> 감사로그 적재)
+    // 4. 단일 원자적 DB 트랜잭션 실행 (대상 행 잠금 -> ROOT 관리자 보호 -> 본인 방어 -> 관리자 등록 삭제 -> 감사로그 적재)
     const result = await withDbTransaction(env, async db => {
       // 4-1. 회수 대상 관리자 레코드 조회 및 동시성 제어를 위한 비관적 행 잠금(FOR UPDATE)
       const selectRes = await db.query(
@@ -347,26 +351,14 @@ export async function onRequestDelete(context) {
       }
 
       // 4-4. 관리자 테이블(public.admins)에서 권한 레코드 영구 삭제
-      await db.query('DELETE FROM public.admins WHERE id = $1', [adminTargetId]);
+      const deleted = await db.query('DELETE FROM public.admins WHERE id = $1', [adminTargetId]);
+      if (deleted.rowCount !== 1) throw new Error('Admin delete affected an unexpected number of rows');
 
-      // 4-5. 외부 Auth REST 루프 없이, DB 트랜잭션 내에서 관리자 2차 인증(TOTP MFA) 요인을 원자적으로 즉시 초기화
-      // (MFA 챌린지 선행 삭제 후 등록된 팩터 레코드 삭제)
-      if (targetAdmin.user_id) {
-        await db.query(
-          `DELETE FROM auth.mfa_challenges WHERE factor_id IN (SELECT id FROM auth.mfa_factors WHERE user_id = $1)`,
-          [targetAdmin.user_id]
-        );
-        await db.query(
-          `DELETE FROM auth.mfa_factors WHERE user_id = $1`,
-          [targetAdmin.user_id]
-        );
-      }
-
-      // 4-6. 관리자 권한 회수 및 MFA 초기화 감사 로그(public.user_audit_logs) 적재
+      // 4-5. 관리자 등록 삭제 감사 로그(public.user_audit_logs) 적재
       await db.query(
         `INSERT INTO public.user_audit_logs (target_user_id, admin_id, action_type, reason)
          VALUES ($1, $2, 'ADMIN_REVOKE', $3)`,
-        [targetAdmin.user_id || null, adminId, `Revoked admin access and reset MFA for ${targetAdmin.email}`]
+        [targetAdmin.user_id || null, adminId, `Removed admin registration for ${targetAdmin.email}`]
       );
 
       return { success: true };
@@ -377,10 +369,10 @@ export async function onRequestDelete(context) {
       return jsonResponse({ success: false, error: result.error }, result.status || 400);
     }
 
-    // 5. 권한 회수 및 MFA 초기화 성공 응답 반환
-    return jsonResponse({ success: true, message: API_MESSAGES.ADMIN_REVOKE_SUCCESS.message });
+    // 5. 관리자 등록 삭제 성공 응답 반환
+    return jsonResponse({ success: true, message: API_MESSAGES.ADMIN_DELETE_SUCCESS.message });
   } catch (error) {
     // 시스템 예외 발생 시 표준 500 에러 응답 생성
-    return adminServerError(context.request, error, 'functions/api/admin/admins.js', 'revoke_admin');
+    return adminServerError(context.request, error, 'functions/api/admin/admins.js', 'delete_admin_registration');
   }
 }

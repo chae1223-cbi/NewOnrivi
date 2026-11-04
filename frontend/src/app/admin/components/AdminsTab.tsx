@@ -1,3 +1,4 @@
+// 🚨 @PATCH : 2026-11-04 — [관리자 권한 해제·삭제 분리] 비활성 상태 표시와 재부여·삭제 메뉴 추가
 // 🚨 @PATCH : 2026-11-04 — [관리자 목록 오류 중복 기록 방지] 서버 500 응답은 서버 로그를 기준으로 추적하고 토스트의 별도 오류 로그는 생략
 /** 🚨 @PATCH : 2026-11-02 — [보안 리팩토링] 서버 응답의 is_root 플래그 기반 최상위 관리자 판별 지원 */
 /** 🚨 @PATCH : 2026-11-02 — [관리자 API 호출 규격 정리] 권한 변경/회수 시 불필요한 targetEmail, adminId 클라이언트 전달 제거 */
@@ -19,6 +20,7 @@ interface AdminUser {
   admin_role: string;
   created_at: string;
   is_root?: boolean;
+  is_active: boolean;
 }
 
 export default function AdminsTab() {
@@ -140,10 +142,39 @@ export default function AdminsTab() {
     });
   };
 
-  const handleRevoke = (admin: AdminUser) => {
+  const handleAccess = (admin: AdminUser, isActive: boolean) => {
     setConfirmConfig({
       isOpen: true,
-      title: `${admin.email}의 관리자 권한을 즉시 회수하시겠습니까?`,
+      title: `${admin.email}의 관리자 권한을 ${isActive ? '다시 부여' : '해제'}하시겠습니까?`,
+      isDanger: !isActive,
+      onConfirm: async () => {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const res = await adminFetch('/api/admin/admins', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token || ''}` },
+            body: JSON.stringify({ adminTargetId: admin.id, isActive })
+          });
+          const data = await res.json();
+          if (res.ok && data.success) {
+            showToast(data.message, 'success');
+            fetchAdmins();
+          } else {
+            showToast(data.error || '권한 변경에 실패했습니다.', 'error');
+          }
+        } catch {
+          showToast('네트워크 오류가 발생했습니다.', 'error');
+        } finally {
+          setConfirmConfig(null);
+        }
+      }
+    });
+  };
+
+  const handleDelete = (admin: AdminUser) => {
+    setConfirmConfig({
+      isOpen: true,
+      title: `${admin.email}를 관리자 목록에서 삭제하시겠습니까?`,
       isDanger: true,
       onConfirm: async () => {
         try {
@@ -159,7 +190,7 @@ export default function AdminsTab() {
             showToast(data.message, 'success');
             fetchAdmins();
           } else {
-            showToast(data.error || '권한 회수에 실패했습니다.', 'error');
+            showToast(data.error || '삭제에 실패했습니다.', 'error');
           }
         } catch (err) {
           showToast('네트워크 오류가 발생했습니다.', 'error');
@@ -218,11 +249,11 @@ export default function AdminsTab() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                        admin.admin_role === 'SUPER' 
+                        !admin.is_active ? 'bg-slate-100 text-slate-700 border border-slate-300' : admin.admin_role === 'SUPER' 
                           ? 'bg-[rgba(155,89,182,0.1)] text-[#9b59b6] border border-[rgba(155,89,182,0.2)]'
                           : 'bg-[rgba(52,152,219,0.1)] text-[var(--admin-primary)] border border-[rgba(52,152,219,0.2)]'
                       }`}>
-                        {admin.admin_role === 'SUPER' ? '슈퍼 관리자 (SUPER)' : '지원 관리자 (SUPPORT)'}
+                        {!admin.is_active ? '권한 해제' : admin.admin_role === 'SUPER' ? '슈퍼 관리자 (SUPER)' : '지원 관리자 (SUPPORT)'}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-[var(--admin-text-muted)]">
@@ -246,7 +277,7 @@ export default function AdminsTab() {
                             {admin.is_root || isRootAdmin(admin.email) ? (
                               <div className="px-4 py-3 text-xs text-[var(--admin-text-muted)] text-left flex items-start gap-2 bg-[rgba(241,196,15,0.05)] border-l-2 border-yellow-400">
                                 <ShieldAlert size={14} className="text-yellow-500 mt-0.5 shrink-0" />
-                                <span>최상위 관리자는 권한 수정 및 회수가 불가합니다.</span>
+                                <span>최상위 관리자는 권한 수정 및 삭제가 불가합니다.</span>
                               </div>
                             ) : (
                               <>
@@ -256,11 +287,17 @@ export default function AdminsTab() {
                                 >
                                   {admin.admin_role === 'SUPER' ? 'SUPPORT 등급으로 강등' : 'SUPER 등급으로 승격'}
                                 </button>
-                                <button 
-                                  onClick={() => { handleRevoke(admin); setOpenMenuId(null); setMenuPosition(null); }} 
+                                <button
+                                  onClick={() => { handleAccess(admin, !admin.is_active); setOpenMenuId(null); setMenuPosition(null); }}
+                                  className="w-full text-left px-4 py-2 text-sm text-[var(--admin-text)] hover:bg-[var(--admin-background)] transition-colors"
+                                >
+                                  {admin.is_active ? '권한 해제' : '권한 다시 부여'}
+                                </button>
+                                <button
+                                  onClick={() => { handleDelete(admin); setOpenMenuId(null); setMenuPosition(null); }}
                                   className="w-full text-left px-4 py-2 text-sm text-[var(--admin-error)] hover:bg-[rgba(231,76,60,0.1)] transition-colors"
                                 >
-                                  권한 즉시 회수
+                                  관리자 목록에서 삭제
                                 </button>
                               </>
                             )}

@@ -1,3 +1,4 @@
+// 🚨 @PATCH : 2026-11-04 — [관리자 권한 해제 즉시 반영] 모든 요청에서 is_active를 DB로 검증하고 30초 권한 캐시를 제거
 // 🚨 @PATCH : **2026-11-04** — [관리자 인증 인메모리 30초 캐싱]: 반복 폴링 시 Supabase Auth/DB 부하 및 503 에러 원천 방어
 // ====================================================================
 // 📊 [OMD-ADMIN-shared-0002] functions/api/admin/_shared.js
@@ -163,7 +164,7 @@ export function getSupabaseConfig(env) {
  * [3단계 검증 프로세스]:
  * 1. [1차 토큰 검증] Supabase Auth REST(/auth/v1/user)로 로그인 토큰 위조/만료 여부 및 유저 식별
  * 2. [2차 인증 검증] JWT 페이로드 디코딩으로 Google OTP 등 2차 인증 완료(aal2) 여부 검사
- * 3. [관리자 권한 검증] PostgreSQL admins 테이블에서 허용된 권한 등급(SUPER, SUPPORT) 일치 확인
+ * 3. [관리자 권한 검증] PostgreSQL admins 테이블의 활성 상태와 허용된 권한 등급(SUPER, SUPPORT) 확인
  *
  * @param {Request} request - 인입된 Fetch API Request 객체
  * @param {object} env - Cloudflare Worker Environment 바인딩 객체
@@ -172,8 +173,6 @@ export function getSupabaseConfig(env) {
  * @returns {Promise<{ user?: object, adminData?: object, error?: string, status?: number }>} 검증 성공 시 유저 및 관리자 데이터 반환, 실패 시 error/status 반환
  * ==========================================================================================
  */
-const adminAuthCache = new Map();
-const AUTH_CACHE_TTL_MS = 30000; // 30초 캐시 유효
 
 export async function checkAdminAuth(
   request,
@@ -189,12 +188,6 @@ export async function checkAdminAuth(
   const token = authHeader.match(/^Bearer\s+(.+)$/i)?.[1];                         // Bearer 접두어 제거 및 순수 JWT 문자열 추출
   if (!token) return { error: API_MESSAGES.UNAUTHORIZED.code, status: 401 };       // 토큰 포맷이 비정상이면 401 오류 반환
 
-  // 2-1. [인메모리 캐시 검증] 최근 30초 내 검증된 관리자 토큰이면 원격 Supabase/DB 조회 생략 (503 방어 & 초고속 응답)
-  const cacheKey = `${token}_${allowPreMfa}_${requiredRoles.join(',')}`;
-  const cached = adminAuthCache.get(cacheKey);
-  if (cached && (Date.now() - cached.timestamp < AUTH_CACHE_TTL_MS)) {
-    return { user: cached.user, adminData: cached.adminData };
-  }
 
   const { supabaseUrl, headers: serviceHeaders } = getSupabaseConfig(env);         // Supabase API 통신용 URL 및 Service Role 키 조회
 
@@ -228,21 +221,14 @@ export async function checkAdminAuth(
 
   // 5. [3단계] PostgreSQL 데이터베이스 admins 테이블에서 실제 관리자 권한(Role) 확인
   const adminRows = (await withDbTransaction(env, db => db.query(
-    'SELECT admin_role FROM public.admins WHERE user_id = $1 LIMIT 1', [user.id]
+    'SELECT admin_role, is_active FROM public.admins WHERE user_id = $1 LIMIT 1', [user.id]
   ))).rows;
   const adminData = adminRows && adminRows.length > 0 ? adminRows[0] : null;
 
   // 관리자 명단에 없거나 허용된 Role(SUPER/SUPPORT)이 아니면 인가 거부
-  if (!adminData || !requiredRoles.includes(adminData.admin_role)) {
+  if (!adminData || !adminData.is_active || !requiredRoles.includes(adminData.admin_role)) {
     return { error: API_MESSAGES.FORBIDDEN.code, status: 403 };                    // 권한 등급 미달 시 403 차단
   }
-
-  // 30초 캐싱 (메모리 누수 방어: 200건 초과 시 오래된 키 삭제)
-  if (adminAuthCache.size > 200) {
-    const oldestKey = adminAuthCache.keys().next().value;
-    adminAuthCache.delete(oldestKey);
-  }
-  adminAuthCache.set(cacheKey, { user, adminData, timestamp: Date.now() });
 
   // 모든 3단계 검증 통과 시 유저 및 관리자 메타데이터 반환
   return { user, adminData };
