@@ -1,3 +1,4 @@
+// 🚨 @PATCH : 2026-11-04 — [사용자 관리 내 관리자 권한 상태 연동] 일반 사용자 목록에 admin_info(is_admin, admin_role) 매핑 추가 및 관리자 탭 role 필드 보정
 // 🚨 @PATCH : 2026-11-02 — [공통소스 표준화] blog/_db.js 종속을 제거하고 공통 모듈 _db.js의 withDbTransaction으로 교체
 // 🚨 @PATCH : 2026-11-01 — [skills/onrivi-db-processing, skills/onrivi-error-handling 준수]
 // 🚨 @PATCH : 2026-11-02 — 관리자 사용자·구독·기기 목록 조회를 PostgreSQL로 통일하고 기존 응답 형식을 유지한다.
@@ -31,6 +32,11 @@ export async function onRequestGet(context) {
       ))).rows;
       
       const userIds = users.map(u => u.id);
+      const adminRows = (await withDbTransaction(env, db => db.query(
+        'SELECT id, user_id, admin_role, is_active FROM public.admins'
+      ))).rows;
+      const adminMap = {};
+      adminRows.forEach(a => { adminMap[a.user_id] = a; });
       let subsMap = {};
       let subIdToUserIdMap = {};
       let subIds = [];
@@ -125,7 +131,13 @@ export async function onRequestGet(context) {
           last_login: authUser?.last_sign_in_at ? new Date(authUser.last_sign_in_at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }) : '-',
           start_date: sub?.current_period_start ? new Date(sub.current_period_start).toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }) : '-',
           end_date: sub?.current_period_end ? (new Date(sub.current_period_end).getUTCFullYear() === 9999 ? '무제한' : new Date(sub.current_period_end).toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' })) : '-',
-          devices: activationsMap[u.id] || []
+          devices: activationsMap[u.id] || [],
+          admin_info: adminMap[u.id] ? {
+            id: adminMap[u.id].id,
+            role: adminMap[u.id].admin_role,
+            is_active: adminMap[u.id].is_active
+          } : null,
+          is_admin: Boolean(adminMap[u.id])
         };
       });
 
@@ -166,7 +178,11 @@ export async function onRequestGet(context) {
           id: a.id,
           email: a.email,
           nick_name: '-', 
-          plan: a.role === 'SUPER_ADMIN' ? 'Super Admin' : (a.role || 'Support Admin'),
+          plan: (a.admin_role === 'SUPER' || a.role === 'SUPER_ADMIN') ? 'Super Admin' : 'Support Admin',
+          admin_role: a.admin_role || (a.role === 'SUPER_ADMIN' ? 'SUPER' : 'SUPPORT'),
+          admin_id: a.id,
+          user_id: a.user_id,
+          is_active: a.is_active !== false,
           status: a.is_active === false ? 'SUSPENDED' : 'ACTIVE',
           date: a.created_at ? new Date(a.created_at).toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }) : '-',
           last_login: authUser?.last_sign_in_at ? new Date(authUser.last_sign_in_at).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }) : '-',

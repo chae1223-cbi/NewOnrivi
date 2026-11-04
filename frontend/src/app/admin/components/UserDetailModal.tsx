@@ -1,7 +1,8 @@
+/** 🚨 @PATCH : 2026-11-04 — [SUPER 관리자의 SUPPORT 권한 부여/회수 액션 연동] 사용자 상세 모달 내 관리자 권한 상태 카드 및 임명/회수 버튼 신설 */
 /** 🚨 @PATCH : 2026-09-28 — 사용자 상세 모달에 SUPER 관리자 요금제 변경과 관리자 수동 무료/유료 표시 적용 */
 import { useModalEscape } from '@/hooks/useModalEscape';
 import React from 'react';
-import { X, User, Calendar, CreditCard, Laptop, MonitorSmartphone } from 'lucide-react';
+import { X, User, Calendar, CreditCard, Laptop, MonitorSmartphone, ShieldCheck } from 'lucide-react';
 
 interface Device {
   id: string;
@@ -15,9 +16,21 @@ interface UserDetailProps {
   onKillSession?: () => void;
   onKillSingleSession?: (deviceId: string) => void;
   onChangePlan?: () => void;
+  canManageAdminRole?: boolean;
+  onGrantSupportAdmin?: () => void;
+  onRevokeAdmin?: () => void;
 }
 
-export default function UserDetailModal({ user, onClose, onKillSession, onKillSingleSession, onChangePlan }: UserDetailProps) {
+export default function UserDetailModal({
+  user,
+  onClose,
+  onKillSession,
+  onKillSingleSession,
+  onChangePlan,
+  canManageAdminRole,
+  onGrantSupportAdmin,
+  onRevokeAdmin,
+}: UserDetailProps) {
   useModalEscape(Boolean(user), onClose);
   if (!user) return null;
 
@@ -101,6 +114,44 @@ export default function UserDetailModal({ user, onClose, onKillSession, onKillSi
               </div>
             </div>
           </section>
+
+          
+          {/* Admin Role Management Section (SUPER 관리자 전용) */}
+          {canManageAdminRole && (
+            <section className="bg-[var(--admin-bg)] rounded-xl p-5 border border-[var(--admin-border)]">
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <h3 className="text-[var(--admin-text)] font-semibold text-sm uppercase tracking-wider flex items-center gap-2">
+                  <ShieldCheck size={16} className="text-[var(--admin-primary)]" /> 관리자 권한 상태
+                </h3>
+                {user.is_admin ? (
+                  onRevokeAdmin && (
+                    <button
+                      type="button"
+                      onClick={onRevokeAdmin}
+                      className="admin-btn-danger text-xs px-3 py-1.5"
+                    >
+                      관리자 권한 회수
+                    </button>
+                  )
+                ) : (
+                  onGrantSupportAdmin && (
+                    <button
+                      type="button"
+                      onClick={onGrantSupportAdmin}
+                      className="admin-btn-primary text-xs px-3 py-1.5"
+                    >
+                      지원 관리자(SUPPORT) 임명
+                    </button>
+                  )
+                )}
+              </div>
+              <p className="text-xs text-[var(--admin-text-muted)]">
+                {user.is_admin 
+                  ? `현재 [${user.admin_info?.role || 'SUPPORT'}] 관리자 권한을 보유하고 있습니다. 회수 시 일반 회원으로 전환됩니다.` 
+                  : '현재 일반 회원 계정입니다. 필요 시 고객 지원 및 운영을 위한 SUPPORT 관리자 권한을 부여할 수 있습니다.'}
+              </p>
+            </section>
+          )}
 
           {/* Devices Section */}
           <section className="bg-[var(--admin-bg)] rounded-xl p-5 border border-[var(--admin-border)]">

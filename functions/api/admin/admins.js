@@ -2,6 +2,7 @@
 // 📊 [OMD-ADMIN-admins-0003] functions/api/admin/admins.js
 // 🎯 @KICK  : 관리자 계정 목록 조회, 가입 회원 대상 관리자 임명, 권한 변경 및 권한 회수(OTP 초기화)
 // 🛡️ @GUARD : checkAdminAuth(MFA/Role) 통합 검증, ROOT_ADMIN 환경변수 보호, All-or-Nothing 단일 DB 트랜잭션
+// 🚨 @PATCH : 2026-11-04 — [SUPER 관리자의 SUPPORT 권한 부여/회수 연동] adminTargetId 매개변수에 admins.id 및 users.id 이중 조회 지원
 // 🚨 @PATCH : 2026-11-04 — [관리자 권한 해제·삭제 분리] is_active로 접근을 차단하고 삭제는 관리자 레코드만 제거
 // 🚨 @PATCH : **2026-11-04** — [PostgreSQL 42703 undefined_column 오류 해결]: public.admins 테이블에 미존재하는 is_active, updated_at 컬럼 쿼리 제거
 // 🚨 @PATCH : 2026-11-02 — [주석 표준화] onrivi-source-comments 규격 준수: 전 함수 문서 주석(JSDoc) 및 라인별 해설 주석 전면 복원
@@ -235,7 +236,8 @@ export async function onRequestPatch(context) {
       const selectRes = await db.query(
         `SELECT id, user_id, email, admin_role
          FROM public.admins
-         WHERE id = $1
+         WHERE id = $1 OR user_id = $1
+         LIMIT 1
          FOR UPDATE`,
         [adminTargetId]
       );
@@ -257,9 +259,9 @@ export async function onRequestPatch(context) {
         if (!isActive && targetAdmin.user_id === adminId) {
           return { success: false, error: API_MESSAGES.SELF_REVOKE_PROHIBITED.message, status: 400 };
         }
-        await db.query('UPDATE public.admins SET is_active = $1 WHERE id = $2', [isActive, adminTargetId]);
+        await db.query('UPDATE public.admins SET is_active = $1 WHERE id = $2', [isActive, targetAdmin.id]);
       } else {
-        await db.query('UPDATE public.admins SET admin_role = $1 WHERE id = $2', [normalizedRole, adminTargetId]);
+        await db.query('UPDATE public.admins SET admin_role = $1 WHERE id = $2', [normalizedRole, targetAdmin.id]);
       }
 
       // 5-4. 기존 감사 액션 코드로 관리자 변경 내역을 기록한다.
@@ -328,7 +330,8 @@ export async function onRequestDelete(context) {
       const selectRes = await db.query(
         `SELECT id, user_id, email, admin_role
          FROM public.admins
-         WHERE id = $1
+         WHERE id = $1 OR user_id = $1
+         LIMIT 1
          FOR UPDATE`,
         [adminTargetId]
       );
@@ -351,7 +354,7 @@ export async function onRequestDelete(context) {
       }
 
       // 4-4. 관리자 테이블(public.admins)에서 권한 레코드 영구 삭제
-      const deleted = await db.query('DELETE FROM public.admins WHERE id = $1', [adminTargetId]);
+      const deleted = await db.query('DELETE FROM public.admins WHERE id = $1', [targetAdmin.id]);
       if (deleted.rowCount !== 1) throw new Error('Admin delete affected an unexpected number of rows');
 
       // 4-5. 관리자 등록 삭제 감사 로그(public.user_audit_logs) 적재

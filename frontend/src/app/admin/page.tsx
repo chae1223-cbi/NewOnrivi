@@ -3,6 +3,7 @@
  * 파일명 : app/admin/page.tsx
  * -----------------------------------------------------------------------
  * 변경내역
+ * 🚨 @PATCH : **2026-11-04** — [SUPER 관리자의 SUPPORT 권한 부여/회수 연동] 사용자 관리(일반 사용자/관리자 탭) 내 권한 부여/회수/변경 액션 연결 및 뱃지 표시
  * 🚨 @PATCH : **2026-11-02** — [DB 접근 서버 API 일원화] 브라우저 직접 supabase.from('admins')를 서버 /api/admin/role 호출로 전환
  * 🚨 @PATCH : **2026-10-08** — [시스템 현황 탭(SystemTab) 연동]: 4대 핵심 서비스(DB, R2, Edge) 헬스체크 및 실시간 터미널 로그 콘솔 뷰어 마운트
  * 🚨 @PATCH : **2026-10-08** — [콘텐츠 관리 탭(ContentsTab) 연동]: 사용자 개인 에디터 첨부 제외 공식 콘텐츠(고객 문의 첨부, 기술 블로그 에셋) 통합 관리 대시보드 마운트
@@ -151,6 +152,7 @@ function UsersTab() {
   const [detailTarget, setDetailTarget] = useState<any | null>(null);
   const [planTarget, setPlanTarget] = useState<any | null>(null);
   const [canChangeUserPlan, setCanChangeUserPlan] = useState(false);
+  const [canManageAdminRole, setCanManageAdminRole] = useState(false);
   const [paymentHistoryTarget, setPaymentHistoryTarget] = useState<any | null>(null);
   const [auditTarget, setAuditTarget] = useState<any | null>(null);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
@@ -173,9 +175,15 @@ function UsersTab() {
       try {
         const res = await adminFetch('/api/admin/role');
         const json = await res.json();
-        if (active) setCanChangeUserPlan(json.admin_role === 'SUPER');
+        if (active) {
+          setCanChangeUserPlan(json.admin_role === 'SUPER');
+          setCanManageAdminRole(json.admin_role === 'SUPER');
+        }
       } catch {
-        if (active) setCanChangeUserPlan(false);
+        if (active) {
+          setCanChangeUserPlan(false);
+          setCanManageAdminRole(false);
+        }
       }
     })();
     return () => { active = false; };
@@ -202,6 +210,134 @@ function UsersTab() {
     };
     fetchUsers();
   }, [userType, page, filterStatus, filterPlan, refreshKey, requestedUserId]);
+
+  
+  const handleGrantSupportAdmin = (targetUser: any) => {
+    setConfirmConfig({
+      isOpen: true,
+      title: `${targetUser.email} 회원에게 지원 관리자(SUPPORT) 권한을 부여하시겠습니까?`,
+      onConfirm: async () => {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const res = await adminFetch('/api/admin/admins', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session?.access_token || ''}`
+            },
+            body: JSON.stringify({ email: targetUser.email, role: 'SUPPORT' })
+          });
+          const data = await res.json();
+          if (data.success) {
+            showToast(data.message || '지원 관리자 권한이 부여되었습니다.', 'success');
+            setRefreshKey(prev => prev + 1);
+            setDetailTarget(null);
+          } else {
+            showToast(data.error || '권한 부여에 실패했습니다.', 'error');
+          }
+        } catch {
+          showToast('네트워크 오류가 발생했습니다.', 'error');
+        } finally {
+          setConfirmConfig(null);
+        }
+      }
+    });
+  };
+
+  const handleRevokeAdmin = (targetUser: any) => {
+    const targetId = targetUser.admin_info?.id || targetUser.admin_id || targetUser.id;
+    setConfirmConfig({
+      isOpen: true,
+      title: `${targetUser.email}의 관리자 권한을 즉시 회수하시겠습니까?`,
+      onConfirm: async () => {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const res = await adminFetch(`/api/admin/admins?adminTargetId=${targetId}`, {
+            method: 'DELETE',
+            headers: {
+              'Authorization': `Bearer ${session?.access_token || ''}`
+            }
+          });
+          const data = await res.json();
+          if (data.success) {
+            showToast(data.message || '관리자 권한이 성공적으로 회수되었습니다.', 'success');
+            setRefreshKey(prev => prev + 1);
+            setDetailTarget(null);
+          } else {
+            showToast(data.error || '권한 회수에 실패했습니다.', 'error');
+          }
+        } catch {
+          showToast('네트워크 오류가 발생했습니다.', 'error');
+        } finally {
+          setConfirmConfig(null);
+        }
+      }
+    });
+  };
+
+  const handleChangeAdminRole = (targetUser: any, newRole: string) => {
+    const targetId = targetUser.admin_id || targetUser.id;
+    setConfirmConfig({
+      isOpen: true,
+      title: `${targetUser.email}의 관리자 권한을 ${newRole}(으)로 변경하시겠습니까?`,
+      onConfirm: async () => {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const res = await adminFetch('/api/admin/admins', {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session?.access_token || ''}`
+            },
+            body: JSON.stringify({ adminTargetId: targetId, newRole })
+          });
+          const data = await res.json();
+          if (data.success) {
+            showToast(data.message || '권한이 변경되었습니다.', 'success');
+            setRefreshKey(prev => prev + 1);
+          } else {
+            showToast(data.error || '권한 변경에 실패했습니다.', 'error');
+          }
+        } catch {
+          showToast('네트워크 오류가 발생했습니다.', 'error');
+        } finally {
+          setConfirmConfig(null);
+        }
+      }
+    });
+  };
+
+  const handleToggleAdminActive = (targetUser: any, isActive: boolean) => {
+    const targetId = targetUser.admin_id || targetUser.id;
+    setConfirmConfig({
+      isOpen: true,
+      title: `${targetUser.email}의 관리자 권한을 ${isActive ? '다시 부여' : '해제'}하시겠습니까?`,
+      onConfirm: async () => {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          const res = await adminFetch('/api/admin/admins', {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${session?.access_token || ''}`
+            },
+            body: JSON.stringify({ adminTargetId: targetId, isActive })
+          });
+          const data = await res.json();
+          if (data.success) {
+            showToast(data.message || '상태가 변경되었습니다.', 'success');
+            setRefreshKey(prev => prev + 1);
+          } else {
+            showToast(data.error || '처리에 실패했습니다.', 'error');
+          }
+        } catch {
+          showToast('네트워크 오류가 발생했습니다.', 'error');
+        } finally {
+          setConfirmConfig(null);
+        }
+      }
+    });
+  };
 
   const handleResetOTP = (email: string) => {
     setResettingEmail(email);
@@ -469,7 +605,14 @@ function UsersTab() {
                           {user.email?.charAt(0) || 'U'}
                         </div>
                         <div className="flex flex-col">
-                          <span className="font-medium text-[var(--admin-text)] text-sm">{user.email}</span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="font-medium text-[var(--admin-text)] text-sm">{user.email}</span>
+                            {user.is_admin && (
+                              <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                                관리자 ({user.admin_info?.role || 'SUPPORT'})
+                              </span>
+                            )}
+                          </div>
                           <span className="text-xs text-[var(--admin-text-muted)] mt-0.5">{user.nick_name || '-'}</span>
                         </div>
                       </div>
@@ -544,13 +687,73 @@ function UsersTab() {
                                   ) : (
                                     <button onClick={() => { setSuspendTarget(user); setOpenMenuId(null); }} className="w-full text-left px-4 py-2 text-sm text-[var(--admin-error)] hover:bg-[rgba(105,0,5,0.4)]">계정 정지 (Suspend)</button>
                                   )}
+                                  {canManageAdminRole && (
+                                    <>
+                                      <div className="border-t border-[var(--admin-border)] my-1"></div>
+                                      {user.is_admin ? (
+                                        <button
+                                          onClick={() => { handleRevokeAdmin(user); setOpenMenuId(null); }}
+                                          className="w-full text-left px-4 py-2 text-sm text-[var(--admin-error)] hover:bg-[rgba(231,76,60,0.1)] transition-colors"
+                                        >
+                                          관리자 권한 회수
+                                        </button>
+                                      ) : (
+                                        <button
+                                          onClick={() => { handleGrantSupportAdmin(user); setOpenMenuId(null); }}
+                                          className="w-full text-left px-4 py-2 text-sm text-[var(--admin-primary)] hover:bg-[rgba(52,152,219,0.1)] transition-colors"
+                                        >
+                                          지원 관리자(SUPPORT) 임명
+                                        </button>
+                                      )}
+                                    </>
+                                  )}
                                 </>
                               ) : (
                                 <>
-                                  <button onClick={() => setOpenMenuId(null)} className="w-full text-left px-4 py-2 text-sm text-[var(--admin-text)] hover:bg-[var(--admin-surface)]">권한 변경</button>
-                                  <button onClick={() => handleOpenAudit(user)} className="w-full text-left px-4 py-2 text-sm text-[var(--admin-text)] hover:bg-[var(--admin-surface)]">탈퇴/정지 이력 보기</button>
-                                  <div className="border-t border-[var(--admin-border)] my-1"></div>
-                                  <button onClick={() => setOpenMenuId(null)} className="w-full text-left px-4 py-2 text-sm text-[var(--admin-error)] hover:bg-[rgba(105,0,5,0.4)]">권한 즉각 회수</button>
+                                  {canManageAdminRole ? (
+                                    <>
+                                      <button
+                                        onClick={() => {
+                                          handleChangeAdminRole(user, user.admin_role === 'SUPER' ? 'SUPPORT' : 'SUPER');
+                                          setOpenMenuId(null);
+                                        }}
+                                        className="w-full text-left px-4 py-2 text-sm text-[var(--admin-text)] hover:bg-[var(--admin-surface)]"
+                                      >
+                                        {user.admin_role === 'SUPER' ? 'SUPPORT 등급으로 강등' : 'SUPER 등급으로 승격'}
+                                      </button>
+                                      <button
+                                        onClick={() => {
+                                          handleToggleAdminActive(user, user.status === 'SUSPENDED');
+                                          setOpenMenuId(null);
+                                        }}
+                                        className="w-full text-left px-4 py-2 text-sm text-[var(--admin-text)] hover:bg-[var(--admin-surface)]"
+                                      >
+                                        {user.status === 'SUSPENDED' ? '권한 다시 부여' : '권한 해제'}
+                                      </button>
+                                      <button onClick={() => handleOpenAudit(user)} className="w-full text-left px-4 py-2 text-sm text-[var(--admin-text)] hover:bg-[var(--admin-surface)]">
+                                        감사 이력 보기
+                                      </button>
+                                      <div className="border-t border-[var(--admin-border)] my-1"></div>
+                                      <button
+                                        onClick={() => {
+                                          handleRevokeAdmin(user);
+                                          setOpenMenuId(null);
+                                        }}
+                                        className="w-full text-left px-4 py-2 text-sm text-[var(--admin-error)] hover:bg-[rgba(231,76,60,0.1)]"
+                                      >
+                                        관리자 권한 즉각 회수
+                                      </button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <div className="px-4 py-2 text-xs text-[var(--admin-text-muted)]">
+                                        SUPER 관리자만 관리자 권한을 제어할 수 있습니다.
+                                      </div>
+                                      <button onClick={() => handleOpenAudit(user)} className="w-full text-left px-4 py-2 text-sm text-[var(--admin-text)] hover:bg-[var(--admin-surface)]">
+                                        감사 이력 보기
+                                      </button>
+                                    </>
+                                  )}
                                 </>
                               )}
                             </div>
@@ -651,6 +854,9 @@ function UsersTab() {
           handleKillSingleSession(detailTarget, deviceId);
           setDetailTarget(null);
         }}
+        canManageAdminRole={canManageAdminRole}
+        onGrantSupportAdmin={detailTarget && !detailTarget.is_admin ? () => handleGrantSupportAdmin(detailTarget) : undefined}
+        onRevokeAdmin={detailTarget && detailTarget.is_admin ? () => handleRevokeAdmin(detailTarget) : undefined}
       />
       <UserPlanChangeModal
         user={planTarget}

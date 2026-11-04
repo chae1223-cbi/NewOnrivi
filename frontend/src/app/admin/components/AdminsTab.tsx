@@ -1,3 +1,4 @@
+// 🚨 @PATCH : 2026-11-04 — [SUPER 관리자 전용 권한 변경/회수 가드 강화] currentAdminRole 연동으로 SUPPORT 관리자의 무단 변경 차단 및 안내 배너 표시
 // 🚨 @PATCH : 2026-11-04 — [권한 확인창 표시 수정] 관리자 페이지 스크롤·애니메이션 영향을 받지 않도록 확인창을 body에 렌더링
 // 🚨 @PATCH : 2026-11-04 — [관리자 권한 해제·삭제 분리] 비활성 상태 표시와 재부여·삭제 메뉴 추가
 // 🚨 @PATCH : 2026-11-04 — [관리자 목록 오류 중복 기록 방지] 서버 500 응답은 서버 로그를 기준으로 추적하고 토스트의 별도 오류 로그는 생략
@@ -37,6 +38,7 @@ export default function AdminsTab() {
   const [confirmConfig, setConfirmConfig] = useState<{isOpen: boolean, title: string, isDanger?: boolean, onConfirm: () => void} | null>(null);
 
   const [currentAdminId, setCurrentAdminId] = useState<string | null>(null);
+  const [currentAdminRole, setCurrentAdminRole] = useState<string | null>(null);
 
   const handleMenuToggle = (adminId: string, e: React.MouseEvent<HTMLButtonElement>) => {
     if (openMenuId === adminId) {
@@ -55,6 +57,13 @@ export default function AdminsTab() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       setCurrentAdminId(session?.user?.id || null);
+      try {
+        const roleRes = await adminFetch('/api/admin/role', {
+          headers: { 'Authorization': `Bearer ${session?.access_token || ''}` }
+        });
+        const roleJson = await roleRes.json();
+        setCurrentAdminRole(roleJson.admin_role || null);
+      } catch {}
 
       const res = await adminFetch('/api/admin/admins', {
         headers: { 'Authorization': `Bearer ${session?.access_token || ''}` }
@@ -281,6 +290,11 @@ export default function AdminsTab() {
                                 <ShieldAlert size={14} className="text-yellow-500 mt-0.5 shrink-0" />
                                 <span>최상위 관리자는 권한 수정 및 삭제가 불가합니다.</span>
                               </div>
+                            ) : currentAdminRole !== 'SUPER' ? (
+                              <div className="px-4 py-3 text-xs text-[var(--admin-text-muted)] text-left flex items-start gap-2 bg-slate-50 border-l-2 border-slate-400">
+                                <ShieldAlert size={14} className="text-slate-500 mt-0.5 shrink-0" />
+                                <span>SUPER 관리자만 권한 변경 및 회수가 가능합니다.</span>
+                              </div>
                             ) : (
                               <>
                                 <button 
@@ -299,7 +313,7 @@ export default function AdminsTab() {
                                   onClick={() => { handleDelete(admin); setOpenMenuId(null); setMenuPosition(null); }}
                                   className="w-full text-left px-4 py-2 text-sm text-[var(--admin-error)] hover:bg-[rgba(231,76,60,0.1)] transition-colors"
                                 >
-                                  관리자 목록에서 삭제
+                                  관리자 권한 회수 (삭제)
                                 </button>
                               </>
                             )}
