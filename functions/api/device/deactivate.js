@@ -1,3 +1,4 @@
+// 🚨 @PATCH : 2026-11-04 — [오류 진단 로깅 4단계 완성] 4xx 클라이언트 경고 pre-logging 추가 및 failure 헬퍼 표준화
 // 🚨 @PATCH : 2026-11-02 — [공통소스 표준화] blog/_db.js 종속을 제거하고 공통 모듈 _db.js의 withDbTransaction/getAuthUser로 교체
 // 🚨 @PATCH : 2026-11-03 — [오류 진단 로깅 4단계]: serverError에 doing, target 명시로 정밀 진단 연계
 // 🚨 @PATCH : 2026-11-01 — [skills/onrivi-db-processing, skills/onrivi-error-handling, skills/onrivi-common-codes 준수]
@@ -21,16 +22,21 @@ export async function onRequestOptions() {
   return new Response(null, { headers: corsHeaders });
 }
 
-const failure = (code, message, status = 400) =>
-  new Response(JSON.stringify({ success: false, code, message }), {
+const failure = (code, message, status = 400) => {
+  if (status >= 400 && status < 500) {
+    console.warn(`[ClientWarn] HTTP ${status} · ${code} · ${message} [경로: /api/device/deactivate]`);
+  }
+  return new Response(JSON.stringify({ success: false, code, message }), {
     status,
     headers: corsHeaders,
   });
+};
 
 export async function onRequestPost({ request, env }) {
+  let body = {};
   try {
     const authUser = await getAuthUser(request, env);
-    const body = await request.json().catch(() => ({}));
+    body = await request.json().catch(() => ({}));
     const { p_activation_id, p_payment_no, p_device_uuid, p_user_id } = body;
 
     const targetUserId = (p_user_id && UUID.test(p_user_id))
@@ -108,6 +114,10 @@ export async function onRequestPost({ request, env }) {
 
       return { success: false, code: 'INVALID_PARAMS', message: '필수 파라미터가 누락되었습니다.', status: 400 };
     });
+
+    if (outcome.status >= 400 && outcome.status < 500) {
+      console.warn(`[ClientWarn] HTTP ${outcome.status} · ${outcome.code} · ${outcome.message} [경로: /api/device/deactivate]`);
+    }
 
     return new Response(JSON.stringify({
       success: outcome.success,

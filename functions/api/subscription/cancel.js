@@ -1,4 +1,5 @@
 // 🚨 @PATCH : 2026-11-02 — [공통소스 표준화] blog/_db.js 종속을 제거하고 공통 모듈 _db.js의 withDbTransaction/getAuthUser로 교체
+// 🚨 @PATCH : 2026-11-04 — [오류 진단 로깅 4단계]: 4xx 비즈니스 예외 반환 직전 console.warn 사전 로깅 연동
 // 🚨 @PATCH : 2026-11-03 — [오류 진단 로깅 4단계]: serverError에 doing, target 명시로 정밀 진단 연계
 // 🚨 @PATCH : 2026-11-01 — [skills/onrivi-db-processing, skills/onrivi-error-handling, skills/onrivi-common-codes 준수]
 //             1) Supabase REST API 호출을 PostgreSQL 단일 트랜잭션(withDbTransaction)으로 전환
@@ -22,11 +23,13 @@ export async function onRequestOptions() {
   return new Response(null, { headers: corsHeaders });
 }
 
-const failure = (code, message, status = 400) =>
-  new Response(JSON.stringify({ success: false, code, message }), {
+const failure = (code, message, status = 400) => {
+  console.warn(`[ClientWarn] HTTP ${status} · ${code} · ${message} [경로: /api/subscription/cancel]`);
+  return new Response(JSON.stringify({ success: false, code, message }), {
     status,
     headers: corsHeaders,
   });
+};
 
 export async function onRequestPost({ request, env }) {
   try {

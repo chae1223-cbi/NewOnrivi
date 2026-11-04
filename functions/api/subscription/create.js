@@ -1,4 +1,5 @@
 // 🚨 @PATCH : 2026-11-02 — 3순위 DB 처리 표준화: 공통 _db.js(withDbTransaction) 적용
+// 🚨 @PATCH : 2026-11-04 — [오류 진단 로깅 4단계]: 4xx 비즈니스 예외 반환 직전 console.warn 사전 로깅 연동
 // 🚨 @PATCH : 2026-11-03 — [오류 진단 로깅 4단계]: serverError에 doing, target 명시로 정밀 진단 연계
 // 🚨 @PATCH : 2026-11-01 — 공통 서버 오류 응답으로 요청 ID와 실패 위치를 연결한다.
 import { getAuthUser, withDbTransaction, apiJson } from '../_db.js';
@@ -14,7 +15,10 @@ export async function onRequestOptions() {
   } });
 }
 
-const failure = (code, message, status) => apiJson({ success: false, code, message }, status);
+const failure = (code, message, status) => {
+  console.warn(`[ClientWarn] HTTP ${status} · ${code} · ${message} [경로: /api/subscription/create]`);
+  return apiJson({ success: false, code, message }, status);
+};
 const randomHex = size => Array.from(crypto.getRandomValues(new Uint8Array(size)), byte => byte.toString(16).padStart(2, '0')).join('').toUpperCase();
 
 export async function onRequestPost({ request, env }) {

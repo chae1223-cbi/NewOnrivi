@@ -2,6 +2,7 @@
 // 📊 [OMD-API-gdrive-oauth-0001] functions/api/gdrive/_oauth.js
 // 🎯 @KICK  : Google Drive 서버 사이드 OAuth 인증 및 토큰 자동 연장 핸들러
 // 🛡️ @GUARD : Cloudflare Pages 미리보기(dev01 등 *.pages.dev) 및 프로덕션/로컬 다중 오리진 동적 허용, 리프레시 토큰 AES-GCM 암호화
+// 🚨 @PATCH : 2026-11-04 — [오류 진단 로깅 4단계]: 클라이언트 내부 스택 노출 차단(details 제거) 및 4xx 사전 로깅 정돈
 // 🚨 @PATCH : 2026-11-03 — [도메인 환경변수화] GOOGLE_DRIVE_ALLOWED_DOMAINS 환경변수 지원 (미설정 시 기본 도메인 안전 폴백)
 // 🚨 @PATCH : 2026-11-03 — [미리보기 오리진 지원] dev01 등 *.onriviauthor.pages.dev 서브도메인의 동적 리디렉션 URI 자동 바인딩
 // 🚨 @PATCH : 2026-10-15 — 최초 구글 드라이브 서버 OAuth 커널 구축
@@ -300,6 +301,6 @@ export async function handleDriveOAuth(request, env) {
     return (await refreshes.get(key)).clone();
   } catch (error) {
     console.error('[Google OAuth Handle Error]', error);
-    return json({ error: 'Google Drive 인증 처리에 실패했습니다.', details: error.message || String(error), code: 'OAUTH_FAILED' }, 502);
+    return json({ error: 'Google Drive 인증 처리에 실패했습니다.', code: 'OAUTH_FAILED' }, 502);
   }
 }

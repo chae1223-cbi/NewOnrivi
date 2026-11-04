@@ -1,3 +1,4 @@
+// 🚨 @PATCH : 2026-11-04 — [오류 진단 로깅 4단계 완성] 4xx 클라이언트 경고 pre-logging 추가 및 catch target 식별자 참조 안전화
 // 🚨 @PATCH : 2026-11-02 — [공통소스 표준화] blog/_db.js 종속을 제거하고 공통 모듈 _db.js의 withDbTransaction/getAuthUser로 교체
 // 🚨 @PATCH : 2026-11-03 — [오류 진단 로깅 4단계]: serverError에 doing, target 명시로 정밀 진단 연계
 // 🚨 @PATCH : 2026-11-01 — [skills/onrivi-db-processing, skills/onrivi-error-handling, skills/onrivi-common-codes 준수]
@@ -22,13 +23,18 @@ export async function onRequestOptions() {
   return new Response(null, { headers: corsHeaders });
 }
 
-const failure = (code, message, status = 400) =>
-  new Response(JSON.stringify({ success: false, code, message }), {
+const failure = (code, message, status = 400) => {
+  if (status >= 400 && status < 500) {
+    console.warn(`[ClientWarn] HTTP ${status} · ${code} · ${message} [경로: /api/subscription/expire]`);
+  }
+  return new Response(JSON.stringify({ success: false, code, message }), {
     status,
     headers: corsHeaders,
   });
+};
 
 export async function onRequestPost({ request, env }) {
+  let targetSubId = 'SUBSCRIPTION';
   try {
     const authUser = await getAuthUser(request, env);
     if (!authUser?.id || !UUID.test(authUser.id)) {
@@ -37,6 +43,7 @@ export async function onRequestPost({ request, env }) {
 
     const body = await request.json().catch(() => ({}));
     const { p_subscription_id, p_user_id } = body;
+    if (p_subscription_id) targetSubId = p_subscription_id;
 
     if (!p_subscription_id || !UUID.test(p_subscription_id)) {
       return failure('INVALID_PARAMS', '유효한 구독 식별자(ID)가 필요합니다.', 400);
@@ -143,7 +150,7 @@ export async function onRequestPost({ request, env }) {
       source: 'functions/api/subscription/expire.js',
       stage: 'expire_subscription',
       doing: '구독 만료 처리 DB 트랜잭션 중',
-      target: subscription_id,
+      target: targetSubId,
       message: '구독 만료 처리 중 일시적인 시스템 오류가 발생했습니다.',
     });
   }

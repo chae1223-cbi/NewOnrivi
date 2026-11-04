@@ -2,6 +2,7 @@
 // 📊 [OMD-SUB-get-0002 ✅ FIXED] frontend/functions/api/subscription/get.js
 // 🎯 @KICK  : 사용자 구독 정보, 라이선스 키, 기기 세션 및 구독 이력 조회 (만료 자동 처리 및 기본 플랜 발급)
 // 🛡️ @GUARD : 만료 구독 자동 EXPIRED, 신규 유저 APPRENTICE(14일) 자동 발급, 만료자 READER 자동 발급 및 단일 원자적 트랜잭션 보장
+// 🚨 @PATCH : 2026-11-04 — [오류 진단 로깅 4단계 완성] 4xx 클라이언트 경고 pre-logging 추가 및 catch target 식별자 참조 안전화
 // 🚨 @PATCH : 2026-11-03 — [오류 진단 로깅 4단계]: serverError에 doing, target 명시로 정밀 진단 연계
 // 🚨 @PATCH : 2026-11-02 — [공통소스 표준화] blog/_db.js 종속을 제거하고 공통 모듈 _db.js의 withDbTransaction으로 교체
 // 🚨 @PATCH : 2026-11-01 — [skills/onrivi-db-processing, skills/onrivi-error-handling, skills/onrivi-common-codes 준수]
@@ -30,12 +31,15 @@ export async function onRequestOptions() {
 
 export async function onRequestPost(context) {
   const { request, env } = context;
+  let targetUserIdentifier = 'USER';
 
   try {
     const body = await request.json().catch(() => ({}));
     let { user_id: userId } = body;
+    if (userId) targetUserIdentifier = String(userId).slice(0, 50);
 
     if (!userId) {
+      console.warn(`[ClientWarn] HTTP 400 · INVALID_PARAMS · user_id 파라미터가 필요합니다. [경로: /api/subscription/get]`);
       return new Response(JSON.stringify({
         success: false,
         code: 'INVALID_PARAMS',
@@ -264,6 +268,10 @@ export async function onRequestPost(context) {
       };
     });
 
+    if (outcome.status >= 400 && outcome.status < 500) {
+      console.warn(`[ClientWarn] HTTP ${outcome.status} · ${outcome.body?.code} · ${outcome.body?.message} [경로: /api/subscription/get]`);
+    }
+
     return new Response(JSON.stringify(outcome.body), {
       status: outcome.status,
       headers: corsHeaders,
@@ -273,7 +281,7 @@ export async function onRequestPost(context) {
       source: 'functions/api/subscription/get.js',
       stage: 'subscription-get',
       doing: '사용자 구독/라이선스/기기 목록 조회 중',
-      target: targetUserId,
+      target: targetUserIdentifier,
       message: '구독 정보를 불러오는 중 오류가 발생했습니다.'
     });
   }
