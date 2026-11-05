@@ -5,6 +5,8 @@
 // 🚨 @PATCH : 2026-11-05 — [데스크톱 로컬 우선 라이선스 즉시 활성화 및 검증 타임아웃 단축]:
 //             1) 로컬 정품 라이선스 캐시 존재 시 0ms 즉시 활성화로 UI 락(멈춤/깜빡임) 원천 방어
 //             2) 데스크톱 온라인 검증 타임아웃 10초에서 2.5초로 대폭 단축하여 네트워크 지연 시 멈춤 체감 제거
+// 🚨 @PATCH : 2026-11-05 — [온라인 검증 오탐 완화]: 다중 DB 조회에 2.5초 제한이 짧아 8초로 조정하고 실패 소요 시간을 기록한다.
+// 🚨 @PATCH : 2026-11-05 — [검증 실패 시간 노출]: 개발자 콘솔에 경과 시간과 오류 종류를 남겨 네트워크 지연과 서버 거절을 구분한다.
 // 🚨 @PATCH : 2026-11-04 — [표준화 및 에러 처리 강화] logError/logWarn 5대 진단 필드 선제 기록 및 2단계 함수 JSDoc 표준화
 //             2026-11-04 — [formatTime 반환 추가] 게스트 체험 모드 남은 시간 포맷 함수(formatTime) 반환 목록에 추가하여 ReferenceError 해결
 //             2026-11-04 — [MainEditorApp 모듈화] MainEditorApp에서 1,044줄의 라이선스/세션/게스트 관리 로직을 독립 훅으로 분리
@@ -253,13 +255,13 @@ export function useEditorLicense({
         }
       }
 
+      const verifyStartedAt = performance.now();
       try {
-        const verifyStartedAt = performance.now();
         const verifyRes = await fetch(getApiUrl('/api/license/verify-desktop'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ p_email: savedUserId, p_device_uuid: deviceId }),
-          signal: AbortSignal.timeout(2500)
+          signal: AbortSignal.timeout(8000)
         });
         console.info('[STARTUP timing] desktop license verification ms=%d', Math.round(performance.now() - verifyStartedAt));
         const data = verifyRes.ok ? await verifyRes.json() : null;
@@ -398,7 +400,15 @@ export function useEditorLicense({
           }
         }
       } catch (err) {
-        console.warn('[loadAndVerifyLicense] Desktop DB error (Network offline):', err);
+        logWarn({
+          file: 'frontend/src/hooks/editor/useEditorLicense.ts',
+          func: 'loadAndVerifyLicense',
+          doing: '데스크톱 라이선스 서버 검증 응답 대기 중',
+          target: '/api/license/verify-desktop',
+          error: err,
+          context: { elapsedMs: Math.round(performance.now() - verifyStartedAt) }
+        });
+        console.warn('[STARTUP timing] desktop license verification failed ms=%d reason=%s', Math.round(performance.now() - verifyStartedAt), err instanceof Error ? err.name : typeof err);
 
         // 🚨 오프라인 유예기간(Grace Period) 검증 🚨
         if (savedNextPaymentDate) {

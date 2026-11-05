@@ -7,6 +7,11 @@
 //             2) 웹드라이브 미연결/로컬 모드 복귀 시 드라이브 파일 복원 네트워크 타임아웃을 차단하고 로컬 draft 본문으로 즉각 안전 복구
 // 🚨 @PATCH : 2026-11-05 — [로컬 탭 일괄 선읽기]: 세션 파일을 병렬로 읽은 뒤 탭을 순서대로 생성해 시작 중 반복 렌더링과 누적 대기를 줄인다.
 // 🚨 @PATCH : 2026-11-05 — [복원 중 화면 전환 제거]: 로컬 탭은 비활성 상태로 등록하고 마지막에 선택 탭 하나만 표시해 시작 렌더링 정지를 줄인다.
+// 🚨 @PATCH : 2026-11-05 — [빈 문서 화면 수정]: 복원 탭을 경로 재비교 대신 생성 시 반환된 ID로 찾아 활성 문서에 연결한다.
+// 🚨 @PATCH : 2026-11-05 — [시작 정지 구간 진단]: 파일 읽기 완료와 탭 활성화 완료 시점 및 탭 수를 기록한다.
+// 🚨 @PATCH : 2026-11-05 — [복원 활성 탭 누락 수정]: 생성 함수가 반환한 ID를 즉시 복원 맵에 넣고 상태 반영 후 활성화한다.
+// 🚨 @PATCH : 2026-11-05 — [복원 ref 소실 수정]: 로컬 복원 탭은 상태 갱신을 모아서 한 번만 반영한 뒤 활성 탭을 연결한다.
+// 🚨 @PATCH : 2026-11-05 — [빈 로컬 세션 복구]: 저장된 탭이 0개면 Electron 최근 문서 목록으로 이어서 복원한다.
 // 🚨 @PATCH : 2026-11-04 — [표준화 및 에러 처리 강화] openExternalFile logError 선제 기록 추가 및 1·2단계 주석 표준화
 //             2026-11-04 — [isElectron 판별식 정정] const isElectron = Boolean(api)로 정정하여 웹 브라우저 환경에서 세션 복원 조기 반환 결함 방어
 //             2026-11-04 — [MainEditorApp 모듈화] 세션 복원 및 외부 파일 오픈 파이프라인을 useEditorDocumentSession 훅으로 분리 위임
@@ -39,7 +44,7 @@ export interface UseEditorDocumentSessionOptions {
   contentRef: MutableRefObject<string>;
   setContent: (content: string) => void;
   updateContent: (content: string, markModified?: boolean, skipModelSync?: boolean) => void;
-  createNewTab: (content: string, name: string, isModified?: boolean, path?: string | null, node?: FileNode, activate?: boolean) => void;
+  createNewTab: (content: string, name: string, isModified?: boolean, path?: string | null, node?: FileNode, activate?: boolean, deferState?: boolean) => string | void;
   switchTab: (tabId: string) => void;
   currentFileNode: FileNode | null;
   currentFileNodeRef: MutableRefObject<FileNode | null>;
@@ -166,15 +171,17 @@ export function useEditorDocumentSession({
               }
             }))
           : [];
+        console.info('[STARTUP timing] local session reads done ms=%d tabs=%d', Math.round(performance.now() - restoreStartedAt), savedTabs.length);
         const restored = new Map<string, string>();
         for (const [savedIndex, saved] of savedTabs.entries()) {
           try {
+            let openedId: string | void = undefined;
             if (saved.driveFileId) {
               // ☁️ 구글 드라이브 파일: 클라우드 연결 및 유효 토큰 있을 때만 네트워크 통신, 아니면 캐시된 초안으로 즉시 복원하여 타임아웃 차단
               if (isDriveConnected && hasValidDriveToken() && !isDriveAuthExpired) {
                 await handleFileClick({ name: saved.name, path: saved.path, kind: 'file', driveFileId: saved.driveFileId } as any);
               } else if (saved.draft !== undefined) {
-                createNewTab(saved.draft, saved.name, false, saved.path, undefined, false);
+                openedId = createNewTab(saved.draft, saved.name, false, saved.path, undefined, false, true);
               }
             } else if (saved.path) {
               if (api?.readFromPath) {
@@ -182,38 +189,40 @@ export function useEditorDocumentSession({
                 const fileObj = loadedFile?.fileObj;
                 if (fileObj && typeof fileObj.content === 'string') {
                   const normContent = fileObj.content.replace(/\r\n/g, '\n');
-                  createNewTab(normContent, fileObj.name || saved.name, false, fileObj.path || loadedFile.resolvedPath, undefined, false);
+                  openedId = createNewTab(normContent, fileObj.name || saved.name, false, fileObj.path || loadedFile.resolvedPath, undefined, false, true);
                 } else if (saved.draft !== undefined) {
                   const normDraft = saved.draft.replace(/\r\n/g, '\n');
-                  createNewTab(normDraft, saved.name, false, saved.path, undefined, false);
+                  openedId = createNewTab(normDraft, saved.name, false, saved.path, undefined, false, true);
                 }
               } else {
                 await handleFileOpenByPath(saved.path);
               }
             } else if (saved.draft !== undefined) {
               const normDraft = saved.draft.replace(/\r\n/g, '\n');
-              createNewTab(normDraft, saved.name, false, undefined, undefined, false);
+              openedId = createNewTab(normDraft, saved.name, false, undefined, undefined, false, true);
             } else continue;
 
-            const opened = saved.path || saved.driveFileId
-              ? tabsRef.current.find(t => matchesSessionTab(t, saved))
-              : tabsRef.current[tabsRef.current.length - 1];
-            if (!opened) continue;
-            restored.set(saved.id, opened.id);
+            const opened = openedId
+              ? tabsRef.current.find(t => t.id === openedId)
+              : saved.path || saved.driveFileId
+                ? tabsRef.current.find(t => matchesSessionTab(t, saved))
+                : tabsRef.current[tabsRef.current.length - 1];
+            const restoredId = openedId || opened?.id;
+            if (!restoredId) continue;
+            restored.set(saved.id, restoredId);
             const isDraftWarning = isPlaceholderWarning(saved.draft);
             if (saved.draft !== undefined && !isDraftWarning && !saved.path) {
               const normDraft = saved.draft.replace(/\r\n/g, '\n');
-              if (opened.model && !opened.model.isDisposed?.()) opened.model.setValue(normDraft);
-              if (activeTabIdRef.current === opened.id) {
+              if (opened?.model && !opened.model.isDisposed?.()) opened.model.setValue(normDraft);
+              if (activeTabIdRef.current === restoredId) {
                 contentRef.current = normDraft;
                 updateContent(normDraft, false, true);
               }
             }
-            setTabs(previous => previous.map(t => t.id === opened.id ? {
-              ...t,
-              scrollTop: saved.scrollTop,
-              previewMode: (saved.previewMode as any) || t.previewMode
-            } : t));
+            if (opened) {
+              opened.scrollTop = saved.scrollTop;
+              opened.previewMode = (saved.previewMode as any) || opened.previewMode;
+            }
           } catch (error) {
             logWarn({
               file: 'frontend/src/hooks/editor/useEditorDocumentSession.ts',
@@ -230,11 +239,13 @@ export function useEditorDocumentSession({
             });
           }
         }
+        setTabs(tabsRef.current);
         const target = restored.get(savedActiveId || '') || Array.from(restored.values()).at(-1);
         if (target) {
           if (activeTabIdRef.current === target) activeTabIdRef.current = null;
           switchTab(target);
         }
+        console.info('[STARTUP timing] session tabs bound ms=%d restored=%d active=%s refTabs=%d', Math.round(performance.now() - restoreStartedAt), restored.size, Boolean(target), tabsRef.current.length);
         if (savedMode && ['edit', 'both', 'preview'].includes(savedMode) && !isRestrictedUser) {
           setPreviewMode(savedMode as any);
         }
@@ -441,12 +452,20 @@ export function useEditorDocumentSession({
           if (filePath) {
             sessionRestoredRef.current = true;
             openExternalFile(filePath);
-          } else if (readEditorSession(localStorage.getItem('onrivi_tabs_session'))) {
+          } else if (readEditorSession(localStorage.getItem('onrivi_tabs_session'))?.tabs.length) {
             setDesktopSessionReady(true);
           } else if (api.getLastSession && (tabs.length === 0 || !tabs.some(t => !!t.path && !t.isStyleTab))) {
             const sessionData = await api.getLastSession();
-            if (sessionData && Array.isArray(sessionData.openFilePaths) && sessionData.openFilePaths.length > 0) {
-              await restoreSessionTabs(sessionData.openFilePaths, sessionData.activeFilePath);
+            const recentPaths = Array.isArray(sessionData?.openFilePaths)
+              ? sessionData.openFilePaths.filter((filePath: unknown): filePath is string => typeof filePath === 'string' && !!filePath)
+              : [];
+            if (recentPaths.length > 0) {
+              const recentTabs: SessionTab[] = recentPaths.map(filePath => ({
+                id: filePath,
+                name: filePath.split(/[/\\]/).pop() || filePath,
+                path: filePath
+              }));
+              await restoreSessionTabs([], null, recentTabs, sessionData.activeFilePath);
             } else {
               sessionRestoredRef.current = true;
             }

@@ -7,6 +7,7 @@
  *   - EditorProvider 컨텍스트 공급 및 하위 역할 컴포넌트(EditorLayout, EditorCore, EditorOverlayManager, GuestPaywallOverlay) 렌더링 위임
  *   - 보기 모드(edit / both / preview / css-style) 전환 가드, 탭 닫기, 다중 파일 병합 선택, 플로팅 툴바 실행 제어
  * 🚨 @PATCH :
+ *   - 2026-11-05 : useEditorTabs에 컨테이너의 탭·활성 탭 참조를 전달하여 세션 복원 시 동일한 탭을 조회하도록 수정
  *   - 2026-11-04 : 로컬 작업장 사용 시 미접속 웹드라이브 토큰 갱신(initDriveTokenAutoRefresh) 및 클라우드 모드 오인식 방어 가드 추가
  *   - 2026-11-04 : 주석 표준화(1·2단계) 및 Log-First(logError/logWarn) 에러 진단 로깅 일괄 반영, 분리 이관된 레거시 패치 주석 정리
  *   - 2026-11-04 : 역할 기반 아키텍처(Container-Layout-Core-Manager) 및 12개 도메인 훅(useEditor*) 모듈화 분리 위임 완료
@@ -981,7 +982,9 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     setTabs,
     activeTabId,
     setActiveTabId,
-    setPreviewModeRaw
+    setPreviewModeRaw,
+    tabsRef,
+    activeTabIdRef
   );
 
   // 💡 [TDZ 방어] useEditorTabs 반환값 중 상단에서 선언되지 않은 것들만 추가 추출

@@ -2,6 +2,11 @@
 // 📊 [OMD-MAIN-main-0001] main.js ➔ CSP_connect_src_fix
 // 🎯 @KICK  : CSP connect-src 지침에 http: https: 추가하여 외부 이미지/폰트 fetch 차단 해결
 // 🛡️ @GUARD : Monaco editor 등 기존 설정 유지
+// 🚨 @PATCH : 2026-11-05 — [데스크톱 렌더러 정지 진단]: 창 응답 없음·복구·렌더러 종료 이벤트를 터미널에 구조화해 기록한다.
+// 🚨 @PATCH : 2026-11-05 — [작업장 파일 탐색 응답성]: 파일명 검색을 비동기로 전환하고 빌드·임시 폴더를 제외하여 메인 프로세스 장시간 점유를 막는다.
+// 🚨 @PATCH : 2026-11-05 — [시작 응답 없음 수정]: 기기 정보 조회의 동기 PowerShell 실행을 5초 제한 비동기 UUID 조회로 교체한다.
+// 🚨 @PATCH : 2026-11-05 — [드라이브 조회 응답성]: 시작 시 WMIC 동기 호출을 제한 시간 있는 비동기 실행으로 바꾼다.
+// 🚨 @PATCH : 2026-11-05 — [Windows 감시 핸들 폭증 수정]: 감시 제외 경로를 구분자 독립적으로 판별하고 이전 감시 종료를 기다린다.
 // 🚨 @PATCH : **2026-10-28** — [외부 AI(Google Gemini, Claude Desktop) MCP 원클릭 연동 및 ONRIVI_MCP_HOME 환경변수 기반 동적 경로 연동]:
 //             1) mcp:check-targets 신설: Gemini(mcp_config.json) 및 Claude Desktop(claude_desktop_config.json)의 경로 존재 여부 및 onrivi-author 등록 상태 자동 검사
 //             2) mcp:install-target 신설: 하드코딩된 절대경로 대신 ONRIVI_MCP_HOME 및 APPDATA 환경변수를 동적으로 참조하도록 등록하여 재설치/경로 변경 시에도 설정 깨짐 원천 방지
@@ -296,6 +301,34 @@ function createWindow(port) {
     // Windows 11 스타일의 깔끔한 프레임 디자인
     titleBarStyle: 'default',
     autoHideMenuBar: true, // 메뉴 바 자동 숨김으로 몰입도 극대화
+  });
+
+  let unresponsiveAt = 0;
+  mainWindow.on('unresponsive', () => {
+    unresponsiveAt = Date.now();
+    console.error(JSON.stringify({
+      file: 'main.js',
+      func: 'createWindow',
+      doing: '데스크톱 에디터 창 응답 상태 확인 중',
+      target: 'editor-window',
+      error: 'renderer unresponsive',
+      at: new Date(unresponsiveAt).toISOString()
+    }));
+  });
+  mainWindow.on('responsive', () => {
+    if (!unresponsiveAt) return;
+    console.info('[STARTUP timing] renderer recovered after ms=%d', Date.now() - unresponsiveAt);
+    unresponsiveAt = 0;
+  });
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error(JSON.stringify({
+      file: 'main.js',
+      func: 'createWindow',
+      doing: '데스크톱 에디터 렌더러 종료 원인 확인 중',
+      target: 'editor-window',
+      error: details.reason,
+      exitCode: details.exitCode
+    }));
   });
 
   // 🌐 [ 외부 링크 및 일반 웹 페이지 클릭 시 기본 웹 브라우저 새창으로 오픈하는 설정 ]
@@ -2884,20 +2917,34 @@ app.on('activate', function () {
 // 🔒 [ 순수 데스크톱 파일 제어 IPC 핸들러 등록 ]
 let currentActiveWorkspacePath = null;
 
-function findFileRecursive(dir, targetName, currentDepth = 0, maxDepth = 4) {
-  if (currentDepth > maxDepth || !dir || !fs.existsSync(dir)) return null;
+/**
+ * ========================================================================================
+ * [함수명] findFileRecursive - 작업장 파일명을 비동기로 탐색하며 생성 산출물은 건너뜁니다.
+ * @param {string} dir - 탐색 폴더
+ * @param {string} targetName - 찾을 파일명
+ * @param {number} currentDepth - 현재 깊이
+ * @param {number} maxDepth - 최대 깊이
+ * @returns {Promise<string|null>} 찾은 파일 경로 또는 null
+ * ========================================================================================
+ */
+async function findFileRecursive(dir, targetName, currentDepth = 0, maxDepth = 4) {
+  if (currentDepth > maxDepth || !dir) return null;
   try {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    const entries = await fs.promises.readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
       if (entry.isFile() && entry.name.toLowerCase() === targetName.toLowerCase()) {
         return path.join(dir, entry.name);
       }
-      if (entry.isDirectory() && !['node_modules', '.git', '.next', '.vscode'].includes(entry.name)) {
-        const found = findFileRecursive(path.join(dir, entry.name), targetName, currentDepth + 1, maxDepth);
+      if (entry.isDirectory() && !['node_modules', '.git', '.next', '.next-desktop', '.vscode', 'out', 'dist', 'dist-win', 'dist-electron', 'build', 'release', 'scratch', '.tmp'].includes(entry.name.toLowerCase())) {
+        const found = await findFileRecursive(path.join(dir, entry.name), targetName, currentDepth + 1, maxDepth);
         if (found) return found;
       }
     }
-  } catch {}
+  } catch (error) {
+    if (error?.code !== 'ENOENT' && error?.code !== 'EACCES' && error?.code !== 'EPERM') {
+      console.warn(JSON.stringify({ file: 'main.js', func: 'findFileRecursive', doing: '작업장 하위 파일명 탐색 중', target: path.basename(dir), error: error?.message || String(error) }));
+    }
+  }
   return null;
 }
 
@@ -3201,7 +3248,7 @@ ipcMain.handle('file:readFromPath', async (event, filePath) => {
         } else if (!/[\\/]/.test(cleanPath)) {
           // 2) 단일 파일명인 경우 워크스페이스 하위 재귀 탐색
           const targetBase = path.basename(cleanPath);
-          const recursiveCandidate = findFileRecursive(currentActiveWorkspacePath, targetBase, 0, 5);
+          const recursiveCandidate = await findFileRecursive(currentActiveWorkspacePath, targetBase, 0, 5);
           if (recursiveCandidate) {
             foundPath = recursiveCandidate;
           }
@@ -3336,18 +3383,24 @@ function getAllMdFiles(dirPath, fileList = [], depth = 0, visitedDirs = new Set(
 // 6. 드라이브 목록 조회 (Windows 탐색기)
 ipcMain.handle('file:getDrives', async () => {
   try {
-    const { execSync } = require('child_process');
-    const output = execSync('wmic logicaldisk get caption 2>nul').toString();
-    return output.split('\n').slice(1).map(s => s.trim()).filter(s => s.length > 0);
+    const { execFile } = require('child_process');
+    const output = await new Promise((resolve, reject) => {
+      execFile('wmic', ['logicaldisk', 'get', 'caption'], { encoding: 'utf8', timeout: 5000 }, (error, stdout) => {
+        if (error) reject(error);
+        else resolve(stdout);
+      });
+    });
+    return output.split('\n').slice(1).map(s => s.trim()).filter(s => /^[A-Z]:$/i.test(s));
   } catch (e) {
-    const drives = [];
-    for (let i = 65; i <= 90; i++) {
-      const letter = String.fromCharCode(i) + ':\\';
-      try {
-        if (fs.existsSync(letter)) drives.push(letter);
-      } catch (ex) {}
-    }
-    return drives;
+    console.warn(JSON.stringify({ file: 'main.js', func: 'file:getDrives', doing: '드라이브 목록 비동기 조회 중', target: 'local-drives', error: e?.message || String(e) }));
+    const checks = Array.from({ length: 26 }, (_, index) => {
+      const drive = String.fromCharCode(65 + index) + ':';
+      return fs.promises.access(drive + '\\').then(() => drive, () => null);
+    });
+    return Promise.race([
+      Promise.all(checks).then(found => found.filter(Boolean)),
+      new Promise(resolve => setTimeout(() => resolve([]), 2000))
+    ]);
   }
 });
 
@@ -3356,10 +3409,10 @@ ipcMain.handle('file:getDrives', async () => {
 // 워크스페이스 실시간 감지 (chokidar)
 let workspaceWatcher = null;
 let workspaceNotifyTimer = null;
-ipcMain.handle('file:watchWorkspace', (event, workspacePath) => {
+ipcMain.handle('file:watchWorkspace', async (event, workspacePath) => {
   try {
     if (workspaceWatcher) {
-      workspaceWatcher.close();
+      await workspaceWatcher.close();
       workspaceWatcher = null;
     }
     if (workspaceNotifyTimer) {
@@ -3373,8 +3426,12 @@ ipcMain.handle('file:watchWorkspace', (event, workspacePath) => {
       return { success: false, error: '경로가 존재하지 않음: ' + cleanPath };
     }
 
+    const ignoredDirectories = new Set(['node_modules', '.git', '.next', '.next-desktop', '.vscode', 'out', 'dist', 'dist-win', 'dist-electron', 'build', 'release', 'scratch']);
     workspaceWatcher = chokidar.watch(cleanPath, {
-      ignored: [/(^|[\/])\../, '**/node_modules/**', '**/.git/**', '**/.next/**', '**/.vscode/**'],
+      ignored: watchedPath => {
+        const relative = path.relative(cleanPath, watchedPath).replace(/\\/g, '/');
+        return relative.split('/').some(segment => segment.startsWith('.') || ignoredDirectories.has(segment.toLowerCase()));
+      },
       persistent: true,
       ignoreInitial: true,
       depth: 10,
@@ -3394,6 +3451,9 @@ ipcMain.handle('file:watchWorkspace', (event, workspacePath) => {
     };
 
     workspaceWatcher
+      .on('ready', () => {
+        if (workspaceWatcher) console.info('[STARTUP timing] workspace watcher ready directories=%d', Object.keys(workspaceWatcher.getWatched()).length);
+      })
       .on('add', notify)
       .on('unlink', notify)
       .on('addDir', notify)
@@ -5103,20 +5163,23 @@ ipcMain.handle('presets:save', async (event, presets, resourceFolder) => {
 
 // --- AI Credentials Encrypted Storage in Resource Folder ---
 ipcMain.handle('device:get-info', async () => {
+  const startedAt = Date.now();
   const os = require('os');
   let deviceId = '';
   try {
     const { execSync } = require('child_process');
     if (process.platform === 'win32') {
-      deviceId = execSync('powershell -Command "Get-CimInstance Win32_ComputerSystemProduct | Select-Object -ExpandProperty UUID"', { encoding: 'utf-8' }).trim();
+      deviceId = await getMcpDeviceId() || '';
     } else if (process.platform === 'darwin') {
       deviceId = execSync("ioreg -rd1 -c IOPlatformExpertDevice | awk '/IOPlatformUUID/ { split($0, line, \"\\\"\"); print line[4] }'", { encoding: 'utf-8' }).trim();
     } else {
       deviceId = fs.readFileSync('/var/lib/dbus/machine-id', 'utf-8').trim();
     }
   } catch (err) {
+    console.warn(JSON.stringify({ file: 'main.js', func: 'device:get-info', doing: '기기 정보 비동기 조회 중', target: 'local-device', error: err?.message || String(err) }));
     deviceId = os.hostname();
   }
+  console.info('[STARTUP timing] device info ms=%d', Date.now() - startedAt);
   return {
     deviceId: deviceId || os.hostname(),
     hostName: os.hostname(),
