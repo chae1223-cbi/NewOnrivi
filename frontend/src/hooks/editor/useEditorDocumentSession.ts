@@ -460,7 +460,7 @@ export function useEditorDocumentSession({
               ? sessionData.openFilePaths.filter((filePath: unknown): filePath is string => typeof filePath === 'string' && !!filePath)
               : [];
             if (recentPaths.length > 0) {
-              const recentTabs: SessionTab[] = recentPaths.map(filePath => ({
+              const recentTabs: SessionTab[] = recentPaths.map((filePath: string) => ({
                 id: filePath,
                 name: filePath.split(/[/\\]/).pop() || filePath,
                 path: filePath

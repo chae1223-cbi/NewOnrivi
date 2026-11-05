@@ -7,6 +7,7 @@
 //             2) autoSave 진입 조건에서도 CRLF/LF 정규화 일치 비교를 적용하여 내용이 변하지 않았음에도 5초마다 불필요하게 디스크에 재저장하던 CPU 폭주 차단
 // 🚨 @PATCH : 2026-11-05 — [세션 복원 중 자동 저장 차단]: 복원 중인 탭과 수정되지 않은 탭은 저장 예약에서 제외하고, 복원 완료 후 탭 상태를 다시 평가한다.
 // 🚨 @PATCH : 2026-11-05 — [초기 저장 표시 오판 방지]: 미수정 탭의 원문을 저장 기준으로 사용하고, 실제 파일 쓰기가 시작될 때만 '저장 중' 상태를 표시한다.
+// 🚨 @PATCH : 2026-11-05 — [드라이브 404 반복 차단]: 찾을 수 없는 파일 ID의 동일 원고만 자동 재전송을 멈추고 일시 오류 재시도는 유지한다.
 // 🚨 @PATCH : 2026-11-04 — [주석 표준화] 내부 핸들러 함수(handleMouseMove, stopResizing, startResizing) 2단계 JSDoc 표준화 적용
 //             2026-11-04 — [MainEditorApp 모듈화 및 훅 의존성 정합화]: 탭/파일 생명주기 이벤트, 에디터 설정 동기화, 제한사용자 웰컴 정리, 자동 저장, TOC 계산을 MainEditorApp.tsx에서 분리 위임하고 ESLint exhaustive-deps 경고를 0건으로 해소 (동작 변경 없음)
 // 🔗 @CALLS : applySafeMarkdownMonarchTokenizer, syncPreviewToTargetLine, syncPreviewFromEditorScroll, getCodeBlockLineMask, createHeadingNumberer, isBundledDocumentPath
@@ -129,6 +130,7 @@ export function useEditorLifecycleEffects(props: UseEditorLifecycleEffectsProps)
     profiles,
     activeProfileId,
   } = props;
+  const failedAutoSaveRef = useRef<{ tabId: string | null; target: string; content: string } | null>(null);
 
   // ====================================================================
   // 📊 [OMD-EDIT-MainEditorApp-0012b] MainEditorApp.tsx ➔ file:tab-renamed listener
@@ -824,6 +826,9 @@ export function useEditorLifecycleEffects(props: UseEditorLifecycleEffectsProps)
       if (normContent === normSaved) return;
 
       const savingTabId = activeTab?.id;
+      const savingTarget = effectiveFileNode.driveFileId || effectiveFileNode.path || effectiveFileNode.name;
+      const failed = failedAutoSaveRef.current;
+      if (failed && failed.tabId === (savingTabId || null) && failed.target === savingTarget && failed.content === normContent) return;
       const timer = setTimeout(async () => {
         if (savingTabId && activeTabIdRef.current !== savingTabId) return;
         const saveContent = (content || '').replace(/\r\n/g, '\n');
@@ -832,6 +837,7 @@ export function useEditorLifecycleEffects(props: UseEditorLifecycleEffectsProps)
         const success = await saveFile(saveContent, effectiveFileNode);
         setSaveStatus(success ? 'saved' : 'unsaved');
         if (success) {
+          failedAutoSaveRef.current = null;
           lastSavedContentRef.current = saveContent;
           console.log(`✏️ [Onrivi Guard] 자동 저장 완료 (${autoSave}초)`);
           // 자동 저장 후 현재 탭의 isModified 상태를 false로 복구 (불필요한 re-render 방어)
@@ -843,6 +849,9 @@ export function useEditorLifecycleEffects(props: UseEditorLifecycleEffectsProps)
             );
           });
         } else {
+          failedAutoSaveRef.current = (effectiveFileNode as any).__onriviDriveNotFound
+            ? { tabId: savingTabId || null, target: savingTarget, content: saveContent }
+            : null;
           lastSavedContentRef.current = '';
         }
       }, autoSave * 1000); // 🕒 설정된 초(seconds) 기반 디바운스

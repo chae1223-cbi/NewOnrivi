@@ -2,6 +2,7 @@
 // 📊 [OMD-LIB-googleDriveClient-0001] src/lib/gdrive/googleDriveClient.ts
 // 🎯 @KICK  : 누구나 쉽게 사용하는 구글 드라이브 무설정(Zero-Config) 자동 연동 및 클라우드 작업장 클라이언트 모듈
 // 🛡️ @GUARD : Rule 1, Rule 2(대문자 코드값 GDRIVE), 최소 권한 원칙(drive.file 스코프 한정)
+// 🚨 @PATCH : 2026-11-05 — [드라이브 저장 실패 분류]: API 오류 객체에 HTTP 상태를 보존해 삭제된 파일 ID를 안전하게 식별한다.
 // 🚨 @PATCH : **2026-11-04** — [웹드라이브 연결 해제 시 불필요한 인증 만료 경고 이벤트 오발송 차단]:
 //             1) disconnectGoogleDrive(정상적인 사용자 연결 해제) 시 onrivi:drive_token_expired / onrivi:drive_auth_expired 대신 onrivi:drive_disconnected 이벤트를 발송하도록 분리하여 로컬 전환 중 오경고 토스트 및 비상 백업 워닝 방지
 // 🚨 @PATCH : **2026-11-04** — [Google OAuth 팝업 COOP(Cross-Origin-Opener-Policy) 콘솔 에러 원천 차단]:
@@ -802,6 +803,7 @@ async function parseDriveError(res: Response, defaultAction: string, requestToke
   const makeError = (msg: string): Error => {
     const err = new Error(msg);
     (err as any).__logged = true;
+    (err as any).status = res.status;
     return err;
   };
 
