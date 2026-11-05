@@ -159,24 +159,26 @@ export function useEditorDocumentSession({
             } else if (saved.path) {
               if (api?.readFromPath) {
                 // 🚀 [데스크톱 Fast-Path 직결] 5단계 범용 탐색(지식보관함 3중 쿼리 등)을 우회하고 IPC로 직접 파일 읽기 (1ms)
+                let loadedDiskContent = false;
                 try {
                   const resolvedPath = resolveNativeDocumentPath(saved.path, rootFolder) || saved.path;
                   const fileObj = await api.readFromPath(resolvedPath);
                   if (fileObj && typeof fileObj.content === 'string') {
-                    createNewTab(fileObj.content, fileObj.name || saved.name, false, fileObj.path || resolvedPath);
-                  } else if (saved.draft !== undefined) {
-                    createNewTab(saved.draft, saved.name, false, saved.path);
+                    const normContent = fileObj.content.replace(/\r\n/g, '\n');
+                    createNewTab(normContent, fileObj.name || saved.name, false, fileObj.path || resolvedPath);
+                    loadedDiskContent = true;
                   }
-                } catch {
-                  if (saved.draft !== undefined) {
-                    createNewTab(saved.draft, saved.name, false, saved.path);
-                  }
+                } catch {}
+                if (!loadedDiskContent && saved.draft !== undefined) {
+                  const normDraft = saved.draft.replace(/\r\n/g, '\n');
+                  createNewTab(normDraft, saved.name, false, saved.path);
                 }
               } else {
                 await handleFileOpenByPath(saved.path);
               }
             } else if (saved.draft !== undefined) {
-              createNewTab(saved.draft, saved.name, false);
+              const normDraft = saved.draft.replace(/\r\n/g, '\n');
+              createNewTab(normDraft, saved.name, false);
             } else continue;
 
             const opened = saved.path || saved.driveFileId
@@ -185,16 +187,16 @@ export function useEditorDocumentSession({
             if (!opened) continue;
             restored.set(saved.id, opened.id);
             const isDraftWarning = isPlaceholderWarning(saved.draft);
-            if (saved.draft !== undefined && !isDraftWarning) {
-              if (opened.model && !opened.model.isDisposed?.()) opened.model.setValue(saved.draft);
+            if (saved.draft !== undefined && !isDraftWarning && !saved.path) {
+              const normDraft = saved.draft.replace(/\r\n/g, '\n');
+              if (opened.model && !opened.model.isDisposed?.()) opened.model.setValue(normDraft);
               if (activeTabIdRef.current === opened.id) {
-                contentRef.current = saved.draft;
-                updateContent(saved.draft, false, true);
+                contentRef.current = normDraft;
+                updateContent(normDraft, false, true);
               }
             }
             setTabs(previous => previous.map(t => t.id === opened.id ? {
               ...t,
-              ...(saved.draft !== undefined && !isDraftWarning ? { content: saved.draft, isModified: true } : {}),
               scrollTop: saved.scrollTop,
               previewMode: (saved.previewMode as any) || t.previewMode
             } : t));
@@ -242,7 +244,8 @@ export function useEditorDocumentSession({
             const resolvedPath = resolveNativeDocumentPath(filePath, rootFolder) || filePath;
             const fileObj = await api.readFromPath(resolvedPath);
             if (fileObj && typeof fileObj.content === 'string') {
-              createNewTab(fileObj.content, fileObj.name || filePath.split(/[/\\]/).pop() || '문서.md', false, fileObj.path || resolvedPath);
+              const normContent = fileObj.content.replace(/\r\n/g, '\n');
+              createNewTab(normContent, fileObj.name || filePath.split(/[/\\]/).pop() || '문서.md', false, fileObj.path || resolvedPath);
             }
           } catch {}
         } else if (handleFileOpenByPath) {

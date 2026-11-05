@@ -2,6 +2,9 @@
 // 📊 [OMD-HOOK-useEditorLifecycleEffects] frontend/src/hooks/editor/useEditorLifecycleEffects.ts
 // 🎯 @KICK  : 탭 이름 변경·삭제·라인 점프 이벤트 리스너, 분할 화면 읽기 전용 가드, 에디터 테마·옵션 동기화, 제한사용자 웰컴 정리, 사이드바 리사이즈, 탭 전환 모드/미리보기 동기화, 자동 저장(autoSave), 목차(TOC) 생성 훅
 // 🛡️ @GUARD : 동일 파일명 타 경로 오종료 방어, 5초 자동저장 무한루프 및 번들 도움말 덮어쓰기 차단, 코드블록 내부 헤딩 오탐 방지
+// 🚨 @PATCH : 2026-11-05 — [개행문자(CRLF vs LF) 불일치로 인한 저장표시 점멸 및 무한 자동저장 루프 원천 차단]:
+//             1) content와 lastSavedContentRef 비교 시 CRLF/LF 정규화 통일로 윈도우 디스크 파일 오픈 시 저장표시가 무한 점멸하던 결함 완전 해결
+//             2) autoSave 진입 조건에서도 CRLF/LF 정규화 일치 비교를 적용하여 내용이 변하지 않았음에도 5초마다 불필요하게 디스크에 재저장하던 CPU 폭주 차단
 // 🚨 @PATCH : 2026-11-04 — [주석 표준화] 내부 핸들러 함수(handleMouseMove, stopResizing, startResizing) 2단계 JSDoc 표준화 적용
 //             2026-11-04 — [MainEditorApp 모듈화 및 훅 의존성 정합화]: 탭/파일 생명주기 이벤트, 에디터 설정 동기화, 제한사용자 웰컴 정리, 자동 저장, TOC 계산을 MainEditorApp.tsx에서 분리 위임하고 ESLint exhaustive-deps 경고를 0건으로 해소 (동작 변경 없음)
 // 🔗 @CALLS : applySafeMarkdownMonarchTokenizer, syncPreviewToTargetLine, syncPreviewFromEditorScroll, getCodeBlockLineMask, createHeadingNumberer, isBundledDocumentPath
@@ -717,12 +720,14 @@ export function useEditorLifecycleEffects(props: UseEditorLifecycleEffectsProps)
     if (currentFileNode && activeTabId) {
       if (prevActiveTabRef.current !== activeTabId) {
         prevActiveTabRef.current = activeTabId;
-          const activeTab = tabsRef.current.find(t => t.id === activeTabId);
-          if (!activeTab?.isModified) lastSavedContentRef.current = content;
-          setSaveStatus(activeTab?.isModified ? 'unsaved' : 'saved');
-          return;
+        const activeTab = tabsRef.current.find(t => t.id === activeTabId);
+        if (!activeTab?.isModified) lastSavedContentRef.current = (content || '').replace(/\r\n/g, '\n');
+        setSaveStatus(activeTab?.isModified ? 'unsaved' : 'saved');
+        return;
       }
-      const isUnsaved = content !== lastSavedContentRef.current;
+      const normContent = (content || '').replace(/\r\n/g, '\n');
+      const normSaved = (lastSavedContentRef.current || '').replace(/\r\n/g, '\n');
+      const isUnsaved = normContent !== normSaved;
       setSaveStatus(isUnsaved ? 'unsaved' : 'saved');
       setTabs(prev => {
         const cur = prev.find(t => t.id === activeTabId);
@@ -800,13 +805,15 @@ export function useEditorLifecycleEffects(props: UseEditorLifecycleEffectsProps)
     // 🌟 [세이프티 가드 2]: 유저가 뷰 모드(분할/에디터/프리뷰)를 변환하는 찰나의 순간에는 
     // 컴포넌트 오염 타이밍이므로 자동 저장을 생략하고 무조건 대기시킵니다.
     if (typeof autoSave === 'number' && autoSave > 0 && effectiveFileNode && licenseStatus.isActivated) {
-      if (content === lastSavedContentRef.current) return;
+      const normContent = (content || '').replace(/\r\n/g, '\n');
+      const normSaved = (lastSavedContentRef.current || '').replace(/\r\n/g, '\n');
+      if (normContent === normSaved) return;
 
       setSaveStatus('saving');
       const savingTabId = activeTab?.id;
       const timer = setTimeout(async () => {
         if (savingTabId && activeTabIdRef.current !== savingTabId) return;
-        const saveContent = content;
+        const saveContent = (content || '').replace(/\r\n/g, '\n');
         const success = await saveFile(saveContent, effectiveFileNode);
         setSaveStatus(success ? 'saved' : 'unsaved');
         if (success) {
