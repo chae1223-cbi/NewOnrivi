@@ -2,6 +2,7 @@
 // 📊 [OMD-CORE-VisualEditor-ProseMirrorHandlers] frontend/src/components/visualEditor/visualEditorProseMirrorHandlers.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 ProseMirror Keymap, 키보드/텍스트 입력, 스마트 붙여넣기(handlePaste), 드롭(handleDrop), 마우스 클릭/링크 이동(handleClick) 및 DOM 이벤트 핸들러 팩토리
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 클립보드 이미지/HTML 붙여넣기 정제, 5대 정밀 진단 로깅(logError/logWarn) 준수
+// 🚨 @PATCH : 2026-11-05 — [목록 선택 후 클릭]: 선택된 목록을 일반 클릭하면 클릭 위치로 커서를 접고 선택을 해제한다.
 // 🚨 @PATCH : 2026-11-04 — [VisualDocumentEditor 코어 엔진 모듈화]: ProseMirror 이벤트/단축키/스마트 붙여넣기 핸들러 분리 및 5대 진단 로깅 적용
 // 🔗 @CALLS : markdownPasteTransaction, markdownPasteInTableCellTransaction, htmlToImportMarkdown, importHtmlWithImages, sanitizePastedText
 // ====================================================================
@@ -892,7 +893,15 @@ export function createVisualEditorHandlers({
     },
 
     handleClick(currentView, pos, event) {
-      if (!currentView.state.selection.empty || document.getSelection()?.isCollapsed === false) return false;
+      if ((!currentView.state.selection.empty || document.getSelection()?.isCollapsed === false)
+        && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
+        const clicked = currentView.posAtCoords({ left: event.clientX, top: event.clientY });
+        const caret = clicked?.pos ?? pos;
+        currentView.dispatch(currentView.state.tr.setSelection(TextSelection.near(currentView.state.doc.resolve(caret))));
+        currentView.focus();
+        setSelection(false);
+        return true;
+      }
       const clickedFootnoteDef = (event.target as HTMLElement | null)?.closest('.visual-footnote-def');
       const clickedFootnoteArea = (event.target as HTMLElement | null)?.closest(
         '.visual-footnote-area-header, .visual-footnote-def-container'

@@ -2,6 +2,7 @@
 // 📊 [OMD-HOOK-useDocumentOpener-0001] frontend/src/hooks/fileExplorer/useDocumentOpener.ts
 // 🎯 @KICK  : 파일 트리 클릭(handleFileClick) 및 경로/링크 기반 문서 탐색·오픈(handleFileOpenByPath), 지식 DB 및 앵커 점프(#L..) 연동
 // 🛡️ @GUARD : 브라우저 FSA 재귀 탐색(findFileHandleInDirectoryDeep), 구글 드라이브 온디맨드 검색, VFS/도움말 폴백 및 세션 동기화
+// 🚨 @PATCH : 2026-11-05 — [Drive 링크 작업장 범위]: 링크 상대 경로를 폴더별로 해석하고 전체 Drive 동명 파일 검색을 제거한다.
 // 🚨 @PATCH : 2026-11-04 — [오류 처리 및 주석 표준화]: onrivi-error-handling 5대 진단 필드 기반 logError 파일 경로(useDocumentOpener.ts) 정합화 및 예외 로깅 보강, onrivi-source-comments 2단계 JSDoc 표준화
 // 🚨 @PATCH : 2026-11-04 — [런타임 버그 수정]: getSavedWorkspaceInfo, EditorTab, helpContentRef, sessionRestoringRef 누락 식별자 보완 및 findFileHandleInDirectoryDeep 모듈 스코프 export
 // 🚨 @PATCH : 2026-11-04 — [useFileExplorer 모듈화 분리]:
@@ -354,7 +355,9 @@ export function useDocumentOpener({
     }
 
     // 💡 [기존 열린 탭 우선 검사]
-    const existingOpenTab = tabsRef.current.find(t => matchesLinkedDocument(t, pathWithoutHash, rootFolderRef.current));
+    const existingOpenTab = (rootFolderRef.current?.type === 'GDRIVE' || workspaceType === 'cloud')
+      ? null
+      : tabsRef.current.find(t => matchesLinkedDocument(t, pathWithoutHash, rootFolderRef.current));
     if (existingOpenTab) {
       const nativeApi = typeof window !== 'undefined' ? (window as any).electronAPI : null;
       const canonicalPath = nativeApi && existingOpenTab.path ? resolveNativeDocumentPath(existingOpenTab.path, rootFolderRef.current) : existingOpenTab.path;
@@ -576,10 +579,11 @@ export function useDocumentOpener({
       return null;
     };
 
-    const findResult = findNodeByPath(fileList, pathWithoutHash) ||
+    const isDriveWorkspace = rootFolderRef.current?.type === 'GDRIVE' || workspaceType === 'cloud';
+    const findResult = isDriveWorkspace ? null : findNodeByPath(fileList, pathWithoutHash) ||
                        findNodeByPath(fileList, cleanPath) ||
                        findNodeByPath(fileList, cleanPathNoDotSlash) ||
-                       findNodeByPath(fileList, targetBaseName);
+                       (!isDriveWorkspace ? findNodeByPath(fileList, targetBaseName) : null);
     if (findResult) {
       await handleFileClick(findResult.node, findResult.parent);
       jumpToAnchor(targetHash);
@@ -588,27 +592,46 @@ export function useDocumentOpener({
     }
 
     // 💡 [구글 드라이브(GDRIVE / cloud) 작업장 파일 온디맨드 탐색 및 즉시 로드]
-    if (rootFolderRef.current?.type === 'GDRIVE' || workspaceType === 'cloud') {
+    if (isDriveWorkspace) {
       try {
-        const { getSavedDriveToken, getSavedWorkspaceInfo, findDriveFile } = await import('@/lib/gdrive/googleDriveClient');
+        const { getSavedDriveToken, getSavedWorkspaceInfo, listDriveChildren } = await import('@/lib/gdrive/googleDriveClient');
         const token = getSavedDriveToken();
         const wsInfo = getSavedWorkspaceInfo();
-        if (token) {
-          const searchFileName = targetBaseNameWithMd || targetBaseName;
+        const workspaceFolderId = rootFolderRef.current?.driveFolderId || wsInfo?.workspaceFolderId;
+        if (token && workspaceFolderId) {
+          const rootPath = (rootFolderRef.current?.path || `GoogleDrive/${rootFolderRef.current?.name || ''}`).replace(/\\/g, '/').replace(/\/$/, '');
+          const sourcePath = (sourceTab?.path || currentFileNode?.path || `${rootPath}/_workspace_root_.md`).replace(/\\/g, '/');
+          const rawTarget = pathWithoutHash.replace(/\\/g, '/');
+          const joined = rawTarget.startsWith('GoogleDrive/')
+            ? rawTarget
+            : rawTarget.startsWith('/')
+              ? `${rootPath}/${rawTarget.replace(/^\/+/, '')}`
+              : `${sourcePath.slice(0, sourcePath.lastIndexOf('/') + 1)}${rawTarget}`;
+          const segments: string[] = [];
+          for (const segment of joined.split('/')) {
+            if (segment === '..') segments.pop();
+            else if (segment && segment !== '.') segments.push(segment);
+          }
+          const normalizedTarget = segments.join('/');
+          const relativeTarget = normalizedTarget === rootPath ? '' : normalizedTarget.startsWith(`${rootPath}/`)
+            ? normalizedTarget.slice(rootPath.length + 1) : '';
           let foundDriveId: string | null = null;
-          if (rootFolderRef.current?.driveFolderId) {
-            foundDriveId = await findDriveFile(token, searchFileName, rootFolderRef.current.driveFolderId);
-          }
-          if (!foundDriveId && wsInfo?.workspaceFolderId) {
-            foundDriveId = await findDriveFile(token, searchFileName, wsInfo.workspaceFolderId);
-          }
-          if (!foundDriveId) {
-            foundDriveId = await findDriveFile(token, searchFileName);
+          if (relativeTarget) {
+            const parts = relativeTarget.split('/');
+            let parentId = workspaceFolderId;
+            for (const [index, part] of parts.entries()) {
+              const children = await listDriveChildren(token, parentId);
+              const isLast = index === parts.length - 1;
+              const item = children.find(child => child.name === part && child.isFolder !== isLast);
+              if (!item) break;
+              if (isLast) foundDriveId = item.id;
+              else parentId = item.id;
+            }
           }
           if (foundDriveId) {
             const driveNode: FileNode = {
-              name: searchFileName,
-              path: pathWithoutHash,
+              name: targetBaseNameWithMd || targetBaseName,
+              path: normalizedTarget,
               kind: 'file',
               driveId: foundDriveId,
               driveFileId: foundDriveId,

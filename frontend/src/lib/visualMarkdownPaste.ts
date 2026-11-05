@@ -34,8 +34,12 @@ export function markdownPasteTransaction(state: EditorState, codec: Codec, sourc
   const pasted = createVisualDocumentCodec(bulletNumbersAsText(source,insideBullet));
   codec.adopt(pasted);
   const empty = state.doc.childCount === 1 && state.doc.firstChild?.type.name === 'paragraph' && !state.doc.firstChild.content.size;
+  const inlineParagraph = pasted.doc.childCount === 1 && pasted.doc.firstChild?.type === visualSchema.nodes.paragraph
+    && state.selection.$from.parent.isTextblock && state.selection.$to.parent.isTextblock;
   const transaction = empty
     ? state.tr.replaceWith(0, state.doc.content.size, pasted.doc.content)
+    : inlineParagraph
+      ? state.tr.replaceSelection(new Slice(pasted.doc.firstChild!.content, 0, 0))
     : state.tr.replaceSelection(new Slice(pasted.doc.content, 0, 0));
   if (pasted.doc.attrs.frontmatter.trim()) {
     transaction.setDocAttribute('frontmatter', mergePastedFrontmatter(state.doc.attrs.frontmatter, pasted.doc.attrs.frontmatter));
@@ -62,3 +66,4 @@ export function markdownPasteInTableCellTransaction(state: EditorState, source: 
   }
   return state.tr.replaceSelection(new Slice(Fragment.fromArray(inline), 0, 0)).scrollIntoView();
 }
+// 🚨 @PATCH : 2026-11-05 — [문서 링크 붙여넣기 위치]: 한 문단짜리 Markdown은 문단 내부에서 인라인으로 삽입하여 커서 아래 새 줄 생성 방지.

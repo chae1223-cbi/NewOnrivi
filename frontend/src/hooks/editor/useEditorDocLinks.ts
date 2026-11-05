@@ -2,6 +2,7 @@
 // 📊 [OMD-HOOK-useEditorDocLinks] frontend/src/hooks/editor/useEditorDocLinks.ts
 // 🎯 @KICK  : 문서 간 위키링크/상대경로 연결 팝업, 헤딩(H1~H6) 동적 파싱, 커서 위치 기반 팝업 좌표 계산 훅
 // 🛡️ @GUARD : 비동기 파일 트리 로딩, 상대 경로 정규화, 위지윅/모나코 양방향 삽입 지원 및 닫힐 때 상태 완전 소거
+// 🚨 @PATCH : 2026-11-05 — [문서 링크명 기본값]: 선택 영역이 없으면 팝업을 연 커서 위치의 단어를 링크명으로 사용한다.
 // 🚨 @PATCH : 2026-11-04 — [표준화 및 에러 처리 강화] logError 5대 진단 필드 선제 기록 적용 및 2단계 함수 JSDoc 표준화
 //             2026-11-04 — [MainEditorApp 모듈화]: 문서 연결(DocLinkPicker) 상태, 헤딩 파싱, 파일 읽기(readFileText), 팝업 좌표 계산을 useEditorDocLinks로 분리 위임 (460줄 감축)
 // 🔗 @CALLS : fetchAllMdFiles, getRelativePath, resolveNativeDocumentPath, readFileText, extractHeadings, logError
@@ -140,6 +141,14 @@ export function useEditorDocLinks({
           }
           if (selection) {
             selText = editor.getModel()?.getValueInRange(selection)?.trim() || '';
+          }
+          if (!selText) {
+            const position = editor.getPosition();
+            const model = editor.getModel();
+            if (position && model) {
+              const word = model.getWordAtPosition(position);
+              selText = word?.word?.trim() || '';
+            }
           }
         }
         if (selText) {

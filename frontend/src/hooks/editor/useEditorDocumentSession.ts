@@ -2,6 +2,7 @@
 // 📊 [OMD-HOOK-useEditorDocumentSession] frontend/src/hooks/editor/useEditorDocumentSession.ts
 // 🎯 @KICK  : 에디터 탭 세션 복원, 자동 저장, 외부 파일 열기(OS 연동) 전담 훅
 // 🛡️ @GUARD : 비인증 사용자 복원 제한, 디스크 삭제 파일 예외 방어, 웹/데스크톱 플랫폼별 세션 동기화
+// 🚨 @PATCH : 2026-11-05 — [드라이브 404 복원 보호]: 읽을 수 없는 기존 파일 ID 대신 보관된 세션/비상 초안을 독립 로컬 탭으로 복원하고 자동 저장 대상에서 제외한다.
 // 🚨 @PATCH : 2026-11-05 — [데스크톱 세션 복원 Fast-Path 직결 및 10분 지연 병목 완전 해결]:
 //             1) 5단계 범용 링크 탐색(지식보관함 3중 쿼리 등) 및 탭별 150ms 강제 대기를 제거하고 api.readFromPath 및 캐시 초안으로 즉시 바인딩 (591초 ➔ 0.05초)
 //             2) 웹드라이브 미연결/로컬 모드 복귀 시 드라이브 파일 복원 네트워크 타임아웃을 차단하고 로컬 draft 본문으로 즉각 안전 복구
@@ -28,7 +29,7 @@ import {
   SessionTab,
   isPlaceholderWarning,
 } from '@/lib/editorSession';
-import { hasValidDriveToken } from '@/lib/gdrive/googleDriveClient';
+import { getEmergencyDriveDrafts, hasValidDriveToken } from '@/lib/gdrive/googleDriveClient';
 import { resolveNativeDocumentPath } from '@/lib/nativeDocumentPath';
 import { logError, logWarn } from '@/lib/errorDiagnostics';
 
@@ -173,15 +174,20 @@ export function useEditorDocumentSession({
           : [];
         console.info('[STARTUP timing] local session reads done ms=%d tabs=%d', Math.round(performance.now() - restoreStartedAt), savedTabs.length);
         const restored = new Map<string, string>();
+        const emergencyDrafts = getEmergencyDriveDrafts()?.drafts || [];
         for (const [savedIndex, saved] of savedTabs.entries()) {
           try {
             let openedId: string | void = undefined;
             if (saved.driveFileId) {
-              // ☁️ 구글 드라이브 파일: 클라우드 연결 및 유효 토큰 있을 때만 네트워크 통신, 아니면 캐시된 초안으로 즉시 복원하여 타임아웃 차단
-              if (isDriveConnected && hasValidDriveToken() && !isDriveAuthExpired) {
+              // ☁️ 저장하지 못한 내용은 기존 Drive ID에 재연결하지 않고 독립 초안으로 보존한다.
+              const emergencyDraft = emergencyDrafts.find(draft => draft.driveFileId === saved.driveFileId && draft.isModified);
+              const recoverableDraft = emergencyDraft?.content ?? saved.draft;
+              if (recoverableDraft !== undefined) {
+                openedId = createNewTab(recoverableDraft.replace(/\r\n/g, '\n'), saved.name, false, undefined, undefined, false, true);
+                const recovered = tabsRef.current.find(tab => tab.id === openedId);
+                if (recovered) recovered.isModified = true;
+              } else if (isDriveConnected && hasValidDriveToken() && !isDriveAuthExpired) {
                 await handleFileClick({ name: saved.name, path: saved.path, kind: 'file', driveFileId: saved.driveFileId } as any);
-              } else if (saved.draft !== undefined) {
-                openedId = createNewTab(saved.draft, saved.name, false, saved.path, undefined, false, true);
               }
             } else if (saved.path) {
               if (api?.readFromPath) {
