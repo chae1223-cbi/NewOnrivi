@@ -5,6 +5,8 @@
 // 🚨 @PATCH : 2026-11-05 — [데스크톱 세션 복원 Fast-Path 직결 및 10분 지연 병목 완전 해결]:
 //             1) 5단계 범용 링크 탐색(지식보관함 3중 쿼리 등) 및 탭별 150ms 강제 대기를 제거하고 api.readFromPath 및 캐시 초안으로 즉시 바인딩 (591초 ➔ 0.05초)
 //             2) 웹드라이브 미연결/로컬 모드 복귀 시 드라이브 파일 복원 네트워크 타임아웃을 차단하고 로컬 draft 본문으로 즉각 안전 복구
+// 🚨 @PATCH : 2026-11-05 — [로컬 탭 일괄 선읽기]: 세션 파일을 병렬로 읽은 뒤 탭을 순서대로 생성해 시작 중 반복 렌더링과 누적 대기를 줄인다.
+// 🚨 @PATCH : 2026-11-05 — [복원 중 화면 전환 제거]: 로컬 탭은 비활성 상태로 등록하고 마지막에 선택 탭 하나만 표시해 시작 렌더링 정지를 줄인다.
 // 🚨 @PATCH : 2026-11-04 — [표준화 및 에러 처리 강화] openExternalFile logError 선제 기록 추가 및 1·2단계 주석 표준화
 //             2026-11-04 — [isElectron 판별식 정정] const isElectron = Boolean(api)로 정정하여 웹 브라우저 환경에서 세션 복원 조기 반환 결함 방어
 //             2026-11-04 — [MainEditorApp 모듈화] 세션 복원 및 외부 파일 오픈 파이프라인을 useEditorDocumentSession 훅으로 분리 위임
@@ -37,7 +39,7 @@ export interface UseEditorDocumentSessionOptions {
   contentRef: MutableRefObject<string>;
   setContent: (content: string) => void;
   updateContent: (content: string, markModified?: boolean, skipModelSync?: boolean) => void;
-  createNewTab: (content: string, name: string, isModified?: boolean, path?: string | null, node?: FileNode) => void;
+  createNewTab: (content: string, name: string, isModified?: boolean, path?: string | null, node?: FileNode, activate?: boolean) => void;
   switchTab: (tabId: string) => void;
   currentFileNode: FileNode | null;
   currentFileNodeRef: MutableRefObject<FileNode | null>;
@@ -146,44 +148,56 @@ export function useEditorDocumentSession({
       const api = typeof window !== 'undefined' ? (window as any).electronAPI : null;
 
       if (savedTabs) {
+        const localFiles = api?.readFromPath
+          ? await Promise.all(savedTabs.map(async saved => {
+              if (!saved.path || saved.driveFileId) return null;
+              const resolvedPath = resolveNativeDocumentPath(saved.path, rootFolder) || saved.path;
+              try {
+                return { resolvedPath, fileObj: await api.readFromPath(resolvedPath) };
+              } catch (error) {
+                logWarn({
+                  file: 'frontend/src/hooks/editor/useEditorDocumentSession.ts',
+                  func: 'restoreSessionTabs',
+                  doing: '이전 로컬 문서 일괄 선읽기 중',
+                  target: saved.name || saved.path,
+                  error
+                });
+                return { resolvedPath, fileObj: null };
+              }
+            }))
+          : [];
         const restored = new Map<string, string>();
-        for (const saved of savedTabs) {
+        for (const [savedIndex, saved] of savedTabs.entries()) {
           try {
             if (saved.driveFileId) {
               // ☁️ 구글 드라이브 파일: 클라우드 연결 및 유효 토큰 있을 때만 네트워크 통신, 아니면 캐시된 초안으로 즉시 복원하여 타임아웃 차단
               if (isDriveConnected && hasValidDriveToken() && !isDriveAuthExpired) {
                 await handleFileClick({ name: saved.name, path: saved.path, kind: 'file', driveFileId: saved.driveFileId } as any);
               } else if (saved.draft !== undefined) {
-                createNewTab(saved.draft, saved.name, false, saved.path);
+                createNewTab(saved.draft, saved.name, false, saved.path, undefined, false);
               }
             } else if (saved.path) {
               if (api?.readFromPath) {
-                // 🚀 [데스크톱 Fast-Path 직결] 5단계 범용 탐색(지식보관함 3중 쿼리 등)을 우회하고 IPC로 직접 파일 읽기 (1ms)
-                let loadedDiskContent = false;
-                try {
-                  const resolvedPath = resolveNativeDocumentPath(saved.path, rootFolder) || saved.path;
-                  const fileObj = await api.readFromPath(resolvedPath);
-                  if (fileObj && typeof fileObj.content === 'string') {
-                    const normContent = fileObj.content.replace(/\r\n/g, '\n');
-                    createNewTab(normContent, fileObj.name || saved.name, false, fileObj.path || resolvedPath);
-                    loadedDiskContent = true;
-                  }
-                } catch {}
-                if (!loadedDiskContent && saved.draft !== undefined) {
+                const loadedFile = localFiles[savedIndex];
+                const fileObj = loadedFile?.fileObj;
+                if (fileObj && typeof fileObj.content === 'string') {
+                  const normContent = fileObj.content.replace(/\r\n/g, '\n');
+                  createNewTab(normContent, fileObj.name || saved.name, false, fileObj.path || loadedFile.resolvedPath, undefined, false);
+                } else if (saved.draft !== undefined) {
                   const normDraft = saved.draft.replace(/\r\n/g, '\n');
-                  createNewTab(normDraft, saved.name, false, saved.path);
+                  createNewTab(normDraft, saved.name, false, saved.path, undefined, false);
                 }
               } else {
                 await handleFileOpenByPath(saved.path);
               }
             } else if (saved.draft !== undefined) {
               const normDraft = saved.draft.replace(/\r\n/g, '\n');
-              createNewTab(normDraft, saved.name, false);
+              createNewTab(normDraft, saved.name, false, undefined, undefined, false);
             } else continue;
 
             const opened = saved.path || saved.driveFileId
               ? tabsRef.current.find(t => matchesSessionTab(t, saved))
-              : tabsRef.current.find(t => t.id === activeTabIdRef.current);
+              : tabsRef.current[tabsRef.current.length - 1];
             if (!opened) continue;
             restored.set(saved.id, opened.id);
             const isDraftWarning = isPlaceholderWarning(saved.draft);
@@ -216,7 +230,7 @@ export function useEditorDocumentSession({
             });
           }
         }
-        const target = restored.get(savedActiveId || '');
+        const target = restored.get(savedActiveId || '') || Array.from(restored.values()).at(-1);
         if (target) {
           if (activeTabIdRef.current === target) activeTabIdRef.current = null;
           switchTab(target);

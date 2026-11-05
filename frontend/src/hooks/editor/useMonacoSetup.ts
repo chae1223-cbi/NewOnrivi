@@ -1,6 +1,8 @@
 // @ts-nocheck
 // ====================================================================
 // 📊 [OMD-CORE-useMonacoSetup-0001] useMonacoSetup ➔ Monaco Setup & Lifecycle Engine
+// 🚨 @PATCH : 2026-11-05 — [초기 모델 수정 오판 방지]: 비활성 탭 모델 이벤트가 활성 문서 본문과 저장 상태를 덮어쓰지 않도록 차단.
+// 🚨 @PATCH : 2026-11-05 — [시작 렌더링 부담 축소]: 에디터 마운트 시 활성 탭의 모델만 만들고 나머지는 선택할 때 생성한다.
 // 🚨 @PATCH : **2026-11-04** — [useMonacoSetup.ts 1순위 모듈 분리 리팩토링 (2,617라인 ➔ 슬림화)]:
 //             1) 표(Table) 정렬/이동 및 리스트/인용구/제목 자동 완성 단축키를 monacoTableAndListCommands.ts로 격리
 //             2) 클립보드 붙여넣기 및 드래그 앤 드롭 인디케이터 처리를 monacoClipboardAndDrop.ts로 격리
@@ -135,11 +137,13 @@ export function useMonacoSetup(deps: any) {
 
     // 탭 및 모델 초기화
     const updatedTabs = tabsRef.current.map((tab: any) => {
+      if (tab.id !== activeTabIdRef.current) return tab;
       const isDisposed = tab.model && typeof tab.model.isDisposed === 'function' && tab.model.isDisposed();
       if (!tab.model || isDisposed) {
         const model = monaco.editor.createModel(tab.content, 'markdown');
         model.onDidChangeContent((e) => {
           if ((model as any).__isSyncingVisualModel) return;
+          if (activeTabIdRef.current !== tab.id) return;
           if (e && e.changes && e.changes.some(c => c.text === '1. ' || c.text === '1.')) {
             setTimeout(() => editor.getAction('autoRenumberList')?.run(), 100);
           }

@@ -17,6 +17,9 @@ import { syncVisualSourceModel } from '@/lib/incrementalVisualModel';
 // 📊 [OMD-HOOK-0003] useEditorTabs.ts ➔ useEditorTabs
 // 🎯 @KICK  : Monaco 에디터 가상 모델 다중 탭 관리 — 탭 전환·생성·콘텐츠 동기화
 // 🛡️ @GUARD : tabs/setTabs/activeTabId/setActiveTabId 외부 주입으로 TDZ 원천 차단
+// 🚨 @PATCH : 2026-11-05 — [일괄 세션 복원 탭 누락 방지]: 탭 생성과 활성 탭 전환 시 공유 ref를 즉시 갱신하여 React 일괄 업데이트 중에도 다음 탭이 앞선 탭을 찾도록 보장.
+// 🚨 @PATCH : 2026-11-05 — [탭 전환 중 수정 오판 방지]: 비활성 모델의 값 변경 이벤트가 현재 본문과 저장 상태를 바꾸지 않도록 차단.
+// 🚨 @PATCH : 2026-11-05 — [세션 탭 지연 모델 생성]: 복원 시 비활성 탭은 모델과 화면 전환 없이 등록하고 선택한 탭의 모델만 생성한다.
 // 🚨 @PATCH : **2026-10-19** — [Visual Editor 모델 동기화 역류(Echo) 방어 가드 탑재]:
 //             1) syncVisualSourceModel 실행 중 __isSyncingVisualModel 플래그를 활성화하여 Monaco onDidChangeContent가 setContent 및 setTabs를 중복 발화하는 역류 루프 완전 차단
 // 🚨 @PATCH : **2026-10-17** — [탭 전환 및 새 탭 생성 시 물리 파일 노드(FileNode) 바인딩 및 탭 ID 정합성 보장]:
@@ -49,6 +52,7 @@ export const useEditorTabs = (
   setPreviewModeRaw?: (mode: any) => void
 ) => {
   const tabsRef = useRef<EditorTab[]>([]);
+  const nextTabIdRef = useRef(0);
   // 🛡️ [BUG FIX 2026-07-07] 기존 null 초기값은 첫 렌더 직후 탭 클릭 시 useEffect 갱신이
   // 아직 실행되지 않아 activeTabIdRef.current=null 상태에서 early return이 미작동했음.
   // activeTabId를 초기값으로 직접 설정하여 동기화 지연 버그를 완전 제거합니다.
@@ -139,6 +143,7 @@ export const useEditorTabs = (
       }
     }
 
+    activeTabIdRef.current = tabId;
     setActiveTabId(tabId);
 
     if (!targetTab) return;
@@ -190,23 +195,26 @@ export const useEditorTabs = (
           editor.setScrollTop(targetTab.scrollTop || 0);
         });
       }
-    } else if (editor) {
-      editor.setValue(targetTab.content);
     }
 
-    // 탭에 모델이 없으면 생성
-    if (monaco && targetTab && !targetTab.model) {
+    // 탭에 모델이 없으면 현재 선택한 탭에 한해서 생성
+    if (monaco && !targetTab.model) {
       const newModel = monaco.editor.createModel(targetTab.content, 'markdown');
       newModel.onDidChangeContent(() => {
         // 🛡️ [BUG FIX 2026-07-07] preview 모드 / 비마운트 시 content 업데이트 차단
         if (!isEditorMountedRef.current) return;
         if (previewModeRef.current === 'preview') return;
+        if (activeTabIdRef.current !== targetTab.id) return;
         const val = newModel.getValue();
         setContent(val);
         setTabs(prev => prev.map(t => t.id === targetTab.id ? { ...t, content: val, isModified: val !== t.content } : t));
       });
       (targetTab as any).model = newModel;
       tabsRef.current = tabsRef.current.map(t => t.id === targetTab.id ? { ...t, model: newModel } : t);
+      setTabs(prev => prev.map(t => t.id === targetTab.id ? { ...t, model: newModel } : t));
+      if (editor) editor.setModel(newModel);
+    } else if (editor && !targetTab.model) {
+      editor.setValue(targetTab.content);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editorRef, setContent, setCurrentFileName, setCurrentFileNode, previewModeRef, setPreviewModeRaw, isEditorMountedRef]);
@@ -220,14 +228,14 @@ export const useEditorTabs = (
   //              (preview 모드에서 model.getValue()가 부정확한 값을 반환하여 content 초기화 유발하는 버그 방지)
   // 🔗 @CALLS : getWelcomeContent, setContent, setTabs, setActiveTabId, setCurrentFileName, setCurrentFileNode, setPreviewModeRaw
   // ====================================================================
-  const createNewTab = useCallback((initialContent?: string, name?: string, isStyleTab?: boolean, path?: string | null, node?: FileNode | null) => {
+  const createNewTab = useCallback((initialContent?: string, name?: string, isStyleTab?: boolean, path?: string | null, node?: FileNode | null, activate = true) => {
     const monaco = (window as any).monaco;
     const contentVal = initialContent !== undefined ? initialContent : getWelcomeContent();
     const tabName = name || '새 파일.md';
-    const tabId = 'new-tab-' + Date.now();
+    const tabId = `new-tab-${Date.now()}-${++nextTabIdRef.current}`;
 
     let model: any = null;
-    if (monaco) {
+    if (monaco && activate) {
       model = monaco.editor.createModel(contentVal, 'markdown');
       model.onDidChangeContent(() => {
         // 🛡️ [BUG FIX 2026-07-07] preview 모드 / 비마운트 시 content 업데이트 차단
@@ -236,6 +244,7 @@ export const useEditorTabs = (
         if (!isEditorMountedRef.current) return;
         if (previewModeRef.current === 'preview') return;
         if ((model as any).__isSyncingVisualModel) return;
+        if (activeTabIdRef.current !== tabId) return;
         const val = model.getValue();
         setContent(val);
         setTabs(prev => prev.map(t => t.id === tabId ? { ...t, content: val, isModified: val !== t.content } : t));
@@ -270,12 +279,16 @@ export const useEditorTabs = (
       const existing = tabsRef.current?.find(t => (t.path || '').replace(/\\/g, '/').toLowerCase().normalize('NFC') === normNew);
       if (existing) {
         const mergedNode = effectiveNode || existing.node;
+        tabsRef.current = tabsRef.current.map(t => t.id === existing.id ? { ...t, content: contentVal, model: model || t.model, node: mergedNode, path } : t);
         setTabs(prev => prev.map(t => t.id === existing.id ? { ...t, content: contentVal, model: model || t.model, node: mergedNode, path: path } : t));
-        setActiveTabId(existing.id);
-        setContent(contentVal);
-        setCurrentFileName(existing.name || tabName);
-        setCurrentFileNode(mergedNode);
-        if (editorRef.current && (model || existing.model)) {
+        if (activate) {
+          activeTabIdRef.current = existing.id;
+          setActiveTabId(existing.id);
+          setContent(contentVal);
+          setCurrentFileName(existing.name || tabName);
+          setCurrentFileNode(mergedNode);
+        }
+        if (activate && editorRef.current && (model || existing.model)) {
           try {
             editorRef.current.setModel(model || existing.model);
           } catch {}
@@ -287,7 +300,10 @@ export const useEditorTabs = (
       }
     }
 
+    tabsRef.current = [...tabsRef.current, newTab];
     setTabs(prev => [...prev, newTab]);
+    if (!activate) return;
+    activeTabIdRef.current = tabId;
     setActiveTabId(tabId);
 
     setContent(contentVal);

@@ -5,6 +5,8 @@
 // 🚨 @PATCH : 2026-11-05 — [개행문자(CRLF vs LF) 불일치로 인한 저장표시 점멸 및 무한 자동저장 루프 원천 차단]:
 //             1) content와 lastSavedContentRef 비교 시 CRLF/LF 정규화 통일로 윈도우 디스크 파일 오픈 시 저장표시가 무한 점멸하던 결함 완전 해결
 //             2) autoSave 진입 조건에서도 CRLF/LF 정규화 일치 비교를 적용하여 내용이 변하지 않았음에도 5초마다 불필요하게 디스크에 재저장하던 CPU 폭주 차단
+// 🚨 @PATCH : 2026-11-05 — [세션 복원 중 자동 저장 차단]: 복원 중인 탭과 수정되지 않은 탭은 저장 예약에서 제외하고, 복원 완료 후 탭 상태를 다시 평가한다.
+// 🚨 @PATCH : 2026-11-05 — [초기 저장 표시 오판 방지]: 미수정 탭의 원문을 저장 기준으로 사용하고, 실제 파일 쓰기가 시작될 때만 '저장 중' 상태를 표시한다.
 // 🚨 @PATCH : 2026-11-04 — [주석 표준화] 내부 핸들러 함수(handleMouseMove, stopResizing, startResizing) 2단계 JSDoc 표준화 적용
 //             2026-11-04 — [MainEditorApp 모듈화 및 훅 의존성 정합화]: 탭/파일 생명주기 이벤트, 에디터 설정 동기화, 제한사용자 웰컴 정리, 자동 저장, TOC 계산을 MainEditorApp.tsx에서 분리 위임하고 ESLint exhaustive-deps 경고를 0건으로 해소 (동작 변경 없음)
 // 🔗 @CALLS : applySafeMarkdownMonarchTokenizer, syncPreviewToTargetLine, syncPreviewFromEditorScroll, getCodeBlockLineMask, createHeadingNumberer, isBundledDocumentPath
@@ -717,15 +719,25 @@ export function useEditorLifecycleEffects(props: UseEditorLifecycleEffectsProps)
     }
   }, [mounted, isLicenseChecking, isDuplicateInstance, effectiveLicenseStatus, sessionRestoringRef, setActiveTabId, setContent, setCurrentFileName, setCurrentFileNode, setTabs, tabsRef]);
   useEffect(() => {
+    if (sessionRestoringRef.current) return;
     if (currentFileNode && activeTabId) {
       if (prevActiveTabRef.current !== activeTabId) {
         prevActiveTabRef.current = activeTabId;
         const activeTab = tabsRef.current.find(t => t.id === activeTabId);
-        if (!activeTab?.isModified) lastSavedContentRef.current = (content || '').replace(/\r\n/g, '\n');
+        if (activeTab && !activeTab.isModified) lastSavedContentRef.current = (activeTab.content || '').replace(/\r\n/g, '\n');
         setSaveStatus(activeTab?.isModified ? 'unsaved' : 'saved');
         return;
       }
+      const activeTab = tabsRef.current.find(t => t.id === activeTabId);
       const normContent = (content || '').replace(/\r\n/g, '\n');
+      const normTabContent = (activeTab?.content || '').replace(/\r\n/g, '\n');
+      if (activeTab && !activeTab.isModified) {
+        if (normContent === normTabContent) {
+          lastSavedContentRef.current = normTabContent;
+          setSaveStatus('saved');
+        }
+        return;
+      }
       const normSaved = (lastSavedContentRef.current || '').replace(/\r\n/g, '\n');
       const isUnsaved = normContent !== normSaved;
       setSaveStatus(isUnsaved ? 'unsaved' : 'saved');
@@ -739,7 +751,7 @@ export function useEditorLifecycleEffects(props: UseEditorLifecycleEffectsProps)
         );
       });
     }
-  }, [content, currentFileNode, activeTabId, lastSavedContentRef, prevActiveTabRef, setSaveStatus, setTabs, tabsRef]);
+  }, [content, currentFileNode, activeTabId, tabs, lastSavedContentRef, prevActiveTabRef, sessionRestoringRef, setSaveStatus, setTabs, tabsRef]);
 
   // 💡 [탭 전환 시 에디터 기준 미리보기 1:1 완벽 동기화 보장]
   useEffect(() => {
@@ -790,6 +802,7 @@ export function useEditorLifecycleEffects(props: UseEditorLifecycleEffectsProps)
   // 🔗 @CALLS : saveFile, setSaveStatus, setTimeout, clearTimeout
   // ====================================================================
   useEffect(() => {
+    if (sessionRestoringRef.current) return;
     // 🌟 [세이프티 가드 1]: 원고 본문이 비어있거나 데이터가 초기화되기 전 상태라면 
     // 시스템 오염 저장을 원천 차단합니다.
     if (!content || content.trim() === "") {
@@ -797,6 +810,7 @@ export function useEditorLifecycleEffects(props: UseEditorLifecycleEffectsProps)
     }
 
     const activeTab = tabsRef.current?.find(t => t.id === activeTabIdRef.current);
+    if (activeTab && !activeTab.isModified) return;
     const effectiveFileNode = activeTab ? (activeTab.node || (activeTab.path ? { name: activeTab.name, path: activeTab.path, kind: 'file' } : null)) : currentFileNode;
 
     // Bundled help has no writable target until the user saves a copy.
@@ -809,11 +823,12 @@ export function useEditorLifecycleEffects(props: UseEditorLifecycleEffectsProps)
       const normSaved = (lastSavedContentRef.current || '').replace(/\r\n/g, '\n');
       if (normContent === normSaved) return;
 
-      setSaveStatus('saving');
       const savingTabId = activeTab?.id;
       const timer = setTimeout(async () => {
         if (savingTabId && activeTabIdRef.current !== savingTabId) return;
         const saveContent = (content || '').replace(/\r\n/g, '\n');
+        if (saveContent === (lastSavedContentRef.current || '').replace(/\r\n/g, '\n')) return;
+        setSaveStatus('saving');
         const success = await saveFile(saveContent, effectiveFileNode);
         setSaveStatus(success ? 'saved' : 'unsaved');
         if (success) {
@@ -833,7 +848,7 @@ export function useEditorLifecycleEffects(props: UseEditorLifecycleEffectsProps)
       }, autoSave * 1000); // 🕒 설정된 초(seconds) 기반 디바운스
       return () => clearTimeout(timer);
     }
-  }, [content, autoSave, currentFileNode, saveFile, licenseStatus.isActivated, currentFileName, activeTabIdRef, lastSavedContentRef, setSaveStatus, setTabs, tabsRef]);
+  }, [content, tabs, autoSave, currentFileNode, saveFile, licenseStatus.isActivated, currentFileName, activeTabIdRef, lastSavedContentRef, sessionRestoringRef, setSaveStatus, setTabs, tabsRef]);
 
   // ====================================================================
   // 📊 [OMD-CORE-MainEditorApp-0074] MainEditorApp.tsx ➔ toc
