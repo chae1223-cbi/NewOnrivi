@@ -1,6 +1,7 @@
 /**
  * 프로그램명 : OnriviAuthor 
  * 파일명 : visualListCommands.ts
+ * 🚨 @PATCH : 2026-11-05 — [목록 선택·내어쓰기]: 앞 문단 끝 경계는 목록 전환에서 제외하고, 마지막 항목의 이어지는 문단은 Shift+Tab으로 해당 문단만 목록 밖으로 이동한다.
  * 🚨 @PATCH : **2026-10-31** — [목록 서식 동일 버튼 재클릭 시 취소(토글 해제) 지원]:
  *             1) selectedList에서 현재 선택된 목록이 이미 동일한 종류(bullet, ordered, check)일 경우 selectedList('clear')를 자동 격발하여 일반 문단으로 즉시 취소
  * 🚨 @PATCH : **2026-10-28** — [리스트 하단 들여쓰기(Tab) 문단에서 툴바 목록 전환 시 상위 리스트 하위 레벨 자동 편입]:
@@ -309,6 +310,34 @@ export const independentLiftListItem: Command = (state, dispatch, view) => {
     }
   }
   if (itemDepth === -1) return false;
+
+  // 마지막 목록 항목 안의 이어지는 문단은 상위 항목 전체가 아닌 현재 문단만 내어쓴다.
+  const containingItem = $from.node(itemDepth);
+  const paragraphIndex = $from.index(itemDepth);
+  if (state.selection.empty && $from.parent.type === visualSchema.nodes.paragraph
+    && paragraphIndex > 0 && paragraphIndex === containingItem.childCount - 1) {
+    if (!dispatch) return true;
+    const listDepth = itemDepth - 1;
+    const listNode = $from.node(listDepth);
+    const itemIndex = $from.index(listDepth);
+    const beforeItems: DocumentNode[] = [];
+    const afterItems: DocumentNode[] = [];
+    listNode.forEach((item, _offset, index) => {
+      if (index < itemIndex) beforeItems.push(item);
+      else if (index > itemIndex) afterItems.push(item);
+    });
+    const retained = containingItem.copy(containingItem.content.cut(0, containingItem.content.size - $from.parent.nodeSize));
+    beforeItems.push(retained);
+    const beforeList = listNode.copy(Fragment.fromArray(beforeItems));
+    const replacement: DocumentNode[] = [beforeList, $from.parent];
+    if (afterItems.length) replacement.push(listNode.copy(Fragment.fromArray(afterItems)));
+    const listPos = $from.before(listDepth);
+    const tr = state.tr.replaceWith(listPos, $from.after(listDepth), replacement);
+    const paragraphPos = listPos + beforeList.nodeSize;
+    tr.setSelection(TextSelection.create(tr.doc, paragraphPos + 1 + $from.parentOffset));
+    dispatch(closeHistory(tr).scrollIntoView());
+    return true;
+  }
 
   const range = $from.blockRange($to, node => isList(node) && node.firstChild?.type === visualSchema.nodes.list_item);
   if (range && range.depth >= 3 && $from.node(range.depth - 1).type === visualSchema.nodes.list_item && state.selection instanceof TextSelection) {
@@ -890,7 +919,13 @@ export const removeListMarkerAtStart: Command = (state, dispatch, view) => {
 };
 export function selectedList(kind:'bullet'|'ordered'|'check'|'clear'):Command {
   return (state,dispatch,currentView)=>{
-    const {$from,$to}=state.selection;
+    let {$from,$to}=state.selection;
+    if (!state.selection.empty && $from.parent.isTextblock && $from.parentOffset === $from.parent.content.size && $from.pos + 1 < $to.pos) {
+      $from = state.doc.resolve($from.pos + 1);
+    }
+    if (!state.selection.empty && $to.parent.isTextblock && $to.parentOffset === 0 && $to.pos - 1 > $from.pos) {
+      $to = state.doc.resolve($to.pos - 1);
+    }
     const listRange=$from.blockRange($to,isList);
     const range=listRange || $from.blockRange($to);
     if(!range)return false;

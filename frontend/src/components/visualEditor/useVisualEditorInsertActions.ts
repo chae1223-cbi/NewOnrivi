@@ -1,6 +1,7 @@
 // ====================================================================
 // 📊 [OMD-HOOK-VisualEditorInsertActions] frontend/src/components/visualEditor/useVisualEditorInsertActions.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 서식/블록 명령, 이미지/미디어/각주/서명/참고문헌/수식/문서링크/날짜 삽입 액션 및 외부 commandRef 브릿지 훅
+// 🚨 @PATCH : 2026-11-05 — [문서 링크 팝업]: 선택이 없을 때 커서 아래 단어를 링크명과 교체 대상 범위로 사용한다.
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 비동기 다이얼로그 콜백 시 문서/위치 유효성 검증, 5대 정밀 진단 로깅(logError/logWarn) 준수
 // 🚨 @PATCH : 2026-11-04 — [VisualDocumentEditor 코어 엔진 모듈화]: 서식 실행, 블록/미디어/각주/서명/인용문헌 삽입 및 commandRef 브릿지 훅 분리
 // 🔗 @CALLS : createVisualDocumentCodec, visualSchema, cleanMarkdownDocument, organizeMarkdownFootnotes, clearMarkdownFormatting
@@ -984,7 +985,22 @@ export function useVisualEditorInsertActions({
         slashRange.current = null;
         setSlash(false);
       }
-      const initialSelectedText = from < to ? view.state.doc.textBetween(from, to, ' ').trim() : '';
+      let initialSelectedText = from < to ? view.state.doc.textBetween(from, to, ' ').trim() : '';
+      if (!initialSelectedText && !isSlash && view.state.selection.$from.parent.isTextblock) {
+        const $cursor = view.state.selection.$from;
+        const line = $cursor.parent.textContent;
+        const offset = $cursor.parentOffset;
+        for (const match of line.matchAll(/[^\s()[\]{}.,!?;:"'<>]+/gu)) {
+          const start = match.index;
+          const end = start + match[0].length;
+          if (start <= offset && offset <= end) {
+            initialSelectedText = match[0];
+            target.from = $cursor.start() + start;
+            target.to = $cursor.start() + end;
+            break;
+          }
+        }
+      }
       imagesRef.current.onDocLinkDialog(
         {
           top: Math.max(8, Math.min(window.innerHeight - 150, rect.bottom + 6)),

@@ -3,6 +3,7 @@ import { FileNode } from '@/lib/indexedDbHelper';
 
 // ====================================================================
 // 📊 [OMD-EDIT-pasteHandlers-0003 ✅ FIXED] pasteHandlers ➔ sanitizePastedText
+// 🚨 @PATCH : 2026-11-05 — [Word 표 붙여넣기]: 인접한 굵게 표시 구분자 사이를 새 강조 구간으로 오인해 셀 글자 앞에 공백을 넣는 정규식을 수정한다.
 // 🎯 @KICK  : 붙여넣기 문자열을 마크다운에 적합하도록 정제한다
 // 🛡️ @GUARD : 줄바꿈 통일, 유령 문자 제거, HTML 찌꺼기 제거, TSV 자동 변환
 // 🚨 @PATCH : **2026-09-11** — 표 및 본문에서 <br> 빈행 <br> 구문(개행, 공백 빈행, 파이프 줄바꿈 등)을 단정한 <br><br>로 일괄 치환하여 표 파괴 방지 및 새 행 오병합 방어 패치 | 2026-08-26 - /cleandoc 구동 시 문서 내 마크다운 표(Table)의 기형적 하이픈 구분선 및 빈 셀 공백을 깨끗하게 정리해 주는 formatMarkdownTables 로직 추가 적용 | NBSP(\u00a0) → 일반 공백 치환 추가 (Mermaid 컴파일러 호환성) | 2026-06-18
@@ -46,7 +47,7 @@ export const sanitizePastedText = (text: string, skipTsvConversion = false) => {
 
   // 6. 완성된 강조 구문의 닫힘 태그 뒤에 글자가 붙은 경우에만 띄웁니다.
   // 여는 ** 앞에 따옴표가 있어도 "**Then** 을 "** Then** 로 훼손하지 않습니다.
-  sanitized = sanitized.replace(/(?<!\*)\*\*[^*\n]+\*\*(?=[^\s*])/g, '$& ')
+  sanitized = sanitized.replace(/(?<!\*)\*\*(?!\s)[^*\n]*?[^\s*\n]\*\*(?=[^\s*])/g, '$& ')
     .replace(/(?<!_)__[^_\n]+__(?=[^\s_])/g, '$& ')
     .replace(/(?<!~)~~[^~\n]+~~(?=[^\s~])/g, '$& ');
 

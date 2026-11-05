@@ -13,6 +13,7 @@
 import { useRef } from 'react';
 import { FileNode } from '@/lib/indexedDbHelper';
 import { isBundledDocumentPath } from '@/lib/bundledDocument';
+import { resolveDriveLinkedPath } from '@/lib/driveLinkedPath';
 import { browserAccountStorage as localStorage, browserAccountSessionStorage as sessionStorage } from '@/lib/browserAccountStorage';
 import { logError, logWarn } from '@/lib/errorDiagnostics';
 import { vfsReadFile } from '@/lib/virtualFileSystem';
@@ -601,21 +602,11 @@ export function useDocumentOpener({
         if (token && workspaceFolderId) {
           const rootPath = (rootFolderRef.current?.path || `GoogleDrive/${rootFolderRef.current?.name || ''}`).replace(/\\/g, '/').replace(/\/$/, '');
           const sourcePath = (sourceTab?.path || currentFileNode?.path || `${rootPath}/_workspace_root_.md`).replace(/\\/g, '/');
-          const rawTarget = pathWithoutHash.replace(/\\/g, '/');
-          const joined = rawTarget.startsWith('GoogleDrive/')
-            ? rawTarget
-            : rawTarget.startsWith('/')
-              ? `${rootPath}/${rawTarget.replace(/^\/+/, '')}`
-              : `${sourcePath.slice(0, sourcePath.lastIndexOf('/') + 1)}${rawTarget}`;
-          const segments: string[] = [];
-          for (const segment of joined.split('/')) {
-            if (segment === '..') segments.pop();
-            else if (segment && segment !== '.') segments.push(segment);
-          }
-          const normalizedTarget = segments.join('/');
-          const relativeTarget = normalizedTarget === rootPath ? '' : normalizedTarget.startsWith(`${rootPath}/`)
-            ? normalizedTarget.slice(rootPath.length + 1) : '';
+          const linkedPath = resolveDriveLinkedPath(rootPath, sourcePath, pathWithoutHash);
+          const normalizedTarget = linkedPath?.fullPath || '';
+          const relativeTarget = linkedPath?.relativePath || '';
           let foundDriveId: string | null = null;
+          let foundDriveName = '';
           if (relativeTarget) {
             const parts = relativeTarget.split('/');
             let parentId = workspaceFolderId;
@@ -624,13 +615,13 @@ export function useDocumentOpener({
               const isLast = index === parts.length - 1;
               const item = children.find(child => child.name === part && child.isFolder !== isLast);
               if (!item) break;
-              if (isLast) foundDriveId = item.id;
+              if (isLast) { foundDriveId = item.id; foundDriveName = item.name; }
               else parentId = item.id;
             }
           }
           if (foundDriveId) {
             const driveNode: FileNode = {
-              name: targetBaseNameWithMd || targetBaseName,
+              name: foundDriveName,
               path: normalizedTarget,
               kind: 'file',
               driveId: foundDriveId,
@@ -643,8 +634,16 @@ export function useDocumentOpener({
           }
         }
       } catch (gdriveErr) {
-        console.warn('[handleFileOpenByPath] Google Drive 파일 탐색 실패:', gdriveErr);
+        logWarn({
+          file: 'frontend/src/hooks/fileExplorer/useDocumentOpener.ts',
+          func: 'handleFileOpenByPath',
+          doing: '현재 Drive 작업장 안에서 문서 링크 경로 탐색 중',
+          target: pathWithoutHash,
+          error: gdriveErr
+        });
       }
+      showToast(`연결된 문서를 찾을 수 없습니다: ${pathWithoutHash}`, 'error');
+      return;
     }
 
     // 💡 [FileSystemAccess 로컬 폴더 직접 탐색 가드]
