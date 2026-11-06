@@ -2,6 +2,7 @@
 // ⚙️ [OMD-CORE-VisualDocCommands-0001] visualDocumentCommands.ts ➔ 시각 에디터 전용 ProseMirror 커맨드 및 정규화 플러그인
 // 🎯 @KICK  : 제목/코드블록/인용구/리스트/구분선/미디어 등 블록 조작 커맨드 및 리스트 정규화 트랜잭션 플러그인 제공
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 VisualDocumentEditor 대형 컴포넌트 모듈화 표준 준수
+// 🚨 @PATCH : 2026-11-07 — [행 끝 여백 클릭 시 정밀 커서 이동 강화]: paragraphLineEndAtClick 대상 노드를 모든 isTextblock(heading, blockquote 포함)으로 확장하고 클릭 줄 판정 패딩 확대
 // 🚨 @PATCH : 2026-11-04 — [VisualDocumentEditor 5순위 모듈화 분리]: visualDocumentCommands 커맨드군 독립 분리
 // 🔗 @CALLS : prosemirror-state, prosemirror-commands, prosemirror-history, visualSchema
 // ====================================================================
@@ -392,17 +393,22 @@ export function paragraphLineEndAtClick(currentView: EditorView, event: MouseEve
   const surface = currentView.dom.getBoundingClientRect();
   if (event.clientX < surface.left || event.clientX > surface.right) return null;
   let result: number | null = null;
-  currentView.state.doc.descendants((node, pos, parent) => {
-    if (result !== null || node.type !== visualSchema.nodes.paragraph || node.content.size === 0 ||
-        (parent?.type !== visualSchema.nodes.list_item && parent?.type !== visualSchema.nodes.doc)) return;
+  currentView.state.doc.descendants((node, pos) => {
+    if (result !== null || !node.isTextblock || node.content.size === 0) return;
     const element = currentView.nodeDOM(pos);
     if (!(element instanceof HTMLElement)) return;
     const range = document.createRange();
     range.selectNodeContents(element);
     const textRects = Array.from(range.getClientRects()).filter(rect => rect.width > 0 && rect.height > 0);
-    const lineRects = textRects.filter(rect => event.clientY >= rect.top - 2 && event.clientY <= rect.bottom + 2);
+    if (!textRects.length) return;
+    // 클릭 Y 좌표에 해당하는 텍스트 라인 검출 (줄간격 패딩 포함)
+    const lineRects = textRects.filter(rect => {
+      const padding = Math.max(4, (rect.bottom - rect.top) * 0.3);
+      return event.clientY >= rect.top - padding && event.clientY <= rect.bottom + padding;
+    });
     if (!lineRects.length) return;
     const right = Math.max(...lineRects.map(rect => rect.right));
+    // 글자 끝보다 오른쪽에 클릭했을 때만 동작
     if (event.clientX <= right + 2) return;
     const lineTop = Math.min(...lineRects.map(rect => rect.top));
     const laterLine = textRects.some(rect => rect.top > lineTop + 3);
@@ -415,6 +421,9 @@ export function paragraphLineEndAtClick(currentView: EditorView, event: MouseEve
     if (hit) {
       const $hit = currentView.state.doc.resolve(hit.pos);
       if ($hit.parent === node) result = hit.pos;
+      else result = pos + node.nodeSize - 1;
+    } else {
+      result = pos + node.nodeSize - 1;
     }
   });
   return result;

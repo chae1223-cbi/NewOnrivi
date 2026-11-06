@@ -2,6 +2,7 @@
 // 📊 [OMD-HOOK-useFileExplorer-0001] frontend/src/hooks/useFileExplorer.ts
 // 🎯 @KICK  : useDriveSync, useLocalVfs, useDocumentOpener 서브 훅들을 조율하고 일관된 단일 I/O 인터페이스 제공
 // 🛡️ @GUARD : Rule 3(역할 기반 분리)에 따라 2,590줄의 거대 훅을 3대 도메인 서브 훅으로 전면 모듈화 분리하고 기존 API 계약 100% 보존
+// 🚨 @PATCH : 2026-11-07 — [외부 파일/폴더 변경 자동 반영]: workspace-changed 수신 시 refreshFileList(true) 강제 스캔으로 진행 중 스캔 락에 의해 변경이 누락되던 문제 해결
 // 🚨 @PATCH : 2026-11-04 — [주석 표준화]: onrivi-source-comments 2단계 표준 양식(파일 헤더 및 내부 함수 JSDoc 구분선) 전면 반영
 // 🚨 @PATCH : 2026-11-04 — [에디터 실행 시 로컬/클라우드 탐색기 자동 리프레시 복원]: rootFolder 연결/복원 시 refreshFileList(true) 즉시 호출, 작업장 절대경로(onrivi_workspace_path) 자동 보강 및 사이드바 자동 표시 연동
 // 🚨 @PATCH : 2026-11-04 — [런타임 버그 수정]: useLocalVfs에 setIsDriveAuthExpired, setIsDriveConnected, setCurrentFileNode, currentFileName, currentFileParentHandleRef, setActiveTabId, setContent 전달 및 useDocumentOpener에 sessionRestoringRef 전달
@@ -261,11 +262,12 @@ export const useFileExplorer = ({
         const targetWatchPath = rootFolder.path || rootFolder.name;
         if (targetWatchPath && api.watchWorkspace) {
           api.watchWorkspace(targetWatchPath);
-          unwatchElectron = api.onWorkspaceChanged?.(() => {
+          unwatchElectron = api.onWorkspaceChanged?.(() =>  {
             if (focusTimer) clearTimeout(focusTimer);
+            // 외부 변경 알림은 진행 중 스캔/디바운스 락에 묻히지 않도록 강제 스캔으로 반영한다.
             focusTimer = setTimeout(() => {
-              refreshFileList();
-            }, 80);
+              refreshFileList(true);
+            }, 120);
           });
         }
       }

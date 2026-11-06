@@ -7,6 +7,7 @@
  *   - EditorProvider 컨텍스트 공급 및 하위 역할 컴포넌트(EditorLayout, EditorCore, EditorOverlayManager, GuestPaywallOverlay) 렌더링 위임
  *   - 보기 모드(edit / both / preview / css-style) 전환 가드, 탭 닫기, 다중 파일 병합 선택, 플로팅 툴바 실행 제어
  * 🚨 @PATCH :
+ *   - 2026-11-07 : [플로팅 툴바 실행 후 포커스 유지]: executeFloatingItem에서 서식 적용 후에도 플로팅 툴바 버튼에 포커스를 유지하고, ESC로 닫을 때만 에디터 호출 위치로 포커스 복원
  *   - 2026-11-05 : useEditorTabs에 컨테이너의 탭·활성 탭 참조를 전달하여 세션 복원 시 동일한 탭을 조회하도록 수정
  *   - 2026-11-04 : 로컬 작업장 사용 시 미접속 웹드라이브 토큰 갱신(initDriveTokenAutoRefresh) 및 클라우드 모드 오인식 방어 가드 추가
  *   - 2026-11-04 : 주석 표준화(1·2단계) 및 Log-First(logError/logWarn) 에러 진단 로깅 일괄 반영, 분리 이관된 레거시 패치 주석 정리
@@ -1525,14 +1526,22 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
    */
   const executeFloatingItem = useCallback((action: () => void, closeToolbar: boolean = false) => {
     const now = Date.now();
-    if (now - lastFloatingActionRef.current < 300) return;
+    if (now - lastFloatingActionRef.current < 200) return;
     lastFloatingActionRef.current = now;
+    const activeBtn = typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null;
     action();
     if (closeToolbar) {
       setFloatingToolbar(prev => ({ ...prev, visible: false }));
       if (!visualFloatingOriginRef.current || !visualCommandRef.current?.('FOCUS')) {
         editorRef.current?.focus();
       }
+    } else {
+      // 8. 플로팅 툴바에서 서식 적용 후에도 플로팅 툴바에 포커스/커서 유지
+      requestAnimationFrame(() => {
+        if (activeBtn && floatingToolbarRef.current?.contains(activeBtn)) {
+          activeBtn.focus({ preventScroll: true });
+        }
+      });
     }
   }, []);
 

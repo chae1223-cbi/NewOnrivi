@@ -1,6 +1,9 @@
 // ====================================================================
 // 📊 [OMD-HOOK-VisualEditorInsertActions] frontend/src/components/visualEditor/useVisualEditorInsertActions.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 서식/블록 명령, 이미지/미디어/각주/서명/참고문헌/수식/문서링크/날짜 삽입 액션 및 외부 commandRef 브릿지 훅
+// 🚨 @PATCH : 2026-11-07 — [다중 인용(>>) 및 플로팅 툴바 포커스 유지]:
+//             1) setQuote(null) 인용구 명령 실행 시 기존 인용문 안에서는 lift하지 않고 최대 6단계까지 중첩 다중 인용문으로 감싸도록 개선
+//             2) run 실행 시 플로팅 툴바(#floating-toolbar)에 포커스가 머물러 있을 때는 에디터로 포커스를 강제 탈취하지 않고 툴바 포커스 유지
 // 🚨 @PATCH : 2026-11-05 — [문서 링크 팝업]: 선택이 없을 때 커서 아래 단어를 링크명과 교체 대상 범위로 사용한다.
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 비동기 다이얼로그 콜백 시 문서/위치 유효성 검증, 5대 정밀 진단 로깅(logError/logWarn) 준수
 // 🚨 @PATCH : 2026-11-04 — [VisualDocumentEditor 코어 엔진 모듈화]: 서식 실행, 블록/미디어/각주/서명/인용문헌 삽입 및 commandRef 브릿지 훅 분리
@@ -160,7 +163,11 @@ export function useVisualEditorInsertActions({
       setSlash(false);
     }
     command(view.state, view.dispatch, view);
-    view.focus();
+    const activeEl = typeof document !== 'undefined' ? document.activeElement : null;
+    const isFloatingActive = Boolean(activeEl && document.getElementById('floating-toolbar')?.contains(activeEl));
+    if (!isFloatingActive) {
+      view.focus();
+    }
   };
 
   const insertParagraphBeforeFirstBlock = () => {
@@ -176,6 +183,22 @@ export function useVisualEditorInsertActions({
     (alertType: string | null): Command =>
     (state, dispatch, view) => {
       const position = state.selection.$from;
+      // 기본 인용문은 이미 인용문 안에서 다시 실행하면 해제하지 않고 한 단계 더 중첩한다(최대 6단계).
+      // 해제는 인용문 첫 줄 맨 앞에서 Backspace(한 단계씩) 또는 태그 취소로 수행한다.
+      if (!alertType) {
+        let quoteDepth = 0;
+        for (let depth = position.depth; depth > 0; depth--) {
+          if (position.node(depth).type === visualSchema.nodes.blockquote) quoteDepth++;
+        }
+        if (quoteDepth > 0) {
+          if (quoteDepth >= 6) return false;
+          return wrapIn(visualSchema.nodes.blockquote, { alertType: null })(
+            state,
+            dispatch ? tr => dispatch(closeHistory(tr).scrollIntoView()) : undefined,
+            view
+          );
+        }
+      }
       for (let depth = position.depth; depth > 0; depth--) {
         if (position.node(depth).type === visualSchema.nodes.blockquote) {
           const existingAlert = position.node(depth).attrs.alertType || null;

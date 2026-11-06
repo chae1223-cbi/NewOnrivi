@@ -12,6 +12,8 @@
  *             2) visualTokenizer에서 마크다운 표 및 일반 문단 내부의 <input type="checkbox" ... /> 태그를 checkbox_inline 토큰으로 분할 파싱
  *             3) visualParser 및 visualSerializer에 visual_checkbox 양방향 매핑을 등록하여 100% 무손실 라운드트립 보장
  *             4) safeRaw 전처리에서 <input> 태그를 안전하게 통과시켜 체크박스 포함 문단이 source_block(HTML 편집창)으로 오분기되는 결함 원천 차단
+ * 🚨 @PATCH : **2026-11-07** — [리스트 내 코드블록 예시 문법 오탐으로 인한 source_block 뭉침 결함 완전 해결]:
+ *             1) createVisualDocumentCodec에서 미지원 문법(unsupportedSyntax 및 !\[) 검사 시 코드블록(```...```) 및 인라인 코드(`...`) 내부 텍스트를 마스킹하여, 코드블록 내부의 마크다운 예시(이미지, HTML 등)로 인해 리스트 전체가 source_block으로 오탐되는 결함 원천 해결
  * 🚨 @PATCH : **2026-10-25** — [인라인 서식(굵게, 기울임, 밑줄, 취소선, 인라인코드) 끝 연속 타이핑 서식 유지 보장 (inclusive: true)]:
  *             1) visualSchema.marks에서 strong, em, strike, underline, code의 inclusive: false 제약을 제거하여 기본 inclusive: true로 복원
  *             2) 서식 텍스트 끝에 커서를 두고 연속 타이핑 시 서식이 끊기며 일반 텍스트로 분기되던 결함 원천 해결
@@ -593,19 +595,24 @@ export function createVisualDocumentCodec(markdown: string) {
         .replace(/<input\b[^>]*\/?>/gi, '')
         .replace(/<[a-zA-Z][a-zA-Z0-9+.-]*:[^<>\s]+>/g, '')
         .replace(/<[^<>\s]+@[^<>\s]+>/g, '');
+      // 코드블록(```...```) 및 인라인 코드(`...`) 내부 텍스트를 마스킹하여,
+      // 코드블록 내부의 예시 이미지 문법(![...])이나 HTML 태그로 인해 리스트 전체가 source_block으로 오탐되는 결함 원천 방어
+      const textWithoutCode = safeRaw
+        .replace(/```[\s\S]*?```/g, '')
+        .replace(/`[^`\n]+`/g, '');
       const rawReferenceEnvironment: { references?: Record<string, unknown> } = {};
-      const rawTokens=tokenizer.parse(safeRaw, rawReferenceEnvironment);
+      const rawTokens=tokenizer.parse(textWithoutCode, rawReferenceEnvironment);
       // Inspect actual syntax rather than URL destinations/code contents. A
       // query value containing "==" is not a highlight extension, and an
       // autolink is not an unsupported HTML element.
       const unsupportedInline=rawTokens.some(token=>token.children?.some(inline=>
         inline.type==='html_inline' || (inline.type==='text' && /==/.test(inline.content))));
-      const unsupportedSyntax = /(^|\n)\s*(:::|\|)/m.test(safeRaw)
-        || /<\/?(?![a-zA-Z][a-zA-Z0-9+.-]*:)[a-zA-Z][a-zA-Z0-9-]*(?=[\s/>])[^>]*>/m.test(safeRaw)
+      const unsupportedSyntax = /(^|\n)\s*(:::|\|)/m.test(textWithoutCode)
+        || /<\/?(?![a-zA-Z][a-zA-Z0-9+.-]*:)[a-zA-Z][a-zA-Z0-9-]*(?=[\s/>])[^>]*>/m.test(textWithoutCode)
         || Object.keys(rawReferenceEnvironment.references || {}).length > 0
         || unsupportedInline
         || /^\s*```\s*mermaid/m.test(safeRaw);
-      const unsupported = unsupportedSyntax || /!\[/.test(safeRaw);
+      const unsupported = unsupportedSyntax || /!\[/.test(textWithoutCode);
       try {
         // Reference-style URLs are ordinary editable links too. Supply the
         // document's definitions while parsing this individual list/paragraph.

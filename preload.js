@@ -2,6 +2,7 @@
 // 📊 [OMD-PRELOAD-0001] preload.js ➔ Desktop GDrive Auth Bridge & Secure APIs
 // 🎯 @KICK  : Electron contextBridge API 노출 및 안전한 IPC 통신 채널 제공
 // 🛡️ @GUARD : contextIsolation 및 nodeIntegration 보안 원칙 준수
+// 🚨 @PATCH : **2026-11-07** — [탐색기 외부 변경 자동 반영 복구]: removeListeners()에서 'workspace-changed' 일괄 제거를 중단하여, 문서 편집 시마다 워크스페이스 감시 리스너가 해제되던 결함 수정
 // 🚨 @PATCH : **2026-10-28** — [외부 AI MCP 타겟(Gemini, Claude) 자동 감지 및 원클릭 연동 브리지 노출]: checkMcpTargets, installMcpTarget, uninstallMcpTarget IPC 브리지 연동
 // 🚨 @PATCH : **2026-10-26** — [단축코드 정의서(shortcodes.json) 브리지(loadShortcodes, saveShortcodes) 노출]: 리소스 폴더 settings/shortcodes.json 파일 IPC 브리지 연동
 // 🚨 @PATCH : **2026-10-21** — [AI 인증정보 리소스 폴더 암호화 브리지(loadAICredentials, saveAICredentials, getDeviceInfo) 노출]: 리소스 폴더 settings/ai_credentials.enc 파일 및 물리 기기 정보 IPC 브리지 연동
@@ -217,6 +218,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.removeAllListeners('menu:save-file-as');
     ipcRenderer.removeAllListeners('open-external-md');
     ipcRenderer.removeAllListeners('dialog:openFontPicker');
-    ipcRenderer.removeAllListeners('workspace-changed');
+    // 'workspace-changed'는 onWorkspaceChanged가 반환하는 해제 함수로 구독자가 직접 관리한다.
+    // (여기서 일괄 제거하면 문서 내용 변경 시마다 탐색기 자동 갱신 리스너가 사라짐)
   }
 });

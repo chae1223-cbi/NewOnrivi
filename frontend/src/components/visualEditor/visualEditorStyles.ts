@@ -117,8 +117,8 @@ export const VISUAL_EDITOR_STYLES = `
   .visual-document-surface pre { background:#f4f4f5; padding:12px; white-space:pre-wrap; }
   .visual-document-surface .visual-code-block { margin-top:24px!important; margin-bottom:20px!important; min-width:0; max-width:100%; box-sizing:border-box; }
   .visual-document-surface .visual-code-editor-panel { min-width:0; max-width:100%; }
-  .visual-document-surface .visual-code-block pre { display:block!important; max-width:100%!important; box-sizing:border-box!important; overflow-x:auto!important; white-space:pre!important; overflow-wrap:normal!important; word-break:normal!important; }
-  .visual-document-surface .visual-code-block pre code { display:block!important; width:max-content!important; min-width:100%; white-space:pre!important; overflow:visible!important; overflow-wrap:normal!important; word-break:normal!important; }
+  .visual-document-surface .visual-code-block pre { display:block!important; max-width:100%!important; box-sizing:border-box!important; overflow-x:auto!important; white-space:pre!important; overflow-wrap:normal!important; word-break:normal!important; user-select:text!important; -webkit-user-select:text!important; }
+  .visual-document-surface .visual-code-block pre code { display:block!important; width:max-content!important; min-width:100%; white-space:pre!important; overflow:visible!important; overflow-wrap:normal!important; word-break:normal!important; user-select:text!important; -webkit-user-select:text!important; }
   .visual-code-editor-panel > summary { width:max-content; margin:8px 12px; cursor:pointer; }
   .visual-code-editor-panel > summary[hidden] { display:none!important; }
   .visual-code-language button[aria-label="코드 내용 복사"] { margin-left:auto; }

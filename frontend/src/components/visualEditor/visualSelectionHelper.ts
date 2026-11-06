@@ -2,6 +2,7 @@
 // 🎯 [OMD-CORE-VisualSelectionHelper-0001] visualSelectionHelper.ts ➔ 시각 에디터 정밀 커서 및 선택 영역 조작 헬퍼
 // 🎯 @KICK  : Shift+상하 방향키 문단 간 연속 다중 선택, PageUp/PageDown 페이지 단위 이동, 브라우저 DOM ↔ ProseMirror 선택 동기화 제공
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 VisualDocumentEditor 대형 컴포넌트 모듈화 표준 준수
+// 🚨 @PATCH : 2026-11-07 — [Shift+ArrowUp 위로 연속 다중 선택 시 제목 블록 풀림/점프 방지]: 제목(heading) 등 블록 진입 시 먼저 블록 시작점으로 온전히 선택 영역을 확장한 뒤 상위 블록으로 부드럽게 연속 전이되도록 개선
 // 🚨 @PATCH : 2026-11-04 — [VisualDocumentEditor 5순위 모듈화 분리]: visualSelectionHelper 선택 헬퍼 독립 분리
 // 🔗 @CALLS : prosemirror-state, prosemirror-view, ATOM_BLOCK_TYPES
 // ====================================================================
@@ -158,6 +159,17 @@ export function extendSelectionVerticallyAcrossBlocks(
     return true;
   } else {
     // dir === 'up'
+    // 10. 제목(heading) 등 텍스트블록 내부에서 위로 확장 시, 먼저 블록 시작점($head.start())으로 온전히 선택한 뒤 다음 블록으로 연속 확장
+    if ($head.parent.isTextblock && $head.parentOffset > 0) {
+      const blockStart = $head.start();
+      if (blockStart < headPos) {
+        const newSelection = TextSelection.between(state.doc.resolve(anchorPos), state.doc.resolve(blockStart));
+        currentView.dispatch(state.tr.setSelection(newSelection).scrollIntoView());
+        onCaretSchedule?.();
+        return true;
+      }
+    }
+
     const searchEnd = $head.before(blockDepth);
     if (searchEnd <= 0) {
       if (headPos > 1) {

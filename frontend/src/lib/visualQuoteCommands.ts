@@ -1,6 +1,12 @@
+// ====================================================================
+// 📊 [OMD-LIB-VisualQuoteCommands] frontend/src/lib/visualQuoteCommands.ts
+// 🎯 @KICK  : 시각 에디터 인용문 들여쓰기·목록 분리·경계 보호·단계 해제 커맨드
+// 🚨 @PATCH : 2026-11-07 — [중첩 인용문 단계 해제]: liftQuoteAtStart 신설 — 인용문 첫 문단 맨 앞 Backspace 시 인용 단계를 한 단계씩 해제
+// ====================================================================
 import {Fragment,Node as DocumentNode} from 'prosemirror-model';
 import {Command,EditorState,TextSelection,Transaction} from 'prosemirror-state';
 import {closeHistory} from 'prosemirror-history';
+import {liftTarget} from 'prosemirror-transform';
 import {visualSchema} from './visualDocumentCodec';
 
 const isList=(node:DocumentNode)=>['bullet_list','ordered_list'].includes(node.type.name);
@@ -129,4 +135,31 @@ export const protectQuoteBoundary:Command=(state)=>{
       || (inQuote && isList(next));
   }
   return false;
+};
+
+
+/**
+ * ========================================================================================
+ * [함수명] liftQuoteAtStart - 인용문 첫 문단 맨 앞에서 Backspace 입력 시 인용 단계를 한 단계 해제합니다.
+ * (중첩 인용문은 한 번에 한 단계씩, 마지막 단계는 일반 문단으로 돌아갑니다.)
+ *
+ * @param {EditorState} state - 현재 에디터 상태
+ * @param {(tr: Transaction) => void} [dispatch] - 트랜잭션 디스패치 함수
+ * @returns {boolean} 처리 여부
+ *
+ * @example
+ * Backspace: chainCommands(liftQuoteAtStart, baseKeymap.Backspace)
+ * ==========================================================================================
+ */
+export const liftQuoteAtStart:Command=(state,dispatch)=>{
+  const {$from,empty}=state.selection;
+  if(!empty || !$from.parent.isTextblock || $from.parentOffset!==0 || $from.depth<2)return false;
+  const quote=$from.node($from.depth-1);
+  if(quote.type!==visualSchema.nodes.blockquote || $from.index($from.depth-1)!==0)return false;
+  const range=$from.blockRange();
+  if(!range)return false;
+  const target=liftTarget(range);
+  if(target===null)return false;
+  if(dispatch)dispatch(closeHistory(state.tr.lift(range,target)).scrollIntoView());
+  return true;
 };

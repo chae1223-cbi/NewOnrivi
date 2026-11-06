@@ -2,6 +2,7 @@
 // 📊 [OMD-IO-visualMarkdownPaste] frontend/src/lib/visualMarkdownPaste.ts
 // 🎯 @KICK  : Markdown 붙여넣기를 ProseMirror 문서 및 표 셀 트랜잭션으로 변환
 // 🛡️ @GUARD : 링크 문구는 현재 문단 안에 삽입하고 표·목록 블록 구조는 유지
+// 🚨 @PATCH : 2026-11-07 — [태그 텍스트 붙여넣기 시 다음 행 줄바꿈 밀림 방지]: 단일 행(isSingleLine) 및 1개 텍스트블록(paragraph, heading 등) 붙여넣기 시 현재 커서 위치에 인라인 슬라이스(Slice(content, 0, 0))로 삽입하여 문단 분할 결함 해소
 // 🚨 @PATCH : 2026-11-05 — [문서 링크 붙여넣기 위치]: 한 문단짜리 Markdown은 현재 문단 내부에 삽입한다.
 // 🔗 @CALLS : createVisualDocumentCodec, bulletNumbersAsText
 // ====================================================================
@@ -43,12 +44,27 @@ export function markdownPasteTransaction(state: EditorState, codec: Codec, sourc
   const empty = state.doc.childCount === 1 && state.doc.firstChild?.type.name === 'paragraph' && !state.doc.firstChild.content.size;
   const meaningfulBlocks = Array.from({ length: pasted.doc.childCount }, (_, index) => pasted.doc.child(index))
     .filter(node => node.type !== visualSchema.nodes.paragraph || node.content.size > 0);
-  const inlineParagraph = meaningfulBlocks.length === 1 && meaningfulBlocks[0]?.type === visualSchema.nodes.paragraph
-    && state.selection.$from.parent.isTextblock && state.selection.$to.parent.isTextblock;
+
+  const isSingleLine = !/[\r\n]/.test(source.trim());
+  const isInlineTarget = state.selection.$from.parent.isTextblock && state.selection.$to.parent.isTextblock;
+  const singleTextblock = meaningfulBlocks.length === 1 && (meaningfulBlocks[0].isTextblock || meaningfulBlocks[0].type === visualSchema.nodes.paragraph);
+  const inlineParagraph = isInlineTarget && (singleTextblock || (isSingleLine && meaningfulBlocks.every(n => n.isTextblock)));
+
+  let inlineContent: Fragment = Fragment.empty;
+  if (inlineParagraph) {
+    if (singleTextblock) {
+      inlineContent = meaningfulBlocks[0].content;
+    } else {
+      const fragments: DocumentNode[] = [];
+      meaningfulBlocks.forEach(b => b.content.forEach(child => fragments.push(child)));
+      inlineContent = Fragment.fromArray(fragments);
+    }
+  }
+
   const transaction = empty
     ? state.tr.replaceWith(0, state.doc.content.size, pasted.doc.content)
     : inlineParagraph
-      ? state.tr.replaceSelection(new Slice(meaningfulBlocks[0].content, 0, 0))
+      ? state.tr.replaceSelection(new Slice(inlineContent, 0, 0))
     : state.tr.replaceSelection(new Slice(pasted.doc.content, 0, 0));
   if (pasted.doc.attrs.frontmatter.trim()) {
     transaction.setDocAttribute('frontmatter', mergePastedFrontmatter(state.doc.attrs.frontmatter, pasted.doc.attrs.frontmatter));

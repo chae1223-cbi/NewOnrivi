@@ -2,6 +2,7 @@
 // 🧩 [OMD-CORE-VisualNodeViews-0001] createVisualNodeViews.ts ➔ 시각 에디터 ProseMirror NodeViews 팩토리
 // 🎯 @KICK  : table, visual_math, visual_inline_math, list_item, code_block, visual_footnote_ref, visual_footnote_def, visual_checkbox, source_block, mediaNodeView 10대 위지윅 NodeView 인스턴스화
 // 🛡️ @GUARD : Rule 3(역할 기반 분리: Core View) 준수 - DOM 렌더링 및 인터랙션 격리
+// 🚨 @PATCH : 2026-11-07 — [코드블록 마우스 드래그 및 여백 클릭 커서 안정화]: code_block의 pre 패딩 영역 클릭 시 내부 code 텍스트로 안전 전이
 // 🚨 @PATCH : 2026-11-04 — [VisualDocumentEditor 3단계 모듈화 분리]: 10대 핵심 위지윅 NodeView 팩토리 독립 분리
 // 🔗 @CALLS : prosemirror-view, prosemirror-state, prosemirror-history, visualSchema, katex
 // ====================================================================
@@ -448,6 +449,19 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
       pre.className = 'custom-scrollbar';
       pre.spellcheck = false;
       code.spellcheck = false;
+      pre.addEventListener('mousedown', (event) => {
+        if (event.target === pre && currentView.editable) {
+          const pos = getPos();
+          if (typeof pos === 'number') {
+            const clickY = event.clientY;
+            const codeRect = code.getBoundingClientRect();
+            // 코드 텍스트보다 아래를 클릭했으면 코드 끝으로, 위를 클릭했으면 코드 시작으로 이동
+            const targetPos = clickY >= codeRect.bottom ? pos + node.nodeSize - 1 : pos + 1;
+            currentView.dispatch(currentView.state.tr.setSelection(TextSelection.create(currentView.state.doc, targetPos)));
+            currentView.focus();
+          }
+        }
+      });
       const panel = document.createElement('details');
       panel.className = 'visual-code-editor-panel';
       const initialLang = String(node.attrs.params || '').split(/\s/)[0].toLowerCase();

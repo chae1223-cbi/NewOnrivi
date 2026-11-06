@@ -2,6 +2,7 @@
  * 프로그램명 : OnriviAuthor 
  * 버전 정보 : 1.0.1
  * 프로그램 ID : oaar-vm-inputrules
+ * 🚨 @PATCH : **2026-11-07** — [기본 인용문 '> ' 입력 규칙 신설]: 줄 시작에서 '> ' 입력 시 기본 인용문으로 즉시 변환하고, 인용문 안에서 다시 입력하면 최대 6단계까지 중첩 인용문으로 감싸도록 지원 (코드/표 셀 내부 제외)
  * 🚨 @PATCH : **2026-10-28** — [번호 리스트 마지막 행에서 하위 레벨 글머리 기호(•) 리스트 전환 및 자동 들여쓰기 지원]:
  *             1) 번호 리스트(ordered_list) 또는 체크리스트의 빈 항목에서 '-', '*', '+' 공백 입력 시 기존 리스트 항목을 글머리 기호 리스트(bullet_list)로 즉시 전환하도록 convertExistingList 가드 복원
  *             2) 번호 리스트의 후속 항목(itemIndex > 0)에서 공백 + 불릿(' - ') 입력 시 또는 리스트 바로 아래 들여쓰기된 문단(Tab)에서 불릿('- ') 입력 시 상위 번호 항목의 하위 레벨 글머리 기호 리스트로 즉시 자동 편입
@@ -39,6 +40,7 @@ import { InputRule, inputRules, textblockTypeInputRule, wrappingInputRule } from
 //             1) bullet_list 및 ordered_list InputRule에 list_item 내부 중복 발동 방어 가드를 추가하여 리스트 안에서 하이픈 타이핑 시 중첩 리스트로 감싸지는 결함 차단
 import { Fragment, MarkType } from 'prosemirror-model';
 import { EditorState, Transaction, TextSelection } from 'prosemirror-state';
+import { findWrapping } from 'prosemirror-transform';
 import { visualSchema } from '@/lib/visualDocumentCodec';
 import { independentIndentListItem, selectedList } from '@/lib/visualListCommands';
 
@@ -190,6 +192,22 @@ export function buildVisualMarkdownRules(): InputRule[] {
       const tr = state.tr.replaceWith(blockPos, blockPos + parent.nodeSize, [newBlockquote, nodes.paragraph.create()]);
       return tr.setSelection(TextSelection.create(tr.doc, blockPos + 2 + remainingText.length));
     })),
+    // 줄 시작에서 '> ' 입력 시 기본 인용문(blockquote)으로 변환. 인용문 안에서 다시 입력하면 한 단계 중첩 인용문이 된다.
+    new InputRule(/^\s*>\s$/, (state, _match, start, end) => {
+      const position = state.selection.$from;
+      if (position.parent.type !== nodes.paragraph || insideCell(state) || isInsideCode(state, start)) return null;
+      let quoteDepth = 0;
+      for (let d = position.depth; d > 0; d--) if (position.node(d).type === nodes.blockquote) quoteDepth++;
+      if (quoteDepth >= 6) return null;
+      const tr = state.tr.delete(start, end);
+      const $start = tr.doc.resolve(start);
+      const range = $start.blockRange();
+      if (!range) return null;
+      const wrapping = findWrapping(range, nodes.blockquote, { alertType: null });
+      if (!wrapping) return null;
+      tr.wrap(range, wrapping);
+      return tr;
+    }),
     // 체크리스트 (- [ ] 또는 - [x]) 타이핑 즉시 task list 변환
     new InputRule(/(?:^|\ufffc)\s*([-+*])\s+\[([ xX])\]\s$/, (state, match, start, end) => {
       const position = state.selection.$from;

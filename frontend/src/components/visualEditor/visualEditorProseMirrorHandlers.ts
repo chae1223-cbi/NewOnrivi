@@ -16,7 +16,7 @@ import { undo, redo, closeHistory } from 'prosemirror-history';
 import { keymap } from 'prosemirror-keymap';
 import { undoInputRule } from 'prosemirror-inputrules';
 import { createVisualDocumentCodec, visualSchema } from '@/lib/visualDocumentCodec';
-import { withIndependentQuotes, protectQuoteBoundary } from '@/lib/visualQuoteCommands';
+import { withIndependentQuotes, protectQuoteBoundary, liftQuoteAtStart } from '@/lib/visualQuoteCommands';
 import {
   removeListMarkerAtStart,
   moveUpFromEmptyOrderedItem,
@@ -106,6 +106,7 @@ export function createVisualEditorKeymap({
     ArrowUp: chainCommands(moveUpAcrossListBoundary, moveUpFromEmptyOrderedItem),
     Backspace: chainCommands(
       clearMultiCellTableSelection,
+      liftQuoteAtStart,
       removeHeadingAtStart,
       backspaceInCodeBlock,
       undoInputRule,
@@ -306,6 +307,8 @@ export function createVisualEditorHandlers({
   EditorProps,
   'handleKeyDown' | 'handleTextInput' | 'handlePaste' | 'handleDrop' | 'handleClickOn' | 'handleClick' | 'handleDOMEvents'
 > {
+  let lastMouseDownCoords: { x: number; y: number } | null = null;
+
   return {
     handleKeyDown(currentView, event) {
       if (!currentView.editable || event.isComposing) return false;
@@ -592,7 +595,7 @@ export function createVisualEditorHandlers({
       if (
         slashOpenRef.current &&
         menuItemsRef.current.length &&
-        ['ArrowDown', 'ArrowUp', 'Enter', 'Tab'].includes(event.key)
+        ['ArrowDown', 'ArrowUp', 'Enter', 'Tab', ' ', 'Spacebar'].includes(event.key)
       ) {
         event.preventDefault();
         event.stopPropagation();
@@ -893,8 +896,17 @@ export function createVisualEditorHandlers({
     },
 
     handleClick(currentView, pos, event) {
-      if ((!currentView.state.selection.empty || document.getSelection()?.isCollapsed === false)
-        && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
+      const isDrag =
+        lastMouseDownCoords &&
+        Math.hypot(event.clientX - lastMouseDownCoords.x, event.clientY - lastMouseDownCoords.y) > 4;
+      if (
+        !isDrag &&
+        (!currentView.state.selection.empty || document.getSelection()?.isCollapsed === false) &&
+        !event.shiftKey &&
+        !event.altKey &&
+        !event.ctrlKey &&
+        !event.metaKey
+      ) {
         const clicked = currentView.posAtCoords({ left: event.clientX, top: event.clientY });
         const caret = clicked?.pos ?? pos;
         currentView.dispatch(currentView.state.tr.setSelection(TextSelection.near(currentView.state.doc.resolve(caret))));
@@ -1074,11 +1086,12 @@ export function createVisualEditorHandlers({
       },
       mousedown(currentView, event) {
         if (!currentView.editable) return false;
+        const e = event as MouseEvent;
+        lastMouseDownCoords = { x: e.clientX, y: e.clientY };
         if (manualFloatingRef.current || selectionVisibleRef.current) {
           manualFloatingRef.current = false;
           setSelection(false);
         }
-        const e = event as MouseEvent;
         if (e.button !== 0 || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return false;
         const hrPos = findClickedHorizontalRulePos(currentView, e);
         if (hrPos >= 0) {
