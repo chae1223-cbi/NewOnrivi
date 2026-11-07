@@ -2,6 +2,11 @@
 /**
  * 프로그램명 : OnriviAuthor
  * 프로그램 ID : oaar-visual-readonly-block
+ * 🚨 @PATCH : **2026-11-07** — [AsyncImage 연동으로 읽기 전용 블록 이미지 렌더링 지원]:
+ *             1) components.img에 AsyncImage를 연결하여 구글 드라이브(driveId) 및 로컬 미디어 이미지가 404 없이 정상 로드되도록 구현
+ * 🚨 @PATCH : **2026-11-07** — [HTML 표(<table>...</table>) 시각 렌더링 및 TableWrapper 복사 지원]:
+ *             1) rehypeRaw 플러그인을 탑재하여 읽기 전용 블록 내 HTML 표 태그가 문자열이 아닌 실제 인터랙티브 표로 시각 렌더링되도록 구현
+ *             2) TableWrapper를 연동하여 표 호버 시 원본 HTML/TSV 복사 단추 제공
  * 🚨 @PATCH : **2026-10-13** — [LaTeX/KaTeX 수식 렌더링 지원]:
  *             1) remarkMath 및 rehypeKatex 플러그인을 탑재하여 블록 수식($$), 인라인 수식($) 실시간 렌더링 지원
  *             2) 수식 코드블록(```math, ```latex)에 대한 KaTeX 실시간 수식 렌더링 뷰어 연결
@@ -10,9 +15,12 @@
 import React, { useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import TableHeaderCell from '@/components/TableHeaderCell';
+import TableWrapper from '@/components/viewer/TableWrapper';
+import { AsyncImage } from '@/components/viewer/AsyncMedia';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
+import rehypeRaw from 'rehype-raw';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
 
@@ -52,9 +60,21 @@ export default function VisualReadOnlyMarkdownBlock({ source }: { source: string
     <div className="visual-readonly-content">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[[rehypeKatex, { strict: false }]]}
+        rehypePlugins={[[rehypeKatex, { strict: false }], rehypeRaw]}
         components={{
+          img({ src, alt, ...props }: any) {
+            return <AsyncImage src={src} alt={alt} {...props} />;
+          },
           th: TableHeaderCell,
+          table({ node, children, className, ...props }: any) {
+            return (
+              <TableWrapper>
+                <table className={`w-full table-auto min-w-full !m-0 !mt-0 !mb-0 ${className || ''}`} {...props}>
+                  {children}
+                </table>
+              </TableWrapper>
+            );
+          },
           code({ className, children, ...props }: any) {
             const match = /language-(\S+)/.exec(className || '');
             const lang = match ? match[1].toLowerCase() : '';

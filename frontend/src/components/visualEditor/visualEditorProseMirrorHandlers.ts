@@ -2,6 +2,9 @@
 // 📊 [OMD-CORE-VisualEditor-ProseMirrorHandlers] frontend/src/components/visualEditor/visualEditorProseMirrorHandlers.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 ProseMirror Keymap, 키보드/텍스트 입력, 스마트 붙여넣기(handlePaste), 드롭(handleDrop), 마우스 클릭/링크 이동(handleClick) 및 DOM 이벤트 핸들러 팩토리
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 클립보드 이미지/HTML 붙여넣기 정제, 5대 정밀 진단 로깅(logError/logWarn) 준수
+// 🚨 @PATCH : 2026-11-07 — [문서 링크 클릭 시 단일 경로 위임]: cleanHref를 불필요하게 사전 resolveDocPath하지 않고 원본 상대 경로를 onFileOpenRef에 직접 위임하여, 상위 EditorCore 및 isPathInsideWorkspace 간의 이중 경로 결합(도움말/도움말/...)을 원천 차단
+// 🚨 @PATCH : 2026-11-07 — [컨트롤 내부 문구/단어 복사 시 껍데기 박리 및 순수 서식 텍스트 보존 복사]: clipboardTextSerializer에서 리스트/인용구/표 내부 문구·단어 복사 시 innermostContent 언래핑을 통해 부모 컨트롤 마커(-, 1., > 등)를 벗겨내고 단어와 인라인 서식만 복사하며, 리스트 전체 및 다중 항목 복사 시에는 문단 복사와 동일하게 온전한 마크다운 구조를 직렬화하도록 개선
+// 🚨 @PATCH : 2026-11-07 — [태그 보존 복사 및 마우스 드래그 선택 안정화]: clipboardTextSerializer를 구현하여 마크다운 태그(서식/코드블록/헤딩/인라인) 원본 보존 복사를 지원하고, handleClick에서 드래그 선택(isDrag) 시 선택 영역 붕괴를 원천 방어
 // 🚨 @PATCH : 2026-11-05 — [목록 선택 후 클릭]: 선택된 목록을 일반 클릭하면 클릭 위치로 커서를 접고 선택을 해제한다.
 // 🚨 @PATCH : 2026-11-04 — [VisualDocumentEditor 코어 엔진 모듈화]: ProseMirror 이벤트/단축키/스마트 붙여넣기 핸들러 분리 및 5대 진단 로깅 적용
 // 🔗 @CALLS : markdownPasteTransaction, markdownPasteInTableCellTransaction, htmlToImportMarkdown, importHtmlWithImages, sanitizePastedText
@@ -10,12 +13,13 @@
 import type React from 'react';
 import { NodeSelection, TextSelection, type Command, type Plugin } from 'prosemirror-state';
 import type { EditorProps, EditorView } from 'prosemirror-view';
+import type { Slice } from 'prosemirror-model';
 import { baseKeymap, chainCommands, exitCode, toggleMark } from 'prosemirror-commands';
 import { splitListItem } from 'prosemirror-schema-list';
 import { undo, redo, closeHistory } from 'prosemirror-history';
 import { keymap } from 'prosemirror-keymap';
 import { undoInputRule } from 'prosemirror-inputrules';
-import { createVisualDocumentCodec, visualSchema } from '@/lib/visualDocumentCodec';
+import { createVisualDocumentCodec, visualSchema, visualSerializer } from '@/lib/visualDocumentCodec';
 import { withIndependentQuotes, protectQuoteBoundary, liftQuoteAtStart } from '@/lib/visualQuoteCommands';
 import {
   removeListMarkerAtStart,
@@ -305,7 +309,14 @@ export function createVisualEditorHandlers({
   executeDropImageInsertion,
 }: VisualEditorHandlersParams): Pick<
   EditorProps,
-  'handleKeyDown' | 'handleTextInput' | 'handlePaste' | 'handleDrop' | 'handleClickOn' | 'handleClick' | 'handleDOMEvents'
+  | 'handleKeyDown'
+  | 'handleTextInput'
+  | 'handlePaste'
+  | 'handleDrop'
+  | 'handleClickOn'
+  | 'handleClick'
+  | 'handleDOMEvents'
+  | 'clipboardTextSerializer'
 > {
   let lastMouseDownCoords: { x: number; y: number } | null = null;
 
@@ -896,11 +907,14 @@ export function createVisualEditorHandlers({
     },
 
     handleClick(currentView, pos, event) {
-      const isDrag =
+      const isDrag = Boolean(
         lastMouseDownCoords &&
-        Math.hypot(event.clientX - lastMouseDownCoords.x, event.clientY - lastMouseDownCoords.y) > 4;
+        Math.hypot(event.clientX - lastMouseDownCoords.x, event.clientY - lastMouseDownCoords.y) > 4
+      );
+      if (isDrag) {
+        return false;
+      }
       if (
-        !isDrag &&
         (!currentView.state.selection.empty || document.getSelection()?.isCollapsed === false) &&
         !event.shiftKey &&
         !event.altKey &&
@@ -1030,13 +1044,11 @@ export function createVisualEditorHandlers({
         const cleanHref = href.split('#')[0].replace(/^[<"']|[>"']$/g, '').trim();
         const hashPart = href.includes('#') ? href.split('#')[1].replace(/^[<"']|[>"']$/g, '').trim() : undefined;
 
-        let resolved = cleanHref;
+        let targetDoc = cleanHref;
         if (cleanHref.startsWith('file:///')) {
-          resolved = decodeURIComponent(cleanHref.replace(/^file:\/\/\//, ''));
-        } else if (currentFilePathRef.current) {
-          resolved = resolveDocPath(cleanHref, currentFilePathRef.current);
+          targetDoc = decodeURIComponent(cleanHref.replace(/^file:\/\/\//, ''));
         }
-        onFileOpenRef.current(resolved, hashPart);
+        onFileOpenRef.current(targetDoc, hashPart);
         return true;
       }
 
@@ -1066,6 +1078,56 @@ export function createVisualEditorHandlers({
         return true;
       }
       return false;
+    },
+
+    clipboardTextSerializer(slice: Slice, currentView: EditorView) {
+      if (!slice || slice.content.size === 0) return '';
+      // 1. 단일 code_block 노드 선택 복사 시 마크다운 코드블록 원본 형태 유지
+      if (slice.content.childCount === 1 && slice.content.firstChild?.type === visualSchema.nodes.code_block) {
+        const node = slice.content.firstChild;
+        const params = (node.attrs.params || '').trim();
+        const codeText = node.textContent;
+        return '```' + params + '\n' + codeText + (codeText.endsWith('\n') ? '' : '\n') + '```';
+      }
+      // 2. code_block 내부 텍스트 선택 복사 시 줄바꿈 코드 텍스트 유지
+      const { $from, $to } = currentView.state.selection;
+      if ($from.parent.type === visualSchema.nodes.code_block) {
+        return slice.content.textBetween(0, slice.content.size, '\n');
+      }
+
+      // 3. 단일 문단(list_item 내부 문단, blockquote 내부 문단, table_cell, 일반 paragraph 등) 내 문구/단어 선택 판별
+      //    $from.sameParent($to)이거나, 슬라이스를 안쪽으로 언래핑했을 때 인라인 노드들만 남는 경우:
+      //    리스트 마커(-, 1.), 인용구(>), 표 등의 컨트롤 래퍼를 벗겨내고 순수 단어/문구와 인라인 서식만 복사
+      let innermostContent = slice.content;
+      let depth = slice.openStart;
+      while (depth > 0 && innermostContent.childCount === 1 && innermostContent.firstChild && !innermostContent.firstChild.isInline) {
+        innermostContent = innermostContent.firstChild.content;
+        depth--;
+      }
+
+      let allInline = true;
+      innermostContent.forEach(child => {
+        if (!child.isInline) allInline = false;
+      });
+
+      const isSingleTextblockSelection = ($from.sameParent($to) && $from.parent.isTextblock) || allInline;
+
+      try {
+        if (isSingleTextblockSelection && allInline) {
+          // 문단 내 문구/단어 복사: 리스트/인용구/표 껍데기 없이 단어/문구와 인라인 서식(볼드/링크/코드 등)만 직렬화
+          const tempPara = visualSchema.nodes.paragraph.create(null, innermostContent);
+          const tempDoc = visualSchema.nodes.doc.create(null, [tempPara]);
+          const md = visualSerializer.serialize(tempDoc);
+          return md.replace(/^\r?\n+|\r?\n+$/g, '');
+        } else {
+          // 리스트 전체, 여러 항목, 다중 문단 복사: 일반 문단 복사와 동일하게 구조 및 줄바꿈 보존 직렬화
+          const tempDoc = visualSchema.nodes.doc.create(null, slice.content);
+          const md = visualSerializer.serialize(tempDoc);
+          return md.replace(/^\r?\n+|\r?\n+$/g, '');
+        }
+      } catch {
+        return slice.content.textBetween(0, slice.content.size, '\n\n', '\n');
+      }
     },
 
     handleDOMEvents: {

@@ -3,6 +3,8 @@
  * 🏷️ 파일명 : EditorCore.tsx
  * 🎭 역할(Role) : Core (핵심 도메인 뷰 — 마크다운 편집기 및 미리보기 스플릿뷰 렌더링)
  * 🎯 주요기능 : Monaco Editor, MarkdownViewer/VisualDocumentEditor 스플릿뷰, 브레드크럼, 탭바, 플로팅 툴바, 문서 링크 픽커 렌더링
+ * 🚨 @PATCH : 2026-11-07 — [플로팅 툴바 커서 반환 및 선택 버튼 포커스 유지]: Escape 키 입력 시 closeFloatingToolbarAndRestoreCursor 호출, 툴바 버튼 클릭/키보드 이동 시 lastClickedToolbarBtnRef 캡처 및 선택 버튼 포커스 유지
+ * 🚨 @PATCH : 2026-11-07 — [문서 연결(DocLink) 작업장 내 문서 목록 누락 원천 해소]: 파일명(HELP-/00_시작하기)으로 사용자 작업장 내 문서를 오필터링하던 결함을 제거하고, 정적 번들 도움말 중복만 방어하도록 개선
  * 🚨 @PATCH : 2026-11-04 — [formatTime 방어 가드 강화 & 주석/에러 표준화] formatTime 안전 폴백 및 2단계 UI 컴포넌트 주석·logError 적용
  * 🚨 @PATCH : 2026-11-04 — [Rule 3 역할 기반 분리 (4단계 EditorCore)] 에디터 코어 렌더링 뷰를 MainEditorApp에서 독립 모듈로 분리
  * ====================================================================
@@ -96,6 +98,8 @@ export interface EditorCoreProps {
   floatingToolbar?: any;
   setFloatingToolbar?: React.Dispatch<React.SetStateAction<any>>;
   floatingToolbarRef?: React.MutableRefObject<any>;
+  lastClickedToolbarBtnRef?: React.MutableRefObject<HTMLButtonElement | null>;
+  closeFloatingToolbarAndRestoreCursor?: () => void;
   floatingHeadingLevel?: number;
   setFloatingHeadingLevel?: (lvl: number) => void;
   setFloatingQuoteDropdown?: React.Dispatch<React.SetStateAction<any>>;
@@ -212,6 +216,8 @@ export default function EditorCore(props: EditorCoreProps) {
     floatingToolbar,
     setFloatingToolbar,
     floatingToolbarRef,
+    lastClickedToolbarBtnRef,
+    closeFloatingToolbarAndRestoreCursor,
     floatingHeadingLevel,
     setFloatingHeadingLevel,
     setFloatingQuoteDropdown,
@@ -797,6 +803,18 @@ export default function EditorCore(props: EditorCoreProps) {
                             ref={floatingToolbarRef}
                             id="floating-toolbar"
                             tabIndex={-1}
+                            onMouseDownCapture={(e) => {
+                              const btn = (e.target as HTMLElement)?.closest('button');
+                              if (btn && lastClickedToolbarBtnRef) {
+                                lastClickedToolbarBtnRef.current = btn;
+                              }
+                            }}
+                            onClickCapture={(e) => {
+                              const btn = (e.target as HTMLElement)?.closest('button');
+                              if (btn && lastClickedToolbarBtnRef) {
+                                lastClickedToolbarBtnRef.current = btn;
+                              }
+                            }}
                             onKeyDown={(e) => {
                               e.stopPropagation();
                               const buttons = Array.from(e.currentTarget.querySelectorAll('button:not([disabled])')) as HTMLButtonElement[];
@@ -808,23 +826,32 @@ export default function EditorCore(props: EditorCoreProps) {
                                   ? (e.shiftKey ? buttons.length - 1 : 0)
                                   : (e.shiftKey ? (currentIndex - 1 + buttons.length) % buttons.length : (currentIndex + 1) % buttons.length);
                                 buttons[nextIndex]?.focus();
+                                if (lastClickedToolbarBtnRef) lastClickedToolbarBtnRef.current = buttons[nextIndex];
                               } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
                                 e.preventDefault();
                                 const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % buttons.length;
                                 buttons[nextIndex]?.focus();
+                                if (lastClickedToolbarBtnRef) lastClickedToolbarBtnRef.current = buttons[nextIndex];
                               } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
                                 e.preventDefault();
                                 const prevIndex = currentIndex === -1 ? buttons.length - 1 : (currentIndex - 1 + buttons.length) % buttons.length;
                                 buttons[prevIndex]?.focus();
+                                if (lastClickedToolbarBtnRef) lastClickedToolbarBtnRef.current = buttons[prevIndex];
                               } else if (e.key === 'Enter' || e.key === ' ') {
                                 if (activeEl && buttons.includes(activeEl)) {
                                   e.preventDefault();
+                                  if (lastClickedToolbarBtnRef) lastClickedToolbarBtnRef.current = activeEl;
                                   activeEl.click();
                                 }
                               } else if (e.key === 'Escape') {
                                 e.preventDefault();
-                                setFloatingToolbar(prev => ({ ...prev, visible: false }));
-                                if (!visualFloatingOriginRef.current || !visualCommandRef.current?.('FOCUS')) editorRef.current?.focus();
+                                e.stopPropagation();
+                                if (closeFloatingToolbarAndRestoreCursor) {
+                                  closeFloatingToolbarAndRestoreCursor();
+                                } else {
+                                  setFloatingToolbar?.(prev => ({ ...prev, visible: false }));
+                                  if (!visualFloatingOriginRef.current || !visualCommandRef.current?.('FOCUS')) editorRef.current?.focus();
+                                }
                               }
                             }}
                             className="no-print fixed z-[99999] flex items-center bg-white dark:bg-zinc-800 shadow-2xl shadow-black/20 rounded-2xl border border-black/10 dark:border-white/10 px-3.5 py-1.5 gap-1.5 animate-in fade-in zoom-in-95 duration-100 focus:outline-none cursor-move select-none max-w-[calc(100vw-80px)] overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden"
@@ -1191,8 +1218,6 @@ export default function EditorCore(props: EditorCoreProps) {
 
                                   const deduplicated = (() => {
                                     const map = new Map<string, FileNode>();
-                                    const currentNorm = (currentFileNode?.path || '').replace(/\\/g, '/').toLowerCase();
-                                    const isCurrentInHelp = currentNorm.includes('docs/help/') || currentNorm.includes('/help/') || currentNorm.startsWith('help/');
                                     const excludedDirs = ['out', '.next', '.next-web-build', 'dist', 'build', 'release', 'node_modules', '_dev_api_backup', '.vscode', '.idea', 'scratch'];
 
                                     for (const f of filtered) {
@@ -1202,22 +1227,13 @@ export default function EditorCore(props: EditorCoreProps) {
                                         continue;
                                       }
 
-                                      const isHelpFile = currPath.startsWith('docs/help/') || currPath.includes('/docs/help/') ||
-                                                         currPath.startsWith('frontend/public/help/') || currPath.includes('/frontend/public/help/') ||
-                                                         currPath.startsWith('public/help/') || currPath.includes('/public/help/') ||
-                                                         /^(?:00_시작하기|help-\d+)/i.test(f.name || '');
-
-                                      // 1) 일반 문서 작성 시 내부 도움말 파일 일체 노출 차단
-                                      if (!isCurrentInHelp && isHelpFile) {
+                                      // 정적 번들 public/help와 docs/help 중복만 스킵 (사용자 작업장 내 문서는 100% 보존)
+                                      if ((currPath.includes('/public/help/') || currPath.startsWith('public/help/')) &&
+                                          filtered.some(other => other !== f && (other.path || '').toLowerCase().includes('docs/help/') && other.name === f.name)) {
                                         continue;
                                       }
 
-                                      // 2) 도움말 작성/연결 시 정적 웹 미러(public/help) 제외하고 정식 docs/help만 1개 유지
-                                      if (isCurrentInHelp && (currPath.includes('/public/help/') || currPath.startsWith('public/help/'))) {
-                                        continue;
-                                      }
-
-                                      const key = currPath.normalize('NFC');
+                                      const key = (f.path || f.name).replace(/\\/g, '/').toLowerCase().normalize('NFC');
                                       if (!map.has(key)) {
                                         map.set(key, f);
                                       } else {

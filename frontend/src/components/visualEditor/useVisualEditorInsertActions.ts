@@ -1,6 +1,8 @@
 // ====================================================================
 // 📊 [OMD-HOOK-VisualEditorInsertActions] frontend/src/components/visualEditor/useVisualEditorInsertActions.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 서식/블록 명령, 이미지/미디어/각주/서명/참고문헌/수식/문서링크/날짜 삽입 액션 및 외부 commandRef 브릿지 훅
+// 🚨 @PATCH : 2026-11-07 — [플로팅 툴바 서식 적용 후 ESC 종료 시 태그 및 커서 온전 복원]: run 서식 실행 후 floatingOriginSelectionRef를 최신 상태로 갱신하고, RESTORE_ORIGIN 시 선택 영역 끝(to)으로 커서를 깔끔히 안착시켜 적용된 서식 태그 보존 및 타이핑 편의 보장
+// 🚨 @PATCH : 2026-11-07 — [플로팅 툴바 커서 반환 및 선택 버튼 포커스 유지]: 플로팅 툴바 호출 당시의 Selection 기억 및 RESTORE_ORIGIN 브릿지 명령 지원
 // 🚨 @PATCH : 2026-11-07 — [다중 인용(>>) 및 플로팅 툴바 포커스 유지]:
 //             1) setQuote(null) 인용구 명령 실행 시 기존 인용문 안에서는 lift하지 않고 최대 6단계까지 중첩 다중 인용문으로 감싸도록 개선
 //             2) run 실행 시 플로팅 툴바(#floating-toolbar)에 포커스가 머물러 있을 때는 에디터로 포커스를 강제 탈취하지 않고 툴바 포커스 유지
@@ -12,7 +14,7 @@
 
 import { useEffect } from 'react';
 import type React from 'react';
-import { TextSelection, type Command } from 'prosemirror-state';
+import { Selection, TextSelection, type Command } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
 import { lift, setBlockType, toggleMark, wrapIn } from 'prosemirror-commands';
 import { liftListItem } from 'prosemirror-schema-list';
@@ -93,6 +95,7 @@ export interface UseVisualEditorInsertActionsParams {
   callback: React.MutableRefObject<(markdown: string) => void>;
   onSourceAction?: (id: string, source: string, from: number, to: number) => void;
   lastDropTargetRef: React.MutableRefObject<DropTargetInfo | null>;
+  floatingOriginSelectionRef?: React.MutableRefObject<any>;
 }
 
 /**
@@ -147,6 +150,7 @@ export function useVisualEditorInsertActions({
   callback,
   onSourceAction,
   lastDropTargetRef,
+  floatingOriginSelectionRef,
 }: UseVisualEditorInsertActionsParams) {
   const run = (command: Command, removeSlash = false) => {
     const view = viewRef.current;
@@ -163,6 +167,9 @@ export function useVisualEditorInsertActions({
       setSlash(false);
     }
     command(view.state, view.dispatch, view);
+    if (floatingOriginSelectionRef) {
+      floatingOriginSelectionRef.current = view.state.selection;
+    }
     const activeEl = typeof document !== 'undefined' ? document.activeElement : null;
     const isFloatingActive = Boolean(activeEl && document.getElementById('floating-toolbar')?.contains(activeEl));
     if (!isFloatingActive) {
@@ -1371,6 +1378,9 @@ export function useVisualEditorInsertActions({
         if (!view || readOnly) return true;
         view.focus();
         const { from, to, $from, empty } = view.state.selection;
+        if (command === 'TOGGLE_FLOATING_TOOLBAR' && floatingOriginSelectionRef) {
+          floatingOriginSelectionRef.current = view.state.selection;
+        }
         const rect = view.coordsAtPos(from);
         const spaceBelow = window.innerHeight - rect.bottom;
         const top =
@@ -1393,6 +1403,26 @@ export function useVisualEditorInsertActions({
           slashRange.current = null;
           manualFloatingRef.current = !selectionVisibleRef.current;
           setSelection(manualFloatingRef.current);
+        }
+        return true;
+      }
+      if (command === 'RESTORE_ORIGIN' || command === 'FOCUS_ORIGIN') {
+        const view = viewRef.current;
+        if (view) {
+          view.focus();
+          if (floatingOriginSelectionRef?.current) {
+            try {
+              const maxPos = view.state.doc.content.size;
+              const to = Math.max(0, Math.min(floatingOriginSelectionRef.current.to, maxPos));
+              // 선택 영역 끝(to)으로 커서를 정돈하여 적용된 태그를 보존하고 선택 강조를 안전하게 해제
+              const $to = view.state.doc.resolve(to);
+              const safeSelection = Selection.near($to, -1);
+              view.dispatch(view.state.tr.setSelection(safeSelection).scrollIntoView());
+              caretRef.current?.schedule();
+            } catch {
+              view.focus();
+            }
+          }
         }
         return true;
       }

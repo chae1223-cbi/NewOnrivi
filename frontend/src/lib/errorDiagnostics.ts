@@ -1,3 +1,4 @@
+// 🚨 @PATCH : **2026-11-07** — [알림 및 완료된 doing 문구의 '실패' 중복 접미 방어]: doing에 이미 '실패'가 있거나 '알림' 표출인 경우 banner에서 '실패'를 중복 부착하지 않아 개발자 콘솔 오인 방지
 // 🚨 @PATCH : **2026-11-04** — [오류 진단 로깅 0단계]: Windows 및 Unix PC 경로 마스킹 정규식 버그 수정 ($1 치환 로직 개선 및 슬래시/백슬래시 지원)
 // 🚨 @PATCH : **2026-11-04** — [reportClientLog에 sourceFile 및 sourceFunction 매개변수 전달]: 원격 시스템 로그에 실제 소스 파일 및 함수명 반영
 // ====================================================================
@@ -137,7 +138,8 @@ export function logError(params: ErrorDiagnosticParams): void {
   const safeContext = params.context ? maskSensitiveContext(params.context) : undefined;
 
   // 1. [콘솔 선제 출력] 개발자 도구(F12) 및 Electron 터미널에 시각적 그룹핑으로 즉시 덤프
-  const banner = `🚨 [Onrivi ${level}] [${file} ➔ ${func}] ${doing} 실패`;
+  const bannerDoing = (doing.endsWith('실패') || doing.includes('알림')) ? doing : `${doing} 실패`;
+  const banner = `🚨 [Onrivi ${level}] [${file} ➔ ${func}] ${bannerDoing}`;
   const consoleFn = level === 'WARN' ? console.warn : console.error;
 
   try {

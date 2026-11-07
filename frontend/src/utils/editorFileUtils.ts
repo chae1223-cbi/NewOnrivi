@@ -5,6 +5,13 @@
  *   - 에디터 작업장 파일 트리 탐색, 마크다운(.md/.markdown) 통합 수집, 상대 이미지/문서 경로 계산 유틸리티
  *   - 브라우저(FSA & WASM 지식 DB), 데스크톱(Electron), VFS, 열린 탭 전 환경 중복 제거 및 NFC 정규화
  * 🚨 @PATCH :
+ *   - 2026-11-07 : [문서 연결(DocLink) 작업장 전체 하위 폴더 문서 탐색 보장]:
+ *                  1) 구글 드라이브(GDRIVE/cloud) 작업장 판별 최우선화 및 ensureValidDriveToken 최신 토큰 기반 Promise.all 병렬 재귀 스캔으로 하위 폴더(도움말, 소스분석 등) 전체 마크다운 파일 100% 수집
+ *                  2) 작업장 내 도움말/HELP 문서 오필터링 원천 제거: 파일명(HELP-/00_시작하기)으로 사용자 작업장 문서를 차단하던 결함 해소
+ *   - 2026-11-07 : [문서 연결(DocLink) 작업장 마크다운 수집 누락 원천 해결]:
+ *                  1) 로컬 작업장: rootFolder.name 대신 절대경로(path/onrivi_workspace_path) 우선 스캔으로 ENOENT 실패 방지
+ *                  2) 클라우드 작업장: fileList 외에 구글 드라이브 작업장 폴더(workspaceFolderId) 재귀 스캔 보강으로 하위 문서 누락 차단
+ *                  3) 도움말 모드: 도움말 문서 열람 시 public/help가 일괄 배제되어 문서 목록이 0개 되던 오필터링 제거 및 중복 방어 정교화
  *   - 2026-11-04 : 주석 표준화(1·2단계) 및 Log-First(logError/logWarn) 에러 진단 로깅 일괄 적용
  *   - 2026-11-04 : getMdFiles, fetchAllMdFiles, resolveRelativeImagePath, getRelativePath를 MainEditorApp에서 분리 위임
  * ============================================================================
@@ -61,7 +68,7 @@ export const getMdFiles = (nodes: FileNode[]): FileNode[] => {
 export const fetchAllMdFiles = async (
   workspaceType: string,
   fileList: FileNode[],
-  rootFolder: { name: string; handle?: any } | null,
+  rootFolder: { name?: string; handle?: any; path?: string; type?: string; id?: string; driveFolderId?: string } | null,
   resourceFolder?: string | null,
   resourceFolderHandle?: any,
   currentFileNode?: FileNode | null,
@@ -82,16 +89,16 @@ export const fetchAllMdFiles = async (
     const pathSegments = normPath.split('/');
     const excludedDirs = ['out', '.next', '.next-web-build', 'dist', 'build', 'release', 'node_modules', '_dev_api_backup', '.vscode', '.idea', 'scratch'];
     if (pathSegments.some(seg => excludedDirs.includes(seg))) return;
-    const currentNorm = (currentFileNode?.path || '').replace(/\\/g, '/').toLowerCase();
-    const isCurrentInHelp = currentNorm.includes('docs/help/') || currentNorm.includes('/help/') || currentNorm.startsWith('help/');
-    const isHelpFile = normPath.startsWith('docs/help/') || normPath.includes('/docs/help/') ||
-                       normPath.startsWith('frontend/public/help/') || normPath.includes('/frontend/public/help/') ||
-                       normPath.startsWith('public/help/') || normPath.includes('/public/help/') ||
-                       /^(?:00_시작하기|help-\d+)/i.test(node.name || '');
-    if (!isCurrentInHelp && isHelpFile) return;
-    if (isCurrentInHelp && (normPath.includes('/public/help/') || normPath.startsWith('public/help/'))) {
-      // 로컬/데스크톱 작업장에서 docs/help와 public/help 복제본 동시 노출 방어
-      return;
+
+    // 앱 내부 정적 번들 docs/help 및 public/help 중복 수집 방어 (동일 파일명 기준 1개만 유지)
+    const isStaticHelp = normPath.startsWith('frontend/public/help/') || normPath.includes('/frontend/public/help/') ||
+                         normPath.startsWith('public/help/') || normPath.includes('/public/help/') ||
+                         normPath.startsWith('docs/help/') || normPath.includes('/docs/help/');
+    if (isStaticHelp) {
+      const fileNameLower = (node.name || '').toLowerCase().normalize('NFC');
+      if (Array.from(fileMap.values()).some(existing => existing.name.toLowerCase().normalize('NFC') === fileNameLower)) {
+        return;
+      }
     }
     const rawKey = (node.path || node.name).replace(/\\/g, '/').toLowerCase().normalize('NFC');
     if (!fileMap.has(rawKey)) {
@@ -113,8 +120,73 @@ export const fetchAllMdFiles = async (
     }
   };
 
-  // 1. 브라우저(Web) 환경 수집: FileSystemDirectoryHandle 심층 재귀 스캔
-  if (workspaceType === 'browser') {
+  const isCloudWorkspace = workspaceType === 'cloud' ||
+    rootFolder?.type === 'GDRIVE' ||
+    Boolean(rootFolder?.driveFolderId) ||
+    Boolean((rootFolder as any)?.driveFolderId) ||
+    (rootFolder?.path || '').startsWith('GoogleDrive/') ||
+    (typeof window !== 'undefined' && (localStorage.getItem('workspaceType') === 'cloud' || localStorage.getItem('onrivi_last_workspace_mode') === 'cloud'));
+
+  if (isCloudWorkspace) {
+    // 1. 구글 드라이브(Cloud) 워크스페이스 수집
+    addTreeNodes(fileList);
+
+    // 구글 드라이브 작업장 폴더 하위 재귀 수집 보강
+    try {
+      const { getSavedDriveToken, getSavedWorkspaceInfo, listDriveChildren, ensureValidDriveToken } = await import('@/lib/gdrive/googleDriveClient');
+      const token = (await ensureValidDriveToken()) || getSavedDriveToken();
+      const wsInfo = getSavedWorkspaceInfo();
+      let rawRoot: any = null;
+      try { rawRoot = JSON.parse(localStorage.getItem('rootFolder') || '{}'); } catch {}
+      const targetFolderId = rootFolder?.id || (rootFolder as any)?.driveFolderId || rawRoot?.driveFolderId || rawRoot?.id || wsInfo?.workspaceFolderId;
+
+      if (token && targetFolderId) {
+        const visitedFolders = new Set<string>();
+        const scanDrive = async (folderId: string, currentPath = '') => {
+          if (visitedFolders.has(folderId)) return;
+          visitedFolders.add(folderId);
+          try {
+            const items = await listDriveChildren(token, folderId);
+            const folderPromises: Promise<void>[] = [];
+            for (const item of items) {
+              const itemPath = currentPath ? `${currentPath}/${item.name}` : item.name;
+              if (item.isFolder) {
+                folderPromises.push(scanDrive(item.id, itemPath));
+              } else if (item.name.toLowerCase().endsWith('.md') || item.name.toLowerCase().endsWith('.markdown')) {
+                addToFileMap({
+                  name: item.name,
+                  path: itemPath,
+                  kind: 'file',
+                  driveId: item.id,
+                  driveFileId: item.id,
+                  id: item.id,
+                } as any);
+              }
+            }
+            await Promise.all(folderPromises);
+          } catch (scanErr) {
+            logWarn({
+              file: 'src/utils/editorFileUtils.ts',
+              func: 'fetchAllMdFiles.scanDrive',
+              doing: '구글 드라이브 하위 폴더 재귀 목록 조회',
+              target: folderId,
+              error: scanErr,
+            });
+          }
+        };
+        await scanDrive(targetFolderId, '');
+      }
+    } catch (err) {
+      logWarn({
+        file: 'src/utils/editorFileUtils.ts',
+        func: 'fetchAllMdFiles',
+        doing: '구글 드라이브 작업장 재귀 스캔 중',
+        target: rootFolder?.name || 'gdrive',
+        error: err,
+      });
+    }
+  } else if (workspaceType === 'browser') {
+    // 2. 브라우저(Web) 환경 수집: FileSystemDirectoryHandle 심층 재귀 스캔
     if (rootFolder?.handle && !(rootFolder as any).needPermission) {
       try {
         if (!rootFolder.handle.queryPermission || (await rootFolder.handle.queryPermission({ mode: 'read' })) === 'granted') {
@@ -127,7 +199,7 @@ export const fetchAllMdFiles = async (
             file: 'src/utils/editorFileUtils.ts',
             func: 'fetchAllMdFiles',
             doing: '브라우저 작업장 폴더 핸들 심층 재귀 스캔(scanDirectoryDeep)',
-            target: rootFolder.name || 'browser_root',
+            target: rootFolder?.name || 'browser_root',
             error: e,
           });
         }
@@ -154,8 +226,12 @@ export const fetchAllMdFiles = async (
       });
     }
   } else if (workspaceType === 'local') {
-    // 2. 데스크톱(Electron) 로컬 워크스페이스 수집
-    if (api?.listDirectory && rootFolder?.name) {
+    // 3. 데스크톱(Electron) 로컬 워크스페이스 수집: 절대 경로 우선 타겟팅
+    const localTargetDir = (rootFolder?.path && rootFolder.path !== '브라우저 로컬 저장소' && rootFolder.path !== 'BROWSER_STORAGE_NAME' ? rootFolder.path : null)
+      || (rootFolder?.name && !rootFolder.name.startsWith('GoogleDrive') && rootFolder.name !== '작업장' ? rootFolder.name : null)
+      || (typeof window !== 'undefined' ? (localStorage.getItem('onrivi_last_local_workspace_path') || localStorage.getItem('onrivi_workspace_path')) : null);
+
+    if (api?.listDirectory && localTargetDir) {
       const visited = new Set<string>();
       const scan = async (dirPath: string) => {
         if (visited.has(dirPath)) return;
@@ -190,7 +266,7 @@ export const fetchAllMdFiles = async (
         }
       };
 
-      await scan(rootFolder.name);
+      await scan(localTargetDir);
     } else {
       try {
         const res = await fetch(getApiUrl(`/api/files?t=${Date.now()}`));

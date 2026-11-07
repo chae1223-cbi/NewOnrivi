@@ -178,6 +178,33 @@ export const VISUAL_EDITOR_STYLES = `
     background-color: #ffffff !important;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
+  .visual-source-block.visual-html-table-container {
+    margin: 1.25rem 0 !important;
+    position: relative;
+    max-width: 100%;
+  }
+  .visual-source-block.visual-html-table-container .table-wrapper-area {
+    margin-bottom: 4px !important;
+  }
+  .visual-html-table-editor {
+    margin-top: 6px !important;
+    border: 1px solid rgba(226, 232, 240, 0.9) !important;
+    border-radius: 0.5rem !important;
+    overflow: hidden !important;
+    background-color: transparent !important;
+  }
+  .dark .visual-html-table-editor {
+    border-color: rgba(51, 65, 85, 0.8) !important;
+  }
+  .visual-html-table-editor summary {
+    list-style: none !important;
+  }
+  .visual-html-table-editor summary::-webkit-details-marker {
+    display: none !important;
+  }
+  .visual-html-table-editor[open] .mermaid-chevron {
+    transform: rotate(180deg);
+  }
   .dark .visual-source-block.visual-mermaid-container {
     border-color: rgba(51, 65, 85, 0.8) !important;
     background-color: #0f172a !important;

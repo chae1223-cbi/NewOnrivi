@@ -1,6 +1,7 @@
 /**
  * 프로그램명 : OnriviAuthor 
  * 파일명 : visualListCommands.ts
+ * 🚨 @PATCH : **2026-11-07** — [리스트 분할/해제 시 TextSelection inline content 예외 원천 방어]: TextSelection.create 대신 Selection.near를 적용하여 ordered_list/bullet_list 경계점 예외(TextSelection endpoint not pointing into a node with inline content) 완전 차단
  * 🚨 @PATCH : 2026-11-05 — [목록 선택·내어쓰기]: 앞 문단 끝 경계는 목록 전환에서 제외하고, 마지막 항목의 이어지는 문단은 Shift+Tab으로 해당 문단만 목록 밖으로 이동한다.
  * 🚨 @PATCH : **2026-10-31** — [목록 서식 동일 버튼 재클릭 시 취소(토글 해제) 지원]:
  *             1) selectedList에서 현재 선택된 목록이 이미 동일한 종류(bullet, ordered, check)일 경우 selectedList('clear')를 자동 격발하여 일반 문단으로 즉시 취소
@@ -28,7 +29,7 @@
  *             2) 목록 바로 아래 문단에서 백스페이스 시 이전 목록 끝에 빈 항목이 있으면 해당 빈 항목을 안전하게 삭제하고, 내용이 있으면 텍스트로 합쳐지도록 개선
  */
 import { Fragment, Node as DocumentNode } from 'prosemirror-model';
-import { Command, TextSelection, Transaction, EditorState } from 'prosemirror-state';
+import { Command, Selection, TextSelection, Transaction, EditorState } from 'prosemirror-state';
 import { closeHistory } from 'prosemirror-history';
 import { liftListItem, sinkListItem } from 'prosemirror-schema-list';
 import { joinForward } from 'prosemirror-commands';
@@ -562,7 +563,7 @@ export const exitEmptyListItem: Command = (state, dispatch, view) => {
       }, Fragment.fromArray(afterItems)));
       const listPos = $from.before(listDepth);
       const tr = state.tr.replaceWith(listPos, $from.after(listDepth), blocks);
-      tr.setSelection(TextSelection.create(tr.doc, listPos + firstList.nodeSize + 1));
+      tr.setSelection(Selection.near(tr.doc.resolve(listPos + firstList.nodeSize + 1)));
       dispatch(closeHistory(tr).scrollIntoView());
     }
     return true;
@@ -574,7 +575,7 @@ export const exitEmptyListItem: Command = (state, dispatch, view) => {
     const cleaned = tr.docChanged ? state.apply(tr) : state;
     return liftListItem(visualSchema.nodes.list_item)(cleaned, dispatch ? (lifted: Transaction) => {
       for (const step of lifted.steps) tr.step(step);
-      tr.setSelection(TextSelection.create(tr.doc, lifted.selection.anchor, lifted.selection.head));
+      tr.setSelection(Selection.near(tr.doc.resolve(lifted.selection.anchor)));
       dispatch(closeHistory(tr).scrollIntoView());
     } : undefined, view);
   }

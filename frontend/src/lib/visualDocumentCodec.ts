@@ -2,6 +2,12 @@
  * 프로그램명 : OnriviAuthor 
  * 버전 정보 : 1.0.1
  * 프로그램 ID : oaar-visual-codec
+ * 🚨 @PATCH : **2026-11-07** — [인라인 image 노드 toDOM 꺽쇠/따옴표 정제]: schema.nodes.image toDOM에서 rawSrc의 꺽쇠(<...>) 및 따옴표를 정제하여 불필요한 브라우저 404 오요청 방어
+ * 🚨 @PATCH : **2026-11-07** — [visual_image toDOM 이미지 꺽쇠 정제]: visual_image toDOM에서 rawSrc의 꺽쇠(<...>)를 정제하여 불필요한 404 오요청 방어
+ * 🚨 @PATCH : **2026-11-07** — [가져오기 및 본문 내 HTML 표(<table>...</table>) 시각 렌더링 및 무손실 직렬화 지원]:
+ *             1) lines 파싱 시 <table 및 </table> 경계를 감지하여 starts 분할 인덱스에 자동 등록, 다단/병합 표가 앞뒤 문단과 뭉치지 않도록 격리
+ *             2) raw 문자열이 HTML <table> 블록인 경우(isHtmlTable) 일반 텍스트 문단으로 오탐되지 않고 source_block 노드로 안전 생성
+ *             3) source_block 직렬화기를 통해 원본 HTML <table> 문법이 100% 무손실로 보존되도록 연동
  * 🚨 @PATCH : 2026-11-03 — [좁은 열 비율 저장] 1% 미만의 유효한 열 비율도 저장·재열기 지원
  * 🚨 @PATCH : 2026-11-03 — [표 열 비율 0.1% 저장] 소수점 비율도 문서 저장·재열기 지원
  * 🚨 @PATCH : 2026-11-03 — [표 열 비율 수동 지정] 표 앞 Markdown 주석을 표 속성으로 읽고 편집 후 저장
@@ -12,6 +18,12 @@
  *             2) visualTokenizer에서 마크다운 표 및 일반 문단 내부의 <input type="checkbox" ... /> 태그를 checkbox_inline 토큰으로 분할 파싱
  *             3) visualParser 및 visualSerializer에 visual_checkbox 양방향 매핑을 등록하여 100% 무손실 라운드트립 보장
  *             4) safeRaw 전처리에서 <input> 태그를 안전하게 통과시켜 체크박스 포함 문단이 source_block(HTML 편집창)으로 오분기되는 결함 원천 차단
+ * 🚨 @PATCH : **2026-11-07** — [리스트 내 중첩 코드블록 독립 컨트롤(code_block) 보장 및 태그 오탐 방지]:
+ *             1) textWithoutCode에 인라인 태그/꺽쇠 표기(<[^>\n]+>) 마스킹을 추가하여 <figcaption> 등 설명용 HTML 태그로 인한 unsupportedSyntax 오탐 차단
+ *             2) plainList 조건을 추가하여 리스트/중첩 리스트 내부에 코드블록이 있는 경우 source_block으로 격리되지 않고 독립 편집 컨트롤(visual-code-block)로 100% 정상 렌더링되도록 개선
+ * 🚨 @PATCH : **2026-11-07** — [리스트 내 코드블록 및 따옴표 설명 예시로 인한 source_block 뭉침 결함 완전 해결]:
+ *             1) textWithoutCode 정제 시 작은따옴표('...') 및 큰따옴표("...") 속 예시 구문('<figcaption>', '![설명]<경로>' 등)을 마스킹하여 설명 텍스트로 인한 오탐 차단
+ *             2) 단순 /!\[/ 정규식을 실제 이미지 마크다운 문법(/!\[[^\]]*\]\([^)]+\)/)으로 정밀화하여 리스트 내 코드블록이 통짜 source_block으로 뭉치지 않고 각각 독립된 컨트롤(리스트 및 visual-code-block)로 렌더링되도록 개선
  * 🚨 @PATCH : **2026-11-07** — [리스트 내 코드블록 예시 문법 오탐으로 인한 source_block 뭉침 결함 완전 해결]:
  *             1) createVisualDocumentCodec에서 미지원 문법(unsupportedSyntax 및 !\[) 검사 시 코드블록(```...```) 및 인라인 코드(`...`) 내부 텍스트를 마스킹하여, 코드블록 내부의 마크다운 예시(이미지, HTML 등)로 인해 리스트 전체가 source_block으로 오탐되는 결함 원천 해결
  * 🚨 @PATCH : **2026-10-25** — [인라인 서식(굵게, 기울임, 밑줄, 취소선, 인라인코드) 끝 연속 타이핑 서식 유지 보장 (inclusive: true)]:
@@ -97,7 +109,14 @@ import { defaultMarkdownParser, defaultMarkdownSerializer, MarkdownParser, Markd
 //             1) 직렬화 시 빈 문단 <p></p> 생성을 완전 배제하고 순수 마크다운 개행으로 통일
 //             2) 이중 불릿(- - ) 패턴을 단일 불릿(- )으로 정규화하여 볼트 2개 노출 현상 자동 치유
 export const visualSchema = new Schema({
-  nodes: markdownSchema.spec.nodes.update('list_item',{...markdownSchema.spec.nodes.get('list_item'),attrs:{checked:{default:null}},toDOM:node=>['li',{'data-task-checked':node.attrs.checked===null?undefined:String(node.attrs.checked)},0]}).update('doc', { ...markdownSchema.spec.nodes.get('doc'), attrs: { frontmatter: { default: '' } } }).update('blockquote', { ...markdownSchema.spec.nodes.get('blockquote'), attrs:{alertType:{default:null},indentPx:{default:null}},parseDOM:[{tag:'blockquote',getAttrs:dom=>{const value=(dom as HTMLElement).getAttribute('data-onrivi-quote-indent');return {alertType:(dom as HTMLElement).getAttribute('data-alert-type'),indentPx:value===null?null:Math.max(0,Math.min(4096,Number(value)||0))};}}], toDOM:node=>{
+  nodes: markdownSchema.spec.nodes.update('image', {
+    ...markdownSchema.spec.nodes.get('image'),
+    toDOM: (node: any) => {
+      let rawSrc = node.attrs.src || '';
+      rawSrc = rawSrc.replace(/^[<"']|[>"']$/g, '').trim();
+      return ['img', { ...node.attrs, src: rawSrc }];
+    }
+  }).update('list_item',{...markdownSchema.spec.nodes.get('list_item'),attrs:{checked:{default:null}},toDOM:node=>['li',{'data-task-checked':node.attrs.checked===null?undefined:String(node.attrs.checked)},0]}).update('doc', { ...markdownSchema.spec.nodes.get('doc'), attrs: { frontmatter: { default: '' } } }).update('blockquote', { ...markdownSchema.spec.nodes.get('blockquote'), attrs:{alertType:{default:null},indentPx:{default:null}},parseDOM:[{tag:'blockquote',getAttrs:dom=>{const value=(dom as HTMLElement).getAttribute('data-onrivi-quote-indent');return {alertType:(dom as HTMLElement).getAttribute('data-alert-type'),indentPx:value===null?null:Math.max(0,Math.min(4096,Number(value)||0))};}}], toDOM:node=>{
     const tag=String(node.attrs.alertType || '').trim().toUpperCase();
     const aliases:Record<string,string>={'참고':'NOTE','참조':'NOTE','메모':'NOTE','알림':'NOTE','팁':'TIP','도움말':'TIP','중요':'IMPORTANT','필독':'IMPORTANT','주의':'WARNING','경고':'CAUTION','위험':'CAUTION'};
     const palette:Record<string,[string,string]>={NOTE:['#eff6ff','#3b82f6'],TIP:['#ecfdf5','#10b981'],IMPORTANT:['#faf5ff','#a855f7'],WARNING:['#fffbeb','#f59e0b'],CAUTION:['#fff1f2','#f43f5e']};
@@ -159,7 +178,11 @@ export const visualSchema = new Schema({
   }).addToEnd('visual_image', {
     group: 'block', atom: true, selectable: true, draggable: true,
     attrs: { source: { default: '' } },
-    toDOM: node => ['figure', { class: 'visual-image-block', contenteditable: 'false' }, ['img', { src: node.attrs.source.match(/\]\((.*)\)/)?.[1] || '', alt: '' }]],
+    toDOM: node => {
+      let rawSrc = node.attrs.source.match(/\]\((.*)\)/)?.[1] || '';
+      rawSrc = rawSrc.replace(/^[<"']|[>"']$/g, '').trim();
+      return ['figure', { class: 'visual-image-block', contenteditable: 'false' }, ['img', { src: rawSrc, alt: '' }]];
+    },
     parseDOM: [
       {
         tag: 'figure.visual-image-block',
@@ -525,6 +548,9 @@ export function createVisualDocumentCodec(markdown: string) {
     const definition = /^\s*\[[^\]]+\]:/.test(line)
       && !tokens.some(token => token.map && token.map[0] <= index && index < token.map[1]);
     if ((footnote || definition) && !starts.includes(index)) starts.push(index);
+    // 🛡️ HTML 표 태그(<table... 및 </table>) 경계 분할: 일반 문단과 뭉치지 않고 독립 블록으로 분리
+    if (/^\s*<table\b/i.test(line) && !starts.includes(index)) starts.push(index);
+    if (/<\/table>\s*$/i.test(line) && index + 1 < lines.length && lines[index + 1].trim() && !starts.includes(index + 1)) starts.push(index + 1);
   });
   let inMathBlock = false;
   for (let i = 0; i < lines.length; i++) {
@@ -576,6 +602,7 @@ export function createVisualDocumentCodec(markdown: string) {
     const footnoteDefMatch = raw.trim().match(/^\[\^([^\]]+)\]:[ \t]*([\s\S]*)$/);
     const mathMatch = raw.trim().match(/^\$\$([\s\S]*?)\$\$$/);
     const codeMathMatch = raw.trim().match(/^```(?:math|latex)\s*([\s\S]*?)```$/i);
+    const isHtmlTable = /^\s*(?:<!--[\s\S]*?-->\s*)*<table\b[\s\S]*<\/table>\s*$/i.test(raw.trim());
     if (/^(?:<!--\s*(?:onrivi:page-break|\[page-break\])\s*-->|<hr\s+class=["']page-break["']\s*\/?>)$/.test(raw.trim())) {
       node = visualSchema.nodes.page_break.create();
     } else if (/^<p>\s*<\/p>$/.test(raw.trim())) {
@@ -588,6 +615,8 @@ export function createVisualDocumentCodec(markdown: string) {
     } else if (mathMatch || codeMathMatch) {
       const latexContent = (mathMatch ? mathMatch[1] : codeMathMatch![1]).trim();
       node = visualSchema.nodes.visual_math.create({ latex: latexContent });
+    } else if (isHtmlTable) {
+      node = visualSchema.nodes.source_block.create({ source: raw.trim() });
     } else {
       const safeRaw = raw
         .replace(/<br\s*\/?\s*>/gi, '')
@@ -595,11 +624,14 @@ export function createVisualDocumentCodec(markdown: string) {
         .replace(/<input\b[^>]*\/?>/gi, '')
         .replace(/<[a-zA-Z][a-zA-Z0-9+.-]*:[^<>\s]+>/g, '')
         .replace(/<[^<>\s]+@[^<>\s]+>/g, '');
-      // 코드블록(```...```) 및 인라인 코드(`...`) 내부 텍스트를 마스킹하여,
-      // 코드블록 내부의 예시 이미지 문법(![...])이나 HTML 태그로 인해 리스트 전체가 source_block으로 오탐되는 결함 원천 방어
+      // 코드블록(```...```) 및 인라인 코드(`...`), 작은따옴표('...'), 큰따옴표("...") 내부 텍스트 및 <태그> 설명 표기를 마스킹하여,
+      // 예시 이미지 문법(![...])이나 설명용 HTML 태그(<figcaption> 등)로 인해 리스트 전체가 source_block으로 오탐되는 결함 원천 방어
       const textWithoutCode = safeRaw
         .replace(/```[\s\S]*?```/g, '')
-        .replace(/`[^`\n]+`/g, '');
+        .replace(/`[^`\n]+`/g, '')
+        .replace(/'[^'\n]+'/g, '')
+        .replace(/"[^"\n]+"/g, '')
+        .replace(/<[^>\n]+>/g, '');
       const rawReferenceEnvironment: { references?: Record<string, unknown> } = {};
       const rawTokens=tokenizer.parse(textWithoutCode, rawReferenceEnvironment);
       // Inspect actual syntax rather than URL destinations/code contents. A
@@ -612,7 +644,7 @@ export function createVisualDocumentCodec(markdown: string) {
         || Object.keys(rawReferenceEnvironment.references || {}).length > 0
         || unsupportedInline
         || /^\s*```\s*mermaid/m.test(safeRaw);
-      const unsupported = unsupportedSyntax || /!\[/.test(textWithoutCode);
+      const unsupported = unsupportedSyntax || /!\[[^\]]*\]\([^)]+\)/.test(textWithoutCode);
       try {
         // Reference-style URLs are ordinary editable links too. Supply the
         // document's definitions while parsing this individual list/paragraph.
@@ -620,6 +652,8 @@ export function createVisualDocumentCodec(markdown: string) {
         const plainCode = parsed.childCount === 1 && parsed.firstChild?.type.name === 'code_block'
           && !/^mermaid(?:\s|$)/i.test(parsed.firstChild.attrs.params || '');
         const nativeTable = parsed.childCount === 1 && parsed.firstChild?.type.name === 'table' && !/(^|\n)\s*(:::|```)/m.test(raw);
+        const plainList = parsed.childCount === 1 && ['ordered_list','bullet_list'].includes(parsed.firstChild!.type.name)
+          && !/(^|\n)\s*(:::|```\s*mermaid)/m.test(raw);
         const media = mediaDetails(raw);
         const isImageParagraph = (child: DocumentNode): boolean => {
           if (child.type.name !== 'paragraph' || child.firstChild?.type.name !== 'image') return false;
@@ -647,7 +681,7 @@ export function createVisualDocumentCodec(markdown: string) {
           const children: DocumentNode[] = []; child.forEach(item => children.push(separateImages(item)));
           return child.isLeaf ? child : child.copy(Fragment.fromArray(children));
         };
-        node = imageList ? separateImages(parsed.firstChild!) : media ? visualSchema.nodes.visual_media.create({source:raw,kind:media.kind}) : standaloneImage ? visualSchema.nodes.visual_image.create({ source: raw }) : (plainCode || nativeTable || (!unsupported)) && parsed.childCount === 1
+        node = imageList ? separateImages(parsed.firstChild!) : media ? visualSchema.nodes.visual_media.create({source:raw,kind:media.kind}) : standaloneImage ? visualSchema.nodes.visual_image.create({ source: raw }) : (plainCode || nativeTable || plainList || (!unsupported)) && parsed.childCount === 1
           ? visualSchema.nodeFromJSON(parsed.firstChild!.toJSON())
           : visualSchema.nodes.source_block.create({ source: raw });
       } catch {

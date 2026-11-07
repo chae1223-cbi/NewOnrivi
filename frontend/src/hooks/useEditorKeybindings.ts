@@ -5,6 +5,7 @@
  *   - Monaco 에디터 단축키 액션 등록(customHotkeys) 및 전역 키보드 이벤트(handleGlobalKeyDown) 분기 라우팅 제어 훅
  *   - Windows Meta(Win) 키 가드, Shift+방향키 선택 보호, 비주얼 에디터/그림책 단축키 연동
  * 🚨 @PATCH :
+ *   - 2026-11-07 : [플로팅 툴바 커서 반환]: Escape 키 입력 시 closeFloatingToolbarAndRestoreCursor 호출 연동
  *   - 2026-11-04 : 주석 표준화(1·2단계) 적용
  *   - 2026-11-04 : MainEditorApp에서 Monaco 액션 바인딩 및 전역 keydown 리스너 로직을 독립 훅으로 분리
  * ============================================================================
@@ -31,6 +32,7 @@ export interface UseEditorKeybindingsProps {
   setFloatingToolbar: React.Dispatch<React.SetStateAction<any>>;
   floatingQuoteDropdown: { open: boolean; [key: string]: any };
   isRestrictedUser?: boolean;
+  closeFloatingToolbarAndRestoreCursor?: () => void;
 }
 
 /**
@@ -58,7 +60,8 @@ export function useEditorKeybindings({
   floatingToolbar,
   setFloatingToolbar,
   floatingQuoteDropdown,
-  isRestrictedUser
+  isRestrictedUser,
+  closeFloatingToolbarAndRestoreCursor
 }: UseEditorKeybindingsProps) {
   const hotkeyDisposablesRef = useRef<any[]>([]);
 
@@ -261,9 +264,13 @@ export function useEditorKeybindings({
         if (floatingToolbar?.visible) {
           e.preventDefault();
           e.stopPropagation();
-          setFloatingToolbar(prev => ({ ...prev, visible: false }));
-          if (editorRef.current) {
-            editorRef.current.focus();
+          if (closeFloatingToolbarAndRestoreCursor) {
+            closeFloatingToolbarAndRestoreCursor();
+          } else {
+            setFloatingToolbar(prev => ({ ...prev, visible: false }));
+            if (editorRef.current) {
+              editorRef.current.focus();
+            }
           }
           return;
         }
@@ -361,5 +368,5 @@ export function useEditorKeybindings({
 
     window.addEventListener('keydown', handleGlobalKeyDown, true);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown, true);
-  }, [customHotkeys, dispatchCommand, mapIdToCommandType, floatingToolbar?.visible, setFloatingToolbar, floatingQuoteDropdown?.open, isRestrictedUser, editorRef, previewModeRef]);
+  }, [customHotkeys, dispatchCommand, mapIdToCommandType, floatingToolbar?.visible, setFloatingToolbar, floatingQuoteDropdown?.open, isRestrictedUser, editorRef, previewModeRef, closeFloatingToolbarAndRestoreCursor]);
 }

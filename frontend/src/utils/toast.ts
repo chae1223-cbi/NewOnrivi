@@ -137,7 +137,7 @@ export const showToast = (message: string, type: ToastType = 'info', explicitTar
       logError({
         file: sourceFile,
         func: caller.func,
-        doing: `사용자 ${type === 'error' ? '오류' : '경고'} 알림 표출 중`,
+        doing: `사용자 ${type === 'error' ? '오류' : '경고'} 알림 표출`,
         target: toastTarget,
         error: translateToKorean(message),
         level: type === 'error' ? 'ERROR' : 'WARN',

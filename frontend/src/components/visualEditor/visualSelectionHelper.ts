@@ -2,6 +2,7 @@
 // 🎯 [OMD-CORE-VisualSelectionHelper-0001] visualSelectionHelper.ts ➔ 시각 에디터 정밀 커서 및 선택 영역 조작 헬퍼
 // 🎯 @KICK  : Shift+상하 방향키 문단 간 연속 다중 선택, PageUp/PageDown 페이지 단위 이동, 브라우저 DOM ↔ ProseMirror 선택 동기화 제공
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 VisualDocumentEditor 대형 컴포넌트 모듈화 표준 준수
+// 🚨 @PATCH : 2026-11-07 — [Shift+상하 방향키 선택 시 구분선(horizontal_rule) 정지 결함 완전 해소]: 구분선 및 아톰 블록을 건너뛰어 인접 텍스트블록으로 끊김 없이 연속 선택 확장되도록 개선
 // 🚨 @PATCH : 2026-11-07 — [Shift+ArrowUp 위로 연속 다중 선택 시 제목 블록 풀림/점프 방지]: 제목(heading) 등 블록 진입 시 먼저 블록 시작점으로 온전히 선택 영역을 확장한 뒤 상위 블록으로 부드럽게 연속 전이되도록 개선
 // 🚨 @PATCH : 2026-11-04 — [VisualDocumentEditor 5순위 모듈화 분리]: visualSelectionHelper 선택 헬퍼 독립 분리
 // 🔗 @CALLS : prosemirror-state, prosemirror-view, ATOM_BLOCK_TYPES
@@ -100,7 +101,7 @@ export function extendSelectionVerticallyAcrossBlocks(
   const blockDepth = Math.max(1, $head.depth);
 
   if (dir === 'down') {
-    const searchStart = $head.after(blockDepth);
+    const searchStart = $head.depth > 0 ? $head.after($head.depth) : headPos + 1;
     if (searchStart >= state.doc.content.size) {
       if (headPos < state.doc.content.size - 1) {
         const newSelection = TextSelection.between(state.doc.resolve(anchorPos), state.doc.resolve(state.doc.content.size - 1));
@@ -114,7 +115,7 @@ export function extendSelectionVerticallyAcrossBlocks(
     let nextBlockInfo: { pos: number; node: import('prosemirror-model').Node } | null = null;
     state.doc.nodesBetween(searchStart, state.doc.content.size, (node, pos) => {
       if (nextBlockInfo) return false;
-      if (pos >= searchStart && (node.isTextblock || ATOM_BLOCK_TYPES.has(node.type.name) || node.type.name === 'horizontal_rule')) {
+      if (pos >= searchStart && node.isTextblock) {
         nextBlockInfo = { pos, node };
         return false;
       }
@@ -134,23 +135,19 @@ export function extendSelectionVerticallyAcrossBlocks(
     const { pos: blockPos, node: blockNode } = nextBlockInfo as { pos: number; node: import('prosemirror-model').Node };
     let targetHeadPos: number;
 
-    if (blockNode.isTextblock) {
-      const blockStartPos = blockPos + 1;
-      const blockContentSize = blockNode.content.size;
-      if (blockContentSize === 0) {
-        targetHeadPos = blockStartPos;
-      } else {
-        const startCoords = currentView.coordsAtPos(blockStartPos);
-        const sampleY = startCoords.top + Math.max(5, (startCoords.bottom - startCoords.top) / 2);
-        const posInfo = currentView.posAtCoords({ left: targetX, top: sampleY });
-        if (posInfo && typeof posInfo.pos === 'number') {
-          targetHeadPos = Math.max(blockStartPos, Math.min(posInfo.pos, blockStartPos + blockContentSize));
-        } else {
-          targetHeadPos = blockStartPos;
-        }
-      }
+    const blockStartPos = blockPos + 1;
+    const blockContentSize = blockNode.content.size;
+    if (blockContentSize === 0) {
+      targetHeadPos = blockStartPos;
     } else {
-      targetHeadPos = blockPos + blockNode.nodeSize;
+      const startCoords = currentView.coordsAtPos(blockStartPos);
+      const sampleY = startCoords.top + Math.max(5, (startCoords.bottom - startCoords.top) / 2);
+      const posInfo = currentView.posAtCoords({ left: targetX, top: sampleY });
+      if (posInfo && typeof posInfo.pos === 'number') {
+        targetHeadPos = Math.max(blockStartPos, Math.min(posInfo.pos, blockStartPos + blockContentSize));
+      } else {
+        targetHeadPos = blockStartPos;
+      }
     }
 
     const newSelection = TextSelection.between(state.doc.resolve(anchorPos), state.doc.resolve(targetHeadPos));
@@ -170,7 +167,7 @@ export function extendSelectionVerticallyAcrossBlocks(
       }
     }
 
-    const searchEnd = $head.before(blockDepth);
+    const searchEnd = $head.depth > 0 ? $head.before($head.depth) : headPos;
     if (searchEnd <= 0) {
       if (headPos > 1) {
         const newSelection = TextSelection.between(state.doc.resolve(anchorPos), state.doc.resolve(1));
@@ -183,7 +180,7 @@ export function extendSelectionVerticallyAcrossBlocks(
 
     let prevBlockInfo: { pos: number; node: import('prosemirror-model').Node } | null = null;
     state.doc.nodesBetween(0, searchEnd, (node, pos) => {
-      if (pos < searchEnd && (node.isTextblock || ATOM_BLOCK_TYPES.has(node.type.name) || node.type.name === 'horizontal_rule')) {
+      if (pos < searchEnd && node.isTextblock) {
         prevBlockInfo = { pos, node };
       }
       return true;
@@ -202,24 +199,20 @@ export function extendSelectionVerticallyAcrossBlocks(
     const { pos: blockPos, node: blockNode } = prevBlockInfo as { pos: number; node: import('prosemirror-model').Node };
     let targetHeadPos: number;
 
-    if (blockNode.isTextblock) {
-      const blockStartPos = blockPos + 1;
-      const blockContentSize = blockNode.content.size;
-      if (blockContentSize === 0) {
-        targetHeadPos = blockStartPos;
-      } else {
-        const endPos = blockStartPos + blockContentSize;
-        const endCoords = currentView.coordsAtPos(endPos);
-        const sampleY = endCoords.top + Math.max(5, (endCoords.bottom - endCoords.top) / 2);
-        const posInfo = currentView.posAtCoords({ left: targetX, top: sampleY });
-        if (posInfo && typeof posInfo.pos === 'number') {
-          targetHeadPos = Math.max(blockStartPos, Math.min(posInfo.pos, endPos));
-        } else {
-          targetHeadPos = endPos;
-        }
-      }
+    const blockStartPos = blockPos + 1;
+    const blockContentSize = blockNode.content.size;
+    if (blockContentSize === 0) {
+      targetHeadPos = blockStartPos;
     } else {
-      targetHeadPos = blockPos;
+      const endPos = blockStartPos + blockContentSize;
+      const endCoords = currentView.coordsAtPos(endPos);
+      const sampleY = endCoords.top + Math.max(5, (endCoords.bottom - endCoords.top) / 2);
+      const posInfo = currentView.posAtCoords({ left: targetX, top: sampleY });
+      if (posInfo && typeof posInfo.pos === 'number') {
+        targetHeadPos = Math.max(blockStartPos, Math.min(posInfo.pos, endPos));
+      } else {
+        targetHeadPos = endPos;
+      }
     }
 
     const newSelection = TextSelection.between(state.doc.resolve(anchorPos), state.doc.resolve(targetHeadPos));

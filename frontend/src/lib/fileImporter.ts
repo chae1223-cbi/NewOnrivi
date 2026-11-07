@@ -1,4 +1,6 @@
 // ====================================================================
+// 🚨 @PATCH : **2026-11-07** — [PDF 페이지 간 마크다운 개행 분리]: 페이지 경계에서 serializePdfBlocks 반환값 뒤에 \n\n을 부여하여 다음 페이지 요소와 문단 병합 방지
+// 🚨 @PATCH : **2026-11-07** — [PDF 이미지 마크다운 URL 꺽쇠 제거]: PDF 추출 이미지 마크다운 생성 시 URL을 감싸던 꺽쇠(<...>)를 제거하여 driveId 파라미터 끝 꺽쇠 오파싱 및 404 차단
 // 🚨 @PATCH : **2026-10-11** — [일반 텍스트(.txt) 파일 스마트 마크다운 변환 엔진(importPlainTextToMarkdown) 탑재]:
 //             메모장 등에서 작성된 .txt 파일을 타문서 변환으로 가져올 때 대제목(제N장/PART/Chapter), 소제목([소제목]/■/★), 번호 목록, 글머리 기호(•/·/-) 및 문단 줄바꿈을 자동으로 분석하여 규격화된 마크다운(.md) 문서로 정돈 변환
 // 🚨 @PATCH : **2026-08-20** (2차) HWP 이미지 추출 시 순차 치환으로 인해 이미지가 뒤섞이는 현상을 완벽 해결하기 위해, hwp.js의 Picture 객체의 binID를 추출하여 정확한 플레이스홀더를 삽입하고 OLE/DocInfo와 매핑. 또한 표(Table) 객체를 감지하여 뭉친 텍스트 대신 완전한 마크다운 표 구조를 생성하도록 extractText를 재귀적으로 리팩토링함.
@@ -209,11 +211,11 @@ async function importPdf(
           cropContext.drawImage(canvas,left,top,width,height,0,0,width,height);
           const data=crop.toDataURL('image/png');
           const src=imageSaveCallback ? await imageSaveCallback(data.split(',')[1],'image/png') : data;
-          blocks.push({y:box.y+box.height,markdown:`![PDF ${i}페이지 이미지 ${index+1}](<${src}>)`});
+          blocks.push({y:box.y+box.height,markdown:`![PDF ${i}페이지 이미지 ${index+1}](${src})`});
         }
         canvas.width=canvas.height=0;
       }
-      text += serializePdfBlocks(blocks.sort((a,b)=>b.y-a.y), true) + '\n';
+      text += serializePdfBlocks(blocks.sort((a,b)=>b.y-a.y), true) + '\n\n';
 
 
     }

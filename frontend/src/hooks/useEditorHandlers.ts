@@ -1,6 +1,7 @@
 // @ts-nocheck
 // ====================================================================
 // 📊 [OMD-HOOK-useEditorHandlers-0001] useEditorHandlers.ts ➔ 에디터 액션 핸들러 훅
+// 🚨 @PATCH : **2026-11-07** — [플로팅 툴바 toggleFloatingToolbar 커서 복원 연동]: 플로팅 툴바 토글 닫기 시 모나코 에디터 포커스 및 선택 복원 보장, setTabs 구문 오류 정돈
 // 🚨 @PATCH : **2026-11-03** — [오류 진단 로깅 2단계]: handleSaveCurrentFile에 5대 메타데이터 기반 logError 연동으로 에디터 문서 저장 실패 정밀 추적
 // 🚨 @PATCH : **2026-10-31** — [제목(H1~H6) 버튼 동일 클릭 시 취소(토글 해제) 지원]:
 //             1) h1~h6 핸들러를 applyLinePrefix('h1~h6')로 연결하여 동일 제목 레벨 재클릭 시 제목 태그를 제거하고 일반 문단으로 복귀하도록 토글 취소 연동
@@ -1556,8 +1557,12 @@ export const useEditorHandlers = ({
     // ====================================================================
     toggleFloatingToolbar: () => {
       setFloatingToolbar(prev => {
-        if (prev.visible) return {
-    setTabs, ...prev, visible: false };
+        if (prev.visible) {
+          if (editorRef.current) {
+            editorRef.current.focus();
+          }
+          return { ...prev, visible: false };
+        }
         if (editorRef.current) {
           const editor = editorRef.current;
           editor.focus();

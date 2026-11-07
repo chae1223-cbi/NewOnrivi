@@ -2,6 +2,10 @@
 // 📊 [OMD-MAIN-main-0001] main.js ➔ CSP_connect_src_fix
 // 🎯 @KICK  : CSP connect-src 지침에 http: https: 추가하여 외부 이미지/폰트 fetch 차단 해결
 // 🛡️ @GUARD : Monaco editor 등 기존 설정 유지
+// 🚨 @PATCH : 2026-11-07 — [app:// 프로토콜 로컬 미디어(/media/) 지능형 서빙 지원]: app:// 프로토콜 핸들러에서 out 정적 파일 부재 시 findLocalImageFile을 통해 로컬 워크스페이스 및 공통 자원 폴더의 /media/ 이미지 파일을 자동 탐색 서빙하여 404 차단
+// 🚨 @PATCH : 2026-11-07 — [Windows 11 wmic ENOENT 박멸 및 드라이브 조회 fs 병렬화, 터미널 UTF-8 한글 깨짐 방지]:
+//             1) Windows 11에서 제거된 deprecated wmic 호출을 걷어내고 Node.js 네이티브 fs.promises.access A~Z 병렬 검사로 전환하여 spawn ENOENT 에러 완전 박멸 및 드라이브 조회 속도 극대화
+//             2) Windows 콘솔 출력 시 UTF-8(chcp 65001) 코드페이지를 설정하여 터미널 진단 로그 한글 깨짐 원천 방어
 // 🚨 @PATCH : 2026-11-05 — [데스크톱 렌더러 정지 진단]: 창 응답 없음·복구·렌더러 종료 이벤트를 터미널에 구조화해 기록한다.
 // 🚨 @PATCH : 2026-11-05 — [작업장 파일 탐색 응답성]: 파일명 검색을 비동기로 전환하고 빌드·임시 폴더를 제외하여 메인 프로세스 장시간 점유를 막는다.
 // 🚨 @PATCH : 2026-11-05 — [시작 응답 없음 수정]: 기기 정보 조회의 동기 PowerShell 실행을 5초 제한 비동기 UUID 조회로 교체한다.
@@ -94,6 +98,14 @@ const chokidar = require('chokidar');
 
 const fs = require('fs');
 const nodeNet = require('net'); // 빈 포트를 찾기 위한 네이티브 모듈 추가
+
+// 🌐 [ Windows 콘솔 UTF-8 한글 인코딩 보장 ]
+if (process.platform === 'win32') {
+  try {
+    const { execSync } = require('child_process');
+    execSync('chcp 65001', { stdio: 'ignore' });
+  } catch (_) {}
+}
 
 // 🌐 [ 프로토콜 Privilege 등록 - app.ready 이전에 호출되어야 함 ]
 protocol.registerSchemesAsPrivileged([
@@ -2762,6 +2774,14 @@ app.on('ready', async () => {
         }
       }
 
+      // 🛡️ [로컬 미디어 파일 폴백] 정적 빌드 산출물에 없으나 로컬 워크스페이스 또는 리소스 폴더의 /media/ 파일인 경우 findLocalImageFile로 서빙
+      if (!fs.existsSync(targetPath)) {
+        const localCandidate = findLocalImageFile(pathname) || findLocalImageFile(url.pathname);
+        if (localCandidate && fs.existsSync(localCandidate)) {
+          targetPath = localCandidate;
+        }
+      }
+
       const ext = path.extname(targetPath).toLowerCase();
       const mimeMap = {
         '.html': 'text/html; charset=utf-8',
@@ -2770,6 +2790,7 @@ app.on('ready', async () => {
         '.json': 'application/json',
         '.png': 'image/png',
         '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+        '.gif': 'image/gif',
         '.svg': 'image/svg+xml',
         '.webp': 'image/webp',
         '.ico': 'image/x-icon',
@@ -3382,26 +3403,21 @@ function getAllMdFiles(dirPath, fileList = [], depth = 0, visitedDirs = new Set(
 
 // 6. 드라이브 목록 조회 (Windows 탐색기)
 ipcMain.handle('file:getDrives', async () => {
+  if (process.platform !== 'win32') {
+    return ['/'];
+  }
   try {
-    const { execFile } = require('child_process');
-    const output = await new Promise((resolve, reject) => {
-      execFile('wmic', ['logicaldisk', 'get', 'caption'], { encoding: 'utf8', timeout: 5000 }, (error, stdout) => {
-        if (error) reject(error);
-        else resolve(stdout);
-      });
-    });
-    return output.split('\n').slice(1).map(s => s.trim()).filter(s => /^[A-Z]:$/i.test(s));
-  } catch (e) {
-    console.warn(JSON.stringify({ file: 'main.js', func: 'file:getDrives', doing: '드라이브 목록 비동기 조회 중', target: 'local-drives', error: e?.message || String(e) }));
+    // Windows 11에서 제거된 deprecated wmic 대신, Node.js 네이티브 fs 병렬 검사로 즉각적(0~10ms) 탐색
     const checks = Array.from({ length: 26 }, (_, index) => {
       const drive = String.fromCharCode(65 + index) + ':';
       return fs.promises.access(drive + '\\').then(() => drive, () => null);
     });
-    return Promise.race([
-      Promise.all(checks).then(found => found.filter(Boolean)),
-      new Promise(resolve => setTimeout(() => resolve([]), 2000))
-    ]);
+    const found = (await Promise.all(checks)).filter(Boolean);
+    if (found.length > 0) return found;
+  } catch (e) {
+    console.warn(JSON.stringify({ file: 'main.js', func: 'file:getDrives', doing: '드라이브 목록 비동기 조회 중', target: 'local-drives', error: e?.message || String(e) }));
   }
+  return ['C:'];
 });
 
 

@@ -1,3 +1,9 @@
+/**
+ * 프로그램명 : OnriviAuthor
+ * 프로그램 ID : oaar-pdf-import-layout
+ * 🚨 @PATCH : **2026-11-07** — [PDF 이미지 블록 독립 문단 분리]:
+ *             1) serializePdfBlocks에서 이미지 블록(![...](...)) 또는 직전 블록이 이미지인 경우 반드시 개행 2개(\n\n)를 부여하여 앞뒤 일반 텍스트나 연속된 이미지와 문단이 뭉쳐 깨지는 현상 원천 차단
+ */
 import { extractPdfPageText } from './pdfImportText';
 
 type Run = { str: string; transform: number[]; width: number; height: number; fontName?: string };
@@ -28,10 +34,21 @@ function wrapSeparator(previous: string, next: string, remaining: number, fontSi
 }
 
 export function serializePdfBlocks(blocks: PdfImportBlock[], compact = false): string {
-  return blocks.map((block,index)=>{
-    const current=block.markdown.match(/^(\d+)\. /), previous=blocks[index-1]?.markdown.match(/^(\d+)\. /);
-    const separator=compact || (current && previous && Number(current[1])===Number(previous[1])+1) ? '\n' : '\n\n';
-    return (index?separator:'')+block.markdown;
+  return blocks.map((block, index) => {
+    const isImage = /^\s*!\[/.test(block.markdown);
+    const prevBlock = blocks[index - 1];
+    const prevIsImage = prevBlock && /^\s*!\[/.test(prevBlock.markdown);
+    const current = block.markdown.match(/^(\d+)\. /);
+    const previous = prevBlock?.markdown.match(/^(\d+)\. /);
+
+    // 🛡️ 이미지는 앞뒤로 반드시 빈 줄(\n\n)을 보장하여 일반 텍스트 문단 또는 연속 이미지와 뭉치지 않고 독립 블록으로 분리
+    let separator = '\n\n';
+    if (isImage || prevIsImage) {
+      separator = '\n\n';
+    } else if (compact || (current && previous && Number(current[1]) === Number(previous[1]) + 1)) {
+      separator = '\n';
+    }
+    return (index ? separator : '') + block.markdown;
   }).join('');
 }
 

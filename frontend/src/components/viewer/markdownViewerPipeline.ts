@@ -2,6 +2,7 @@
 // 📊 [OMD-CORE-Viewer-Pipeline] frontend/src/components/viewer/markdownViewerPipeline.ts
 // 🎯 @KICK  : 마크다운 뷰어(MarkdownViewer)의 경로 보안 가드(isPathInsideWorkspace), 마크다운 원문 전처리(preprocessMarkdownContent), 줄 번호/개행 Rehype 플러그인 및 전용 CSS 스타일 시트
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 작업장 외부 경로 순회 차단, CommonMark 중첩 코드블록/인용구/위키링크 무결성 보존
+// 🚨 @PATCH : 2026-11-07 — [HTML 표 태그 전처리 보호 및 병합 셀(colspan/rowspan) 자동 확장 CSS 지원]: HTML 태그 줄의 선행 공백을 &nbsp;로 치환하지 않도록 방어하고, colspan/rowspan이 있는 표에 table-layout: auto 및 max-content/min-width 100% 스타일을 적용하여 병합 표 레이아웃 완성
 // 🚨 @PATCH : 2026-11-04 — [MarkdownViewer 코어 엔진 모듈화]: 경로 보안 가드, 전처리 파이프라인, Rehype 플러그인, 뷰어 전용 CSS 스타일 분리
 // 🔗 @CALLS : resolveDocumentLink, resolveWorkspaceHelpLink, extractFrontmatter, partitionAndNormalizeCodeBlocks
 // ====================================================================
@@ -488,6 +489,10 @@ export function preprocessMarkdownContent(content: string): string {
           if (!leadMatch) return line;
           let lead = leadMatch[1];
           let rest = leadMatch[2];
+          // 🛡️ HTML 블록 태그 줄은 앞선 공백을 &nbsp;로 치환하지 않음 (CommonMark 표준 HTML 블록 파싱 보존)
+          if (/^<\/?(?:table|thead|tbody|tfoot|tr|th|td|caption|colgroup|col|div|p)\b/i.test(rest)) {
+            return line;
+          }
           lead = lead.replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;').replace(/ /g, '&nbsp;');
           rest = rest
             .replace(/\t/g, '&nbsp;&nbsp;&nbsp;&nbsp;')
@@ -995,11 +1000,24 @@ export const MARKDOWN_VIEWER_STYLES = `
     width: 100% !important;
     table-layout: fixed !important;
   }
+  .markdown-viewer-root .table-wrapper-area table:has([colspan], [rowspan]),
+  .onrivi-content-root .table-wrapper-area table:has([colspan], [rowspan]) {
+    table-layout: auto !important;
+    width: max-content !important;
+    min-width: 100% !important;
+  }
   .markdown-viewer-root .table-wrapper-area :is(th, td),
   .onrivi-content-root .table-wrapper-area :is(th, td) {
     overflow-wrap: anywhere !important;
     word-break: break-word !important;
     box-sizing: border-box !important;
+    padding: 6px 10px !important;
+    vertical-align: middle !important;
+    border: 1px solid rgba(203, 213, 225, 0.8);
+  }
+  .dark .markdown-viewer-root .table-wrapper-area :is(th, td),
+  .dark .onrivi-content-root .table-wrapper-area :is(th, td) {
+    border-color: rgba(51, 65, 85, 0.8);
   }
   .markdown-viewer-root .table-wrapper-area :is(th, td) code,
   .onrivi-content-root .table-wrapper-area :is(th, td) code {

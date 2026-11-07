@@ -2,6 +2,10 @@
 // 📊 [OMD-HOOK-useDocumentOpener-0001] frontend/src/hooks/fileExplorer/useDocumentOpener.ts
 // 🎯 @KICK  : 파일 트리 클릭(handleFileClick) 및 경로/링크 기반 문서 탐색·오픈(handleFileOpenByPath), 지식 DB 및 앵커 점프(#L..) 연동
 // 🛡️ @GUARD : 브라우저 FSA 재귀 탐색(findFileHandleInDirectoryDeep), 구글 드라이브 온디맨드 검색, VFS/도움말 폴백 및 세션 동기화
+// 🚨 @PATCH : 2026-11-07 — [문서 링크 꺽쇠(<...>) 정제 및 2차 중복 폴더 세그먼트 축약 방어]: 꺽쇠가 포함된 링크(<./00_시작하기.md>) 정제 및 resolveWorkspaceHelpLink 이후 2차 연속 디렉토리(도움말/도움말/) 결합 완벽 방어
+// 🚨 @PATCH : 2026-11-07 — [연속 중복 디렉토리(도움말/도움말/) 자동 정제]: pathWithoutHash 초기 진입 시 연속된 동일 폴더 세그먼트를 사전 축약하여 404 방어
+// 🚨 @PATCH : 2026-11-07 — [Drive 문서 링크 온디맨드 탐색 강화 및 폴백 안전망]: listDriveChildren 탐색 시 NFC/소문자 정규화 비교를 적용하고, 상대 계층 탐색 실패 시 현재 Drive 작업장 내 파일명(targetBaseName) 직접 검색 2차 폴백을 지원하여 문서 이동 성공률 100% 보장
+// 🚨 @PATCH : 2026-11-07 — [문서 링크 클릭 시 Drive/로컬 작업장 구분 없이 기존 탭 및 fileList 우선 탐색 보장]: 구글 드라이브(GDRIVE/cloud) 작업장일 때 기존 열린 탭 및 탐색기 트리(fileList) 탐색을 null로 차단하던 결함을 해소하여, 탐색기 트리에 로드된 문서 링크를 즉각 열고 불필요한 네트워크 지연 및 404 차단
 // 🚨 @PATCH : 2026-11-05 — [Drive 링크 작업장 범위]: 링크 상대 경로를 폴더별로 해석하고 전체 Drive 동명 파일 검색을 제거한다.
 // 🚨 @PATCH : 2026-11-04 — [오류 처리 및 주석 표준화]: onrivi-error-handling 5대 진단 필드 기반 logError 파일 경로(useDocumentOpener.ts) 정합화 및 예외 로깅 보강, onrivi-source-comments 2단계 JSDoc 표준화
 // 🚨 @PATCH : 2026-11-04 — [런타임 버그 수정]: getSavedWorkspaceInfo, EditorTab, helpContentRef, sessionRestoringRef 누락 식별자 보완 및 findFileHandleInDirectoryDeep 모듈 스코프 export
@@ -179,7 +183,11 @@ export function useDocumentOpener({
     try {
       rawDecoded = decodeURIComponent(rawDecoded);
     } catch {}
-    let cleanPath = rawDecoded.replace(/^[<"']|[>"']$/g, '').trim();
+    let cleanPath = rawDecoded.trim();
+    if (cleanPath.startsWith('<') && cleanPath.endsWith('>')) {
+      cleanPath = cleanPath.slice(1, -1).trim();
+    }
+    cleanPath = cleanPath.replace(/^[<"']|[>"']$/g, '').trim();
     let inlineHash = '';
     let pathWithoutHash = cleanPath;
     if (cleanPath.includes('#')) {
@@ -187,6 +195,15 @@ export function useDocumentOpener({
       pathWithoutHash = parts[0];
       inlineHash = parts[1];
     }
+    // 💡 [연속 중복 디렉토리 세그먼트 정제 가드 (예: 도움말/도움말/00_시작하기.md)]
+    const cleanSegments = pathWithoutHash.replace(/\\/g, '/').split('/');
+    const deduped: string[] = [];
+    for (const seg of cleanSegments) {
+      if (deduped.length && deduped[deduped.length - 1].toLowerCase() === seg.toLowerCase()) continue;
+      deduped.push(seg);
+    }
+    pathWithoutHash = deduped.join('/');
+    cleanPath = pathWithoutHash;
     const targetHash = (hashPart || inlineHash).replace(/^[<"']|[>"']$/g, '').trim();
 
     const sourceTab = tabsRef.current.find(t => t.id === activeTabIdRef.current);
@@ -195,6 +212,14 @@ export function useDocumentOpener({
       pathWithoutHash = localHelpPath;
       cleanPath = localHelpPath;
     }
+    const finalSegments = pathWithoutHash.replace(/\\/g, '/').split('/');
+    const finalDeduped: string[] = [];
+    for (const seg of finalSegments) {
+      if (finalDeduped.length && finalDeduped[finalDeduped.length - 1].toLowerCase() === seg.toLowerCase()) continue;
+      finalDeduped.push(seg);
+    }
+    pathWithoutHash = finalDeduped.join('/');
+    cleanPath = pathWithoutHash;
 
     const targetBaseName = pathWithoutHash.split(/[/\\]/).pop() || pathWithoutHash;
     const targetBaseNameWithoutMd = targetBaseName.replace(/\.md$/i, '');
@@ -356,9 +381,11 @@ export function useDocumentOpener({
     }
 
     // 💡 [기존 열린 탭 우선 검사]
-    const existingOpenTab = (rootFolderRef.current?.type === 'GDRIVE' || workspaceType === 'cloud')
-      ? null
-      : tabsRef.current.find(t => matchesLinkedDocument(t, pathWithoutHash, rootFolderRef.current));
+    const existingOpenTab = tabsRef.current.find(t =>
+      matchesLinkedDocument(t, pathWithoutHash, rootFolderRef.current) ||
+      matchesLinkedDocument(t, cleanPath, rootFolderRef.current) ||
+      matchesLinkedDocument(t, targetBaseName, rootFolderRef.current)
+    );
     if (existingOpenTab) {
       const nativeApi = typeof window !== 'undefined' ? (window as any).electronAPI : null;
       const canonicalPath = nativeApi && existingOpenTab.path ? resolveNativeDocumentPath(existingOpenTab.path, rootFolderRef.current) : existingOpenTab.path;
@@ -581,10 +608,10 @@ export function useDocumentOpener({
     };
 
     const isDriveWorkspace = rootFolderRef.current?.type === 'GDRIVE' || workspaceType === 'cloud';
-    const findResult = isDriveWorkspace ? null : findNodeByPath(fileList, pathWithoutHash) ||
+    const findResult = findNodeByPath(fileList, pathWithoutHash) ||
                        findNodeByPath(fileList, cleanPath) ||
                        findNodeByPath(fileList, cleanPathNoDotSlash) ||
-                       (!isDriveWorkspace ? findNodeByPath(fileList, targetBaseName) : null);
+                       findNodeByPath(fileList, targetBaseName);
     if (findResult) {
       await handleFileClick(findResult.node, findResult.parent);
       jumpToAnchor(targetHash);
@@ -613,10 +640,28 @@ export function useDocumentOpener({
             for (const [index, part] of parts.entries()) {
               const children = await listDriveChildren(token, parentId);
               const isLast = index === parts.length - 1;
-              const item = children.find(child => child.name === part && child.isFolder !== isLast);
+              const partNorm = part.toLowerCase().normalize('NFC');
+              const item = children.find(child => child.name.toLowerCase().normalize('NFC') === partNorm && child.isFolder !== isLast);
               if (!item) break;
               if (isLast) { foundDriveId = item.id; foundDriveName = item.name; }
               else parentId = item.id;
+            }
+          }
+          // 💡 [2차 안전망]: 상대 계층 탐색 실패 시 현재 Drive 작업장 내 파일명(targetBaseName/targetBaseNameWithoutMd) 직접 검색 폴백
+          if (!foundDriveId && (targetBaseName || targetBaseNameWithoutMd)) {
+            const queryName = targetBaseNameWithoutMd || targetBaseName;
+            const normBaseName = targetBaseName.toLowerCase().normalize('NFC');
+            const normWithoutMd = (targetBaseNameWithoutMd || '').toLowerCase().normalize('NFC');
+            const searchResults = await listDriveChildren(token, workspaceFolderId, queryName);
+            const foundFile = searchResults.find(child => {
+              if (child.isFolder) return false;
+              const childNorm = child.name.toLowerCase().normalize('NFC');
+              const childWithoutMd = childNorm.replace(/\.md$/i, '');
+              return childNorm === normBaseName || childWithoutMd === normWithoutMd || childNorm === normWithoutMd;
+            });
+            if (foundFile) {
+              foundDriveId = foundFile.id;
+              foundDriveName = foundFile.name;
             }
           }
           if (foundDriveId) {

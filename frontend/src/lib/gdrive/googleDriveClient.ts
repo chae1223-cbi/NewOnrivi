@@ -2,6 +2,12 @@
 // 📊 [OMD-LIB-googleDriveClient-0001] src/lib/gdrive/googleDriveClient.ts
 // 🎯 @KICK  : 누구나 쉽게 사용하는 구글 드라이브 무설정(Zero-Config) 자동 연동 및 클라우드 작업장 클라이언트 모듈
 // 🛡️ @GUARD : Rule 1, Rule 2(대문자 코드값 GDRIVE), 최소 권한 원칙(drive.file 스코프 한정)
+// 🚨 @PATCH : 2026-11-07 — [드라이브 미디어 이미지 직접 다운로드 강화 및 꺽쇠 정제]: getDriveMediaImageBlobUrl에서 selectedId(driveId) 존재 시 mediaFolderId 유무와 무관하게 직접 다운로드 허용 및 파라미터 끝 꺽쇠(>) 정제로 404 차단
+// 🚨 @PATCH : 2026-11-07 — [구글 드라이브 토큰 선제적 검증(Pre-flight) 및 갱신 싱글톤 도입으로 401 오류 원천 차단]:
+//             1) ensureValidDriveToken 비동기 검증 헬퍼를 신설하여 API 호출 전 잔여 수명(30초 이하/만료) 감지 시 무음 사전 갱신 후 호출 보장
+//             2) refreshDriveTokenSilently에 activeRefreshPromise 싱글톤을 적용하여 동시 다발적 갱신 요청 시 중복 네트워크 호출 방지 및 동일 프로미스 안전 공유
+//             3) initDriveTokenAutoRefresh에서 시작 시 만료 상태(<=0초)인 경우 즉시 백그라운드 갱신을 개시하여 초기 동시 호출 시 401 레이스 컨디션 선제 차단
+//             4) 모든 구글 드라이브 API 함수에 ensureValidDriveToken을 일괄 적용하여 만료 토큰 전송으로 인한 콘솔 401 Fail 발생 원천 방어
 // 🚨 @PATCH : 2026-11-05 — [드라이브 저장 실패 분류]: API 오류 객체에 HTTP 상태를 보존해 삭제된 파일 ID를 안전하게 식별한다.
 // 🚨 @PATCH : **2026-11-04** — [웹드라이브 연결 해제 시 불필요한 인증 만료 경고 이벤트 오발송 차단]:
 //             1) disconnectGoogleDrive(정상적인 사용자 연결 해제) 시 onrivi:drive_token_expired / onrivi:drive_auth_expired 대신 onrivi:drive_disconnected 이벤트를 발송하도록 분리하여 로컬 전환 중 오경고 토스트 및 비상 백업 워닝 방지
@@ -351,6 +357,7 @@ export function clearAllDriveTimers(): void {
   }
 }
 let isRefreshingToken = false;
+let activeRefreshPromise: Promise<string | null> | null = null;
 
 /**
  * 만료 3분 전부터 최근 활동이 있을 때 저장 완료 후 갱신을 시도한다.
@@ -383,59 +390,76 @@ export function scheduleDriveTokenRefresh(expiresIn: number): void {
 /**
  * 백그라운드 무음(Silent) 토큰 갱신
  * - 사용자의 작업 중단이나 화면 팝업 없이 백그라운드에서 구글 액세스 토큰을 재발급받음
+ * - 🛡️ [싱글톤 프로미스] 동시 다발 호출 시 단 1개의 갱신 요청만 실행하고 모든 호출자가 동일 프로미스를 안전 공유
  */
 export async function refreshDriveTokenSilently(force = false): Promise<string | null> {
   if (typeof window === 'undefined') return null;
   const remaining = getDriveTokenRemainingSeconds();
   if ((!force && (remaining <= 1 || remaining > 180)) || (typeof document !== 'undefined' && document.visibilityState !== 'visible' && !(window as any).electronAPI)) return null;
 
-  if (isRefreshingToken) return null;
+  // 🛡️ 이미 갱신 중인 Promise가 있다면 중복 네트워크 호출을 방지하고 함께 대기
+  if (activeRefreshPromise) {
+    return await activeRefreshPromise;
+  }
+
   const originalToken = getSavedDriveToken();
   isRefreshingToken = true;
 
-  try {
-    const api = (window as any).electronAPI;
-    let result;
-    if (api?.refreshDesktopGDriveAuth) {
-      result = await api.refreshDesktopGDriveAuth();
-    } else if (api?.requestDesktopGDriveAuth) {
-      return null; // Older preload: restart the updated desktop application.
-    } else {
-      const response = await fetch('/api/gdrive/oauth/refresh', {
-        method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: '{}',
-        signal: AbortSignal.timeout(20000)
-      });
-      result = await response.json();
-      if (!response.ok && result.code !== 'REAUTH_REQUIRED') return null;
+  activeRefreshPromise = (async () => {
+    try {
+      const api = (window as any).electronAPI;
+      let result;
+      if (api?.refreshDesktopGDriveAuth) {
+        result = await api.refreshDesktopGDriveAuth();
+      } else if (api?.requestDesktopGDriveAuth) {
+        return null; // Older preload: restart the updated desktop application.
+      } else {
+        const response = await fetch('/api/gdrive/oauth/refresh', {
+          method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: '{}',
+          signal: AbortSignal.timeout(20000)
+        });
+        result = await response.json();
+        if (!response.ok && result.code !== 'REAUTH_REQUIRED') return null;
+      }
+      if (result?.access_token) {
+        if (getSavedDriveToken() !== originalToken && getSavedDriveToken()) {
+          return getSavedDriveToken();
+        }
+        saveDriveToken(result.access_token, Number(result.expires_in) || 3600);
+        return result.access_token;
+      }
+      if (result?.code === 'REAUTH_REQUIRED') {
+        window.dispatchEvent(new CustomEvent('onrivi:drive_auth_expired'));
+      }
+      return null;
+    } catch {
+      return null; // The scheduler retries while active and before expiry.
+    } finally {
+      isRefreshingToken = false;
+      activeRefreshPromise = null;
     }
-    if (result?.access_token) {
-      if (getSavedDriveToken() !== originalToken) return null;
-      saveDriveToken(result.access_token, Number(result.expires_in) || 3600);
-      return result.access_token;
-    }
-    if (result?.code === 'REAUTH_REQUIRED') {
-      window.dispatchEvent(new CustomEvent('onrivi:drive_auth_expired'));
-    }
-    return null;
-  } catch {
-    return null; // The scheduler retries while active and before expiry.
+  })();
 
-  } finally {
-    isRefreshingToken = false;
-  }
+  return await activeRefreshPromise;
 }
 
 /**
  * 앱 시작 시 기존 저장된 토큰이 있으면 잔여 유효시간에 맞추어 자동 갱신 및 플러시 타이머 복원
+ * - 이미 만료된 경우(<= 0초) 첫 API 호출에 앞서 즉시 백그라운드 갱신을 개시하여 401 레이스 컨디션 차단
  */
 export function initDriveTokenAutoRefresh(): void {
   if (typeof window === 'undefined') return;
   const token = localStorage.getItem(STORAGE_KEY_TOKEN);
   const expiry = Number(localStorage.getItem(STORAGE_KEY_EXPIRY));
-  if (!token || !expiry) return;
+  if (!token) return;
 
-  const remainingSeconds = Math.round((expiry - Date.now()) / 1000);
-  if (remainingSeconds > 0) scheduleDriveTokenRefresh(remainingSeconds);
+  const remainingSeconds = expiry ? Math.round((expiry - Date.now()) / 1000) : 0;
+  if (remainingSeconds > 0) {
+    scheduleDriveTokenRefresh(remainingSeconds);
+  } else {
+    // 🛡️ [시작 시 만료 토큰 선제적 즉시 갱신] 첫 API 요청에 앞서 백그라운드 갱신을 선제 발동
+    void refreshDriveTokenSilently(true).catch(() => {});
+  }
 }
 
 /**
@@ -501,6 +525,45 @@ export function resolveAuthToken(token?: string): string {
   const saved = getSavedDriveToken();
   if (!saved) throw new Error('개인 웹드라이브 연결이 만료되었습니다. [개인 웹드라이브 연결]을 눌러 다시 인증해 주세요. 작성한 글은 유지됩니다.');
   return saved;
+}
+
+/**
+ * 🛡️ [선제적 토큰 검증 (Pre-flight)]
+ * - API 호출 전 토큰의 유효 기간을 검사하고 만료되었거나 30초 이하로 임박한 경우 무음 사전 갱신 수행
+ * - 만료된 토큰으로 인해 발생하는 콘솔 401(Unauthorized) 오류 및 병렬 요청 실패를 원천 차단
+ */
+export async function ensureValidDriveToken(token?: string): Promise<string> {
+  const savedToken = getSavedDriveToken();
+  const targetToken = (token && typeof token === 'string' && token.trim() !== '' && token !== 'undefined')
+    ? token.trim()
+    : savedToken;
+
+  if (!targetToken) {
+    throw new Error('개인 웹드라이브 연결이 만료되었습니다. [개인 웹드라이브 연결]을 눌러 다시 인증해 주세요. 작성한 글은 유지됩니다.');
+  }
+
+  // 전달된 토큰이 활성 작업장 토큰과 다른 별도 계정 토큰이라면 그대로 사용
+  if (savedToken && targetToken !== savedToken) {
+    return targetToken;
+  }
+
+  // 활성 토큰 잔여 수명 체크: 만료되었거나(<= 0) 30초 이하로 임박한 경우 선제적 사전 갱신
+  const remaining = getDriveTokenRemainingSeconds();
+  if (remaining <= 30) {
+    try {
+      const renewed = await refreshDriveTokenSilently(true);
+      if (renewed) return renewed;
+    } catch (e) {
+      console.warn('[GDrive] 선제적 토큰 갱신 시도 중 예외 발생 (기존 토큰 폴백):', e);
+    }
+  } else if (activeRefreshPromise) {
+    try {
+      const awaited = await activeRefreshPromise;
+      if (awaited) return awaited;
+    } catch {}
+  }
+
+  return getSavedDriveToken() || targetToken;
 }
 
 /**
@@ -733,7 +796,7 @@ export async function requestGoogleDriveAuth(
  * - 3차: 실패 시에도 에러를 던지지 않고 안전한 기본 사용자 정보 반환 (연결 중단 원천 방어)
  */
 export async function fetchGoogleUserInfo(token?: string): Promise<GoogleDriveUserInfo> {
-  const authToken = resolveAuthToken(token);
+  const authToken = await ensureValidDriveToken(token);
   // 1. Google Drive API about 엔드포인트 시도 (Drive API 토큰과 100% 호환)
   if (authToken) {
     try {
@@ -809,19 +872,22 @@ async function parseDriveError(res: Response, defaultAction: string, requestToke
 
   if (res.status === 401) {
     const currentToken = localStorage.getItem(STORAGE_KEY_TOKEN) || sessionStorage.getItem(STORAGE_KEY_TOKEN);
-    if (currentToken !== requestToken) {
-      return makeError('이전 연결의 요청이 만료되었습니다. 다시 시도해 주세요.');
+    if (currentToken && currentToken !== requestToken) {
+      return makeError('구글 드라이브 연결을 갱신했습니다. 다시 시도해 주세요.');
     }
-    if (isRefreshingToken) {
-      return makeError('구글 드라이브 연결을 갱신하는 중입니다. 다시 시도해 주세요.');
+    if (activeRefreshPromise) {
+      const awaited = await activeRefreshPromise.catch(() => null);
+      if (awaited) {
+        return makeError('구글 드라이브 연결을 갱신했습니다. 다시 시도해 주세요.');
+      }
     }
     const renewedToken = await refreshDriveTokenSilently(true);
     if (renewedToken) {
       return makeError('구글 드라이브 연결을 갱신했습니다. 다시 시도해 주세요.');
     }
     // Another request may have renewed the token while this request was waiting.
-    if (getSavedDriveToken() !== requestToken) {
-      return makeError('이전 연결의 요청이 만료되었습니다. 다시 시도해 주세요.');
+    if (getSavedDriveToken() && getSavedDriveToken() !== requestToken) {
+      return makeError('구글 드라이브 연결을 갱신했습니다. 다시 시도해 주세요.');
     }
     localStorage.removeItem(STORAGE_KEY_TOKEN);
     sessionStorage.removeItem(STORAGE_KEY_TOKEN);
@@ -861,7 +927,7 @@ async function parseDriveError(res: Response, defaultAction: string, requestToke
  * 특정 부모 폴더 하위에서 이름으로 폴더 검색 (없으면 null)
  */
 export async function findDriveFolder(token?: string, folderName?: string, parentFolderId?: string): Promise<string | null> {
-  const authToken = resolveAuthToken(token);
+  const authToken = await ensureValidDriveToken(token);
   if (!authToken) return null;
   let query = `name = '${folderName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
   if (parentFolderId) {
@@ -886,7 +952,7 @@ export async function findDriveFolder(token?: string, folderName?: string, paren
  * 구글 드라이브에 신규 폴더 생성
  */
 export async function createDriveFolder(token?: string, folderName?: string, parentFolderId?: string): Promise<string> {
-  const authToken = resolveAuthToken(token);
+  const authToken = await ensureValidDriveToken(token);
   const metadata: any = {
     name: folderName,
     mimeType: 'application/vnd.google-apps.folder',
@@ -916,7 +982,7 @@ export async function createDriveFolder(token?: string, folderName?: string, par
  * 폴더가 없으면 생성하고 ID 반환 (있으면 기존 ID 반환)
  */
 export async function ensureDriveFolder(token?: string, folderName?: string, parentFolderId?: string): Promise<string> {
-  const authToken = resolveAuthToken(token);
+  const authToken = await ensureValidDriveToken(token);
   const existingId = await findDriveFolder(authToken, folderName, parentFolderId);
   if (existingId) return existingId;
   return await createDriveFolder(authToken, folderName, parentFolderId);
@@ -926,7 +992,7 @@ export async function ensureDriveFolder(token?: string, folderName?: string, par
  * 특정 부모 폴더 하위에서 이름으로 파일 검색 (없으면 null, 최신 수정 파일 우선)
  */
 export async function findDriveFile(token?: string, fileName?: string, parentFolderId?: string): Promise<string | null> {
-  const authToken = resolveAuthToken(token);
+  const authToken = await ensureValidDriveToken(token);
   if (!authToken) return null;
   let query = `name = '${fileName}' and trashed = false`;
   if (parentFolderId) {
@@ -957,7 +1023,7 @@ export async function createDriveTextFile(
   content: string = '',
   mimeType: string = 'text/plain'
 ): Promise<{ id: string; name: string }> {
-  const authToken = resolveAuthToken(token);
+  const authToken = await ensureValidDriveToken(token);
   const metadata = {
     name: fileName,
     mimeType: mimeType,
@@ -1004,7 +1070,7 @@ export async function ensureDriveTextFile(
   defaultContent: string = '',
   mimeType: string = 'text/plain'
 ): Promise<string> {
-  const authToken = resolveAuthToken(token);
+  const authToken = await ensureValidDriveToken(token);
   const existingId = await findDriveFile(authToken, fileName, parentFolderId);
   if (existingId) return existingId;
   const created = await createDriveTextFile(authToken, parentFolderId, fileName, defaultContent, mimeType);
@@ -1026,7 +1092,7 @@ export async function resolveDriveResourceFolderByName(
   mediaFolderId: string;
   dbFolderId: string;
 }> {
-  const authToken = resolveAuthToken(token);
+  const authToken = await ensureValidDriveToken(token);
   const targetName = preferredName || getResourceSettings('cloud')?.path || '참조파일';
   const savedSettings = getResourceSettings('cloud');
 
@@ -1116,7 +1182,7 @@ export async function createDefaultDriveFolders(token: string, resourceName = '�
 
 export async function initializeDriveResourceFolder(token:string, resourceFolderId:string) {
   if (!resourceFolderId) throw new Error('리소스 폴더를 선택해 주세요.');
-  const authToken=resolveAuthToken(token);
+  const authToken = await ensureValidDriveToken(token);
   // 5. [로컬 리소스 폴더 규격 완벽 일치] 5대 하위 디렉토리(profiles, prompt, bible, media, db) 일괄 병렬 생성
   const [profilesFolderId, promptFolderId, bibleFolderId, mediaFolderId, dbFolderId, settingsFolderId] = await Promise.all([
     ensureDriveFolder(authToken, 'profiles', resourceFolderId),
@@ -1157,7 +1223,7 @@ export async function initializeDriveResourceFolder(token:string, resourceFolder
 }
 
 export async function setupOnriviDriveWorkspace(token?: string, selectedFolder?: { id: string; name: string; path?: Array<{ id: string; name: string }> }, selectedResourceFolder?: { id: string; name: string } | string): Promise<GoogleDriveWorkspaceInfo> {
-  const authToken = resolveAuthToken(token);
+  const authToken = await ensureValidDriveToken(token);
   console.log('[GDrive] 1. 사용자 정보 및 메인 서재 폴더 조회 시작...');
 
   // 1 & 2 병렬: 사용자 정보 가져오기 & 메인 서재 폴더(/OnriviAuthor) 확인/생성
@@ -1312,7 +1378,7 @@ export async function selectGoogleDriveWorkspace(token: string): Promise<{ id: s
  * 특정 폴더 하위의 파일 및 폴더 목록 조회 (마크다운 및 폴더 우선)
  */
 export async function listDriveChildren(token?: string, parentFolderId?: string, searchName?: string): Promise<GoogleDriveFileItem[]> {
-  const authToken = resolveAuthToken(token);
+  const authToken = await ensureValidDriveToken(token);
   if (!parentFolderId) return [];
   const escape = (value: string) => value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
   const query = searchName?.trim()
@@ -1353,7 +1419,7 @@ export async function listDriveChildren(token?: string, parentFolderId?: string,
  * 사용자가 접근 가능한 모든 공유 드라이브(Shared Drives / Team Drives) 목록 조회
  */
 export async function listSharedDrives(token?: string): Promise<Array<{ id: string; name: string }>> {
-  const authToken = resolveAuthToken(token);
+  const authToken = await ensureValidDriveToken(token);
   if (!authToken) return [];
   try {
     const res = await fetch('https://www.googleapis.com/drive/v3/drives?pageSize=100', {
@@ -1371,7 +1437,7 @@ export async function listSharedDrives(token?: string): Promise<Array<{ id: stri
  * 마크다운 파일 내용 다운로드 (UTF-8 텍스트)
  */
 export async function readDriveImportFile(token: string, file: { id: string; name: string; mimeType?: string }): Promise<File> {
-  const authToken = resolveAuthToken(token);
+  const authToken = await ensureValidDriveToken(token);
   const res = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(file.id)}?alt=media&supportsAllDrives=true`, {
     headers: { Authorization: `Bearer ${authToken}` },
     signal: AbortSignal.timeout(60000),
@@ -1381,7 +1447,7 @@ export async function readDriveImportFile(token: string, file: { id: string; nam
 }
 
 export async function readDriveFileContent(token?: string, fileId?: string): Promise<string> {
-  const authToken = resolveAuthToken(token);
+  const authToken = await ensureValidDriveToken(token);
   if (!fileId) return '';
   const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`;
   const res = await fetch(url, {
@@ -1397,7 +1463,7 @@ export async function readDriveFileContent(token?: string, fileId?: string): Pro
  * 기존 마크다운 파일 저장 (Update)
  */
 export async function saveDriveFileContent(token?: string, fileId?: string, content: string = ''): Promise<boolean> {
-  const authToken = resolveAuthToken(token);
+  const authToken = await ensureValidDriveToken(token);
   if (!fileId) return false;
   const url = `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media&supportsAllDrives=true`;
   const res = await fetch(url, {
@@ -1424,7 +1490,7 @@ export async function createDriveMarkdownFile(
   fileName?: string,
   content: string = ''
 ): Promise<{ id: string; name: string }> {
-  const authToken = resolveAuthToken(token);
+  const authToken = await ensureValidDriveToken(token);
   if (!parentFolderId || !fileName) {
     throw new Error('부모 폴더 ID 또는 파일 이름이 누락되었습니다.');
   }
@@ -1479,7 +1545,7 @@ async function uploadUniqueDriveImage(
   fileBlob?: Blob,
   fileName?: string
 ): Promise<{ id: string; name: string; webViewLink?: string; webContentLink?: string }> {
-  const authToken = resolveAuthToken(token);
+  const authToken = await ensureValidDriveToken(token);
   if (!mediaFolderId || !fileBlob || !fileName) {
     throw new Error('미디어 폴더 ID 또는 파일 데이터가 누락되었습니다.');
   }
@@ -1567,17 +1633,21 @@ export function invalidateDriveMediaCache(folderId: string, fileId: string, file
  * 구글 드라이브 /참조파일/media 폴더에서 파일명으로 이미지 Blob URL을 반환 (캐싱 지원)
  */
 export async function getDriveMediaImageBlobUrl(token?: string, mediaFolderId?: string, fileName?: string): Promise<string | null> {
-  const authToken = resolveAuthToken(token);
-  if (!mediaFolderId || !fileName) return null;
-  const cleanName = fileName.split('?')[0].split('#')[0].replace(/^\.?\/+/, '').replace(/^media[/\\]/, '').replace(/^\/+/, '');
-  const selectedId = new URLSearchParams(fileName.includes('?') ? fileName.slice(fileName.indexOf('?')+1) : '').get('driveId');
-  const cacheKey = `${mediaFolderId}:${selectedId || cleanName}`;
+  const authToken = await ensureValidDriveToken(token);
+  if (!fileName) return null;
+  let cleanName = fileName.split('?')[0].split('#')[0].replace(/^\.?\/+/, '').replace(/^media[/\\]/, '').replace(/^\/+/, '');
+  cleanName = cleanName.replace(/^[<"']|[>"']$/g, '').trim();
+  const rawDriveId = new URLSearchParams(fileName.includes('?') ? fileName.slice(fileName.indexOf('?')+1) : '').get('driveId');
+  const selectedId = rawDriveId ? rawDriveId.replace(/[>'"\s]+$/g, '').trim() : null;
+  if (!selectedId && !mediaFolderId) return null;
+
+  const cacheKey = selectedId ? `drive:${selectedId}` : `${mediaFolderId || 'root'}:${cleanName}`;
   if (driveImageBlobCache.has(cacheKey)) {
     return driveImageBlobCache.get(cacheKey)!;
   }
 
   try {
-    const fileId = selectedId || await findDriveFile(authToken, cleanName, mediaFolderId);
+    const fileId = selectedId || await findDriveFile(authToken, cleanName, mediaFolderId!);
     if (!fileId) return null;
 
     const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
@@ -1600,7 +1670,7 @@ export async function getDriveMediaImageBlobUrl(token?: string, mediaFolderId?: 
  * 파일 또는 폴더 삭제 (휴지통으로 이동)
  */
 export async function restoreDriveItem(token: string, fileId: string): Promise<boolean> {
-  const authToken = resolveAuthToken(token);
+  const authToken = await ensureValidDriveToken(token);
   const response = await fetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?supportsAllDrives=true`, {
     method: 'PATCH', headers: { Authorization: `Bearer ${authToken}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ trashed: false }),
@@ -1610,7 +1680,7 @@ export async function restoreDriveItem(token: string, fileId: string): Promise<b
 }
 
 export async function trashDriveItem(token?: string, fileId?: string): Promise<boolean> {
-  const authToken = resolveAuthToken(token);
+  const authToken = await ensureValidDriveToken(token);
   if (!fileId) return false;
   const url = `https://www.googleapis.com/drive/v3/files/${fileId}?supportsAllDrives=true`;
   const res = await fetch(url, {
@@ -1629,7 +1699,7 @@ export async function trashDriveItem(token?: string, fileId?: string): Promise<b
  * 파일 또는 폴더 이름 변경
  */
 export async function renameDriveItem(token?: string, fileId?: string, newName?: string): Promise<boolean> {
-  const authToken = resolveAuthToken(token);
+  const authToken = await ensureValidDriveToken(token);
   if (!fileId || !newName) return false;
   const url = `https://www.googleapis.com/drive/v3/files/${fileId}`;
   const res = await fetch(url, {
@@ -1647,7 +1717,7 @@ export async function renameDriveItem(token?: string, fileId?: string, newName?:
  * 🌟 구글 드라이브 폴더의 자식 목록을 온리비 FileNode 규격으로 변환하여 반환
  */
 export async function fetchDriveFileNodes(token?: string, parentFolderId?: string, parentPath: string = ''): Promise<any[]> {
-  const authToken = resolveAuthToken(token);
+  const authToken = await ensureValidDriveToken(token);
   if (!parentFolderId) return [];
   const items = await listDriveChildren(authToken, parentFolderId);
   const nodes: any[] = [];
@@ -1711,7 +1781,7 @@ export async function moveDriveItem(
   newParentId?: string,
   oldParentId?: string
 ): Promise<boolean> {
-  const authToken = resolveAuthToken(token);
+  const authToken = await ensureValidDriveToken(token);
   if (!fileId || !newParentId) return false;
   if (oldParentId && oldParentId === newParentId) return true;
 
@@ -1744,7 +1814,7 @@ export async function copyDriveFile(
   newParentId?: string,
   newName?: string
 ): Promise<string> {
-  const authToken = resolveAuthToken(token);
+  const authToken = await ensureValidDriveToken(token);
   if (!fileId || !newParentId) throw new Error('파일 ID 또는 대상 폴더 ID가 누락되었습니다.');
 
   const body: Record<string, any> = { parents: [newParentId] };
@@ -1778,7 +1848,7 @@ export async function copyDriveFolderRecursive(
   destParentId?: string,
   newName?: string
 ): Promise<string> {
-  const authToken = resolveAuthToken(token);
+  const authToken = await ensureValidDriveToken(token);
   if (!sourceFolderId || !destParentId) throw new Error('원본/대상 폴더 ID가 누락되었습니다.');
 
   // 원본 폴더 메타 조회
@@ -1808,7 +1878,7 @@ export async function copyDriveFolderRecursive(
 
 
 export async function readDriveAICredentials(token?: string, resourceFolderId?: string): Promise<string | null> {
-  const authToken = resolveAuthToken(token);
+  const authToken = await ensureValidDriveToken(token);
   if (!resourceFolderId) return null;
   try {
     const settingsFolderId = await ensureDriveFolder(authToken, 'settings', resourceFolderId);
@@ -1822,7 +1892,7 @@ export async function readDriveAICredentials(token?: string, resourceFolderId?: 
 }
 
 export async function saveDriveAICredentials(token?: string, resourceFolderId?: string, cipherText: string = ''): Promise<boolean> {
-  const authToken = resolveAuthToken(token);
+  const authToken = await ensureValidDriveToken(token);
   if (!resourceFolderId) return false;
   try {
     const settingsFolderId = await ensureDriveFolder(authToken, 'settings', resourceFolderId);

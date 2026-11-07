@@ -7,6 +7,7 @@
  *   - EditorProvider 컨텍스트 공급 및 하위 역할 컴포넌트(EditorLayout, EditorCore, EditorOverlayManager, GuestPaywallOverlay) 렌더링 위임
  *   - 보기 모드(edit / both / preview / css-style) 전환 가드, 탭 닫기, 다중 파일 병합 선택, 플로팅 툴바 실행 제어
  * 🚨 @PATCH :
+ *   - 2026-11-07 : [플로팅 툴바 커서 반환 및 선택 버튼 포커스 유지]: 툴바 닫기 시 원래 호출 위치(Visual: RESTORE_ORIGIN, Monaco: setSelection)로 커서 반환 보장, 툴바 버튼 클릭 시 첫 번째 버튼 리셋 방지 및 선택 버튼 포커스 영속 유지
  *   - 2026-11-07 : [플로팅 툴바 실행 후 포커스 유지]: executeFloatingItem에서 서식 적용 후에도 플로팅 툴바 버튼에 포커스를 유지하고, ESC로 닫을 때만 에디터 호출 위치로 포커스 복원
  *   - 2026-11-05 : useEditorTabs에 컨테이너의 탭·활성 탭 참조를 전달하여 세션 복원 시 동일한 탭을 조회하도록 수정
  *   - 2026-11-04 : 로컬 작업장 사용 시 미접속 웹드라이브 토큰 갱신(initDriveTokenAutoRefresh) 및 클라우드 모드 오인식 방어 가드 추가
@@ -1509,43 +1510,109 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
   const docLinkFilesRef = useRef<FileNode[]>([]);
   const [floatingToolbar, setFloatingToolbar] = useState<{ visible: boolean, top: number, left: number }>({ visible: false, top: 0, left: 0 });
   const floatingToolbarRef = useRef<HTMLDivElement>(null);
+  const lastClickedToolbarBtnRef = useRef<HTMLButtonElement | null>(null);
+  const floatingOriginMonacoSelectionRef = useRef<any>(null);
+
+  // 플로팅 툴바가 열릴 때 Monaco 에디터인 경우 당시의 커서/선택영역을 저장
+  useEffect(() => {
+    if (floatingToolbar.visible) {
+      if (!visualFloatingOriginRef.current && editorRef.current) {
+        floatingOriginMonacoSelectionRef.current = editorRef.current.getSelection();
+      }
+    }
+  }, [floatingToolbar.visible]);
+
+  /**
+   * ============================================================================
+   * [closeFloatingToolbarAndRestoreCursor]
+   * 플로팅 서식 툴바를 닫고 에디터의 원래 호출 위치로 커서 및 포커스를 반환합니다.
+   * ============================================================================
+   */
+  const closeFloatingToolbarAndRestoreCursor = useCallback(() => {
+    setFloatingToolbar(prev => ({ ...prev, visible: false }));
+    setFloatingQuoteDropdown(prev => ({ ...prev, open: false }));
+    lastClickedToolbarBtnRef.current = null;
+
+    if (visualFloatingOriginRef.current) {
+      if (!visualCommandRef.current?.('RESTORE_ORIGIN')) {
+        visualCommandRef.current?.('FOCUS');
+      }
+    } else if (editorRef.current) {
+      editorRef.current.focus();
+      if (floatingOriginMonacoSelectionRef.current) {
+        try {
+          const sel = floatingOriginMonacoSelectionRef.current;
+          editorRef.current.setPosition({ lineNumber: sel.endLineNumber, column: sel.endColumn });
+          editorRef.current.revealPosition({ lineNumber: sel.endLineNumber, column: sel.endColumn });
+        } catch {}
+      }
+    }
+  }, []);
+
   useLayoutEffect(() => {
-    if (!floatingToolbar.visible) return;
-    floatingToolbarRef.current?.querySelector<HTMLButtonElement>('[data-floating-bold]')?.focus({ preventScroll: true });
+    if (!floatingToolbar.visible) {
+      lastClickedToolbarBtnRef.current = null;
+      return;
+    }
+    // 새로 툴바가 열렸을 때만 첫 번째 버튼으로 포커스
+    if (!lastClickedToolbarBtnRef.current) {
+      floatingToolbarRef.current?.querySelector<HTMLButtonElement>('[data-floating-bold]')?.focus({ preventScroll: true });
+    }
   }, [floatingToolbar.visible]);
   const lastFloatingActionRef = useRef<number>(0);
 
   /**
    * ============================================================================
    * [executeFloatingItem]
-   * 300ms 중복 실행 방지 디바운스와 함께 플로팅 서식 툴바의 액션을 실행하고 필요 시 툴바를 닫습니다.
+   * 200ms 중복 실행 방지 디바운스와 함께 플로팅 서식 툴바의 액션을 실행하고 필요 시 툴바를 닫습니다.
+   * 서식 적용 후에도 선택한 플로팅 툴바 버튼으로 포커스/커서를 정확히 유지합니다.
    *
    * @param {() => void} action - 실행할 서식 액션 콜백
    * @param {boolean} [closeToolbar=false] - 실행 후 플로팅 툴바 닫기 여부
+   * @param {HTMLElement} [clickedBtn] - 클릭 또는 선택된 툴바 버튼 요소
    * ============================================================================
    */
-  const executeFloatingItem = useCallback((action: () => void, closeToolbar: boolean = false) => {
+  const executeFloatingItem = useCallback((action: () => void, closeToolbar: boolean = false, clickedBtn?: HTMLElement | null) => {
     const now = Date.now();
     if (now - lastFloatingActionRef.current < 200) return;
     lastFloatingActionRef.current = now;
     const activeBtn = typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null;
-    action();
-    if (closeToolbar) {
-      setFloatingToolbar(prev => ({ ...prev, visible: false }));
-      if (!visualFloatingOriginRef.current || !visualCommandRef.current?.('FOCUS')) {
-        editorRef.current?.focus();
-      }
-    } else {
-      // 8. 플로팅 툴바에서 서식 적용 후에도 플로팅 툴바에 포커스/커서 유지
-      requestAnimationFrame(() => {
-        if (activeBtn && floatingToolbarRef.current?.contains(activeBtn)) {
-          activeBtn.focus({ preventScroll: true });
-        }
-      });
+    const targetBtn = (clickedBtn instanceof HTMLButtonElement ? clickedBtn : null)
+      || (lastClickedToolbarBtnRef.current && floatingToolbarRef.current?.contains(lastClickedToolbarBtnRef.current) ? lastClickedToolbarBtnRef.current : null)
+      || (activeBtn && floatingToolbarRef.current?.contains(activeBtn) ? (activeBtn as HTMLButtonElement) : null);
+    if (targetBtn) {
+      lastClickedToolbarBtnRef.current = targetBtn;
     }
-  }, []);
 
-  // 🎯 [플로팅 툴바 외부 클릭 및 에디터 클릭 시 자동 닫기]
+    action();
+    if (editorRef.current) {
+      setTimeout(() => {
+        try {
+          if (editorRef.current) {
+            floatingOriginMonacoSelectionRef.current = editorRef.current.getSelection();
+          }
+        } catch {}
+      }, 20);
+    }
+
+    if (closeToolbar) {
+      closeFloatingToolbarAndRestoreCursor();
+    } else {
+      // 8 & 10. 플로팅 툴바에서 서식 적용 후에도 선택한 플로팅 툴바 버튼에 포커스/커서 유지
+      const keepFocus = () => {
+        const btnToFocus = lastClickedToolbarBtnRef.current || targetBtn;
+        if (btnToFocus && floatingToolbarRef.current?.contains(btnToFocus)) {
+          btnToFocus.focus({ preventScroll: true });
+        }
+      };
+      keepFocus();
+      requestAnimationFrame(keepFocus);
+      setTimeout(keepFocus, 30);
+      setTimeout(keepFocus, 80);
+    }
+  }, [closeFloatingToolbarAndRestoreCursor]);
+
+  // 🎯 [플로팅 툴바 외부 클릭 및 에디터 클릭 시 자동 닫기 및 커서 반환]
   useEffect(() => {
     if (!floatingToolbar.visible) return;
     const handleOutsideClick = (e: MouseEvent) => {
@@ -1557,12 +1624,11 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
       ) {
         return;
       }
-      setFloatingToolbar(prev => ({ ...prev, visible: false }));
-      setFloatingQuoteDropdown(prev => ({ ...prev, open: false }));
+      closeFloatingToolbarAndRestoreCursor();
     };
     window.addEventListener('mousedown', handleOutsideClick, true);
     return () => window.removeEventListener('mousedown', handleOutsideClick, true);
-  }, [floatingToolbar.visible]);
+  }, [floatingToolbar.visible, closeFloatingToolbarAndRestoreCursor]);
 
   // 🎯 [인용구 드롭다운 오픈 시 첫 번째 옵션 버튼에 자동 포커스]
   useEffect(() => {
@@ -2081,7 +2147,8 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     floatingToolbar,
     setFloatingToolbar,
     floatingQuoteDropdown,
-    isRestrictedUser
+    isRestrictedUser,
+    closeFloatingToolbarAndRestoreCursor
   });
 
   // 🛡️ [데스크톱/브라우저 전역 파일 드롭 방어]
@@ -2412,6 +2479,8 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
             floatingToolbar={floatingToolbar}
             setFloatingToolbar={setFloatingToolbar}
             floatingToolbarRef={floatingToolbarRef}
+            lastClickedToolbarBtnRef={lastClickedToolbarBtnRef}
+            closeFloatingToolbarAndRestoreCursor={closeFloatingToolbarAndRestoreCursor}
             floatingHeadingLevel={floatingHeadingLevel}
             setFloatingHeadingLevel={setFloatingHeadingLevel}
             setFloatingQuoteDropdown={setFloatingQuoteDropdown}

@@ -2,6 +2,7 @@
 // 🏷️ 파일명 : VisualDocumentEditor.tsx
 // 🎭 역할(Role) : Core (위지윅 시각 문서 편집기 메인 코어 뷰)
 // 🎯 주요기능 : ProseMirror 상태/트랜잭션 라이프사이클 관리, 스크롤/커서 양방향 동기화, 인쇄 페이지 가이드 및 서브모듈 오케스트레이션
+// 🚨 @PATCH : 2026-11-07 — [플로팅 툴바 커서 반환 연동]: 플로팅 툴바 오픈 시 view.state.selection을 floatingOriginSelectionRef에 기억하여 툴바 종료 시 원래 커서 위치로 복원 지원
 // 🚨 @PATCH : 2026-11-04 — [Rule 3 코어 엔진 1순위: VisualDocumentEditor 4단계 모듈화 분리]:
 //             1) 드래그 앤 드롭 이미지 인디케이터/업로드 파이프라인, 각주 헤더 플러그인, 표 열 리사이즈 컨트롤러를 visualDragDropImageController.ts로 분리
 //             2) ProseMirror Keymap 및 키보드/입력/스마트 붙여넣기/드롭/클릭/DOM 이벤트 핸들러를 visualEditorProseMirrorHandlers.ts로 분리
@@ -450,8 +451,12 @@ export default function VisualDocumentEditor({
   const floatingCallbackRef = useRef(onFloatingToolbar);
   floatingCallbackRef.current = onFloatingToolbar;
   const previousFloatingVisible = useRef(floatingToolbarVisible);
+  const floatingOriginSelectionRef = useRef<any>(null);
 
   useEffect(() => {
+    if (selection && !readOnly && viewRef.current) {
+      floatingOriginSelectionRef.current = viewRef.current.state.selection;
+    }
     floatingCallbackRef.current?.(selection && !readOnly, popup);
   }, [selection, readOnly, popup]);
   useEffect(() => () => floatingCallbackRef.current?.(false, { top: 0, left: 0 }), []);
@@ -491,6 +496,7 @@ export default function VisualDocumentEditor({
     setSelection,
     manualFloatingRef,
     selectionVisibleRef,
+    floatingOriginSelectionRef,
     linkTargetRef,
     setLinkDialog,
     setLinkDialogData,

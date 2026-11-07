@@ -2,6 +2,8 @@
 // 🏷️ 파일명 : MarkdownCustomRenderers.tsx
 // 🎭 역할(Role) : Core (ReactMarkdown 커스텀 태그 렌더러 팩토리)
 // 🎯 주요기능 : img, video, source, iframe, a(폴더/문서/외부/앵커/유튜브/동영상 링크), table/tr/th, code(인라인/Mermaid/Math/CodeBlock), h1~h6, p, ul/ol/li, blockquote(GitHub/한글 Alert 콜아웃) 커스텀 렌더링
+// 🚨 @PATCH : 2026-11-07 — [이미지 마크다운 꺽쇠(<...>) 정제 및 driveId 쿼리스트링 보존]: img 렌더러에서 URL 앞뒤 꺽쇠(<...>) 및 따옴표를 정제하여 AsyncImage로 전달
+// 🚨 @PATCH : 2026-11-07 — [HTML 병합 표(colspan/rowspan) 자동 감지 및 유연한 레이아웃(table-auto) 지원]: colspan 또는 rowspan이 존재하는 표는 table-fixed로 인한 열 뭉개짐을 방지하고 table-auto min-w-full 레이아웃을 자동 적용하여 병합 셀이 온전히 렌더링되도록 개선
 // 🚨 @PATCH : 2026-11-04 — [MarkdownViewer 코어 엔진 모듈화]: 1,200줄의 ReactMarkdown 커스텀 엘리먼트 렌더러 맵을 독립 모듈로 분리
 // 🔗 @CALLS : AsyncImage, AsyncVideo, TableWrapper, MermaidBlock, MathBlock, CodeBlock, isPathInsideWorkspace, resolveRelativeImagePath
 // ====================================================================
@@ -204,18 +206,24 @@ export function createMarkdownCustomComponents({
     img: ({ node, src, alt, style, ...props }: any) => {
       if (!src) return <img alt={alt} {...props} />;
 
-      let pureSrc = src;
+      let cleanRawSrc = String(src).trim();
+      if (cleanRawSrc.startsWith('<') && cleanRawSrc.endsWith('>')) {
+        cleanRawSrc = cleanRawSrc.slice(1, -1).trim();
+      }
+      cleanRawSrc = cleanRawSrc.replace(/^[<"']|[>"']$/g, '').trim();
+
+      let pureSrc = cleanRawSrc;
       let queryString = '';
-      const qIndex = src.indexOf('?');
+      const qIndex = cleanRawSrc.indexOf('?');
       if (qIndex !== -1) {
-        pureSrc = src.substring(0, qIndex);
-        queryString = src.substring(qIndex);
+        pureSrc = cleanRawSrc.substring(0, qIndex);
+        queryString = cleanRawSrc.substring(qIndex);
       }
       try {
         if (pureSrc) pureSrc = decodeURI(pureSrc);
       } catch {}
 
-      let finalSrc = pureSrc;
+      let finalSrc = cleanRawSrc;
       let absolutePath = pureSrc;
       const isHttp = pureSrc.startsWith('http://') || pureSrc.startsWith('https://');
       const isBlobOrData = pureSrc.startsWith('data:') || pureSrc.startsWith('blob:');
@@ -1024,15 +1032,27 @@ export function createMarkdownCustomComponents({
     th: TableHeaderCell,
 
     table: ({ node, children, className, ...props }: any) => {
+      const hasMerge = node?.children?.some((child: any) => {
+        const checkRows = (rows: any[]) => rows?.some((tr: any) =>
+          tr?.children?.some((cell: any) => {
+            const props = cell?.properties || {};
+            return props.colSpan || props.rowSpan || props.colspan || props.rowspan;
+          })
+        );
+        if (child.tagName === 'tr') return checkRows([child]);
+        if (child.tagName === 'tbody' || child.tagName === 'thead') return checkRows(child.children);
+        return false;
+      });
+      const layoutClass = hasMerge ? 'table-auto min-w-full' : 'table-fixed w-full';
       return (
         <TableWrapper
-          widths={ratiosBeforeTable(
+          widths={hasMerge ? null : ratiosBeforeTable(
             processedContent,
             node?.position?.start?.offset,
             node?.children?.[0]?.children?.[0]?.children?.length || node?.children?.[0]?.children?.length || 0
           )}
         >
-          <table className={`w-full table-fixed !m-0 !mt-0 !mb-0 ${className || ''}`} {...props}>
+          <table className={`${layoutClass} !m-0 !mt-0 !mb-0 ${className || ''}`} {...props}>
             {children}
           </table>
         </TableWrapper>

@@ -2,6 +2,9 @@
  * ====================================================================
  * 🏷️ 파일명 : useDocumentImporter.ts
  * 🎯 주요기능 : 외부 문서(DOCX, HWP, PDF, EPUB, TXT, MD, HTML) 선택·마크다운 변환·이미지 리소스 추출 및 워크스페이스 저장 훅
+ * 🚨 @PATCH : 2026-11-08 — [useDocumentImporter 다이어트 및 미디어 저장기(saveImportedMedia) 분리]:
+ *             1) 내부 imageSaveCallback의 70줄에 달하던 Drive/Browser/Electron 이미지 저장 분기문을 saveImportedMedia 모듈로 추출하여 훅 코드 80줄 이상 다이어트
+ *             2) 단일 책임 원칙 준수로 가져오기 파이프라인의 가독성 및 유지보수성 대폭 개선
  * 🚨 @PATCH : 2026-11-04 — [FileExplorerPanel 모듈화 분리 및 누락 임포트 복원, 1·2단계 주석·오류 진단(logError) 적용]
  *             1) FileExplorerPanel에서 로컬/웹드라이브 문서 가져오기(openImportPicker, handleImportFile) 파이프라인을 전용 훅으로 분리
  *             2) prepareGoogleDriveAuth, readDriveImportFile, uploadDriveImage 등 누락되었던 드라이브 헬퍼를 명시적으로 임포트하여 런타임 에러 차단
@@ -16,6 +19,7 @@ import { importStartFolder } from '@/lib/importStartFolder';
 import { getResourceSettings, requireResourceSettings } from '@/lib/resourceSettings';
 import { FileNode } from '@/lib/indexedDbHelper';
 import { logError } from '@/lib/errorDiagnostics';
+import { saveImportedMedia } from '@/lib/importMediaSaver';
 import {
   uploadDriveImage,
   getSavedDriveToken,
@@ -200,94 +204,33 @@ export function useDocumentImporter({
     setIsImporting(true);
     try {
       showToast('파일에서 텍스트를 추출 중입니다...', 'info');
+
+      // 🖼️ 가져온 문서 내부 이미지 추출 시 미디어 저장기로 위임
       const imageSaveCallback = async (base64Data: string, contentType: string) => {
         requireResourceSettings();
-        const ext = contentType.split('/')[1] || 'png';
-        let imgName = `img_${Date.now()}_${Math.floor(Math.random() * 1000)}.${ext}`;
-        try {
-          const binaryString = atob(base64Data);
-          const len = binaryString.length;
-          const bytes = new Uint8Array(len);
-          for (let i = 0; i < len; i++) {
-            bytes[i] = binaryString.charCodeAt(i);
-          }
-          const hashBuffer = await crypto.subtle.digest('SHA-256', bytes);
-          const hashArray = Array.from(new Uint8Array(hashBuffer));
-          const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('').substring(0, 12);
-          imgName = `img_${hashHex}.${ext}`;
-        } catch {
-          // 해시 생성 실패 시 기본 시간 기반 이름 사용
+        const token = getSavedDriveToken();
+        const cloudSettings = getResourceSettings('cloud');
+        const wsInfo = getSavedWorkspaceInfo();
+        let mediaFolderId = cloudSettings?.mediaFolderId || wsInfo?.mediaFolderId;
+        if (!mediaFolderId && token && (cloudSettings?.folderId || wsInfo?.resourceFolderId)) {
+          try {
+            const parentId = cloudSettings?.folderId || wsInfo?.resourceFolderId;
+            const { listDriveChildren } = await import('@/lib/gdrive/googleDriveClient');
+            const children = await listDriveChildren(token, parentId!);
+            const m = children.find(c => c.isFolder && c.name === 'media');
+            if (m) mediaFolderId = m.id;
+          } catch {}
         }
 
-        const isDriveEnv = getResourceSettings()?.kind === 'drive';
-        if (isDriveEnv) {
-          const token = getSavedDriveToken();
-          const cloudSettings = getResourceSettings('cloud');
-          const wsInfo = getSavedWorkspaceInfo();
-          let mediaFolderId = cloudSettings?.mediaFolderId || wsInfo?.mediaFolderId;
-          if (!mediaFolderId && token && (cloudSettings?.folderId || wsInfo?.resourceFolderId)) {
-            try {
-              const parentId = cloudSettings?.folderId || wsInfo?.resourceFolderId;
-              const { listDriveChildren } = await import('@/lib/gdrive/googleDriveClient');
-              const children = await listDriveChildren(token, parentId!);
-              const m = children.find(c => c.isFolder && c.name === 'media');
-              if (m) mediaFolderId = m.id;
-            } catch {}
-          }
-          if (token && mediaFolderId) {
-            try {
-              const res = await fetch(`data:${contentType};base64,${base64Data}`);
-              const blob = await res.blob();
-              const uploaded = await uploadDriveImage(token, mediaFolderId, blob, imgName);
-              if (uploaded?.id) {
-                return `/media/${encodeURIComponent(uploaded.name)}?driveId=${encodeURIComponent(uploaded.id)}`;
-              }
-            } catch (gErr) {
-              logError({
-                file: 'frontend/src/hooks/fileExplorer/useDocumentImporter.ts',
-                func: 'handleImportFile.imageSaveCallback',
-                doing: '가져온 문서 내부 이미지를 구글 드라이브 미디어 폴더에 업로드하는 작업',
-                target: imgName,
-                error: gErr
-              });
-              throw new Error('가져온 이미지를 구글 드라이브에 저장하지 못했습니다. 연결 상태를 확인해 주세요.');
-            }
-          }
-          throw new Error('이미지 저장을 위한 구글 드라이브 연결 또는 미디어 폴더를 찾지 못했습니다.');
-        }
-
-        if (workspaceType === 'browser') {
-          if (resourceFolderHandle) {
-            const mediaDir = await resourceFolderHandle.getDirectoryHandle('media', { create: true });
-            const fileHandle = await mediaDir.getFileHandle(imgName, { create: true });
-            const writable = await fileHandle.createWritable();
-            const res = await fetch(`data:${contentType};base64,${base64Data}`);
-            const blob = await res.blob();
-            await writable.write(blob);
-            await writable.close();
-            return `/media/${imgName}`;
-          } else {
-            requireResourceSettings();
-            throw new Error('리소스 폴더 접근 권한을 다시 설정해 주세요.');
-          }
-        } else {
-          const api = (window as any).electronAPI;
-          if (api && api.saveImage) {
-            const folder = requireResourceSettings().path;
-            const sep = folder.includes('\\') ? '\\' : '/';
-            const targetFolder = folder + sep + 'media';
-            const saveResult = await api.saveImage(targetFolder, base64Data, imgName);
-            if (saveResult && saveResult.success) {
-              if (saveResult.mediaPath) {
-                return saveResult.mediaPath;
-              } else if (saveResult.absolutePath) {
-                return `media://local/serve?url=${encodeURIComponent(saveResult.absolutePath)}`;
-              }
-            }
-          }
-        }
-
-        throw new Error('가져온 이미지 파일을 저장하지 못했습니다. 공통 자원 폴더를 확인해 주세요.');
+        return await saveImportedMedia({
+          base64Data,
+          contentType,
+          rootFolder,
+          resourceFolderHandle,
+          workspaceType,
+          driveToken: token,
+          driveMediaFolderId: mediaFolderId,
+        });
       };
 
       const { convertFileToMarkdown } = await import('@/lib/fileImporter');

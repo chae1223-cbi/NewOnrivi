@@ -2,6 +2,10 @@
 // 🧩 [OMD-CORE-VisualNodeViews-0001] createVisualNodeViews.ts ➔ 시각 에디터 ProseMirror NodeViews 팩토리
 // 🎯 @KICK  : table, visual_math, visual_inline_math, list_item, code_block, visual_footnote_ref, visual_footnote_def, visual_checkbox, source_block, mediaNodeView 10대 위지윅 NodeView 인스턴스화
 // 🛡️ @GUARD : Rule 3(역할 기반 분리: Core View) 준수 - DOM 렌더링 및 인터랙션 격리
+// 🚨 @PATCH : 2026-11-07 — [인라인 및 문단 내 마크다운 image 노드뷰 등록]: ProseMirror 표준 image 노드에 대한 NodeView(inlineImageNodeView)를 등록하여 React Portal(renderImage/AsyncImage)과 연동, 구글 드라이브(driveId) 및 로컬 미디어가 깨진 이미지 아이콘 대신 온전한 이미지로 렌더링되도록 구현
+// 🚨 @PATCH : 2026-11-07 — [HTML 표(<table>...</table>) 시각 렌더링 및 실시간 원문 편집 드로어 연동]: source_block에서 HTML <table> 감지 시 visual-html-table-container 및 접이식 'HTML 표 원문 편집' 드로어와 상단 '✏️ HTML 편집' 빠른 버튼을 제공하여 시각적 표 렌더링과 실시간 원문 수정을 동시에 지원
+// 🚨 @PATCH : 2026-11-07 — [코드블록 순수 문구 복사 및 마크다운 형태 복사 이원화]: '복사'(순수 텍스트)와 '형태 복사'(```lang\n...\n``` 마크다운 펜스 형태 포함) 버튼을 분리 제공
+// 🚨 @PATCH : 2026-11-07 — [코드블록 마우스 드래그 전체선택 및 형태 유지 복사]: code_block의 복사 버튼 클릭 시 마크다운 코드블록(```lang\n...\n```) 형태로 클립보드에 기록하고, pre 여백 클릭 시 mousedown에서 드래그를 가로채지 않고 click 이벤트에서 드래그 판별 후 안전 전이하도록 개선
 // 🚨 @PATCH : 2026-11-07 — [코드블록 마우스 드래그 및 여백 클릭 커서 안정화]: code_block의 pre 패딩 영역 클릭 시 내부 code 텍스트로 안전 전이
 // 🚨 @PATCH : 2026-11-04 — [VisualDocumentEditor 3단계 모듈화 분리]: 10대 핵심 위지윅 NodeView 팩토리 독립 분리
 // 🔗 @CALLS : prosemirror-view, prosemirror-state, prosemirror-history, visualSchema, katex
@@ -155,6 +159,61 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
     },
     visual_image: mediaNodeView,
     visual_media: mediaNodeView,
+    image(node, _view, getPos) {
+      const span = document.createElement('span');
+      span.className = 'visual-inline-image-wrapper inline-block my-1 align-middle';
+      span.contentEditable = 'false';
+      const id = ++imageSequence.current;
+      const getSource = (targetNode: typeof node) => {
+        let rawSrc = targetNode.attrs.src || '';
+        rawSrc = rawSrc.replace(/^[<"']|[>"']$/g, '').trim();
+        const rawAlt = targetNode.attrs.alt || '';
+        const rawTitle = targetNode.attrs.title ? ` "${targetNode.attrs.title}"` : '';
+        return `![${rawAlt}](${rawSrc}${rawTitle})`;
+      };
+      const render = () => {
+        const source = getSource(node);
+        setImageMounts(previous => [
+          ...previous.filter(item => item.id !== id),
+          { id, element: span, source }
+        ]);
+      };
+      const selectImageNode = (event: MouseEvent) => {
+        const position = getPos();
+        const curView = viewRef.current;
+        if (curView?.editable && typeof position === 'number') {
+          const currentNode = curView.state.doc.nodeAt(position);
+          if (currentNode && NodeSelection.isSelectable(currentNode)) {
+            curView.dispatch(curView.state.tr.setSelection(NodeSelection.create(curView.state.doc, position)));
+            curView.focus();
+          }
+        }
+      };
+      span.addEventListener('mousedown', selectImageNode);
+      span.addEventListener('click', selectImageNode);
+      render();
+      return {
+        dom: span,
+        selectNode() { span.classList.add('ProseMirror-selectednode'); },
+        deselectNode() { span.classList.remove('ProseMirror-selectednode'); },
+        ignoreMutation: () => true,
+        update(next) {
+          if (next.type !== node.type) return false;
+          if (next.attrs.src !== node.attrs.src || next.attrs.alt !== node.attrs.alt || next.attrs.title !== node.attrs.title) {
+            node = next;
+            render();
+          } else {
+            node = next;
+          }
+          return true;
+        },
+        destroy() {
+          queueMicrotask(() => {
+            if (viewRef.current) setImageMounts(previous => previous.filter(item => item.id !== id));
+          });
+        }
+      };
+    },
     visual_math(node, currentView, getPos) {
       const dom = document.createElement('div');
       dom.className = 'visual-math-node my-4 py-3 px-4 text-center cursor-pointer select-none rounded-lg hover:ring-2 hover:ring-blue-500/40 transition-all';
@@ -404,7 +463,8 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
       const copy = document.createElement('button');
       copy.type = 'button';
       copy.textContent = '복사';
-      copy.setAttribute('aria-label', '코드 내용 복사');
+      copy.setAttribute('aria-label', '코드 순수 문구 복사');
+      copy.title = '코드 순수 문구만 복사';
       copy.className = 'onrivi-media-control no-print';
       copy.contentEditable = 'false';
       let copyTimer: ReturnType<typeof setTimeout> | undefined;
@@ -412,9 +472,10 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
       copy.addEventListener('click', async () => {
         clearTimeout(copyTimer);
         try {
+          const codeContent = node.textContent;
           const api = (window as any).electronAPI;
-          if (api?.copyTextToClipboard) await api.copyTextToClipboard(node.textContent);
-          else await navigator.clipboard.writeText(node.textContent);
+          if (api?.copyTextToClipboard) await api.copyTextToClipboard(codeContent);
+          else await navigator.clipboard.writeText(codeContent);
           copy.textContent = '복사됨';
         } catch {
           copy.textContent = '복사 실패';
@@ -422,6 +483,32 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
         if (dom.isConnected) copyTimer = setTimeout(() => { copy.textContent = '복사'; }, 1800);
       });
       header.append(copy);
+
+      const copyFenced = document.createElement('button');
+      copyFenced.type = 'button';
+      copyFenced.textContent = '형태 복사';
+      copyFenced.setAttribute('aria-label', '마크다운 코드블록 형태 복사');
+      copyFenced.title = '코드블록 마크다운 형태(```) 포함 복사';
+      copyFenced.className = 'onrivi-media-control no-print';
+      copyFenced.contentEditable = 'false';
+      let copyFencedTimer: ReturnType<typeof setTimeout> | undefined;
+      copyFenced.addEventListener('mousedown', event => event.preventDefault());
+      copyFenced.addEventListener('click', async () => {
+        clearTimeout(copyFencedTimer);
+        try {
+          const params = (node.attrs.params || '').trim();
+          const codeContent = node.textContent;
+          const markdownFenced = '```' + params + '\n' + codeContent + (codeContent.endsWith('\n') ? '' : '\n') + '```';
+          const api = (window as any).electronAPI;
+          if (api?.copyTextToClipboard) await api.copyTextToClipboard(markdownFenced);
+          else await navigator.clipboard.writeText(markdownFenced);
+          copyFenced.textContent = '복사됨';
+        } catch {
+          copyFenced.textContent = '복사 실패';
+        }
+        if (dom.isConnected) copyFencedTimer = setTimeout(() => { copyFenced.textContent = '형태 복사'; }, 1800);
+      });
+      header.append(copyFenced);
       const deleteBtn = document.createElement('button');
       deleteBtn.type = 'button';
       deleteBtn.textContent = '삭제';
@@ -449,8 +536,18 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
       pre.className = 'custom-scrollbar';
       pre.spellcheck = false;
       code.spellcheck = false;
+      let preMouseDownCoords: { x: number; y: number } | null = null;
       pre.addEventListener('mousedown', (event) => {
         if (event.target === pre && currentView.editable) {
+          preMouseDownCoords = { x: event.clientX, y: event.clientY };
+        }
+      });
+      pre.addEventListener('click', (event) => {
+        if (event.target === pre && currentView.editable) {
+          if (preMouseDownCoords) {
+            const dist = Math.hypot(event.clientX - preMouseDownCoords.x, event.clientY - preMouseDownCoords.y);
+            if (dist > 4) return;
+          }
           const pos = getPos();
           if (typeof pos === 'number') {
             const clickY = event.clientY;
@@ -750,9 +847,10 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
     },
     source_block(node, currentView, getPos) {
       const isMermaid = /^\s*```\s*mermaid(?:\s|$)/i.test(node.attrs.source);
+      const isTable = /^\s*(?:<!--[\s\S]*?-->\s*)*<table\b[\s\S]*<\/table>\s*$/i.test(node.attrs.source.trim());
       const dom = document.createElement('div');
       dom.contentEditable = 'false';
-      dom.className = isMermaid ? 'visual-source-block visual-mermaid-container' : 'visual-source-block';
+      dom.className = isMermaid ? 'visual-source-block visual-mermaid-container' : isTable ? 'visual-source-block visual-html-table-container' : 'visual-source-block';
       const picture = document.createElement('div');
       const id = ++imageSequence.current;
       dom.append(picture);
@@ -762,19 +860,21 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
       let sourceTimer: ReturnType<typeof setTimeout> | undefined;
       let observer: MutationObserver | null = null;
 
-      if (isMermaid) {
+      if (isMermaid || isTable) {
         details = document.createElement('details');
-        details.className = 'visual-mermaid-editor no-print text-xs';
+        details.className = isTable ? 'visual-html-table-editor no-print text-xs' : 'visual-mermaid-editor no-print text-xs';
 
         const summary = document.createElement('summary');
         summary.className = 'cursor-pointer select-none font-medium text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 flex items-center justify-between px-4 py-2.5 bg-zinc-50/90 dark:bg-slate-800/70 hover:bg-zinc-100/90 dark:hover:bg-slate-800 transition-colors';
-        summary.innerHTML = '<span class="flex items-center gap-1.5 font-semibold"><svg class="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m14 9 3 3-3 3"/></svg>머메이드(Mermaid) 코드 편집</span><span class="flex items-center gap-1 text-[11px] font-normal text-slate-500 dark:text-slate-400"><span>클릭하여 코드 펼치기 / 접기</span><svg class="w-3.5 h-3.5 transition-transform duration-200 mermaid-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>';
+        summary.innerHTML = isTable
+          ? '<span class="flex items-center gap-1.5 font-semibold"><svg class="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/></svg>HTML 표 원문 편집</span><span class="flex items-center gap-1 text-[11px] font-normal text-slate-500 dark:text-slate-400"><span>클릭하여 코드 펼치기 / 접기</span><svg class="w-3.5 h-3.5 transition-transform duration-200 mermaid-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>'
+          : '<span class="flex items-center gap-1.5 font-semibold"><svg class="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m14 9 3 3-3 3"/></svg>머메이드(Mermaid) 코드 편집</span><span class="flex items-center gap-1 text-[11px] font-normal text-slate-500 dark:text-slate-400"><span>클릭하여 코드 펼치기 / 접기</span><svg class="w-3.5 h-3.5 transition-transform duration-200 mermaid-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>';
 
         const body = document.createElement('div');
         body.className = 'p-3 bg-zinc-50/40 dark:bg-slate-900/40 border-t border-zinc-200/50 dark:border-slate-800/60 flex flex-col gap-2.5';
 
         input = document.createElement('textarea');
-        input.setAttribute('aria-label', '머메이드 블록 원문');
+        input.setAttribute('aria-label', isTable ? 'HTML 표 블록 원문' : '머메이드 블록 원문');
         input.value = node.attrs.source;
         input.rows = 8;
         input.className = 'w-full font-mono text-xs p-3 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 custom-scrollbar resize-y leading-relaxed';
@@ -810,8 +910,8 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
 
         const deleteDrawerBtn = document.createElement('button');
         deleteDrawerBtn.type = 'button';
-        deleteDrawerBtn.textContent = '다이어그램 삭제';
-        deleteDrawerBtn.setAttribute('aria-label', '다이어그램 삭제');
+        deleteDrawerBtn.textContent = isTable ? '표 삭제' : '다이어그램 삭제';
+        deleteDrawerBtn.setAttribute('aria-label', isTable ? '표 삭제' : '다이어그램 삭제');
         deleteDrawerBtn.className = 'px-2.5 py-1 text-xs text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/40 rounded transition-colors cursor-pointer shrink-0';
         deleteDrawerBtn.addEventListener('click', () => {
           const pos = getPos();
@@ -828,7 +928,7 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
 
         const helper = document.createElement('span');
         helper.className = 'text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1 min-w-0 truncate';
-        helper.innerHTML = '<svg class="w-3 h-3 text-blue-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg><span class="truncate">타이핑 시 다이어그램이 실시간 반영됩니다.</span>';
+        helper.innerHTML = `<svg class="w-3 h-3 text-blue-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg><span class="truncate">${isTable ? 'HTML 수정 시 표가 실시간 반영됩니다.' : '타이핑 시 다이어그램이 실시간 반영됩니다.'}</span>`;
 
         const btnGroup = document.createElement('div');
         btnGroup.className = 'flex items-center gap-1.5 shrink-0';
@@ -861,49 +961,71 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
         details.append(summary, body);
         dom.append(details);
 
-        // 다이어그램 상단 헤더 컨트롤 영역에 '✏️ 코드 편집' 및 '🗑️ 삭제' 토글 버튼 자동 연결
+        // 상단 헤더 컨트롤 영역에 '✏️ 코드/HTML 편집' 및 '🗑️ 삭제' 토글 버튼 자동 연결
         const syncHeaderButton = () => {
-          const controls = picture.querySelector('[data-editor-controls]');
-          if (controls && !controls.querySelector('.mermaid-header-edit-btn')) {
-            const editBtn = document.createElement('button');
-            editBtn.type = 'button';
-            editBtn.className = 'onrivi-media-control mermaid-header-edit-btn text-blue-600 dark:text-blue-400 font-medium hover:bg-blue-50 dark:hover:bg-blue-950/50';
-            editBtn.title = '다이어그램 코드 편집기 펼치기 / 접기';
-            editBtn.textContent = '✏️ 코드 편집';
-            editBtn.addEventListener('click', (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              if (details) {
-                details.open = !details.open;
-                if (details.open && input) {
-                  setTimeout(() => input?.focus(), 60);
+          if (isMermaid) {
+            const controls = picture.querySelector('[data-editor-controls]');
+            if (controls && !controls.querySelector('.mermaid-header-edit-btn')) {
+              const editBtn = document.createElement('button');
+              editBtn.type = 'button';
+              editBtn.className = 'onrivi-media-control mermaid-header-edit-btn text-blue-600 dark:text-blue-400 font-medium hover:bg-blue-50 dark:hover:bg-blue-950/50';
+              editBtn.title = '다이어그램 코드 편집기 펼치기 / 접기';
+              editBtn.textContent = '✏️ 코드 편집';
+              editBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (details) {
+                  details.open = !details.open;
+                  if (details.open && input) {
+                    setTimeout(() => input?.focus(), 60);
+                  }
                 }
-              }
-            });
-            controls.prepend(editBtn);
-          }
+              });
+              controls.prepend(editBtn);
+            }
 
-          if (controls && !controls.querySelector('.mermaid-header-delete-btn')) {
-            const deleteBtn = document.createElement('button');
-            deleteBtn.type = 'button';
-            deleteBtn.className = 'onrivi-media-control mermaid-header-delete-btn text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/50 font-medium cursor-pointer';
-            deleteBtn.title = '다이어그램 블록 삭제';
-            deleteBtn.textContent = '🗑️ 삭제';
-            deleteBtn.addEventListener('click', (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              const pos = getPos();
-              if (typeof pos !== 'number' || !currentView.editable) return;
-              const tr = currentView.state.tr;
-              const nodeSize = node.nodeSize;
-              if (currentView.state.doc.childCount === 1 && pos === 0) {
-                currentView.dispatch(closeHistory(tr.replaceWith(pos, pos + nodeSize, visualSchema.nodes.paragraph.create())));
-              } else {
-                currentView.dispatch(closeHistory(tr.delete(pos, pos + nodeSize)));
-              }
-              currentView.focus();
-            });
-            controls.append(deleteBtn);
+            if (controls && !controls.querySelector('.mermaid-header-delete-btn')) {
+              const deleteBtn = document.createElement('button');
+              deleteBtn.type = 'button';
+              deleteBtn.className = 'onrivi-media-control mermaid-header-delete-btn text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/50 font-medium cursor-pointer';
+              deleteBtn.title = '다이어그램 블록 삭제';
+              deleteBtn.textContent = '🗑️ 삭제';
+              deleteBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const pos = getPos();
+                if (typeof pos !== 'number' || !currentView.editable) return;
+                const tr = currentView.state.tr;
+                const nodeSize = node.nodeSize;
+                if (currentView.state.doc.childCount === 1 && pos === 0) {
+                  currentView.dispatch(closeHistory(tr.replaceWith(pos, pos + nodeSize, visualSchema.nodes.paragraph.create())));
+                } else {
+                  currentView.dispatch(closeHistory(tr.delete(pos, pos + nodeSize)));
+                }
+                currentView.focus();
+              });
+              controls.append(deleteBtn);
+            }
+          } else if (isTable) {
+            const wrapper = picture.querySelector('.table-wrapper-area');
+            if (wrapper && !wrapper.querySelector('.table-header-edit-btn')) {
+              const editBtn = document.createElement('button');
+              editBtn.type = 'button';
+              editBtn.className = 'onrivi-media-control table-header-edit-btn absolute top-1 right-16 px-2 py-1 bg-black/60 dark:bg-white/20 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity text-[11px] flex items-center gap-1 z-10 hover:bg-black/80 font-medium no-print cursor-pointer';
+              editBtn.title = 'HTML 표 코드 편집기 펼치기 / 접기';
+              editBtn.textContent = '✏️ HTML 편집';
+              editBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (details) {
+                  details.open = !details.open;
+                  if (details.open && input) {
+                    setTimeout(() => input?.focus(), 60);
+                  }
+                }
+              });
+              wrapper.prepend(editBtn);
+            }
           }
         };
 

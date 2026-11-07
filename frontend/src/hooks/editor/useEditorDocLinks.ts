@@ -2,6 +2,8 @@
 // 📊 [OMD-HOOK-useEditorDocLinks] frontend/src/hooks/editor/useEditorDocLinks.ts
 // 🎯 @KICK  : 문서 간 위키링크/상대경로 연결 팝업, 헤딩(H1~H6) 동적 파싱, 커서 위치 기반 팝업 좌표 계산 훅
 // 🛡️ @GUARD : 비동기 파일 트리 로딩, 상대 경로 정규화, 위지윅/모나코 양방향 삽입 지원 및 닫힐 때 상태 완전 소거
+// 🚨 @PATCH : 2026-11-07 — [문서 연결(DocLink) 작업장 전체 하위 폴더 문서 탐색 보장]: effectiveWorkspaceType(GDRIVE/driveFolderId 기반 cloud 자동 감지) 도입 및 effectiveRoot 최우선 전달로 구글 드라이브 및 로컬 하위 폴더 문서 누락 결함 원천 해결
+// 🚨 @PATCH : 2026-11-07 — [문서 연결(DocLink) 작업장 최신 rootFolderRef 바인딩]: rootFolder 외에 rootFolderRef.current 우선 참조로 작업장 파일 누락 방지
 // 🚨 @PATCH : 2026-11-05 — [문서 링크명 기본값]: 선택 영역이 없으면 팝업을 연 커서 위치의 단어를 링크명으로 사용한다.
 // 🚨 @PATCH : 2026-11-04 — [표준화 및 에러 처리 강화] logError 5대 진단 필드 선제 기록 적용 및 2단계 함수 JSDoc 표준화
 //             2026-11-04 — [MainEditorApp 모듈화]: 문서 연결(DocLinkPicker) 상태, 헤딩 파싱, 파일 읽기(readFileText), 팝업 좌표 계산을 useEditorDocLinks로 분리 위임 (460줄 감축)
@@ -22,8 +24,8 @@ import { logError } from '@/lib/errorDiagnostics';
 export interface UseEditorDocLinksProps {
   workspaceType: string;
   fileList: FileNode[];
-  rootFolder: { name: string; handle?: any; type?: string } | null;
-  rootFolderRef: React.MutableRefObject<{ name: string; handle?: any; type?: string } | null>;
+  rootFolder: { name?: string; handle?: any; type?: string; path?: string; id?: string; driveFolderId?: string } | null;
+  rootFolderRef: React.MutableRefObject<{ name?: string; handle?: any; type?: string; path?: string; id?: string; driveFolderId?: string } | null>;
   resourceFolder?: string | null;
   resourceFolderHandle?: any;
   resourceFolderHandleRef?: React.MutableRefObject<any>;
@@ -159,10 +161,15 @@ export function useEditorDocLinks({
       const loadFiles = async () => {
         setIsDocLinkLoading(true);
         try {
+          const effectiveRoot = rootFolder || rootFolderRef?.current;
+          const effectiveWorkspaceType =
+            effectiveRoot?.type === 'GDRIVE' || effectiveRoot?.driveFolderId || (effectiveRoot?.path || '').startsWith('GoogleDrive/')
+              ? 'cloud'
+              : workspaceType;
           const files = await fetchAllMdFiles(
-            workspaceType,
+            effectiveWorkspaceType,
             fileList,
-            rootFolder,
+            effectiveRoot,
             resourceFolder,
             resourceFolderHandle,
             currentFileNode,
@@ -175,7 +182,7 @@ export function useEditorDocLinks({
             file: 'frontend/src/hooks/editor/useEditorDocLinks.ts',
             func: 'loadFiles',
             doing: '문서 링크 선택기를 위한 작업장 전체 마크다운(.md) 파일 목록 조회 중',
-            target: rootFolder?.name || workspaceType,
+            target: (rootFolder || rootFolderRef?.current)?.name || workspaceType,
             error: e,
           });
         } finally {
@@ -198,11 +205,16 @@ export function useEditorDocLinks({
 
   // 자동완성용 파일 목록 백그라운드 프리로드
   useEffect(() => {
-    if (workspaceType && (fileList.length > 0 || rootFolder?.handle) && !showDocLinkPicker) {
+    const effectiveRoot = rootFolder || rootFolderRef?.current;
+    const effectiveWorkspaceType =
+      effectiveRoot?.type === 'GDRIVE' || effectiveRoot?.driveFolderId || (effectiveRoot?.path || '').startsWith('GoogleDrive/')
+        ? 'cloud'
+        : workspaceType;
+    if (workspaceType && (fileList.length > 0 || effectiveRoot?.handle || effectiveRoot?.name || effectiveRoot?.path || effectiveRoot?.driveFolderId) && !showDocLinkPicker) {
       fetchAllMdFiles(
-        workspaceType,
+        effectiveWorkspaceType,
         fileList,
-        rootFolder,
+        effectiveRoot,
         resourceFolder,
         resourceFolderHandle,
         currentFileNode,
@@ -211,7 +223,7 @@ export function useEditorDocLinks({
         docLinkFilesRef.current = files;
       }).catch(() => { });
     }
-  }, [workspaceType, fileList, rootFolder, showDocLinkPicker, resourceFolder, resourceFolderHandle, currentFileNode, tabsRef, docLinkFilesRef]);
+  }, [workspaceType, fileList, rootFolder, rootFolderRef, showDocLinkPicker, resourceFolder, resourceFolderHandle, currentFileNode, tabsRef, docLinkFilesRef]);
 
   /**
    * ========================================================================================
