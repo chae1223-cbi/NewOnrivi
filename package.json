@@ -88,8 +88,7 @@
     "files": [
       "desktopInlineImages.js",
       "desktopEmojiPicker.cjs",
-      "electron/gdriveOAuth.cjs",
-      "electron/inlineAI.cjs",
+      "electron/**/*",
       "frontend/src/lib/ai/wire.mjs",
       "main.js",
       "preload.js",

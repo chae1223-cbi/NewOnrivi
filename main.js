@@ -2,6 +2,7 @@
 // 📊 [OMD-MAIN-main-0001] main.js ➔ CSP_connect_src_fix
 // 🎯 @KICK  : CSP connect-src 지침에 http: https: 추가하여 외부 이미지/폰트 fetch 차단 해결
 // 🛡️ @GUARD : Monaco editor 등 기존 설정 유지
+// 🚨 @PATCH : 2026-11-09 — [Electron 빌드 패키징(package.json build.files)에 electron/**/* 모듈 일괄 포함]: main.js에서 분리된 electron/desktopKnowledgeApi.cjs, fileIpcHandlers.cjs, mcpHandlers.cjs가 app.asar 번들링 대상에 누락되어 실행 시 Cannot find module 발생하던 패키징 결함 완전 해결
 // 🚨 @PATCH : 2026-11-08 — [electron shell 바인딩 보강]: main.js 상단 electron 구조분해 할당에 shell 누락으로 인한 registerFileIpcHandlers ReferenceError 즉각 해결
 // 🚨 @PATCH : 2026-11-08 — [main.js 3단계 모듈 분리] 순수 데스크톱 파일 시스템 및 탐색기 제어 IPC 핸들러 1,000줄을 electron/fileIpcHandlers.cjs로 격리 모듈화 (main.js 2,977줄 -> 2,040줄 경량화)
 // 🚨 @PATCH : 2026-11-08 — [main.js 2단계 모듈 분리] 외부 AI MCP 타겟 관리 및 컨텍스트 동기화 로직 230줄을 electron/mcpHandlers.cjs로 격리 모듈화

@@ -2,6 +2,7 @@
 // 📊 [OMD-ELECTRON-fileIpcHandlers-0001] electron/fileIpcHandlers.cjs
 // 🎯 @KICK  : Electron 데스크톱 파일 시스템, 폴더 탐색기, 다이얼로그 IPC 핸들러 모듈
 // 🛡️ @GUARD : Rule 1(표준 주석 규격), Rule 2(대문자 코드값), 5대 정밀 진단 로깅
+// 🚨 @PATCH : 2026-11-09 — [desktopInlineImages 상대 경로 보정]: electron 폴더 내부에서 루트의 desktopInlineImages.js를 정상 참조하도록 '../desktopInlineImages'로 경로 수정
 // 🚨 @PATCH : 2026-11-08 — [main.js 3단계 모듈 분리] main.js의 파일/폴더 I/O 및 탐색기 IPC 핸들러 1,000줄을 electron/fileIpcHandlers.cjs로 격리 모듈화
 // 🔗 @CALLS : electron(dialog, shell), node:fs, node:path, node:crypto, node:os
 // ====================================================================
@@ -441,7 +442,7 @@ function registerFileIpcHandlers({
       const rawContent = await fs.promises.readFile(cleanPath, 'utf-8');
       let content = rawContent;
       try {
-        content = require('./desktopInlineImages').externalizeInlineImages(rawContent, cleanPath);
+        content = require('../desktopInlineImages').externalizeInlineImages(rawContent, cleanPath);
       } catch (inlineErr) {
         // desktopInlineImages 모듈이 누락되었거나 처리 실패 시에도 파일 읽기는 원본 본문으로 무중단 반환
         content = rawContent;
