@@ -7,6 +7,8 @@
  *   - EditorProvider 컨텍스트 공급 및 하위 역할 컴포넌트(EditorLayout, EditorCore, EditorOverlayManager, GuestPaywallOverlay) 렌더링 위임
  *   - 보기 모드(edit / both / preview / css-style) 전환 가드, 탭 닫기, 다중 파일 병합 선택, 플로팅 툴바 실행 제어
  * 🚨 @PATCH :
+ *   - 2026-11-08 : [플로팅 툴바 서식 적용 후 툴바 유지 & ESC 닫기]: 서식 선택/엔터 시 툴바를 닫지 않고 연속 서식 선택이 가능하도록 포커스를 유지하고, ESC 입력 시에만 툴바를 닫고 에디터로 포커스 복원하도록 개선
+ *   - 2026-11-08 : [플로팅 툴바 키보드 포커스 & 방향키 네비게이션 & 엔터 에디터 복귀]: 툴바 오픈 시 버튼으로 포커스를 전달하여 좌우상하 방향키로 순환 탐색 가능하게 하고, 엔터 입력 시 현재 커서에 서식을 적용한 후 에디터로 즉시 복귀하여 타이핑 가능하도록 개선
  *   - 2026-11-07 : [플로팅 툴바 커서 반환 및 선택 버튼 포커스 유지]: 툴바 닫기 시 원래 호출 위치(Visual: RESTORE_ORIGIN, Monaco: setSelection)로 커서 반환 보장, 툴바 버튼 클릭 시 첫 번째 버튼 리셋 방지 및 선택 버튼 포커스 영속 유지
  *   - 2026-11-07 : [플로팅 툴바 실행 후 포커스 유지]: executeFloatingItem에서 서식 적용 후에도 플로팅 툴바 버튼에 포커스를 유지하고, ESC로 닫을 때만 에디터 호출 위치로 포커스 복원
  *   - 2026-11-05 : useEditorTabs에 컨테이너의 탭·활성 탭 참조를 전달하여 세션 복원 시 동일한 탭을 조회하도록 수정
@@ -1519,13 +1521,25 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
       if (!visualFloatingOriginRef.current && editorRef.current) {
         floatingOriginMonacoSelectionRef.current = editorRef.current.getSelection();
       }
+      // 플로팅 툴바 오픈 시 툴바 버튼으로 포커스하여 방향키 탐색 및 엔터 즉시 적용 지원
+      const rafId = requestAnimationFrame(() => {
+        const btnToFocus =
+          (lastClickedToolbarBtnRef.current && floatingToolbarRef.current?.contains(lastClickedToolbarBtnRef.current) ? lastClickedToolbarBtnRef.current : null)
+          || floatingToolbarRef.current?.querySelector<HTMLButtonElement>('[data-floating-bold]')
+          || floatingToolbarRef.current?.querySelector<HTMLButtonElement>('button:not([disabled])');
+        btnToFocus?.focus({ preventScroll: true });
+      });
+      return () => cancelAnimationFrame(rafId);
+    } else {
+      lastClickedToolbarBtnRef.current = null;
     }
   }, [floatingToolbar.visible]);
 
   /**
    * ============================================================================
    * [closeFloatingToolbarAndRestoreCursor]
-   * 플로팅 서식 툴바를 닫고 에디터의 원래 호출 위치로 커서 및 포커스를 반환합니다.
+   * 플로팅 서식 툴바를 닫고 에디터(Visual/Monaco)로 포커스를 안전하게 반환합니다.
+   * 이미 적용된 서식이나 최신 커서 위치를 훼손하지 않고 툴바만 닫습니다.
    * ============================================================================
    */
   const closeFloatingToolbarAndRestoreCursor = useCallback(() => {
@@ -1534,41 +1548,23 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     lastClickedToolbarBtnRef.current = null;
 
     if (visualFloatingOriginRef.current) {
-      if (!visualCommandRef.current?.('RESTORE_ORIGIN')) {
-        visualCommandRef.current?.('FOCUS');
-      }
+      visualCommandRef.current?.('FOCUS');
     } else if (editorRef.current) {
       editorRef.current.focus();
-      if (floatingOriginMonacoSelectionRef.current) {
-        try {
-          const sel = floatingOriginMonacoSelectionRef.current;
-          editorRef.current.setPosition({ lineNumber: sel.endLineNumber, column: sel.endColumn });
-          editorRef.current.revealPosition({ lineNumber: sel.endLineNumber, column: sel.endColumn });
-        } catch {}
-      }
     }
   }, []);
 
-  useLayoutEffect(() => {
-    if (!floatingToolbar.visible) {
-      lastClickedToolbarBtnRef.current = null;
-      return;
-    }
-    // 새로 툴바가 열렸을 때만 첫 번째 버튼으로 포커스
-    if (!lastClickedToolbarBtnRef.current) {
-      floatingToolbarRef.current?.querySelector<HTMLButtonElement>('[data-floating-bold]')?.focus({ preventScroll: true });
-    }
-  }, [floatingToolbar.visible]);
   const lastFloatingActionRef = useRef<number>(0);
 
   /**
    * ============================================================================
    * [executeFloatingItem]
-   * 200ms 중복 실행 방지 디바운스와 함께 플로팅 서식 툴바의 액션을 실행하고 필요 시 툴바를 닫습니다.
-   * 서식 적용 후에도 선택한 플로팅 툴바 버튼으로 포커스/커서를 정확히 유지합니다.
+   * 200ms 중복 실행 방지 디바운스와 함께 플로팅 서식 툴바의 액션을 실행합니다.
+   * 서식 적용 후에도 툴바를 닫지 않고 버튼 포커스를 유지하여 연속 선택을 가능하게 하며,
+   * 사용자가 ESC를 누를 때 비로소 툴바가 닫히도록 지원합니다.
    *
    * @param {() => void} action - 실행할 서식 액션 콜백
-   * @param {boolean} [closeToolbar=false] - 실행 후 플로팅 툴바 닫기 여부
+   * @param {boolean} [closeToolbar=false] - 실행 후 플로팅 툴바 닫기 여부 (모달 호출 등)
    * @param {HTMLElement} [clickedBtn] - 클릭 또는 선택된 툴바 버튼 요소
    * ============================================================================
    */
@@ -1576,6 +1572,7 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     const now = Date.now();
     if (now - lastFloatingActionRef.current < 200) return;
     lastFloatingActionRef.current = now;
+
     const activeBtn = typeof document !== 'undefined' ? (document.activeElement as HTMLElement | null) : null;
     const targetBtn = (clickedBtn instanceof HTMLButtonElement ? clickedBtn : null)
       || (lastClickedToolbarBtnRef.current && floatingToolbarRef.current?.contains(lastClickedToolbarBtnRef.current) ? lastClickedToolbarBtnRef.current : null)
@@ -1585,30 +1582,14 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     }
 
     action();
-    if (editorRef.current) {
-      setTimeout(() => {
-        try {
-          if (editorRef.current) {
-            floatingOriginMonacoSelectionRef.current = editorRef.current.getSelection();
-          }
-        } catch {}
-      }, 20);
-    }
 
     if (closeToolbar) {
       closeFloatingToolbarAndRestoreCursor();
     } else {
-      // 8 & 10. 플로팅 툴바에서 서식 적용 후에도 선택한 플로팅 툴바 버튼에 포커스/커서 유지
-      const keepFocus = () => {
-        const btnToFocus = lastClickedToolbarBtnRef.current || targetBtn;
-        if (btnToFocus && floatingToolbarRef.current?.contains(btnToFocus)) {
-          btnToFocus.focus({ preventScroll: true });
-        }
-      };
-      keepFocus();
-      requestAnimationFrame(keepFocus);
-      setTimeout(keepFocus, 30);
-      setTimeout(keepFocus, 80);
+      // 툴바를 닫지 않고 포커스를 유지하여 연속 서식 선택(방향키/클릭) 보장
+      if (targetBtn && floatingToolbarRef.current?.contains(targetBtn)) {
+        targetBtn.focus({ preventScroll: true });
+      }
     }
   }, [closeFloatingToolbarAndRestoreCursor]);
 

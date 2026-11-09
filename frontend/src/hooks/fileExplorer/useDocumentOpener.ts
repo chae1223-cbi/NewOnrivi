@@ -2,6 +2,7 @@
 // 📊 [OMD-HOOK-useDocumentOpener-0001] frontend/src/hooks/fileExplorer/useDocumentOpener.ts
 // 🎯 @KICK  : 파일 트리 클릭(handleFileClick) 및 경로/링크 기반 문서 탐색·오픈(handleFileOpenByPath), 지식 DB 및 앵커 점프(#L..) 연동
 // 🛡️ @GUARD : 브라우저 FSA 재귀 탐색(findFileHandleInDirectoryDeep), 구글 드라이브 온디맨드 검색, VFS/도움말 폴백 및 세션 동기화
+// 🚨 @PATCH : 2026-11-08 — [세션 복원 중 탐색기 파일 클릭 경합 방어]: 앱 시작 세션 복원(sessionRestoringRef) 진행 중 탐색기 클릭 시 완료될 때까지 안전 대기 후 열도록 개선하여 렌더러 무응답(renderer unresponsive) 및 탭 충돌 원천 방어
 // 🚨 @PATCH : 2026-11-07 — [문서 링크 꺽쇠(<...>) 정제 및 2차 중복 폴더 세그먼트 축약 방어]: 꺽쇠가 포함된 링크(<./00_시작하기.md>) 정제 및 resolveWorkspaceHelpLink 이후 2차 연속 디렉토리(도움말/도움말/) 결합 완벽 방어
 // 🚨 @PATCH : 2026-11-07 — [연속 중복 디렉토리(도움말/도움말/) 자동 정제]: pathWithoutHash 초기 진입 시 연속된 동일 폴더 세그먼트를 사전 축약하여 404 방어
 // 🚨 @PATCH : 2026-11-07 — [Drive 문서 링크 온디맨드 탐색 강화 및 폴백 안전망]: listDriveChildren 탐색 시 NFC/소문자 정규화 비교를 적용하고, 상대 계층 탐색 실패 시 현재 Drive 작업장 내 파일명(targetBaseName) 직접 검색 2차 폴백을 지원하여 문서 이동 성공률 100% 보장
@@ -1152,6 +1153,15 @@ export function useDocumentOpener({
    * ==========================================================================================
    */
   const handleFileClick = async (node: FileNode | null, parentHandle?: any) => {
+    // 🛡️ [세션 복원 중 클릭 방어]: 앱 최초 시작 시 이전 세션 탭 복원이 진행 중인 경우 완료될 때까지 안전 대기
+    if (sessionRestoringRef?.current) {
+      let waited = 0;
+      while (sessionRestoringRef?.current && waited < 3000) {
+        await new Promise(r => setTimeout(r, 50));
+        waited += 50;
+      }
+    }
+
     if (previewModeRef.current === 'css-style') {
       const editor = editorRef.current;
       if (editor && activeTabIdRef.current) {

@@ -2,6 +2,25 @@
 // 📊 [OMD-CORE-VisualEditor-ProseMirrorHandlers] frontend/src/components/visualEditor/visualEditorProseMirrorHandlers.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 ProseMirror Keymap, 키보드/텍스트 입력, 스마트 붙여넣기(handlePaste), 드롭(handleDrop), 마우스 클릭/링크 이동(handleClick) 및 DOM 이벤트 핸들러 팩토리
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 클립보드 이미지/HTML 붙여넣기 정제, 5대 정밀 진단 로깅(logError/logWarn) 준수
+// 🚨 @PATCH : 2026-11-08 — [리스트 내부 Enter 다음 리스트 추가 & Shift+Enter 리스트 탈출 새 문단 전환 구현]:
+//             1) 리스트 항목 내부에서 Enter 입력 시 splitListItem을 통해 다음 리스트 항목(list_item)을 즉시 추가 (빈 항목일 때는 exitEmptyListItem으로 리스트 탈출)
+//             2) 리스트 항목 내부에서 Shift+Enter 입력 시 exitListToParagraph를 실행하여 리스트를 완전히 탈출하고 독립된 새로운 일반 문단(paragraph) 생성
+//             3) 리스트 항목 내부에서는 문단 시작 Enter 무반응 방어가 간섭하지 않도록 !insideListItem 조건 격리
+// 🚨 @PATCH : 2026-11-08 — [Enter 문단 시작 무반응 유지 & Shift+Enter 빈 행 문단 전환 전면 탑재]:
+//             1) 문단 맨 시작($from.parentOffset === 0)에서 Enter 입력 시 문단이 밀리지 않고 반응 없이 커서를 제자리에 유지
+//             2) Enter 입력 후 한 글자도 입력하지 않은 빈 행(hard_break)에서 Shift+Enter 입력 시 hard_break를 제거하고 독립된 새 문단(paragraph) 행으로 전환
+//             3) 글이 있는 상태에서 Shift+Enter 입력 시 다음 줄에 새로운 문단(paragraph) 생성 분리
+// 🚨 @PATCH : 2026-11-08 — [표 셀 Shift 연속 누적 선택 한 칸 멈춤 결함 완전 해결]:
+//             1) Shift 선택 시 $from(시작 셀 고정) 대신 tableContextAt($head)를 통해 현재 이동 중인 활성 헤드 좌표를 실시간 추적하도록 전환
+//             2) Shift+방향키 입력 시 불필요한 endOfTextblock(텍스트 블록 끝) 조건을 배제하고 엑셀처럼 2행, 3행 이상 무제한 연속 누적 선택이 매끄럽게 확장되도록 개선
+// 🚨 @PATCH : 2026-11-08 — [표 셀 방향키 이동, Shift 누적 선택, End 모드 및 끝점 점프 전면 탑재]:
+//             1) 표 내부에서 상/하/좌/우 방향키 입력 시 셀 경계 감지(endOfTextblock)를 통해 행·열 인접 셀로 자연스러운 커서 이동 지원
+//             2) Shift + 방향키 조합 시 현재 anchor로부터 대상 셀까지 TextSelection 누적 범위 선택(엑셀식 다중 셀 선택) 완벽 지원
+//             3) End 키 입력 후 우/아래 방향키 또는 Ctrl+방향키 입력 시 현재 행의 마지막 열 및 현재 열의 마지막 행으로 즉시 점프 이동 지원
+// 🚨 @PATCH : 2026-11-08 — [표 일부분/단일 셀 선택 복사 시 순수 텍스트 추출 보장]: clipboardTextSerializer에서 동일 표 셀 내부 선택(isSingleCellSelection) 감지 시 표 껍데기(|---|)를 배제하고 해당 셀의 순수 문자/단어만 복사하여, 붙여넣기 시 표가 아닌 순수 글자만 깔끔하게 붙여넣어지도록 개선
+// 🚨 @PATCH : 2026-11-08 — [외부 표 붙여넣기 및 표 복사·잘라내기(Copy/Cut) 전면 지원]: handlePaste에서 외부 엑셀/웹 표 붙여넣기 시 네이티브 위지윅 표로 즉시 변환 삽입하고, handleDOMEvents의 copy/cut에서 다중 셀 및 전체 표 선택 시 마크다운(|---|)과 HTML(<table>) 양방향 클립보드 서식 복사 및 안전한 잘라내기를 지원하도록 개선
+// 🚨 @PATCH : 2026-11-08 — [표 내부 모든 셀(빈 셀 및 내용 셀) 클릭 시 제자리 정확 안착 및 편집 활성화 보장]: handleClick에서 표 셀(td, th) 클릭 감지 시, 좌표 기반 posAtCoords 검증과 posAtDOM(targetCell) 셀 범위 격리를 결합하여 클릭한 바로 그 셀의 문단 내부로 커서를 정밀 안착시키고 포커스를 활성화하여 즉시 타이핑 수정이 가능하도록 전면 개선
+// 🚨 @PATCH : 2026-11-08 — [인용문 및 본문 Enter / Shift+Enter 동작 전환]: Enter 입력 시 인용문/본문 모두 문단 간격 없는 다음 문장(줄바꿈 hard_break, 빈 인용문/항목 exitQuote/exitEmptyListItem)으로 이동하고, Shift+Enter 입력 시 문단 간격 분리(신규 문단 paragraph 및 새 목록 항목 splitListItem)로 전환
 // 🚨 @PATCH : 2026-11-07 — [문서 링크 클릭 시 단일 경로 위임]: cleanHref를 불필요하게 사전 resolveDocPath하지 않고 원본 상대 경로를 onFileOpenRef에 직접 위임하여, 상위 EditorCore 및 isPathInsideWorkspace 간의 이중 경로 결합(도움말/도움말/...)을 원천 차단
 // 🚨 @PATCH : 2026-11-07 — [컨트롤 내부 문구/단어 복사 시 껍데기 박리 및 순수 서식 텍스트 보존 복사]: clipboardTextSerializer에서 리스트/인용구/표 내부 문구·단어 복사 시 innermostContent 언래핑을 통해 부모 컨트롤 마커(-, 1., > 등)를 벗겨내고 단어와 인라인 서식만 복사하며, 리스트 전체 및 다중 항목 복사 시에는 문단 복사와 동일하게 온전한 마크다운 구조를 직렬화하도록 개선
 // 🚨 @PATCH : 2026-11-07 — [태그 보존 복사 및 마우스 드래그 선택 안정화]: clipboardTextSerializer를 구현하여 마크다운 태그(서식/코드블록/헤딩/인라인) 원본 보존 복사를 지원하고, handleClick에서 드래그 선택(isDrag) 시 선택 영역 붕괴를 원천 방어
@@ -14,7 +33,7 @@ import type React from 'react';
 import { NodeSelection, TextSelection, type Command, type Plugin } from 'prosemirror-state';
 import type { EditorProps, EditorView } from 'prosemirror-view';
 import type { Slice } from 'prosemirror-model';
-import { baseKeymap, chainCommands, exitCode, toggleMark } from 'prosemirror-commands';
+import { baseKeymap, chainCommands, exitCode, newlineInCode, toggleMark } from 'prosemirror-commands';
 import { splitListItem } from 'prosemirror-schema-list';
 import { undo, redo, closeHistory } from 'prosemirror-history';
 import { keymap } from 'prosemirror-keymap';
@@ -25,6 +44,7 @@ import {
   removeListMarkerAtStart,
   moveUpFromEmptyOrderedItem,
   exitEmptyListItem,
+  exitListToParagraph,
   joinOrderedListsAcrossEmptyParagraph,
   deleteNextListBoundary,
   deleteEmptyParagraphBeforeList,
@@ -36,11 +56,13 @@ import {
 } from '@/lib/visualListCommands';
 import {
   tableContext,
+  tableContextAt,
   tableAction,
   moveTableCell,
   tableEnter,
   clearMultiCellTableSelection,
   hasMultiCellTableSelection,
+  tableCellAt,
 } from '@/lib/visualTableCommands';
 import { desktopClipboardImage } from '@/lib/desktopClipboard';
 import { markdownPasteInTableCellTransaction, markdownPasteTransaction } from '@/lib/visualMarkdownPaste';
@@ -207,13 +229,20 @@ export function createVisualEditorKeymap({
           parent?.type === visualSchema.nodes.list_item && parent.attrs.checked !== null ? { checked: false } : undefined
         )(state, dispatch, currentView);
       },
+      exitQuote(true),
+      headingEnter,
+      newlineInCode,
+      (state, dispatch) => {
+        if (dispatch) dispatch(state.tr.replaceSelectionWith(visualSchema.nodes.hard_break.create()).scrollIntoView());
+        return true;
+      }
+    ),
+    'Shift-Enter': chainCommands(
+      exitCode,
+      exitListToParagraph,
       headingEnter,
       baseKeymap.Enter
     ),
-    'Shift-Enter': chainCommands(exitCode, (state, dispatch) => {
-      if (dispatch) dispatch(state.tr.replaceSelectionWith(visualSchema.nodes.hard_break.create()).scrollIntoView());
-      return true;
-    }),
     Tab: chainCommands(
       moveTableCell(),
       indentBlockquote,
@@ -319,18 +348,132 @@ export function createVisualEditorHandlers({
   | 'clipboardTextSerializer'
 > {
   let lastMouseDownCoords: { x: number; y: number } | null = null;
+  let tableEndMode = false;
+  let tableEndTimer: any = null;
+
+  const resetTableEndMode = () => {
+    tableEndMode = false;
+    if (tableEndTimer) {
+      clearTimeout(tableEndTimer);
+      tableEndTimer = null;
+    }
+  };
+
+  const activateTableEndMode = () => {
+    tableEndMode = true;
+    if (tableEndTimer) clearTimeout(tableEndTimer);
+    tableEndTimer = setTimeout(() => {
+      tableEndMode = false;
+      tableEndTimer = null;
+    }, 2500);
+  };
 
   return {
     handleKeyDown(currentView, event) {
       if (!currentView.editable || event.isComposing) return false;
       if (event.key === 'Enter') {
-        const { $from } = currentView.state.selection;
+        const { $from, empty } = currentView.state.selection;
         const isFootnoteDef =
           $from.parent.type === visualSchema.nodes.visual_footnote_def ||
           ($from.nodeAfter && $from.nodeAfter.type === visualSchema.nodes.visual_footnote_def) ||
           ($from.nodeBefore && $from.nodeBefore.type === visualSchema.nodes.visual_footnote_def);
         if (isFootnoteDef) {
           event.preventDefault();
+          return true;
+        }
+
+        let insideListItem = false;
+        for (let d = $from.depth; d > 0; d--) {
+          if ($from.node(d).type === visualSchema.nodes.list_item) {
+            insideListItem = true;
+            break;
+          }
+        }
+
+        // 🌟 [요구사항 1: 문단 시작 Enter 무반응 방어]
+        // 문단 맨 시작(parentOffset === 0)에서 Enter 입력 시 문단이 밀리지 않고 커서를 제자리에 유지
+        // 단, 리스트 내부(!insideListItem)나 표(!tableContext)는 제외
+        if (
+          !event.shiftKey &&
+          !event.ctrlKey &&
+          !event.altKey &&
+          !event.metaKey &&
+          !slashOpenRef.current &&
+          empty &&
+          !insideListItem &&
+          $from.parent.isTextblock &&
+          $from.parentOffset === 0 &&
+          $from.parent.content.size > 0 &&
+          !tableContext(currentView.state)
+        ) {
+          event.preventDefault();
+          return true;
+        }
+
+        // 🌟 [요구사항: 리스트 내부에서 Enter 입력 시 다음 리스트 항목 추가]
+        if (
+          !event.shiftKey &&
+          !event.ctrlKey &&
+          !event.altKey &&
+          !event.metaKey &&
+          !slashOpenRef.current &&
+          empty &&
+          insideListItem
+        ) {
+          if (exitEmptyListItem(currentView.state, currentView.dispatch, currentView)) {
+            event.preventDefault();
+            caretRef.current?.schedule();
+            return true;
+          }
+          const parent = $from.depth > 0 ? $from.node($from.depth - 1) : null;
+          const didSplit = splitListItem(
+            visualSchema.nodes.list_item,
+            parent?.type === visualSchema.nodes.list_item && parent.attrs.checked !== null ? { checked: false } : undefined
+          )(currentView.state, currentView.dispatch, currentView);
+          if (didSplit) {
+            event.preventDefault();
+            caretRef.current?.schedule();
+            return true;
+          }
+        }
+
+        // 🌟 [요구사항 2: Shift + Enter 리스트 탈출 및 빈 행 문단 전환 및 글이 있을 때 새 문단 생성]
+        if (
+          event.shiftKey &&
+          !event.ctrlKey &&
+          !event.altKey &&
+          !event.metaKey &&
+          !slashOpenRef.current &&
+          empty &&
+          $from.parent.isTextblock &&
+          !tableContext(currentView.state)
+        ) {
+          // A) 리스트 내부인 경우: 리스트를 벗어나서 새로운 독립 문단(paragraph) 생성!
+          if (insideListItem) {
+            event.preventDefault();
+            exitListToParagraph(currentView.state, currentView.dispatch, currentView);
+            caretRef.current?.schedule();
+            return true;
+          }
+
+          const nodeBefore = $from.nodeBefore;
+          // B) Enter 입력 후 한 글자도 입력 안 한 빈 행(hard_break 뒤)인 경우:
+          // 앞선 hard_break를 삭제하고 해당 위치에서 문단을 분리하여 독립된 새 문단(paragraph)으로 전환
+          if (nodeBefore && nodeBefore.type === visualSchema.nodes.hard_break) {
+            event.preventDefault();
+            const breakPos = $from.pos - nodeBefore.nodeSize;
+            let tr = currentView.state.tr.delete(breakPos, $from.pos);
+            tr = tr.split(breakPos);
+            currentView.dispatch(tr.scrollIntoView());
+            caretRef.current?.schedule();
+            return true;
+          }
+
+          // C) 글이 있는 상태(문장 중간 또는 끝): 다음 줄에 새로운 문단(paragraph) 생성
+          event.preventDefault();
+          let tr = currentView.state.tr.split($from.pos);
+          currentView.dispatch(tr.scrollIntoView());
+          caretRef.current?.schedule();
           return true;
         }
       }
@@ -442,6 +585,215 @@ export function createVisualEditorHandlers({
           }
         }
       }
+      // 📊 [표 셀 방향키 이동, Shift 누적 선택, End 모드 및 끝점 점프 처리]
+      const tblCtx = tableContext(currentView.state);
+      if (tblCtx && !slashOpenRef.current) {
+        // 1) End 키 입력: 엑셀 스타일 End 모드 활성화 (2.5초 대기)
+        if (event.key === 'End' && !event.altKey && !event.metaKey) {
+          activateTableEndMode();
+          if (!event.ctrlKey) {
+            event.preventDefault();
+            const from = currentView.state.selection.$from;
+            const endPos = from.end();
+            if (event.shiftKey) {
+              const anchor = currentView.state.selection.anchor;
+              currentView.dispatch(
+                currentView.state.tr.setSelection(
+                  TextSelection.between(currentView.state.doc.resolve(anchor), currentView.state.doc.resolve(endPos))
+                ).scrollIntoView()
+              );
+            } else {
+              currentView.dispatch(
+                currentView.state.tr.setSelection(TextSelection.create(currentView.state.doc, endPos)).scrollIntoView()
+              );
+            }
+            caretRef.current?.schedule();
+            return true;
+          }
+        }
+
+        // 2) 방향키 처리 (ArrowUp, ArrowDown, ArrowLeft, ArrowRight)
+        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
+          const isEndJump = tableEndMode || event.ctrlKey || event.metaKey;
+          const headCtx = tableContextAt(currentView.state.selection.$head) || tblCtx;
+          const tableNode = headCtx.table;
+          const tablePos = headCtx.pos;
+          const headRow = headCtx.row;
+          const headCol = headCtx.column;
+          const rowCount = tableNode.childCount;
+          const colCount = tableNode.child(headRow).childCount;
+
+          if (isEndJump) {
+            resetTableEndMode();
+            let targetR = headRow;
+            let targetC = headCol;
+
+            if (event.key === 'ArrowRight') {
+              targetC = colCount - 1;
+            } else if (event.key === 'ArrowDown') {
+              targetR = rowCount - 1;
+            } else if (event.key === 'ArrowLeft') {
+              targetC = 0;
+            } else if (event.key === 'ArrowUp') {
+              targetR = 0;
+            }
+
+            event.preventDefault();
+            const targetInfo = tableCellAt(tableNode, tablePos, targetR, targetC);
+            if (event.shiftKey) {
+              const anchor = currentView.state.selection.anchor;
+              const targetHead = (event.key === 'ArrowRight' || event.key === 'ArrowDown')
+                ? targetInfo.contentEnd
+                : targetInfo.contentStart;
+              currentView.dispatch(
+                currentView.state.tr.setSelection(
+                  TextSelection.between(currentView.state.doc.resolve(anchor), currentView.state.doc.resolve(targetHead))
+                ).scrollIntoView()
+              );
+            } else {
+              currentView.dispatch(
+                currentView.state.tr.setSelection(
+                  TextSelection.create(currentView.state.doc, targetInfo.contentStart)
+                ).scrollIntoView()
+              );
+            }
+            caretRef.current?.schedule();
+            return true;
+          }
+
+          resetTableEndMode();
+
+          // 🌟 [A] Shift 키를 누른 상태: 셀 단위 무제한 연속 누적 선택 (엑셀식 동작)
+          if (event.shiftKey) {
+            const anchor = currentView.state.selection.anchor;
+            if (event.key === 'ArrowDown') {
+              if (headRow < rowCount - 1) {
+                event.preventDefault();
+                const targetInfo = tableCellAt(tableNode, tablePos, headRow + 1, headCol);
+                currentView.dispatch(
+                  currentView.state.tr.setSelection(
+                    TextSelection.between(currentView.state.doc.resolve(anchor), currentView.state.doc.resolve(targetInfo.contentEnd))
+                  ).scrollIntoView()
+                );
+                caretRef.current?.schedule();
+                return true;
+              }
+            } else if (event.key === 'ArrowUp') {
+              if (headRow > 0) {
+                event.preventDefault();
+                const targetInfo = tableCellAt(tableNode, tablePos, headRow - 1, headCol);
+                currentView.dispatch(
+                  currentView.state.tr.setSelection(
+                    TextSelection.between(currentView.state.doc.resolve(anchor), currentView.state.doc.resolve(targetInfo.contentStart))
+                  ).scrollIntoView()
+                );
+                caretRef.current?.schedule();
+                return true;
+              }
+            } else if (event.key === 'ArrowRight') {
+              if (headCol < colCount - 1) {
+                event.preventDefault();
+                const targetInfo = tableCellAt(tableNode, tablePos, headRow, headCol + 1);
+                currentView.dispatch(
+                  currentView.state.tr.setSelection(
+                    TextSelection.between(currentView.state.doc.resolve(anchor), currentView.state.doc.resolve(targetInfo.contentEnd))
+                  ).scrollIntoView()
+                );
+                caretRef.current?.schedule();
+                return true;
+              }
+            } else if (event.key === 'ArrowLeft') {
+              if (headCol > 0) {
+                event.preventDefault();
+                const targetInfo = tableCellAt(tableNode, tablePos, headRow, headCol - 1);
+                currentView.dispatch(
+                  currentView.state.tr.setSelection(
+                    TextSelection.between(currentView.state.doc.resolve(anchor), currentView.state.doc.resolve(targetInfo.contentStart))
+                  ).scrollIntoView()
+                );
+                caretRef.current?.schedule();
+                return true;
+              }
+            }
+          }
+
+          // 🌟 [B] 일반 방향키: 셀 내부 경계 도달 시 인접 셀로 커서 이동
+          if (!event.shiftKey) {
+            if (event.key === 'ArrowDown') {
+              const atEnd = currentView.endOfTextblock('down');
+              if (atEnd && headRow < rowCount - 1) {
+                event.preventDefault();
+                const targetInfo = tableCellAt(tableNode, tablePos, headRow + 1, headCol);
+                currentView.dispatch(
+                  currentView.state.tr.setSelection(
+                    TextSelection.create(currentView.state.doc, targetInfo.contentStart)
+                  ).scrollIntoView()
+                );
+                caretRef.current?.schedule();
+                return true;
+              }
+            } else if (event.key === 'ArrowUp') {
+              const atStart = currentView.endOfTextblock('up');
+              if (atStart && headRow > 0) {
+                event.preventDefault();
+                const targetInfo = tableCellAt(tableNode, tablePos, headRow - 1, headCol);
+                currentView.dispatch(
+                  currentView.state.tr.setSelection(
+                    TextSelection.create(currentView.state.doc, targetInfo.contentStart)
+                  ).scrollIntoView()
+                );
+                caretRef.current?.schedule();
+                return true;
+              }
+            } else if (event.key === 'ArrowRight') {
+              const atEnd = currentView.endOfTextblock('right');
+              if (atEnd) {
+                let targetR = headRow;
+                let targetC = headCol + 1;
+                if (targetC >= colCount && headRow < rowCount - 1) {
+                  targetR = headRow + 1;
+                  targetC = 0;
+                }
+                if (targetC < tableNode.child(targetR).childCount) {
+                  event.preventDefault();
+                  const targetInfo = tableCellAt(tableNode, tablePos, targetR, targetC);
+                  currentView.dispatch(
+                    currentView.state.tr.setSelection(
+                      TextSelection.create(currentView.state.doc, targetInfo.contentStart)
+                    ).scrollIntoView()
+                  );
+                  caretRef.current?.schedule();
+                  return true;
+                }
+              }
+            } else if (event.key === 'ArrowLeft') {
+              const atStart = currentView.endOfTextblock('left');
+              if (atStart) {
+                let targetR = headRow;
+                let targetC = headCol - 1;
+                if (targetC < 0 && headRow > 0) {
+                  targetR = headRow - 1;
+                  targetC = tableNode.child(targetR).childCount - 1;
+                }
+                if (targetR >= 0 && targetC >= 0) {
+                  event.preventDefault();
+                  const targetInfo = tableCellAt(tableNode, tablePos, targetR, targetC);
+                  currentView.dispatch(
+                    currentView.state.tr.setSelection(
+                      TextSelection.create(currentView.state.doc, targetInfo.contentEnd)
+                    ).scrollIntoView()
+                  );
+                  caretRef.current?.schedule();
+                  return true;
+                }
+              }
+            }
+          }
+        } else if (event.key !== 'Shift' && event.key !== 'Control' && event.key !== 'Alt' && event.key !== 'Meta') {
+          resetTableEndMode();
+        }
+      }
+
       if (
         event.key === 'End' &&
         !event.shiftKey &&
@@ -700,6 +1052,24 @@ export function createVisualEditorHandlers({
               ? sanitizePastedText(htmlToImportMarkdown(html))
               : text;
         if (cellSource) {
+          const isPastedTable = /\|[\s\t]*:?---*:?[\s\t]*\|/.test(cellSource) || (cellSource.includes('\t') && cellSource.includes('\n'));
+          if (isPastedTable && codecRef.current) {
+            event.preventDefault();
+            event.stopPropagation();
+            const tblCtx = tableContext(currentView.state);
+            if (tblCtx) {
+              const isCurrentTableEmpty = !tblCtx.table.textContent.trim();
+              if (isCurrentTableEmpty) {
+                const tr = currentView.state.tr.replaceWith(tblCtx.pos, tblCtx.pos + tblCtx.table.nodeSize, visualSchema.nodes.paragraph.create());
+                tr.setSelection(TextSelection.create(tr.doc, tblCtx.pos + 1));
+                const newState = currentView.state.apply(tr);
+                currentView.dispatch(markdownPasteTransaction(newState, codecRef.current, cellSource));
+              } else {
+                currentView.dispatch(markdownPasteTransaction(currentView.state, codecRef.current, cellSource));
+              }
+              return true;
+            }
+          }
           event.preventDefault();
           event.stopPropagation();
           currentView.dispatch(markdownPasteInTableCellTransaction(currentView.state, cellSource));
@@ -928,6 +1298,44 @@ export function createVisualEditorHandlers({
         setSelection(false);
         return true;
       }
+      // 💡 표 셀 클릭 가드: 표 내부의 임의의 셀(빈 셀 또는 내용이 있는 셀) 클릭 시 해당 셀 내부로 정확히 커서 안착 및 편집 활성화
+      const targetCell = (event.target as HTMLElement | null)?.closest('td, th') as HTMLElement | null;
+      const isCellInteractive = Boolean((event.target as HTMLElement | null)?.closest('a, button, input, select, textarea'));
+      if (targetCell && !isCellInteractive && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
+        event.preventDefault();
+        try {
+          const cellPos = currentView.posAtDOM(targetCell, 0);
+          if (typeof cellPos === 'number' && cellPos >= 0) {
+            const $resolved = currentView.state.doc.resolve(cellPos);
+            const cellStart = $resolved.start();
+            const cellEnd = $resolved.end();
+
+            // 클릭한 좌표(clientX, clientY)의 위치 계산
+            const coords = { left: event.clientX, top: event.clientY };
+            const posInfo = currentView.posAtCoords(coords);
+            let targetPos: number | null = null;
+
+            if (posInfo && typeof posInfo.pos === 'number' && posInfo.pos >= cellStart && posInfo.pos <= cellEnd) {
+              targetPos = posInfo.pos;
+            } else {
+              // 여백 클릭 또는 좌표가 셀 범위를 벗어난 경우 셀 내부 문단 끝 또는 시작으로 안전하게 안착
+              const cellNode = currentView.state.doc.nodeAt(cellStart);
+              if (cellNode && cellNode.isTextblock) {
+                targetPos = cellStart + Math.max(0, cellNode.content.size);
+              } else {
+                targetPos = Math.min(cellStart + 1, cellEnd);
+              }
+            }
+
+            const clamped = Math.max(0, Math.min(targetPos, currentView.state.doc.content.size));
+            const sel = TextSelection.near(currentView.state.doc.resolve(clamped));
+            currentView.dispatch(currentView.state.tr.setSelection(sel));
+            currentView.focus();
+            caretRef.current?.schedule();
+            return true;
+          }
+        } catch {}
+      }
       const clickedFootnoteDef = (event.target as HTMLElement | null)?.closest('.visual-footnote-def');
       const clickedFootnoteArea = (event.target as HTMLElement | null)?.closest(
         '.visual-footnote-area-header, .visual-footnote-def-container'
@@ -1082,6 +1490,49 @@ export function createVisualEditorHandlers({
 
     clipboardTextSerializer(slice: Slice, currentView: EditorView) {
       if (!slice || slice.content.size === 0) return '';
+      const { $from, $to } = currentView.state.selection;
+
+      // 0. 단일 표 셀 내부의 일부분(문자/단어) 선택 복사 판별:
+      //    $from과 $to가 동일한 table_cell 또는 table_header 내부에 위치하는 경우,
+      //    표 껍데기(|---|)를 절대 붙이지 않고 해당 셀의 순수 문자/단어(인라인 서식)만 반환
+      const getTableCellPos = ($pos: typeof $from) => {
+        for (let d = $pos.depth; d > 0; d--) {
+          const name = $pos.node(d).type.name;
+          if (name === 'table_cell' || name === 'table_header') return $pos.before(d);
+        }
+        return -1;
+      };
+      const fromCellPos = getTableCellPos($from);
+      const toCellPos = getTableCellPos($to);
+      const isSingleCellSelection = fromCellPos >= 0 && fromCellPos === toCellPos;
+
+      if (isSingleCellSelection) {
+        let inner = slice.content;
+        let d = slice.openStart;
+        while (d > 0 && inner.childCount === 1 && inner.firstChild && !inner.firstChild.isInline) {
+          inner = inner.firstChild.content;
+          d--;
+        }
+        try {
+          const tempPara = visualSchema.nodes.paragraph.create(null, inner);
+          const tempDoc = visualSchema.nodes.doc.create(null, [tempPara]);
+          const md = visualSerializer.serialize(tempDoc);
+          return md.replace(/^\r?\n+|\r?\n+$/g, '');
+        } catch {
+          return inner.textBetween(0, inner.size, '\n');
+        }
+      }
+
+      // 0-1. 복수 셀 또는 표 전체 선택 복사 시에만 마크다운 표 원본 형태(|---|) 유지
+      if (slice.content.childCount === 1 && slice.content.firstChild?.type === visualSchema.nodes.table) {
+        try {
+          const tempDoc = visualSchema.nodes.doc.create(null, [slice.content.firstChild]);
+          const md = visualSerializer.serialize(tempDoc);
+          return md.replace(/^\r?\n+|\r?\n+$/g, '');
+        } catch {
+          return slice.content.textBetween(0, slice.content.size, '\t', '\n');
+        }
+      }
       // 1. 단일 code_block 노드 선택 복사 시 마크다운 코드블록 원본 형태 유지
       if (slice.content.childCount === 1 && slice.content.firstChild?.type === visualSchema.nodes.code_block) {
         const node = slice.content.firstChild;
@@ -1090,7 +1541,6 @@ export function createVisualEditorHandlers({
         return '```' + params + '\n' + codeText + (codeText.endsWith('\n') ? '' : '\n') + '```';
       }
       // 2. code_block 내부 텍스트 선택 복사 시 줄바꿈 코드 텍스트 유지
-      const { $from, $to } = currentView.state.selection;
       if ($from.parent.type === visualSchema.nodes.code_block) {
         return slice.content.textBetween(0, slice.content.size, '\n');
       }
@@ -1132,19 +1582,75 @@ export function createVisualEditorHandlers({
 
     handleDOMEvents: {
       copy(currentView, event) {
-        if (!hasMultiCellTableSelection(currentView.state)) return false;
-        event.preventDefault();
-        onToastRef.current?.(
-          '여러 표 셀의 서식 복사는 지원하지 않습니다. 셀 안의 글을 각각 선택해 복사해 주세요.',
-          'info'
-        );
-        return true;
+        if (hasMultiCellTableSelection(currentView.state)) {
+          const slice = currentView.state.selection.content();
+          const tableNode = slice.content.firstChild?.type === visualSchema.nodes.table ? slice.content.firstChild : null;
+          let md = '';
+          let html = '';
+          if (tableNode) {
+            try {
+              const tempDoc = visualSchema.nodes.doc.create(null, [tableNode]);
+              md = visualSerializer.serialize(tempDoc).replace(/^\r?\n+|\r?\n+$/g, '');
+              html = '<table border="1">';
+              tableNode.forEach((row, _, rIdx) => {
+                html += '<tr>';
+                row.forEach(cell => {
+                  const tag = cell.type.name === 'table_header' || rIdx === 0 ? 'th' : 'td';
+                  html += `<${tag}>${cell.textContent.trim().replace(/</g, '&lt;').replace(/>/g, '&gt;')}</${tag}>`;
+                });
+                html += '</tr>';
+              });
+              html += '</table>';
+            } catch {}
+          }
+          if (!md) {
+            md = slice.content.textBetween(0, slice.content.size, '\t', '\n');
+          }
+          if (event.clipboardData && md) {
+            event.preventDefault();
+            event.clipboardData.setData('text/plain', md);
+            if (html) event.clipboardData.setData('text/html', html);
+            onToastRef.current?.('선택한 표가 클립보드에 복사되었습니다.', 'info');
+            return true;
+          }
+        }
+        return false;
       },
       cut(currentView, event) {
-        if (!hasMultiCellTableSelection(currentView.state)) return false;
-        event.preventDefault();
-        onToastRef.current?.('여러 표 셀의 잘라내기는 표 구조를 보호하기 위해 사용할 수 없습니다.', 'info');
-        return true;
+        if (hasMultiCellTableSelection(currentView.state)) {
+          const slice = currentView.state.selection.content();
+          const tableNode = slice.content.firstChild?.type === visualSchema.nodes.table ? slice.content.firstChild : null;
+          let md = '';
+          let html = '';
+          if (tableNode) {
+            try {
+              const tempDoc = visualSchema.nodes.doc.create(null, [tableNode]);
+              md = visualSerializer.serialize(tempDoc).replace(/^\r?\n+|\r?\n+$/g, '');
+              html = '<table border="1">';
+              tableNode.forEach((row, _, rIdx) => {
+                html += '<tr>';
+                row.forEach(cell => {
+                  const tag = cell.type.name === 'table_header' || rIdx === 0 ? 'th' : 'td';
+                  html += `<${tag}>${cell.textContent.trim().replace(/</g, '&lt;').replace(/>/g, '&gt;')}</${tag}>`;
+                });
+                html += '</tr>';
+              });
+              html += '</table>';
+            } catch {}
+          }
+          if (!md) {
+            md = slice.content.textBetween(0, slice.content.size, '\t', '\n');
+          }
+          if (event.clipboardData && md) {
+            event.preventDefault();
+            event.clipboardData.setData('text/plain', md);
+            if (html) event.clipboardData.setData('text/html', html);
+            clearMultiCellTableSelection(currentView.state, currentView.dispatch);
+            onToastRef.current?.('선택한 표 셀이 잘라내기되었습니다.', 'info');
+            return true;
+          }
+        }
+        return false;
       },
       mousedown(currentView, event) {
         if (!currentView.editable) return false;

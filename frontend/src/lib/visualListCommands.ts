@@ -1,6 +1,9 @@
 /**
  * 프로그램명 : OnriviAuthor 
  * 파일명 : visualListCommands.ts
+ * 🚨 @PATCH : **2026-11-08** — [리스트 내부 Shift+Enter 시 리스트 탈출 및 새 문단(paragraph) 전환 커맨드(exitListToParagraph) 신설]:
+ *             1) exitListToParagraph 신설: 리스트 항목(bullet_list / ordered_list / list_item) 내부에서 Shift + Enter 입력 시 리스트를 완전히 탈출하여 독립된 새로운 본문 문단(paragraph)을 생성하고 커서 이동
+ *             2) 빈 리스트 항목에서는 exitEmptyListItem과 연계하여 불필요한 공백 항목 없이 즉시 문단 전환
  * 🚨 @PATCH : **2026-11-07** — [리스트 분할/해제 시 TextSelection inline content 예외 원천 방어]: TextSelection.create 대신 Selection.near를 적용하여 ordered_list/bullet_list 경계점 예외(TextSelection endpoint not pointing into a node with inline content) 완전 차단
  * 🚨 @PATCH : 2026-11-05 — [목록 선택·내어쓰기]: 앞 문단 끝 경계는 목록 전환에서 제외하고, 마지막 항목의 이어지는 문단은 Shift+Tab으로 해당 문단만 목록 밖으로 이동한다.
  * 🚨 @PATCH : **2026-10-31** — [목록 서식 동일 버튼 재클릭 시 취소(토글 해제) 지원]:
@@ -31,7 +34,7 @@
 import { Fragment, Node as DocumentNode } from 'prosemirror-model';
 import { Command, Selection, TextSelection, Transaction, EditorState } from 'prosemirror-state';
 import { closeHistory } from 'prosemirror-history';
-import { liftListItem, sinkListItem } from 'prosemirror-schema-list';
+import { liftListItem, sinkListItem, splitListItem } from 'prosemirror-schema-list';
 import { joinForward } from 'prosemirror-commands';
 import { visualSchema } from './visualDocumentCodec';
 
@@ -999,3 +1002,83 @@ export function selectedList(kind:'bullet'|'ordered'|'check'|'clear'):Command {
     return true;
   };
 }
+
+/**
+ * 🌟 [리스트 탈출 커맨드]:
+ * 리스트(bullet_list / ordered_list / list_item) 내부에서 Shift + Enter 입력 시,
+ * 리스트를 완전히 벗어나 독립된 새로운 일반 문단(paragraph)을 생성하고 커서를 이동합니다.
+ */
+export const exitListToParagraph: Command = (state, dispatch, view) => {
+  const { $from, empty } = state.selection;
+  if (!empty) return false;
+
+  let listItemDepth = -1;
+  for (let d = $from.depth; d > 0; d--) {
+    if ($from.node(d).type === visualSchema.nodes.list_item) {
+      listItemDepth = d;
+      break;
+    }
+  }
+  if (listItemDepth === -1) return false;
+
+  const itemNode = $from.node(listItemDepth);
+  let isBlankItem = true;
+  itemNode.forEach(child => {
+    if (child.isText && /[^\s\u200b\ufeff]/.test(child.text || '')) isBlankItem = false;
+    else if (child.isTextblock) {
+      child.forEach(sub => {
+        if (sub.isText && /[^\s\u200b\ufeff]/.test(sub.text || '')) isBlankItem = false;
+      });
+    }
+  });
+
+  // 이미 빈 리스트 항목인 경우 기존 exitEmptyListItem 실행하여 문단으로 탈출
+  if (isBlankItem) {
+    return exitEmptyListItem(state, dispatch, view);
+  }
+
+  if (!dispatch) return true;
+
+  let currentTr = state.tr;
+  let tempState = state;
+
+  // 1) 내용이 있는 리스트 항목 커서 위치에서 분할 (새 항목 생성)
+  const splitFn = splitListItem(
+    visualSchema.nodes.list_item,
+    itemNode.attrs.checked !== null ? { checked: false } : undefined
+  );
+  splitFn(tempState, tr => {
+    for (const step of tr.steps) {
+      currentTr.step(step);
+    }
+    tempState = tempState.apply(tr);
+  }, view);
+
+  // 2) 분할되어 생성된 항목을 리스트 밖으로 완전히 탈출할 때까지 lift 반복
+  while (true) {
+    let inList = false;
+    for (let d = tempState.selection.$from.depth; d > 0; d--) {
+      if (tempState.selection.$from.node(d).type === visualSchema.nodes.list_item) {
+        inList = true;
+        break;
+      }
+    }
+    if (!inList) break;
+
+    let lifted = false;
+    liftListItem(visualSchema.nodes.list_item)(tempState, tr => {
+      lifted = true;
+      for (const step of tr.steps) {
+        currentTr.step(step);
+      }
+      tempState = tempState.apply(tr);
+    }, view);
+
+    if (!lifted) break;
+  }
+
+  currentTr.setSelection(Selection.near(currentTr.doc.resolve(Math.min(currentTr.doc.content.size, tempState.selection.from))));
+  dispatch(closeHistory(currentTr).scrollIntoView());
+  return true;
+};
+

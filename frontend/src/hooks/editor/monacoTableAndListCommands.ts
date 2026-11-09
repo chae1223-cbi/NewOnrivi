@@ -2,6 +2,8 @@
 // ============================================================================
 // 📂 파일명 : frontend/src/hooks/editor/monacoTableAndListCommands.ts
 // 📌 역할   : Monaco 에디터 표(Table) 정렬·이동·행 편집 및 리스트/인용구/제목 자동 번호 단축키 등록 모듈
+// 🚨 @PATCH : 2026-11-08 — [인용문 Shift+Enter 커서 위치 보정 및 빈 인용문 탈출]: Shift+Enter 후 커서 열 위치(+2) 정밀화 및 빈 인용문 탈출 지원
+// 🚨 @PATCH : 2026-11-08 — [인용문 및 본문 Shift+Enter 문단 개행 전환]: Shift+Enter 입력 시 일반 본문은 \n\n, 인용문 내에서는 \n> \n>  새 인용 문단을 생성하도록 전환
 // 🚨 @PATCH : 2026-11-04 — [useMonacoSetup.ts 모듈 분리 리팩토링 (1순위 아키텍처 경량화)]:
 //             1) 표 너비 계산·자동 정렬(getVisualLength, padVisual, formatTableBlock, setTableColumnAlign) 추출
 //             2) Tab / Shift+Tab 리스트·인용구·표 셀 이동 및 custom-space-heading-number, autoRenumberList, custom-enter-list-auto 추출
@@ -671,15 +673,44 @@ export function registerMonacoTableAndListCommands(editor: any, monaco: any, dep
     },
   });
 
-  // 5. Shift + Enter (<br> 삽입) 및 Ctrl + K (AI 어시스턴트)
+  // 5. Shift + Enter (문단 간격 \n\n 삽입, 인용문 내에서는 \n> \n>  새 인용 문단 삽입) 및 Ctrl + K (AI 어시스턴트)
   editor.addCommand(monaco.KeyMod.Shift | monaco.KeyCode.Enter, () => {
     const position = editor.getPosition();
     if (!position) return;
-    editor.executeEdits("insertBr", [{
+    const model = editor.getModel();
+    if (!model) return;
+    const lineNumber = position.lineNumber;
+    const lineContent = model.getLineContent(lineNumber);
+    const quoteRegex = /^([ \t]*)(>+)(?:[ \t]+(.*)|)$/;
+    const quoteMatch = lineContent.match(quoteRegex);
+    if (quoteMatch) {
+      const indent = quoteMatch[1] || '';
+      const quote = quoteMatch[2] || '>';
+      const text = quoteMatch[3] || '';
+      if (text.trim() === '') {
+        // 빈 인용문 줄에서 Shift+Enter 시 인용구 탈출 (일반 줄바꿈)
+        editor.executeEdits("exitQuoteOnEmpty", [{
+          range: new monaco.Range(lineNumber, 1, lineNumber, model.getLineMaxColumn(lineNumber)),
+          text: "",
+          forceMoveMarkers: true
+        }]);
+        editor.setPosition({ lineNumber, column: 1 });
+        return;
+      }
+      editor.executeEdits("insertQuoteParagraph", [{
+        range: new monaco.Range(lineNumber, position.column, lineNumber, position.column),
+        text: `\n${indent}${quote}\n${indent}${quote} `,
+        forceMoveMarkers: true
+      }]);
+      editor.setPosition({ lineNumber: lineNumber + 2, column: indent.length + quote.length + 2 });
+      return;
+    }
+    editor.executeEdits("insertParagraph", [{
       range: new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column),
-      text: "<br>",
+      text: "\n\n",
       forceMoveMarkers: true
     }]);
+    editor.setPosition({ lineNumber: position.lineNumber + 2, column: 1 });
   });
 
   editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, () => {

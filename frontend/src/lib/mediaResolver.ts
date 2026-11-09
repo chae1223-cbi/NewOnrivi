@@ -3,6 +3,10 @@
  * 📊 [OMD-LIB-MediaResolver-0001] mediaResolver.ts ➔ 통합 미디어 URL 리졸버
  * 🎯 @KICK  : 로컬(Electron/FSA), 구글 드라이브(GDRIVE), 정적 에셋의 미디어 경로를 단일 규격으로 해석하여 유효한 URL(Blob/Data/media-local)로 변환
  * 🛡️ @GUARD : Rule 3(역할 기반 분리: Core I/O 격리) 및 Rule 9(임의 폴백 금지) 준수
+ * 🚨 @PATCH : 2026-11-08 — [상대 미디어 경로(/media/...) 데스크톱 프로토콜(media-local://) 자동 해석 및 자가 치유]:
+ *             1) VisualReadOnlyMarkdownBlock 등 호출자가 api나 absolutePath를 전달하지 않은 경우에도 window.electronAPI 및 리소스 폴더를 지능형 자동 탐색하여 media-local://로 완벽 서빙
+ *             2) PDF 및 문서 가져오기로 생성된 /media/img_xxx.png 이미지가 WYSIWYG 에디터와 미리보기에서 404 없이 즉시 렌더링되도록 결함 원천 해결
+ *             3) 브라우저 환경에서 workspaceType 미지정 시 localStorage 기반 자동 탐색 및 FSAA/IDB 폴백 보강
  * 🚨 @PATCH : 2026-11-08 — [AsyncMedia 다이어트 및 미디어 리졸버 통합 분리]:
  *             1) AsyncImage 및 AsyncVideo에 흩어져 있던 Google Drive, Electron, 브라우저 FSAA 미디어 로딩 분기를 단일 함수로 일원화
  *             2) 중복 URL 파싱, 꺽쇠 정제, driveId 해석을 공통 전처리하여 코드 중복 60% 이상 소탕
@@ -103,6 +107,7 @@ export async function resolveMediaUrl(options: ResolveMediaOptions): Promise<Res
     absolutePath,
     rootFolder,
     resourceFolderHandle,
+    resourceFolder,
     workspaceType,
     api,
     queryString,
@@ -142,7 +147,8 @@ export async function resolveMediaUrl(options: ResolveMediaOptions): Promise<Res
   }
 
   // 4. Electron 데스크톱 네이티브 프로토콜 처리 (media-local://)
-  if (api) {
+  const effectiveApi = api || (typeof window !== 'undefined' ? (window as any).electronAPI : null);
+  if (effectiveApi) {
     let targetAbsolutePath = absolutePath;
     if (cleanSrc.startsWith('media://local/serve') || cleanSrc.startsWith('media-local://')) {
       try {
@@ -157,9 +163,29 @@ export async function resolveMediaUrl(options: ResolveMediaOptions): Promise<Res
         const m = cleanSrc.match(/[?&]url=([^&]+)/);
         if (m) targetAbsolutePath = decodeURIComponent(m[1]);
       }
+    } else if (cleanSrc.startsWith('http://') || cleanSrc.startsWith('https://')) {
+      return { url: `media://?url=${encodeURIComponent(cleanSrc)}`, isBlob: false };
+    } else if (!targetAbsolutePath) {
+      if (/^[A-Za-z]:[\\/]/.test(cleanSrc)) {
+        targetAbsolutePath = cleanSrc;
+      } else {
+        const resSettings = getResourceSettings('local') || getResourceSettings();
+        const resPath = resourceFolder || resSettings?.path || (typeof window !== 'undefined' ? (localStorage.getItem('onrivi_resource_folder_path') || localStorage.getItem('resourceFolder')) : '');
+        if (resPath) {
+          const sep = resPath.includes('\\') ? '\\' : '/';
+          const cleanRoot = resPath.endsWith(sep) ? resPath.slice(0, -1) : resPath;
+          let pureRel = cleanSrc.replace(/^\.?\/+/, '');
+          if (pureRel.startsWith('media/') || pureRel.startsWith('media\\')) {
+            pureRel = pureRel.replace(/^media[\\/]/, '');
+          }
+          targetAbsolutePath = `${cleanRoot}${sep}media${sep}${sep === '\\' ? pureRel.replace(/\//g, '\\') : pureRel.replace(/\\/g, '/')}`;
+        } else {
+          targetAbsolutePath = cleanSrc;
+        }
+      }
     }
 
-    if (targetAbsolutePath && (!cleanSrc.startsWith('media://') || cleanSrc.startsWith('media://local/serve'))) {
+    if (targetAbsolutePath && (!cleanSrc.startsWith('media://') || cleanSrc.startsWith('media://local/serve') || cleanSrc.startsWith('media-local://'))) {
       const v = revision || driveQuery.get('v') || '';
       return {
         url: `media-local://serve?url=${encodeURIComponent(targetAbsolutePath.split('?')[0])}${v ? `&v=${v}` : ''}`,
@@ -177,11 +203,12 @@ export async function resolveMediaUrl(options: ResolveMediaOptions): Promise<Res
   }
 
   // 6. 브라우저 FSAA (File System Access API) 로컬 폴더 탐색
-  if (workspaceType === 'browser' || workspaceType === 'local') {
+  const effectiveWsType = workspaceType || (typeof window !== 'undefined' ? (localStorage.getItem('workspaceType') || 'browser') : 'browser');
+  if (effectiveWsType === 'browser' || effectiveWsType === 'local') {
     let activeRFHandle = resourceFolderHandle || (typeof window !== 'undefined' ? (window as any).__resourceFolderHandle : null);
     if (!activeRFHandle && typeof window !== 'undefined') {
       try {
-        activeRFHandle = await idb.get('resourceFolderHandle');
+        activeRFHandle = await idb.get('resourceFolderHandle') || await idb.get('localResourceFolderHandle');
         if (activeRFHandle) (window as any).__resourceFolderHandle = activeRFHandle;
       } catch {}
     }

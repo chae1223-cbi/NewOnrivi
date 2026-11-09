@@ -1,6 +1,11 @@
 // ====================================================================
 // 📊 [OMD-HOOK-VisualEditorInsertActions] frontend/src/components/visualEditor/useVisualEditorInsertActions.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 서식/블록 명령, 이미지/미디어/각주/서명/참고문헌/수식/문서링크/날짜 삽입 액션 및 외부 commandRef 브릿지 훅
+// 🚨 @PATCH : 2026-11-08 — [목록 항목 인용문 변환 시 글머리 기호 보존 및 번호 목록/상단 빈 볼트 오변환 원천 방어]:
+//             1) setQuote 실행 시 선택 영역이 리스트(bullet_list / ordered_list) 내부에 있는 경우, ProseMirror findWrapping이 ordered_list로 오분기하고 상위에 빈 볼트(•)를 남기던 결함 완전 차단
+//             2) 선택된 리스트 항목들을 기존 리스트 타입 그대로 보존하여 blockquote로 감싸도록 개선하고, 동일 Alert 해제 시 liftTarget 기반 온전한 복구 보장
+// 🚨 @PATCH : 2026-11-08 — [플로팅 툴바 연속 서식 적용 시 포커스 보존]: 툴바 내 버튼 조작 시 뷰로 포커스를 강제 탈취하지 않아 툴바를 유지하고, ESC 종료 시에만 뷰 포커스를 복원하도록 보장
+// 🚨 @PATCH : 2026-11-08 — [플로팅 툴바 즉시 포커스 복원 및 서식 안전 보존]: 서식 액션 실행 후 뷰 포커스를 항상 복원하여 중단 없는 타이핑을 보장하고, RESTORE_ORIGIN 시 문서 상태를 훼손하지 않고 뷰 포커스만 복원하도록 개선
 // 🚨 @PATCH : 2026-11-07 — [플로팅 툴바 서식 적용 후 ESC 종료 시 태그 및 커서 온전 복원]: run 서식 실행 후 floatingOriginSelectionRef를 최신 상태로 갱신하고, RESTORE_ORIGIN 시 선택 영역 끝(to)으로 커서를 깔끔히 안착시켜 적용된 서식 태그 보존 및 타이핑 편의 보장
 // 🚨 @PATCH : 2026-11-07 — [플로팅 툴바 커서 반환 및 선택 버튼 포커스 유지]: 플로팅 툴바 호출 당시의 Selection 기억 및 RESTORE_ORIGIN 브릿지 명령 지원
 // 🚨 @PATCH : 2026-11-07 — [다중 인용(>>) 및 플로팅 툴바 포커스 유지]:
@@ -15,11 +20,12 @@
 import { useEffect } from 'react';
 import type React from 'react';
 import { Selection, TextSelection, type Command } from 'prosemirror-state';
+import { Fragment, type Node as DocumentNode } from 'prosemirror-model';
 import type { EditorView } from 'prosemirror-view';
 import { lift, setBlockType, toggleMark, wrapIn } from 'prosemirror-commands';
 import { liftListItem } from 'prosemirror-schema-list';
 import { undo, redo, closeHistory } from 'prosemirror-history';
-import { canSplit } from 'prosemirror-transform';
+import { canSplit, liftTarget } from 'prosemirror-transform';
 import { createVisualDocumentCodec, visualSchema, visualImageDetails } from '@/lib/visualDocumentCodec';
 import { selectedList } from '@/lib/visualListCommands';
 import { tableContext, tableAction } from '@/lib/visualTableCommands';
@@ -175,6 +181,7 @@ export function useVisualEditorInsertActions({
     if (!isFloatingActive) {
       view.focus();
     }
+    caretRef.current?.schedule();
   };
 
   const insertParagraphBeforeFirstBlock = () => {
@@ -190,26 +197,32 @@ export function useVisualEditorInsertActions({
     (alertType: string | null): Command =>
     (state, dispatch, view) => {
       const position = state.selection.$from;
-      // 기본 인용문은 이미 인용문 안에서 다시 실행하면 해제하지 않고 한 단계 더 중첩한다(최대 6단계).
-      // 해제는 인용문 첫 줄 맨 앞에서 Backspace(한 단계씩) 또는 태그 취소로 수행한다.
-      if (!alertType) {
-        let quoteDepth = 0;
-        for (let depth = position.depth; depth > 0; depth--) {
-          if (position.node(depth).type === visualSchema.nodes.blockquote) quoteDepth++;
-        }
-        if (quoteDepth > 0) {
-          if (quoteDepth >= 6) return false;
-          return wrapIn(visualSchema.nodes.blockquote, { alertType: null })(
-            state,
-            dispatch ? tr => dispatch(closeHistory(tr).scrollIntoView()) : undefined,
-            view
-          );
-        }
-      }
+      const { $from, $to } = state.selection;
+
+      // 1. 이미 인용문 내부에 위치한 경우
       for (let depth = position.depth; depth > 0; depth--) {
         if (position.node(depth).type === visualSchema.nodes.blockquote) {
           const existingAlert = position.node(depth).attrs.alertType || null;
+          // 기본 인용문은 이미 인용문 안에서 다시 실행하면 해제하지 않고 한 단계 더 중첩한다(최대 6단계).
+          // 해제는 인용문 첫 줄 맨 앞에서 Backspace(한 단계씩) 또는 태그 취소로 수행한다.
+          if (!alertType && existingAlert === null) {
+            let quoteDepth = 0;
+            for (let d = position.depth; d > 0; d--) {
+              if (position.node(d).type === visualSchema.nodes.blockquote) quoteDepth++;
+            }
+            if (quoteDepth >= 6) return false;
+            // 중첩 인용문 계속 진행 (아래의 리스트 분기 또는 wrapIn으로 안전 진입)
+            break;
+          }
           if (existingAlert === (alertType || null)) {
+            const quoteRange = $from.blockRange($to, node => node.type === visualSchema.nodes.blockquote);
+            if (quoteRange) {
+              const target = liftTarget(quoteRange);
+              if (target !== null && dispatch) {
+                dispatch(closeHistory(state.tr.lift(quoteRange, target)).scrollIntoView());
+                return true;
+              }
+            }
             return lift(state, dispatch, view);
           }
           if (dispatch) {
@@ -226,14 +239,99 @@ export function useVisualEditorInsertActions({
           return true;
         }
       }
+
+      // 2. 리스트(bullet_list / ordered_list) 내부 항목 인용문 감싸기
+      let listDepth = 0;
+      for (let d = $from.depth; d > 0; d--) {
+        const name = $from.node(d).type.name;
+        if (name === 'bullet_list' || name === 'ordered_list') {
+          listDepth = d;
+          break;
+        }
+      }
+
+      if (listDepth > 0) {
+        const listNode = $from.node(listDepth);
+        const isOrdered = listNode.type === visualSchema.nodes.ordered_list;
+        const listRange = $from.blockRange($to, node => node.type === visualSchema.nodes.bullet_list || node.type === visualSchema.nodes.ordered_list);
+        const startIndex = listRange ? listRange.startIndex : 0;
+        const endIndex = listRange ? listRange.endIndex : listNode.childCount;
+
+        const beforeItems: DocumentNode[] = [];
+        for (let i = 0; i < startIndex; i++) beforeItems.push(listNode.child(i));
+        const selectedItems: DocumentNode[] = [];
+        for (let i = startIndex; i < endIndex; i++) selectedItems.push(listNode.child(i));
+        const afterItems: DocumentNode[] = [];
+        for (let i = endIndex; i < listNode.childCount; i++) afterItems.push(listNode.child(i));
+
+        const quotedList = listNode.type.create(
+          {
+            ...listNode.attrs,
+            ...(isOrdered ? { order: (listNode.attrs.order || 1) + startIndex } : {})
+          },
+          Fragment.fromArray(selectedItems)
+        );
+
+        const blockquoteNode = visualSchema.nodes.blockquote.create(
+          { alertType: alertType || null },
+          quotedList
+        );
+
+        const replacements: DocumentNode[] = [];
+        if (beforeItems.length > 0) {
+          replacements.push(listNode.type.create(listNode.attrs, Fragment.fromArray(beforeItems)));
+        }
+        replacements.push(blockquoteNode);
+        if (afterItems.length > 0) {
+          replacements.push(listNode.type.create(
+            {
+              ...listNode.attrs,
+              ...(isOrdered ? { order: (listNode.attrs.order || 1) + endIndex } : {})
+            },
+            Fragment.fromArray(afterItems)
+          ));
+        }
+
+        if (dispatch) {
+          const listStart = $from.before(listDepth);
+          const listEnd = $from.after(listDepth);
+          let tr = state.tr.replaceWith(listStart, listEnd, replacements);
+
+          const afterQuotePos = listStart + (beforeItems.length > 0 ? replacements[0].nodeSize : 0) + blockquoteNode.nodeSize;
+          if (afterItems.length === 0 && (afterQuotePos === tr.doc.content.size || tr.doc.nodeAt(afterQuotePos)?.type !== visualSchema.nodes.paragraph)) {
+            tr = tr.insert(afterQuotePos, visualSchema.nodes.paragraph.create());
+          }
+
+          let quotePos = -1;
+          tr.doc.descendants((node, pos) => {
+            if (node === blockquoteNode) {
+              quotePos = pos;
+              return false;
+            }
+          });
+          if (quotePos >= 0) {
+            const selStart = Math.min(tr.doc.content.size - 1, quotePos + 3);
+            const selEnd = Math.min(tr.doc.content.size - 1, quotePos + blockquoteNode.nodeSize - 3);
+            try {
+              tr = tr.setSelection(TextSelection.between(tr.doc.resolve(selStart), tr.doc.resolve(selEnd)));
+            } catch (_) {
+              tr = tr.setSelection(Selection.near(tr.doc.resolve(selStart)));
+            }
+          }
+          dispatch(closeHistory(tr).scrollIntoView());
+        }
+        return true;
+      }
+
+      // 3. 일반 문단 / 블록 인용문 감싸기
       return wrapIn(visualSchema.nodes.blockquote, { alertType })(
         state,
         dispatch
           ? tr => {
-              const $from = tr.selection.$from;
-              for (let depth = $from.depth; depth > 0; depth--) {
-                if ($from.node(depth).type === visualSchema.nodes.blockquote) {
-                  const afterPos = $from.after(depth);
+              const $fromCur = tr.selection.$from;
+              for (let depth = $fromCur.depth; depth > 0; depth--) {
+                if ($fromCur.node(depth).type === visualSchema.nodes.blockquote) {
+                  const afterPos = $fromCur.after(depth);
                   const savedFrom = tr.selection.from;
                   const savedTo = tr.selection.to;
                   tr = tr.insert(afterPos, visualSchema.nodes.paragraph.create());
@@ -1406,28 +1504,12 @@ export function useVisualEditorInsertActions({
         }
         return true;
       }
-      if (command === 'RESTORE_ORIGIN' || command === 'FOCUS_ORIGIN') {
+      if (command === 'RESTORE_ORIGIN' || command === 'FOCUS_ORIGIN' || command === 'FOCUS') {
         const view = viewRef.current;
         if (view) {
           view.focus();
-          if (floatingOriginSelectionRef?.current) {
-            try {
-              const maxPos = view.state.doc.content.size;
-              const to = Math.max(0, Math.min(floatingOriginSelectionRef.current.to, maxPos));
-              // 선택 영역 끝(to)으로 커서를 정돈하여 적용된 태그를 보존하고 선택 강조를 안전하게 해제
-              const $to = view.state.doc.resolve(to);
-              const safeSelection = Selection.near($to, -1);
-              view.dispatch(view.state.tr.setSelection(safeSelection).scrollIntoView());
-              caretRef.current?.schedule();
-            } catch {
-              view.focus();
-            }
-          }
+          caretRef.current?.schedule();
         }
-        return true;
-      }
-      if (command === 'FOCUS') {
-        viewRef.current?.focus();
         return true;
       }
       if (command === 'ADD_REFERENCE') {

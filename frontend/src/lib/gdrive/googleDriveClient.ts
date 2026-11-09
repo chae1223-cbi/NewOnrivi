@@ -2,6 +2,10 @@
 // 📊 [OMD-LIB-googleDriveClient-0001] src/lib/gdrive/googleDriveClient.ts
 // 🎯 @KICK  : 누구나 쉽게 사용하는 구글 드라이브 무설정(Zero-Config) 자동 연동 및 클라우드 작업장 클라이언트 모듈
 // 🛡️ @GUARD : Rule 1, Rule 2(대문자 코드값 GDRIVE), 최소 권한 원칙(drive.file 스코프 한정)
+// 🚨 @PATCH : 2026-11-08 — [구글 드라이브 401 즉시 무음 재시도 및 죽은 Blob URL 방출(evictDriveMediaBlob) 도입]:
+//             1) readDriveFileContent 및 getDriveMediaImageBlobUrl에서 401 Unauthorized 감지 시 refreshDriveTokenSilently로 즉시 갱신 후 1회 투명 재시도하여 서지/이미지 로드 실패 차단
+//             2) evictDriveMediaBlob을 신설하여 만료/무효화된 blob:app:// URL이 driveImageBlobCache에 남아 ERR_FILE_NOT_FOUND를 무한 유발하는 현상 완벽 방어
+//             3) 이미지 다운로드 실패 시 해당 캐시 키를 즉각 정리하여 오염된 캐시 전파 차단
 // 🚨 @PATCH : 2026-11-07 — [드라이브 미디어 이미지 직접 다운로드 강화 및 꺽쇠 정제]: getDriveMediaImageBlobUrl에서 selectedId(driveId) 존재 시 mediaFolderId 유무와 무관하게 직접 다운로드 허용 및 파라미터 끝 꺽쇠(>) 정제로 404 차단
 // 🚨 @PATCH : 2026-11-07 — [구글 드라이브 토큰 선제적 검증(Pre-flight) 및 갱신 싱글톤 도입으로 401 오류 원천 차단]:
 //             1) ensureValidDriveToken 비동기 검증 헬퍼를 신설하여 API 호출 전 잔여 수명(30초 이하/만료) 감지 시 무음 사전 갱신 후 호출 보장
@@ -1447,12 +1451,23 @@ export async function readDriveImportFile(token: string, file: { id: string; nam
 }
 
 export async function readDriveFileContent(token?: string, fileId?: string): Promise<string> {
-  const authToken = await ensureValidDriveToken(token);
+  let authToken = await ensureValidDriveToken(token);
   if (!fileId) return '';
   const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`;
-  const res = await fetch(url, {
+  let res = await fetch(url, {
     headers: { Authorization: `Bearer ${authToken}` },
   });
+  if (res.status === 401) {
+    try {
+      const renewed = await refreshDriveTokenSilently(true);
+      if (renewed) {
+        authToken = renewed;
+        res = await fetch(url, {
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
+      }
+    } catch {}
+  }
   if (!res.ok) {
     throw await parseDriveError(res, '파일 읽기', authToken);
   }
@@ -1628,12 +1643,24 @@ export function invalidateDriveMediaCache(folderId: string, fileId: string, file
   });
 }
 
+/**
+ * 🛡️ [죽은 Blob URL 캐시 방출] ERR_FILE_NOT_FOUND 발생 시 오염된 캐시 즉시 소거
+ */
+export function evictDriveMediaBlob(target?: string): void {
+  if (!target) return;
+  driveImageBlobCache.forEach((url, key) => {
+    if (url === target || key === target || target.includes(url) || target.includes(key)) {
+      driveImageBlobCache.delete(key);
+    }
+  });
+}
+
 
 /**
  * 구글 드라이브 /참조파일/media 폴더에서 파일명으로 이미지 Blob URL을 반환 (캐싱 지원)
  */
 export async function getDriveMediaImageBlobUrl(token?: string, mediaFolderId?: string, fileName?: string): Promise<string | null> {
-  const authToken = await ensureValidDriveToken(token);
+  let authToken = await ensureValidDriveToken(token);
   if (!fileName) return null;
   let cleanName = fileName.split('?')[0].split('#')[0].replace(/^\.?\/+/, '').replace(/^media[/\\]/, '').replace(/^\/+/, '');
   cleanName = cleanName.replace(/^[<"']|[>"']$/g, '').trim();
@@ -1651,9 +1678,20 @@ export async function getDriveMediaImageBlobUrl(token?: string, mediaFolderId?: 
     if (!fileId) return null;
 
     const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
-    const res = await fetch(url, {
+    let res = await fetch(url, {
       headers: { Authorization: `Bearer ${authToken}` },
     });
+    if (res.status === 401) {
+      try {
+        const renewed = await refreshDriveTokenSilently(true);
+        if (renewed) {
+          authToken = renewed;
+          res = await fetch(url, {
+            headers: { Authorization: `Bearer ${authToken}` },
+          });
+        }
+      } catch {}
+    }
     if (!res.ok) throw await parseDriveError(res, `이미지 다운로드 (${cleanName})`, authToken);
 
     const blob = await res.blob();
@@ -1661,6 +1699,7 @@ export async function getDriveMediaImageBlobUrl(token?: string, mediaFolderId?: 
     driveImageBlobCache.set(cacheKey, objectUrl);
     return objectUrl;
   } catch (err) {
+    driveImageBlobCache.delete(cacheKey);
     console.warn('[getDriveMediaImageBlobUrl] Failed to load drive media:', cleanName, err);
     throw err;
   }

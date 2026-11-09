@@ -5,6 +5,7 @@
  *   - 활성 서식 프로필(CssProfile) 기반 동적 CSS(타이포그래피, 코드블록, 표, 체크박스, 구분선, 다크모드 재정의 등) 생성 엔진
  *   - @layer 캐스케이드 격리 및 그림책(Story Book) 프로필 연동
  * 🚨 @PATCH :
+ *   - 2026-11-08 : 인용구(blockquote) 및 알림(alert) 내부 문단 간격(p + p: 0.85em) 및 빈 문단(p:empty) 높이 보장으로 Shift+Enter 문단 개행 가독성 정상화
  *   - 2026-11-04 : 주석 표준화(1·2단계) 적용
  *   - 2026-11-04 : MainEditorApp에서 1,234줄 인라인 CSS 생성기를 독립 라이브러리로 분리
  * ============================================================================
@@ -444,14 +445,22 @@ export function generateDynamicCss(
 .custom-preview-container blockquote p,
 .onrivi-content-root blockquote p,
 blockquote p {
-  margin-top: 0 !important;
-  margin-bottom: 4px !important;
   line-height: 1.55 !important;
+}
+.custom-preview-container blockquote p:first-child,
+.onrivi-content-root blockquote p:first-child,
+blockquote p:first-child {
+  margin-top: 0 !important;
 }
 .custom-preview-container blockquote p:last-child,
 .onrivi-content-root blockquote p:last-child,
 blockquote p:last-child {
   margin-bottom: 0 !important;
+}
+.custom-preview-container blockquote p + p,
+.onrivi-content-root blockquote p + p,
+blockquote p + p {
+  margin-top: 0.85em !important;
 }
 .custom-preview-container blockquote ul,
 .onrivi-content-root blockquote ul,
@@ -1121,10 +1130,23 @@ blockquote li p {
   padding-bottom: 0 !important;
   padding-left: ${listIndent} !important;
 }
-.custom-preview-container .visual-document-surface blockquote p,
-.custom-preview-container .onrivi-alert-content p {
+.custom-preview-container .visual-document-surface blockquote p:first-child,
+.custom-preview-container .visual-document-surface .onrivi-alert-content p:first-child,
+.onrivi-content-root .visual-document-surface blockquote p:first-child,
+.onrivi-content-root .visual-document-surface .onrivi-alert-content p:first-child {
   margin-top: 0 !important;
+}
+.custom-preview-container .visual-document-surface blockquote p:last-child,
+.custom-preview-container .visual-document-surface .onrivi-alert-content p:last-child,
+.onrivi-content-root .visual-document-surface blockquote p:last-child,
+.onrivi-content-root .visual-document-surface .onrivi-alert-content p:last-child {
   margin-bottom: 0 !important;
+}
+.custom-preview-container .visual-document-surface blockquote p + p,
+.custom-preview-container .visual-document-surface .onrivi-alert-content p + p,
+.onrivi-content-root .visual-document-surface blockquote p + p,
+.onrivi-content-root .visual-document-surface .onrivi-alert-content p + p {
+  margin-top: 0.85em !important;
 }
 /* Keep native code cards apart and scroll long lines inside each card. */
 .custom-preview-container .visual-document-surface .visual-code-block {
@@ -1160,13 +1182,13 @@ blockquote li p {
 .custom-preview-container .visual-document-surface > :is(ul,ol) + :is(ul,ol) {
   margin-top: 4px !important;
 }
-.custom-preview-container .visual-document-surface > p:empty,
-.custom-preview-container .visual-document-surface > p:has(> br:only-child),
-.custom-preview-container .visual-document-surface > p:has(> br.ProseMirror-trailingBreak:only-child),
-.onrivi-content-root .visual-document-surface > p:empty,
-.onrivi-content-root .visual-document-surface > p:has(> br:only-child),
-.onrivi-content-root .visual-document-surface > p:has(> br.ProseMirror-trailingBreak:only-child) {
-  min-height: 1em;
+.custom-preview-container .visual-document-surface p:empty,
+.custom-preview-container .visual-document-surface p:has(> br:only-child),
+.custom-preview-container .visual-document-surface p:has(> br.ProseMirror-trailingBreak:only-child),
+.onrivi-content-root .visual-document-surface p:empty,
+.onrivi-content-root .visual-document-surface p:has(> br:only-child),
+.onrivi-content-root .visual-document-surface p:has(> br.ProseMirror-trailingBreak:only-child) {
+  min-height: 1.25em;
   cursor: text;
 }
 .custom-preview-container .visual-document-surface ::selection,

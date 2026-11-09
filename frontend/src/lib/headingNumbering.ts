@@ -1,5 +1,9 @@
-﻿// ====================================================================
+// ====================================================================
 // 📊 [OMD-LIB-headingNumbering-0001] headingNumbering.ts ➔ 제목(H1~H6) 번호 형식 및 마크다운 원문 동기화
+// 🚨 @PATCH : **2026-11-08** — [서식 변경 시 기호 무한 누적 버그 완전 해결]:
+//             1) 기하학 도형(▤, ▥, ▦, ◈, ◆, ○, □ 등 \u25A0-\u25FF), 딩뱃(\u2700-\u27BF), 화살표(\u2190-\u21FF), 박스드로잉, 원문자, PUA(󰊱~󰊺), 한글 자음(ㅇ, ㅁ) 등 유니코드 전체 기호 정규식 전수 탑재
+//             2) headingLabelLength에서 루프(while)를 통해 제목 선두에 기호가 중복/누적된 경우(예: '1. ▤ ㅇ ▤ ▤') 모두 일괄 감지하여 깔끔히 제거하도록 개편
+//             3) 서식 해제('none') 시에도 잔여 라벨이 본문에 잔존하지 않고 완전 소거되도록 createHeadingRewriter 보강
 // 🚨 @PATCH : **2026-10-22** — [제목 태그(#) + 스페이스 자동 번호 삽입 — countHeadingsUpTo 헬퍼 신설]:
 //             1) Monaco 에디터에서 '#' + 스페이스 입력 시 현재 커서 위치까지의 제목 누적 횟수를 계산하는
 //                countHeadingsUpTo(lines, targetLineIndex, formats) 함수 추가
@@ -29,9 +33,11 @@ export function headingFormat(value: unknown): HeadingNumberFormat {
   if (value && typeof value === 'object' && (value as any).type === 'custom') return 'custom';
   return HEADING_NUMBER_FORMATS.includes(value as HeadingNumberFormat) ? value as HeadingNumberFormat : 'none';
 }
-// Existing literal labels are preserved, never removed from the user's source.
+// 포괄적 제목 라벨 패턴 (로마자, 십진 아웃라인, 한글 음절/자음, 기하학도형 ▤▥▦◈◆○□, 딩뱃, 원문자, PUA 특수기호, 불릿 등)
+const HEADING_LABEL_PATTERN = /^(?:[Ⅰ-ⅫⅬⅭⅮⅯ]+[.\-)]|[IVXLCDM]+\.|\d+(?:\.\d+)*\.?|\d+[.)]|[가-힣][.)]|[ㄱ-ㅎ][.)]?|제\s*\d+\s*[장절편]|\([가-힣\dⅠ-Ⅻa-zA-Z]+\)|[①-⑳⑴-⒇⒈-⒛ⓐ-ⓩ•\-\–\—\*·]|[\u2190-\u21FF]|[\u2460-\u24FF]|[\u2500-\u257F]|[\u25A0-\u25FF]|[\u2600-\u26FF]|[\u2700-\u27BF]|[\u2B00-\u2BFF]|[\u3200-\u32FF]|[\uF000-\uF8FF]|[\uD800-\uDBFF][\uDC00-\uDFFF])\s*/;
+
 export function hasHeadingNumber(text: string): boolean {
-  return /^\s*(?:[Ⅰ-ⅫⅬⅭⅮⅯ]+[.\-]|[IVXLCDM]+\.|\d+(?:\.\d+)+\.?|\d+[.)]|[가-힣][.)]|제\s*\d+\s*[장절편]|\([가-힣\dⅠ-Ⅻ]+\))\s+/.test(text);
+  return headingLabelLength(text) > 0;
 }
 export function headingNodeText(node: any): string {
   return node?.value ?? node?.text ?? (node?.children || []).map(headingNodeText).join('');
@@ -52,14 +58,42 @@ export function headingMarker(setting: HeadingNumberSetting, value: number): str
 
 /** Only replace the leading label, keeping the title's inline markup and spacing intact. */
 export function headingLabelLength(text: string, setting?: unknown): number {
+  if (!text) return 0;
   const normalized = headingSetting(setting);
+  let customRegex: RegExp | null = null;
   if (typeof normalized === 'object') {
-    const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const number = normalized.number === 'bullet' ? escape(normalized.bullet || '•') : normalized.number === 'decimal' ? '\\d+' : normalized.number === 'roman' ? '[Ⅰ-ⅫⅬⅭⅮⅯIVXLCDM]+' : '[가나다라마바사아자차카타파하]+';
-    const match = text.match(new RegExp('^' + escape(normalized.prefix) + number + escape(normalized.suffix) + '[ \\t]+'));
-    if (match) return match[0].length;
+    const escape = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, (ch) => '\\' + ch);
+    const number = normalized.number === 'bullet'
+      ? escape(normalized.bullet || '•')
+      : normalized.number === 'decimal'
+        ? '\\d+'
+        : normalized.number === 'roman'
+          ? '[Ⅰ-ⅫⅬⅭⅮⅯIVXLCDM]+'
+          : '[가나다라마바사아자차카타파하]+';
+    customRegex = new RegExp('^' + escape(normalized.prefix) + number + escape(normalized.suffix) + '\\s*');
   }
-  return text.match(/^(?:[Ⅰ-ⅫⅬⅭⅮⅯ]+[.\-]|[IVXLCDM]+\.|\d+(?:\.\d+)+\.?|\d+[.)]|[가-힣][.)]|제\s*\d+\s*[장절편]|\([가-힣\dⅠ-Ⅻ]+\)|[•○●□■◆◇▶▷※])\s+/)?.[0].length || 0;
+
+  let offset = 0;
+  let remaining = text;
+  // 제목 선두에 누적된 모든 서식 기호/번호(예: "1. 󰊱 ㅇ 󰊱 ")를 루프로 연속 제거
+  while (remaining.length > 0) {
+    if (customRegex) {
+      const matchCustom = remaining.match(customRegex);
+      if (matchCustom && matchCustom[0].length > 0) {
+        offset += matchCustom[0].length;
+        remaining = text.slice(offset);
+        continue;
+      }
+    }
+    const matchCommon = remaining.match(HEADING_LABEL_PATTERN);
+    if (matchCommon && matchCommon[0].length > 0) {
+      offset += matchCommon[0].length;
+      remaining = text.slice(offset);
+    } else {
+      break;
+    }
+  }
+  return offset;
 }
 
 export function createHeadingRewriter(formats: unknown[] = [], previous: unknown[] = []) {
@@ -68,11 +102,23 @@ export function createHeadingRewriter(formats: unknown[] = [], previous: unknown
     const index = level - 1;
     counts[index]++; counts.fill(0, index + 1);
     const setting = headingSetting(formats[index]);
+    const prevSetting = previous ? headingSetting(previous[index]) : undefined;
     const enabled = headingFormat(setting) !== 'none';
-    if (!enabled && headingFormat(previous[index]) === 'none') return { remove: 0, insert: '' };
-    const remove = Math.max(headingLabelLength(text, previous[index]), headingLabelLength(text, setting));
+    
+    // 이전 서식, 현재 서식, 일반 패턴 중 최대 라벨 길이를 구해 기존에 누적된 기호를 전부 제거
+    const remove = Math.max(
+      headingLabelLength(text, prevSetting),
+      headingLabelLength(text, setting),
+      headingLabelLength(text)
+    );
+    
+    if (!enabled) {
+      return { remove, insert: '' };
+    }
+    
     // An empty heading remains editable without inserting an orphan label.
-    const marker = enabled && text.slice(remove).trim() ? (headingFormat(setting) === 'decimal-outline' ? outlineMarker(formats, counts, index) : headingMarker(setting, counts[index])) : '';
+    const remainingText = text.slice(remove).trim();
+    const marker = remainingText ? (headingFormat(setting) === 'decimal-outline' ? outlineMarker(formats, counts, index) : headingMarker(setting, counts[index])) : '';
     return { remove, insert: marker ? marker + ' ' : '' };
   };
 }

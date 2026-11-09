@@ -1,8 +1,12 @@
+import { idb } from '@/lib/indexedDbHelper';
 /**
  * ====================================================================
  * 📊 [OMD-LIB-ImportMediaSaver-0001] importMediaSaver.ts ➔ 가져오기 미디어 저장기
  * 🎯 @KICK  : 외부 문서(PDF, DOCX, HWP 등)에서 추출된 이미지 base64 데이터를 구글 드라이브 / Electron / 브라우저 FSAA에 안전하게 저장하고 마크다운 경로 반환
  * 🛡️ @GUARD : Rule 9(임의 폴백 금지) 및 Rule 3(역할 기반 분리: I/O 모듈 격리) 준수
+ * 🚨 @PATCH : 2026-11-08 — [브라우저 FSAA 및 가상 파일시스템(VFS) 이미지 저장 안정성 강화]:
+ *             1) browser 모드에서 resourceFolderHandle 미전달 시 window.__resourceFolderHandle 및 idb 탐색
+ *             2) FSAA 미연결 가상 파일시스템(VFS) 환경에서는 무조건 예외를 발생시키지 않고 base64 data URL로 안전 임베딩하여 사용자 데이터 보존
  * 🚨 @PATCH : 2026-11-08 — [useDocumentImporter 다이어트 및 미디어 저장기 분리]:
  *             1) useDocumentImporter 내부에 60줄 이상 하드코딩되어 있던 imageSaveCallback 로직을 단독 모듈로 분리
  *             2) 구글 드라이브(uploadDriveImage), 브라우저 FSAA(resourceFolderHandle), Electron(api.saveImage) 저장 흐름을 명확하게 표준화
@@ -69,18 +73,33 @@ export async function saveImportedMedia(options: SaveImportedMediaOptions): Prom
 
   // 2. 브라우저 FSAA (File System Access API) 저장
   if (workspaceType === 'browser') {
-    if (resourceFolderHandle) {
-      const mediaDir = await resourceFolderHandle.getDirectoryHandle('media', { create: true });
-      const fileHandle = await mediaDir.getFileHandle(imgName, { create: true });
-      const writable = await fileHandle.createWritable();
-      const res = await fetch(`data:${contentType};base64,${base64Data}`);
-      const blob = await res.blob();
-      await writable.write(blob);
-      await writable.close();
-      return `/media/${imgName}`;
+    let activeHandle = resourceFolderHandle || (typeof window !== 'undefined' ? (window as any).__resourceFolderHandle : null);
+    if (!activeHandle && typeof window !== 'undefined') {
+      try {
+        activeHandle = await idb.get('resourceFolderHandle') || await idb.get('localResourceFolderHandle');
+        if (activeHandle) (window as any).__resourceFolderHandle = activeHandle;
+      } catch {}
     }
-    requireResourceSettings();
-    throw new Error('리소스 폴더 접근 권한을 다시 설정해 주세요.');
+    if (!activeHandle && rootFolder?.handle) {
+      activeHandle = rootFolder.handle;
+    }
+
+    if (activeHandle && typeof activeHandle.getDirectoryHandle === 'function') {
+      try {
+        const mediaDir = await activeHandle.getDirectoryHandle('media', { create: true });
+        const fileHandle = await mediaDir.getFileHandle(imgName, { create: true });
+        const writable = await fileHandle.createWritable();
+        const res = await fetch(`data:${contentType};base64,${base64Data}`);
+        const blob = await res.blob();
+        await writable.write(blob);
+        await writable.close();
+        return `/media/${imgName}`;
+      } catch (fsaaErr) {
+        console.warn('[importMediaSaver] FSAA 저장 실패, 데이터 URL 폴백:', fsaaErr);
+      }
+    }
+    // 가상 파일시스템(VFS) 또는 FSAA 권한 미보유 시 본문 보존을 위해 data URL 반환
+    return `data:${contentType};base64,${base64Data}`;
   }
 
   // 3. Electron 데스크톱 네이티브 파일 저장

@@ -2,6 +2,10 @@
 // ⚙️ [OMD-CORE-VisualDocCommands-0001] visualDocumentCommands.ts ➔ 시각 에디터 전용 ProseMirror 커맨드 및 정규화 플러그인
 // 🎯 @KICK  : 제목/코드블록/인용구/리스트/구분선/미디어 등 블록 조작 커맨드 및 리스트 정규화 트랜잭션 플러그인 제공
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 VisualDocumentEditor 대형 컴포넌트 모듈화 표준 준수
+// 🚨 @PATCH : 2026-11-08 — [빈 행(빈 문단) 클릭 시 다음 줄 도약(하이재킹) 방어 및 제자리 정확 안착]:
+//             1) emptyParagraphAtClick에 1순위 Direct Target(p, br) 감지 및 descendants 기반 전체 빈 텍스트블록(textContent.trim() === '') DOM 히트테스트 3중 엔진 탑재
+//             2) paragraphLineEndAtClick의 과도한 세로 패딩(0.3)을 0.15(최대 4px)로 축소하여 빈 행 클릭 시 아랫줄 문단(광복 80주년...) 시작으로 커서가 빨려 들어가던 결함 완벽 해결
+// 🚨 @PATCH : 2026-11-08 — [표 내부 빈 셀 클릭 및 셀 간 커서 이동 격리]: paragraphLineEndAtClick 및 emptyParagraphAtClick에 targetCell(td, th) 격리 가드를 적용하여, 표 내부 빈 셀 클릭 시 동일 행의 이전 입력 셀 끝으로 커서가 강제 도약(하이재킹)되던 결함 원천 해결
 // 🚨 @PATCH : 2026-11-07 — [행 끝 여백 클릭 시 정밀 커서 이동 강화]: paragraphLineEndAtClick 대상 노드를 모든 isTextblock(heading, blockquote 포함)으로 확장하고 클릭 줄 판정 패딩 확대
 // 🚨 @PATCH : 2026-11-04 — [VisualDocumentEditor 5순위 모듈화 분리]: visualDocumentCommands 커맨드군 독립 분리
 // 🔗 @CALLS : prosemirror-state, prosemirror-commands, prosemirror-history, visualSchema
@@ -357,53 +361,118 @@ export function findClickedHorizontalRulePos(currentView: EditorView, event: Mou
 export function emptyParagraphAtClick(currentView: EditorView, event: MouseEvent): number | null {
   const surface = currentView.dom.getBoundingClientRect();
   if (event.clientX < surface.left || event.clientX > surface.right) return null;
-  // An empty list paragraph is inline and may have a zero-width DOM rect.
-  // Use its list item's visible row instead of Chromium's next-text hit test.
+  // 표 내부 클릭 시 일반 본문 빈 문단 이동 로직 간섭 배제
+  if ((event.target as HTMLElement | null)?.closest('td, th, table')) return null;
+
+  // 🌟 [1순위: Direct Target 감지] 클릭한 대상 엘리먼트가 빈 문단 또는 빈 행인 경우
+  const target = event.target as HTMLElement | null;
+  const directBlock = target?.closest('p, h1, h2, h3, h4, h5, h6, li') as HTMLElement | null;
+  if (directBlock && !directBlock.closest('td, th, table')) {
+    const text = directBlock.textContent?.trim() || '';
+    if (text === '') {
+      try {
+        const domPos = currentView.posAtDOM(directBlock, 0);
+        if (typeof domPos === 'number' && domPos >= 0) {
+          const $res = currentView.state.doc.resolve(domPos);
+          if ($res.parent.isTextblock && $res.parent.textContent.trim() === '') {
+            return $res.start();
+          }
+          const nodeAt = currentView.state.doc.nodeAt(domPos);
+          if (nodeAt && nodeAt.isTextblock && nodeAt.textContent.trim() === '') {
+            return domPos + 1;
+          }
+        }
+      } catch {}
+    }
+  }
+
+  // 🌟 [2순위: 빈 리스트 항목 문단 감지]
   let emptyListPos: number | null = null;
   currentView.state.doc.descendants((node, pos, parent) => {
-    if (node.type !== visualSchema.nodes.paragraph || node.content.size !== 0 || parent?.type !== visualSchema.nodes.list_item || parent.childCount !== 1) return;
+    if (!node.isTextblock || node.textContent.trim() !== '' || parent?.type !== visualSchema.nodes.list_item) return;
     const $pos = currentView.state.doc.resolve(pos);
     const item = currentView.nodeDOM($pos.before($pos.depth));
     if (!(item instanceof HTMLElement)) return;
     const rect = item.getBoundingClientRect();
-    if (event.clientY >= rect.top && event.clientY <= rect.bottom) emptyListPos = pos + 1;
+    if (event.clientY >= rect.top - 2 && event.clientY <= rect.bottom + 2) {
+      emptyListPos = pos + 1;
+    }
   });
   if (emptyListPos !== null) return emptyListPos;
+
+  // 🌟 [3순위: Y좌표 히트테스트 기반 문서 내 모든 빈 문단/블록 정밀 탐색]
   let selectedPos: number | null = null;
   let minDistance = Infinity;
-  currentView.state.doc.forEach((node, pos, index) => {
-    if (node.type !== visualSchema.nodes.paragraph || node.content.size !== 0) return;
-    const element = currentView.nodeDOM(pos);
-    if (!(element instanceof HTMLElement)) return;
+
+  currentView.state.doc.descendants((node, pos) => {
+    if (!node.isTextblock || node.textContent.trim() !== '') return;
+    const $pos = currentView.state.doc.resolve(pos);
+    if ($pos.depth > 0 && $pos.node(1).type.name === 'table') return; // 표 내부 배제
+
+    // DOM 요소 획득 (nodeDOM 시도 후 domAtPos로 안전 폴백)
+    let element: HTMLElement | null = null;
+    const nDom = currentView.nodeDOM(pos);
+    if (nDom instanceof HTMLElement) {
+      element = nDom;
+    } else {
+      try {
+        const atPos = currentView.domAtPos(pos + 1);
+        const el = atPos.node instanceof HTMLElement ? atPos.node : atPos.node?.parentElement;
+        element = (el?.closest('p, h1, h2, h3, h4, h5, h6, li') as HTMLElement | null) || null;
+      } catch {}
+    }
+    if (!element) return;
+
     const rect = element.getBoundingClientRect();
-    const previous = index > 0 ? currentView.nodeDOM(pos - currentView.state.doc.child(index - 1).nodeSize) : null;
-    const next = index < currentView.state.doc.childCount - 1 ? currentView.nodeDOM(pos + node.nodeSize) : null;
-    const previousBottom = previous instanceof HTMLElement ? previous.getBoundingClientRect().bottom : rect.top;
-    const nextTop = next instanceof HTMLElement ? next.getBoundingClientRect().top : rect.bottom;
-    const top = Math.min(rect.top, previousBottom);
-    const bottom = Math.max(rect.bottom, nextTop);
-    if (event.clientY < top || event.clientY > bottom) return;
-    const distance = Math.abs(event.clientY - (rect.top + rect.bottom) / 2);
-    if (distance < minDistance) { selectedPos = pos + 1; minDistance = distance; }
+    // 빈 문단의 높이가 0에 가까운 경우 인접 여백을 포함하여 판정
+    const visualTop = rect.top - 4;
+    const visualBottom = Math.max(rect.bottom, rect.top + 18) + 4;
+
+    if (event.clientY >= visualTop && event.clientY <= visualBottom) {
+      const distance = Math.abs(event.clientY - (visualTop + visualBottom) / 2);
+      if (distance < minDistance) {
+        selectedPos = pos + 1;
+        minDistance = distance;
+      }
+    }
   });
+
   return selectedPos;
 }
 
 export function paragraphLineEndAtClick(currentView: EditorView, event: MouseEvent): number | null {
   const surface = currentView.dom.getBoundingClientRect();
   if (event.clientX < surface.left || event.clientX > surface.right) return null;
+
+  const targetCell = (event.target as HTMLElement | null)?.closest('td, th') as HTMLElement | null;
+  // 표 내부 빈 셀 클릭 시 행 끝 이동 판정을 배제하여 빈 셀 제자리 안착 보장
+  if (targetCell && !targetCell.textContent?.trim()) {
+    return null;
+  }
+
   let result: number | null = null;
   currentView.state.doc.descendants((node, pos) => {
     if (result !== null || !node.isTextblock || node.content.size === 0) return;
     const element = currentView.nodeDOM(pos);
     if (!(element instanceof HTMLElement)) return;
+
+    // 💡 표 셀 격리 가드: 클릭 대상이 표 셀인 경우 동일 셀 내부의 텍스트블록만 허용하고,
+    // 일반 본문 클릭인 경우 표 셀 내부의 텍스트블록이 행 끝 대상으로 오인식되지 않도록 방어
+    if (targetCell) {
+      if (!targetCell.contains(element)) return;
+      const cellRect = targetCell.getBoundingClientRect();
+      if (event.clientX > cellRect.right) return;
+    } else {
+      if (element.closest('td, th')) return;
+    }
+
     const range = document.createRange();
     range.selectNodeContents(element);
     const textRects = Array.from(range.getClientRects()).filter(rect => rect.width > 0 && rect.height > 0);
     if (!textRects.length) return;
-    // 클릭 Y 좌표에 해당하는 텍스트 라인 검출 (줄간격 패딩 포함)
+    // 클릭 Y 좌표에 해당하는 텍스트 라인 검출 (빈 행 침범 방지를 위해 세로 패딩 최대 4px로 엄격 제어)
     const lineRects = textRects.filter(rect => {
-      const padding = Math.max(4, (rect.bottom - rect.top) * 0.3);
+      const padding = Math.max(2, Math.min(4, (rect.bottom - rect.top) * 0.15));
       return event.clientY >= rect.top - padding && event.clientY <= rect.bottom + padding;
     });
     if (!lineRects.length) return;

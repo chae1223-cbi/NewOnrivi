@@ -2,6 +2,8 @@
 /**
  * 프로그램명 : OnriviAuthor
  * 프로그램 ID : oaar-visual-readonly-block
+ * 🚨 @PATCH : **2026-11-08** — [데스크톱 electronAPI 및 리소스 폴더 주입으로 시각 에디터 내부 이미지 404 차단]:
+ *             1) components.img에서 AsyncImage로 electronAPI를 명시적으로 전달하여 데스크톱 환경에서 PDF/DOCX 가져오기 이미지(/media/...)가 즉시 로드되도록 보장
  * 🚨 @PATCH : **2026-11-07** — [AsyncImage 연동으로 읽기 전용 블록 이미지 렌더링 지원]:
  *             1) components.img에 AsyncImage를 연결하여 구글 드라이브(driveId) 및 로컬 미디어 이미지가 404 없이 정상 로드되도록 구현
  * 🚨 @PATCH : **2026-11-07** — [HTML 표(<table>...</table>) 시각 렌더링 및 TableWrapper 복사 지원]:
@@ -63,7 +65,14 @@ export default function VisualReadOnlyMarkdownBlock({ source }: { source: string
         rehypePlugins={[[rehypeKatex, { strict: false }], rehypeRaw]}
         components={{
           img({ src, alt, ...props }: any) {
-            return <AsyncImage src={src} alt={alt} {...props} />;
+            return (
+              <AsyncImage
+                src={src}
+                alt={alt}
+                api={typeof window !== 'undefined' ? (window as any).electronAPI : null}
+                {...props}
+              />
+            );
           },
           th: TableHeaderCell,
           table({ node, children, className, ...props }: any) {

@@ -5,6 +5,7 @@
  *   - Monaco 에디터 단축키 액션 등록(customHotkeys) 및 전역 키보드 이벤트(handleGlobalKeyDown) 분기 라우팅 제어 훅
  *   - Windows Meta(Win) 키 가드, Shift+방향키 선택 보호, 비주얼 에디터/그림책 단축키 연동
  * 🚨 @PATCH :
+ *   - 2026-11-08 : [플로팅 툴바 ESC 서식 보존]: Escape 키 입력 시 서식 상태를 취소하지 않고 플로팅 툴바만 닫고 에디터로 포커스 반환
  *   - 2026-11-07 : [플로팅 툴바 커서 반환]: Escape 키 입력 시 closeFloatingToolbarAndRestoreCursor 호출 연동
  *   - 2026-11-04 : 주석 표준화(1·2단계) 적용
  *   - 2026-11-04 : MainEditorApp에서 Monaco 액션 바인딩 및 전역 keydown 리스너 로직을 독립 훅으로 분리

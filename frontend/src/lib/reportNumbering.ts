@@ -2,6 +2,8 @@
 // 📊 [OMD-STYLE-reportNumbering-0001] reportNumbering.ts ➔ 리스트 번호 체계 및 불릿 서식 엔진
 // 🎯 @KICK  : 한국형 보고서 번호 체계, 원문자(①, ②, ③) 목록 및 계층별(1~3단계) 글머리 불릿 동적 CSS & 내보내기 마커 생성
 // 🛡️ @GUARD : Rule 1(단일 주석 관리), task-list-item 불릿 침범 방어, @counter-style 미지원 환경 폴백 보장
+// 🚨 @PATCH : **2026-11-08** — [들여쓰기된 목록(indentPx)의 2·3단계 글머리 기호 서식 반영 완비]:
+//             1) listBulletCss에 data-onrivi-list-indent 속성 선택자를 탑재하여, DOM 중첩(ul ul)뿐만 아니라 indentPx로 들여쓰기된 목록에서도 2단계(▸), 3단계(※) 서식 기호가 정확히 일치 렌더링되도록 개선
 // 🚨 @PATCH : **2026-10-26** — [글머리 마커와 글자 사이 간격 초밀착 및 문자열 불릿 공백 제거]:
 //             1) getBulletSymbolValue 내 문자열 불릿(대시, 하이픈, 다이아몬드 등)의 CSS 속성값에서 불필요한 후행 공백 제거하여 마커-본문 간격 과대 벌어짐 방지
 //             2) 0px 설정 시 글머리 마커가 본문과 단정하게 초밀착 렌더링되도록 보정
@@ -92,8 +94,10 @@ export function listBulletCss(profile: CssProfile): string {
   const roots = ':is(.custom-preview-container,.onrivi-content-root,.markdown-viewer-root,.visual-document-surface)';
   return `
 ${roots} ul > li:not(.task-list-item) { list-style-type: ${l1.css} !important; }
-${roots} ul ul > li:not(.task-list-item) { list-style-type: ${l2.css} !important; }
-${roots} ul ul ul > li:not(.task-list-item) { list-style-type: ${l3.css} !important; }
+${roots} ul ul > li:not(.task-list-item),
+${roots} ul[data-onrivi-list-indent]:not([data-onrivi-list-indent="0"]):not([data-onrivi-list-indent=""]) > li:not(.task-list-item) { list-style-type: ${l2.css} !important; }
+${roots} ul ul ul > li:not(.task-list-item),
+${roots} ul[data-onrivi-list-indent]:not([data-onrivi-list-indent="0"]):not([data-onrivi-list-indent=""]) ul > li:not(.task-list-item) { list-style-type: ${l3.css} !important; }
 `;
 }
 
@@ -112,6 +116,8 @@ export function reportNumberingCss(profile: CssProfile): string {
     const symbols = Array.from(HANGUL).map(x => '"' + x + '"').join(' ');
     const types = ['onrivi-report', 'decimal', 'onrivi-report-hangul', 'onrivi-report-decimal-paren', 'onrivi-report-hangul-paren'];
     const rules = types.map((type, i) => `:is(.custom-preview-container,.onrivi-content-root,.markdown-viewer-root,.visual-document-surface) ${'ol '.repeat(i + 1).trim()}{list-style-type:${type}!important;}`);
+    rules.push(':is(.custom-preview-container,.onrivi-content-root,.markdown-viewer-root,.visual-document-surface) ol[data-onrivi-list-indent]:not([data-onrivi-list-indent="0"]):not([data-onrivi-list-indent=""]){list-style-type:decimal!important;}');
+    rules.push(':is(.custom-preview-container,.onrivi-content-root,.markdown-viewer-root,.visual-document-surface) ol[data-onrivi-list-indent]:not([data-onrivi-list-indent="0"]):not([data-onrivi-list-indent=""]) ol{list-style-type:onrivi-report-hangul!important;}');
     rules.push(':is(.custom-preview-container,.onrivi-content-root,.markdown-viewer-root,.visual-document-surface) ol ol ol ol ol ol{list-style-type:decimal!important;}');
     return `${circledCounterStyle}
 @counter-style onrivi-report {system:additive;additive-symbols:1000 "Ⅿ",900 "ⅭⅯ",500 "Ⅾ",400 "ⅭⅮ",100 "Ⅽ",90 "ⅩⅭ",50 "Ⅼ",40 "ⅩⅬ",12 "Ⅻ",11 "Ⅺ",10 "Ⅹ",9 "Ⅸ",8 "Ⅷ",7 "Ⅶ",6 "Ⅵ",5 "Ⅴ",4 "Ⅳ",3 "Ⅲ",2 "Ⅱ",1 "Ⅰ";suffix:". ";fallback:upper-roman;}

@@ -18,6 +18,7 @@
 }
 
 /* ===================================================================
+ * 🚨 @PATCH : **2026-11-08** — [인용문 내부 문단 간격(p + p: 0.85em) 및 첫 문단 상단 여백 소거]: Shift+Enter 문단 개행 가독성 정상화
  * 🚨 @PATCH : **2026-10-26** — [확장 리스트(Loose List) 내부 p 및 .onrivi-line 인라인 일원화]:
  *             li 내부 p 및 span.onrivi-line에 display: inline !important 및 width: auto를 지정하여 Loose List에서도 Tight List(쇼케이스)와 100% 동일하게 불릿/숫자 마커와 글자 간격이 밀착되도록 결함 해결
  * 🚨 @PATCH : **2026-10-26** — [인용구 내부 리스트 과도한 들여쓰기(2.25rem/36px) 소거 및 --list-indent 동기화]:
@@ -1303,17 +1304,26 @@ div.monaco-table-line {
   padding-left: var(--list-indent, 16px) !important; /* 중첩된 태스크 리스트는 적절한 깊이의 들여쓰기 보장 */
 }
 
-/* 🛡️ 인용문(blockquote) 박스 내부의 시작과 끝 빈 여백 소거 및 콤팩트 규격화 */
+/* 🛡️ 인용문(blockquote) 박스 내부의 시작과 끝 빈 여백 소거 및 다중 문단(p + p) 간격 보장 */
 .prose blockquote p,
 .custom-preview-container blockquote p,
 .onrivi-content-root blockquote p {
+  line-height: 1.55 !important;
+}
+.prose blockquote p:first-child,
+.custom-preview-container blockquote p:first-child,
+.onrivi-content-root blockquote p:first-child {
   margin-top: 0 !important;
-  margin-bottom: 4px !important;
 }
 .prose blockquote p:last-of-type,
 .custom-preview-container blockquote p:last-of-type,
 .onrivi-content-root blockquote p:last-of-type {
   margin-bottom: 0 !important;
+}
+.prose blockquote p + p,
+.custom-preview-container blockquote p + p,
+.onrivi-content-root blockquote p + p {
+  margin-top: 0.85em !important;
 }
 .prose blockquote ul,
 .custom-preview-container blockquote ul,

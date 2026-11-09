@@ -2,6 +2,7 @@
 // 🎨 [OMD-CORE-VisualEditorStyles-0001] visualEditorStyles.ts ➔ 시각 에디터 전용 격리 CSS 스타일
 // 🎯 @KICK  : 시각 에디터 본문(.visual-document-surface), 제목 H1~H6 시각화 뱃지, 표 조판, 각주, 코드블록, 머메이드 서랍 등 위지윅 스타일 격리
 // 🛡️ @GUARD : Rule 6(Content Document Scope) 준수 - .visual-document-surface 및 컴포넌트 하위로만 스코핑
+// 🚨 @PATCH : 2026-11-08 — [인용문 내부 문단 간격(p + p: 0.85em) 및 빈 문단(p:empty) 높이 보장]: Shift+Enter 문단 개행 가독성 정상화
 // 🚨 @PATCH : 2026-11-04 — [VisualDocumentEditor 2단계 모듈화 분리]: 인라인 360줄 스타일 문자열 독립 분리
 // ====================================================================
 
@@ -114,6 +115,12 @@ export const VISUAL_EDITOR_STYLES = `
 
   .visual-document-surface ol { padding-left:2em; list-style:decimal; }
   .visual-document-surface blockquote { border-left:3px solid #93c5fd; padding-left:1em; }
+  .visual-document-surface blockquote p:first-child { margin-top:0!important; }
+  .visual-document-surface blockquote p:last-child { margin-bottom:0!important; }
+  .visual-document-surface blockquote p + p { margin-top:0.85em!important; }
+  .visual-document-surface p:empty,
+  .visual-document-surface p:has(> br:only-child),
+  .visual-document-surface p:has(> br.ProseMirror-trailingBreak:only-child) { min-height:1.25em!important; cursor:text; }
   .visual-document-surface pre { background:#f4f4f5; padding:12px; white-space:pre-wrap; }
   .visual-document-surface .visual-code-block { margin-top:24px!important; margin-bottom:20px!important; min-width:0; max-width:100%; box-sizing:border-box; }
   .visual-document-surface .visual-code-editor-panel { min-width:0; max-width:100%; }

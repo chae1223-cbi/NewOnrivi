@@ -2,19 +2,24 @@
 // 📊 [OMD-TABLE-CMDS-0001] frontend/src/lib/visualTableCommands.ts
 // 🎯 @KICK  : 위지윅 에디터 표(Table) 셀 이동, 편집, 구조 변경 및 선택 영역 명령 처리
 // 🛡️ @GUARD : Rule 1(단일 주석 관리), 불규칙 행(Ragged Table) 및 범위 초과(RangeError) 완전 방어
+// 🚨 @PATCH : **2026-11-08** — [표 셀 Shift 연속 누적 선택을 위한 tableContextAt 엔진 신설]:
+//             1) 선택 영역의 $from(시작점)에만 의존하던 tableContext를 임의 ResolvedPos(특히 $head) 기준의 tableContextAt으로 분리·신설
+//             2) Shift+방향키 연속 입력 시 $head가 가리키는 활성 셀 좌표를 실시간 추적하여 2칸, 3칸 이상 무제한 연속 누적 선택 가능하도록 지원
+// 🚨 @PATCH : **2026-11-08** — [표 셀 방향키 이동, Shift 누적 선택 및 End 모드 점프 엔진(tableCellAt) 신설]:
+//             1) tableCellAt(tableNode, tablePos, r, c) 헬퍼를 신설하여 임의의 (행, 열) 좌표에 대한 정확한 셀 시작/끝 DOM 위치(cellPos, contentStart, contentEnd) 산출
+//             2) 상/하/좌/우 방향키 네비게이션, Shift 셀 범위 선택, End/Ctrl 끝점 점프를 완벽 지원하도록 좌표 엔진 인터페이스 제공
 // 🚨 @PATCH : **2026-10-26** — [표 셀 탭 이동 시 RangeError: Index out of range 결함 완전 해결]:
 //             1) 직사각형 고정 열수(width) 계산 방식을 폐기하고 실제 존재하는 모든 셀 좌표(allCells) 순차 탐색 방식으로 전면 개편
 //             2) 불규칙한 열(행마다 열 개수가 다른 마크다운 표) 및 마지막 셀에서 Tab 시 신규 행 추가 처리 시 인덱스 초과 예외 원천 차단
 //             3) textPosition 및 tableAction(열/행 추가·삭제, 정렬) 전반에 대한 경계값 방어(clamping, optional chaining) 적용
 // ====================================================================
 
-import { Node as DocumentNode } from 'prosemirror-model';
+import { Node as DocumentNode, type ResolvedPos } from 'prosemirror-model';
 import { Command, TextSelection } from 'prosemirror-state';
 import { closeHistory } from 'prosemirror-history';
 import { visualSchema } from './visualDocumentCodec';
 
-export function tableContext(state: Parameters<Command>[0]) {
-  const position = state.selection.$from;
+export function tableContextAt(position: ResolvedPos) {
   for (let depth = position.depth; depth > 0; depth--) {
     if (position.node(depth).type.name === 'table') {
       const table = position.node(depth);
@@ -31,6 +36,10 @@ export function tableContext(state: Parameters<Command>[0]) {
     }
   }
   return null;
+}
+
+export function tableContext(state: Parameters<Command>[0]) {
+  return tableContextAt(state.selection.$from);
 }
 
 function selectedTableCellSpan(state: Parameters<Command>[0]) {
@@ -282,4 +291,49 @@ export function tableEnter(): Command {
     tableContext(state)
       ? (dispatch?.(state.tr.replaceSelectionWith(visualSchema.nodes.hard_break.create()).scrollIntoView()), true)
       : false;
+}
+
+export interface TableCellInfo {
+  cellPos: number;
+  contentStart: number;
+  contentEnd: number;
+  cellNode: DocumentNode;
+  row: number;
+  col: number;
+  rowCount: number;
+  colCount: number;
+}
+
+/**
+ * 표(Table) 노드와 특정 행/열(r, c) 좌표를 바탕으로
+ * 해당 셀의 위치(cellPos)와 내부 단락의 시작/끝 텍스트 위치(contentStart, contentEnd)를 산출합니다.
+ */
+export function tableCellAt(tableNode: DocumentNode, tablePos: number, r: number, c: number): TableCellInfo {
+  const rowCount = tableNode.childCount;
+  const targetR = Math.max(0, Math.min(r, rowCount - 1));
+  let cur = tablePos + 1;
+  for (let rowIdx = 0; rowIdx < targetR; rowIdx++) {
+    cur += tableNode.child(rowIdx).nodeSize;
+  }
+  cur += 1;
+  const rowNode = tableNode.child(targetR);
+  const targetC = Math.max(0, Math.min(c, rowNode.childCount - 1));
+  for (let colIdx = 0; colIdx < targetC; colIdx++) {
+    cur += rowNode.child(colIdx).nodeSize;
+  }
+  const cellPos = cur;
+  const cellNode = rowNode.child(targetC);
+  const paraNode = cellNode.firstChild;
+  const contentStart = cellPos + 2;
+  const contentEnd = cellPos + 1 + (paraNode?.content.size || 0);
+  return {
+    cellPos,
+    contentStart,
+    contentEnd,
+    cellNode,
+    row: targetR,
+    col: targetC,
+    rowCount,
+    colCount: rowNode.childCount,
+  };
 }

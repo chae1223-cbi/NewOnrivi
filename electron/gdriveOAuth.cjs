@@ -2,6 +2,7 @@
 // 📊 [OMD-ELECTRON-gdriveOAuth-0001] electron/gdriveOAuth.cjs
 // 🎯 @KICK  : Electron 데스크톱 앱 구글 드라이브 무음 갱신 및 루프백 PKCE 인증 모듈
 // 🛡️ @GUARD : Rule 1(소스 상단 주석 기록), Rule 2(대문자 코드값)
+// 🚨 @PATCH : **2026-11-08** — [Google Drive 인증 완료 탭 닫기 개선 및 앱 전면 포커스]: 브라우저 보안 정책으로 인한 window.close() 차단 시 UI 안내(Ctrl+W) 반응형 피드백 보강 및 인증 완료 시 데스크톱 창 자동 전면(setAlwaysOnTop 일시 토글) 팝업
 // 🚨 @PATCH : **2026-10-24** — [구글 드라이브 연결 실패 후 재접속 불가 버그 완전 해결 및 이전 인증 자동 정리]:
 //             1) 이전 인증 진행 중(authenticating) 새 인증 요청 인입 시 기존 루프백 서버 및 타이머를 즉시 강제 종료(cancelCurrentAuth)하고 즉각 새 인증을 수용하도록 개편 (5분 대기 잠금 결함 완전 해소)
 //             2) 타임아웃을 120초로 현실화하고 실패/취소 시 서버 자원 즉시 반환
@@ -52,7 +53,17 @@ function registerDriveOAuth({ ipcMain, app, shell, safeStorage, getWindow }) {
         clearTimeout(timer);
         cancelCurrentAuth = null;
         try { server.close(); } catch {}
-        if (error) reject(error); else { resolve(result); const win = getWindow(); if (win && !win.isDestroyed()) { if (win.isMinimized()) win.restore(); win.focus(); } }
+        if (error) reject(error); else {
+          resolve(result);
+          const win = getWindow();
+          if (win && !win.isDestroyed()) {
+            if (win.isMinimized()) win.restore();
+            win.setAlwaysOnTop(true);
+            win.show();
+            win.focus();
+            win.setAlwaysOnTop(false);
+          }
+        }
       };
 
       cancelCurrentAuth = () => {
@@ -75,17 +86,42 @@ function registerDriveOAuth({ ipcMain, app, shell, safeStorage, getWindow }) {
           if (!standalone) await fs.writeFile(filename(), safeStorage.encryptString(JSON.stringify({ origin: base, session: tokens.session_token })), { mode: 0o600 });
           response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
           response.end(`<!doctype html><html lang="ko"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1"><title>Google Drive 연결 완료</title>
-<style>body{font:16px/1.6 system-ui,sans-serif;color:#242735;margin:0;padding:48px 24px}main{max-width:480px;margin:auto}button{font:inherit;padding:8px 20px;cursor:pointer}</style>
-</head><body><main hidden id="complete"><h1>Google Drive에 연결되었습니다.</h1>
-<p>온리비 어서에서 작업을 계속하세요. 이 탭은 닫아도 됩니다.</p><button id="close" type="button">탭 닫기</button>
-<p>닫히지 않으면 Ctrl+W를 누르거나 탭의 ×를 눌러 주세요.</p></main>
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Google Drive 연결 완료 - 온리비 어서</title>
+<style>
+body{font:15px/1.6 system-ui,-apple-system,sans-serif;color:#1e293b;margin:0;padding:24px;background:#f8fafc;display:flex;align-items:center;justify-content:center;min-height:100vh;box-sizing:border-box}
+main{max-width:440px;width:100%;background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;padding:36px 30px;text-align:center;box-shadow:0 10px 25px -5px rgba(15,23,42,.06)}
+h1{font-size:22px;margin:0 0 12px;color:#0f172a;font-weight:700}
+p{color:#475569;margin:0 0 24px;font-size:15px;line-height:1.6}
+.btn{font:inherit;font-weight:600;padding:10px 26px;border-radius:8px;border:none;background:#1d4ed8;color:#ffffff;cursor:pointer;transition:all .15s ease;display:inline-block}
+.btn:hover{background:#1e40af}
+.btn:active{transform:scale(0.98)}
+.guide{font-size:13px;color:#64748b;margin:18px 0 0;background:#f1f5f9;padding:12px 14px;border-radius:8px;line-height:1.5}
+.kbd{display:inline-block;background:#e2e8f0;border:1px solid #cbd5e1;padding:2px 7px;border-radius:5px;font-family:monospace;font-weight:700;color:#1e293b;font-size:12px}
+</style>
+</head><body><main id="complete">
+<h1>✅ Google Drive에 연결되었습니다.</h1>
+<p>온리비 어서에서 작업을 계속하세요.<br>인증이 완료되었으므로 이 탭은 닫으셔도 됩니다.</p>
+<button id="close" class="btn" type="button">탭 닫기</button>
+<div id="notice" class="guide">
+  닫히지 않으면 <span class="kbd">Ctrl</span> + <span class="kbd">W</span> 또는 탭의 <span class="kbd">×</span> 를 눌러 주세요.
+</div>
+</main>
 <script>
 try { history.replaceState(null, '', '/callback'); } catch {}
-function closeTab() { try { window.close(); } catch {} }
+function closeTab() {
+  try { window.open('', '_self', ''); window.close(); } catch (e) {}
+  try { window.close(); } catch (e) {}
+  try { self.close(); } catch (e) {}
+  setTimeout(function() {
+    var btn = document.getElementById('close');
+    if (btn) {
+      btn.innerText = 'Ctrl + W 로 탭 닫기';
+      btn.style.background = '#64748b';
+    }
+  }, 150);
+}
 document.getElementById('close').addEventListener('click', closeTab);
 closeTab();
-setTimeout(function () { document.getElementById('complete').hidden = false; }, 400);
 </script></body></html>`);
           finish(null, { access_token: tokens.access_token, expires_in: tokens.expires_in });
         } catch (error) {

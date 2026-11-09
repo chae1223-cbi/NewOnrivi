@@ -24,6 +24,9 @@ interface TableModalProps {
 // 📊 [OMD-EDIT-TableModal-0003] TableModal ➔ TableModal
 // 🎯 @KICK  : 표 삽입 모달 - 10x10 그리드 UI로 마우스 표 크기 선택 후 마크다운 코드 생성
 // 🛡️ @GUARD : isOpen false 또는 mounted false 시 null 반환으로 조기 종료
+// 🚨 @PATCH : **2026-11-08** — [표 삽입 모달 10열·10행 초과 직접 입력 기능 신설]:
+//             1) 기존 10x10 마우스 드래그 그리드 하단에 열(최대 50열)과 행(최대 100행) 수를 숫자로 직접 지정할 수 있는 입력 필드 추가
+//             2) 10개 이상의 다열(12열, 15열, 20열 등) 대형 표도 모달에서 즉시 지정하여 생성할 수 있도록 UX 개선
 // 🚨 @PATCH : **2026-10-25** — [슬래시 커맨드 /table 등 모달 진입 시 Enter 키 조기 격발 방어]:
 //             1) 슬래시 자동완성 메뉴나 단축키에서 Enter 키로 표 생성을 호출할 때, 동일한 Enter keydown 이벤트가 window 리스너로 전파되어 모달이 화면에 뜨지도 못하고 기본 크기(2열 3행)로 자동 제출·닫힘되는 결함 해결
 //             2) canSubmitRef 및 keyup / 200ms 디바운스 가드를 신설하여 모달이 온전히 화면에 열려 사용자가 행·열을 직접 지정할 수 있도록 보장
@@ -213,9 +216,51 @@ export default function TableModal({ isOpen, onClose, onInsert, isDarkMode, next
           </div>
 
           {/* Guide Text */}
-          <p className="text-slate-400 dark:text-zinc-500 italic text-xs mb-4 text-center font-medium">
-            그리드를 클릭하여 크기를 지정하세요
+          <p className="text-slate-400 dark:text-zinc-500 italic text-xs mb-3 text-center font-medium">
+            그리드를 클릭하거나 아래에서 열·행 수를 직접 입력하세요
           </p>
+
+          {/* 직접 크기 입력 컨트롤 (10열 이상 지원) */}
+          <div className="w-full mb-4 p-2.5 rounded-xl border bg-slate-50/70 dark:bg-zinc-900/60 border-slate-200 dark:border-zinc-800 flex items-center justify-between text-xs">
+            <span className="font-bold text-slate-700 dark:text-zinc-300">
+              크기 직접 입력 <span className="font-normal text-[11px] text-slate-500 dark:text-zinc-400">(10개 이상)</span>
+            </span>
+            <div className="flex items-center gap-1.5">
+              <label className="flex items-center gap-1 font-medium text-slate-600 dark:text-zinc-400">
+                <span>열</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={selectedPos.c}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    const c = isNaN(val) ? 1 : Math.max(1, Math.min(50, val));
+                    setSelectedPos((prev) => ({ ...prev, c }));
+                    setHoverPos((prev) => ({ ...prev, c }));
+                  }}
+                  className="w-12 px-1.5 py-0.5 text-center font-bold text-blue-700 dark:text-blue-400 bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </label>
+              <span className="text-slate-400 font-bold">×</span>
+              <label className="flex items-center gap-1 font-medium text-slate-600 dark:text-zinc-400">
+                <span>행</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={selectedPos.r}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    const r = isNaN(val) ? 1 : Math.max(1, Math.min(100, val));
+                    setSelectedPos((prev) => ({ ...prev, r }));
+                    setHoverPos((prev) => ({ ...prev, r }));
+                  }}
+                  className="w-12 px-1.5 py-0.5 text-center font-bold text-blue-700 dark:text-blue-400 bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              </label>
+            </div>
+          </div>
 
           <div className="w-full mb-4 space-y-2">
             <label className="block text-xs font-semibold">표 제목 (선택)

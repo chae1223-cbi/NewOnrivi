@@ -2,6 +2,9 @@
 // 📊 [OMD-CORE-AsyncMedia-0001] AsyncMedia.tsx ➔ 비동기 미디어(이미지·비디오) 뷰어 컴포넌트
 // 🎯 @KICK  : 미디어 리졸버(resolveMediaUrl)와 연동하여 이미지/비디오를 시각 렌더링하고 복사 컨트롤 제공
 // 🛡️ @GUARD : Rule 3(역할 기반 분리: Core Presentation) 준수 - I/O 복잡도를 mediaResolver로 위임하여 렌더링에만 집중
+// 🚨 @PATCH : 2026-11-08 — [AsyncImage 로드 실패 시 데스크톱 네이티브 프로토콜(media-local://) 자가 치유 폴백 및 api 전달 보강]:
+//             1) api가 props로 전달되지 않은 경우에도 typeof window.electronAPI를 기본 주입하여 데스크톱 환경 누락 방어
+//             2) <img onError> 핸들러를 추가하여 웹 오리진 404 실패 시 media-local://로 즉시 재시도하는 자가 치유(Self-Healing) 방어막 구축
 // 🚨 @PATCH : 2026-11-08 — [AsyncMedia 다이어트 및 미디어 리졸버 분리]:
 //             1) 비대했던 Google Drive/Electron/FSAA 분기 로직(200여 줄)을 mediaResolver.ts로 전면 위임
 //             2) AsyncImage 및 AsyncVideo 코드를 60% 이상 다이어트하여 순수 React 렌더링과 클립보드 복사 인터랙션에 집중
@@ -89,7 +92,7 @@ export const AsyncImage = ({
           resourceFolderHandle,
           resourceFolder,
           workspaceType,
-          api,
+          api: api || (typeof window !== 'undefined' ? (window as any).electronAPI : null),
           queryString,
           revision,
         });
@@ -113,7 +116,8 @@ export const AsyncImage = ({
 
     return () => {
       cancelled = true;
-      if (createdBlobUrl) URL.revokeObjectURL(createdBlobUrl);
+      // 🛡️ 글로벌 캐시(driveImageBlobCache) 및 세션 내 Blob URL은 탭 전환/리렌더 시 취소(revoke)하지 않고 보존
+      // 언마운트 시 즉시 revoke하면 다중 탭 세션 및 후속 리렌더 시 net::ERR_FILE_NOT_FOUND 치명적 결함 발생
     };
   }, [src, absolutePath, rootFolder, resourceFolderHandle, resourceFolder, workspaceType, api, queryString, revision]);
 
@@ -159,6 +163,24 @@ export const AsyncImage = ({
         alt={alt}
         className={className}
         onLoad={onImageLoaded}
+        onError={() => {
+          if (imgSrc && imgSrc.startsWith('blob:')) {
+            // 🛡️ 죽은 Blob URL(ERR_FILE_NOT_FOUND) 감지 시 드라이브 캐시에서 제거하여 후속 요청 복구
+            import('@/lib/gdrive/googleDriveClient').then(({ evictDriveMediaBlob }) => {
+              evictDriveMediaBlob(imgSrc);
+              evictDriveMediaBlob(src);
+            }).catch(() => {});
+          }
+          const apiObj = api || (typeof window !== 'undefined' ? (window as any).electronAPI : null);
+          if (apiObj && imgSrc && !imgSrc.startsWith('media-local://') && !imgSrc.startsWith('data:')) {
+            const rawTarget = absolutePath || src || '';
+            const cleanTarget = rawTarget.split('?')[0].trim();
+            const fallbackUrl = `media-local://serve?url=${encodeURIComponent(cleanTarget)}`;
+            if (imgSrc !== fallbackUrl) {
+              setImgSrc(fallbackUrl);
+            }
+          }
+        }}
         data-line={undefined}
         style={{
           maxWidth: '100%',
@@ -246,7 +268,6 @@ export const AsyncVideo = ({
 
     return () => {
       cancelled = true;
-      if (createdBlobUrl) URL.revokeObjectURL(createdBlobUrl);
     };
   }, [src, absolutePath, rootFolder, resourceFolderHandle, workspaceType, api, queryString, revision]);
 

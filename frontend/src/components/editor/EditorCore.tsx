@@ -3,6 +3,9 @@
  * 🏷️ 파일명 : EditorCore.tsx
  * 🎭 역할(Role) : Core (핵심 도메인 뷰 — 마크다운 편집기 및 미리보기 스플릿뷰 렌더링)
  * 🎯 주요기능 : Monaco Editor, MarkdownViewer/VisualDocumentEditor 스플릿뷰, 브레드크럼, 탭바, 플로팅 툴바, 문서 링크 픽커 렌더링
+ * 🚨 @PATCH : 2026-11-08 — [플로팅 툴바 서식 적용 후 툴바 유지 & ESC 닫기]: 엔터/클릭 시 툴바를 닫지 않고 서식만 연속 적용하도록 유지하고 ESC 입력 시에만 툴바를 닫도록 개선
+ * 🚨 @PATCH : 2026-11-08 — [플로팅 툴바 키보드 네비게이션 & 엔터 에디터 복귀]: 방향키(좌/우/상/하)로 툴바 버튼 순환 이동 및 엔터/스페이스 입력 시 현재 커서 서식 적용 후 에디터로 즉시 복귀 지원
+ * 🚨 @PATCH : 2026-11-08 — [플로팅 툴바 ESC 서식 보존 및 포커스 복원]: Escape 키 입력 시 서식 상태를 취소하지 않고 플로팅 툴바만 닫고 에디터로 포커스 안전 반환
  * 🚨 @PATCH : 2026-11-07 — [플로팅 툴바 커서 반환 및 선택 버튼 포커스 유지]: Escape 키 입력 시 closeFloatingToolbarAndRestoreCursor 호출, 툴바 버튼 클릭/키보드 이동 시 lastClickedToolbarBtnRef 캡처 및 선택 버튼 포커스 유지
  * 🚨 @PATCH : 2026-11-07 — [문서 연결(DocLink) 작업장 내 문서 목록 누락 원천 해소]: 파일명(HELP-/00_시작하기)으로 사용자 작업장 내 문서를 오필터링하던 결함을 제거하고, 정적 번들 도움말 중복만 방어하도록 개선
  * 🚨 @PATCH : 2026-11-04 — [formatTime 방어 가드 강화 & 주석/에러 표준화] formatTime 안전 폴백 및 2단계 UI 컴포넌트 주석·logError 적용
@@ -820,22 +823,26 @@ export default function EditorCore(props: EditorCoreProps) {
                               const buttons = Array.from(e.currentTarget.querySelectorAll('button:not([disabled])')) as HTMLButtonElement[];
                               const activeEl = document.activeElement as HTMLButtonElement;
                               const currentIndex = buttons.indexOf(activeEl);
+
                               if (e.key === 'Tab') {
                                 e.preventDefault();
                                 const nextIndex = currentIndex === -1
                                   ? (e.shiftKey ? buttons.length - 1 : 0)
                                   : (e.shiftKey ? (currentIndex - 1 + buttons.length) % buttons.length : (currentIndex + 1) % buttons.length);
                                 buttons[nextIndex]?.focus();
+                                buttons[nextIndex]?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
                                 if (lastClickedToolbarBtnRef) lastClickedToolbarBtnRef.current = buttons[nextIndex];
                               } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
                                 e.preventDefault();
                                 const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % buttons.length;
                                 buttons[nextIndex]?.focus();
+                                buttons[nextIndex]?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
                                 if (lastClickedToolbarBtnRef) lastClickedToolbarBtnRef.current = buttons[nextIndex];
                               } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
                                 e.preventDefault();
                                 const prevIndex = currentIndex === -1 ? buttons.length - 1 : (currentIndex - 1 + buttons.length) % buttons.length;
                                 buttons[prevIndex]?.focus();
+                                buttons[prevIndex]?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
                                 if (lastClickedToolbarBtnRef) lastClickedToolbarBtnRef.current = buttons[prevIndex];
                               } else if (e.key === 'Enter' || e.key === ' ') {
                                 if (activeEl && buttons.includes(activeEl)) {

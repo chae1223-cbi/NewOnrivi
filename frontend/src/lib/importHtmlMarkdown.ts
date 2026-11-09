@@ -1,3 +1,12 @@
+// ====================================================================
+// 📊 [OMD-IMPORT-HTML-MD-0001] frontend/src/lib/importHtmlMarkdown.ts
+// 🎯 @KICK  : 외부 HTML 및 클립보드 서식을 마크다운 표준으로 변환 (표, 이미지, 제목, 리스트 등)
+// 🛡️ @GUARD : Rule 1(소스 주석 표준화), 스크립트/핸들러 악성 속성 정제
+// 🚨 @PATCH : **2026-11-08** — [외부 표(엑셀/구글스프레드시트/웹) 붙여넣기 시 네이티브 마크다운 표 변환 연동]:
+//             1) 엑셀의 td[colspan=1] 속성으로 인해 모든 외부 표가 원시 HTML 및 source_block 드로어로 떨어지던 결함 수정
+//             2) 오직 중첩된 표(table 내부 table)만 HTML을 유지하고, 엑셀/웹 표는 온전한 마크다운 파이프 표(|---|)로 변환하여 시각적 위지윅 표로 즉시 편집 가능하도록 개선
+// ====================================================================
+
 /** Deterministic document conversion. No AI request or server dependency. */
 export async function importHtmlWithImages(
   html: string,
@@ -135,7 +144,7 @@ export function htmlToImportMarkdown(html: string): string {
       }).join('\n') + '\n';
     }
     if (tag === 'table') {
-      if (el.querySelector('td[colspan], th[colspan], td[rowspan], th[rowspan], table')) {
+      if (el.querySelector('table')) {
         // Pipe tables cannot represent merged cells. Keep the table structure
         // and inline formatting, without carrying source scripts or handlers.
         const table = el.cloneNode(true) as HTMLElement;
@@ -150,8 +159,18 @@ export function htmlToImportMarkdown(html: string): string {
         }
         return '\n\n' + table.outerHTML.replace(/\r?\n/g, ' ') + '\n\n';
       }
-      const rows = Array.from(el.querySelectorAll('tr')).map(row => Array.from(row.children).filter(cell => /^(TD|TH)$/.test(cell.tagName)).map(cell =>
-        Array.from(cell.childNodes).map(child => walk(child, depth)).join('').trim().replace(/\|/g, '\\|').replace(/\n+/g, '<br>')));
+      const rows = Array.from(el.querySelectorAll('tr')).map(row => {
+        const cells: string[] = [];
+        Array.from(row.children).filter(cell => /^(TD|TH)$/.test(cell.tagName)).forEach(cell => {
+          const text = Array.from(cell.childNodes).map(child => walk(child, depth)).join('').trim().replace(/\|/g, '\\|').replace(/\n+/g, '<br>');
+          const colSpan = Math.max(1, parseInt(cell.getAttribute('colspan') || '1', 10) || 1);
+          cells.push(text);
+          for (let c = 1; c < colSpan; c++) {
+            cells.push('>');
+          }
+        });
+        return cells;
+      });
       const width = Math.max(0, ...rows.map(row => row.length));
       if (!width) return '';
       const lines = rows.map(row => '| ' + Array.from({ length: width }, (_, index) => row[index] || '').join(' | ') + ' |');

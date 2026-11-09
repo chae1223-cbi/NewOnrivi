@@ -17,6 +17,9 @@ import { syncVisualSourceModel } from '@/lib/incrementalVisualModel';
 // 📊 [OMD-HOOK-0003] useEditorTabs.ts ➔ useEditorTabs
 // 🎯 @KICK  : Monaco 에디터 가상 모델 다중 탭 관리 — 탭 전환·생성·콘텐츠 동기화
 // 🛡️ @GUARD : tabs/setTabs/activeTabId/setActiveTabId 외부 주입으로 TDZ 원천 차단
+// 🚨 @PATCH : 2026-11-08 — [다중 탭 전환 시 위지윅 에디터 본문 덮어쓰기 및 문서 뒤바뀜 결함 해결]:
+//             1) switchTab에서 preview(위지윅) 모드일 때 Monaco editor.getValue()로 현재 탭 content를 덮어쓰던 치명적 결함 제거 (위지윅 모드 탭 본문 100% 보존)
+//             2) editor.getModel()이 현재 활성 탭의 model과 일치할 때만 에디터 값 동기화 및 updateContent syncVisualSourceModel을 수행하도록 모델 검증 가드 탑재하여 타 탭 본문 오염 원천 차단
 // 🚨 @PATCH : 2026-11-05 — [일괄 세션 복원 탭 누락 방지]: 탭 생성과 활성 탭 전환 시 공유 ref를 즉시 갱신하여 React 일괄 업데이트 중에도 다음 탭이 앞선 탭을 찾도록 보장.
 // 🚨 @PATCH : 2026-11-05 — [탭 전환 중 수정 오판 방지]: 비활성 모델의 값 변경 이벤트가 현재 본문과 저장 상태를 바꾸지 않도록 차단.
 // 🚨 @PATCH : 2026-11-05 — [세션 탭 지연 모델 생성]: 복원 시 비활성 탭은 모델과 화면 전환 없이 등록하고 선택한 탭의 모델만 생성한다.
@@ -84,18 +87,24 @@ export const useEditorTabs = (
       setTabs(prev => prev.map(t => t.id === activeTabIdRef.current ? { ...t, content: newValue } : t));
       if (editorRef.current && editorRef.current.getValue() !== newValue) {
         const model = editorRef.current.getModel?.();
-        if (incrementalVisual && model?.pushEditOperations && !model.isDisposed?.()) {
-          (model as any).__isSyncingVisualModel = true;
-          syncVisualSourceModel(model, newValue);
-          requestAnimationFrame(() => {
-            if (model && !model.isDisposed?.()) {
-              (model as any).__isSyncingVisualModel = false;
-            }
-          });
-          // This edit is already reflected in React and the active tab. Do not
-          // repeat it through the source editor's preview debounce listener.
-          if (previewDebounceRef.current) { clearTimeout(previewDebounceRef.current); previewDebounceRef.current = null; }
-        } else editorRef.current.setValue(newValue);
+        const currentActiveTab = tabsRef.current?.find(t => t.id === activeTabIdRef.current);
+        // 🛡️ [BUG FIX 2026-11-08] Monaco 에디터의 모델이 현재 활성화된 탭의 모델과 일치할 때만 모델 갱신 (타 탭 모델 오염 원천 차단)
+        if (model && currentActiveTab?.model && model === currentActiveTab.model) {
+          if (incrementalVisual && model?.pushEditOperations && !model.isDisposed?.()) {
+            (model as any).__isSyncingVisualModel = true;
+            syncVisualSourceModel(model, newValue);
+            requestAnimationFrame(() => {
+              if (model && !model.isDisposed?.()) {
+                (model as any).__isSyncingVisualModel = false;
+              }
+            });
+            // This edit is already reflected in React and the active tab. Do not
+            // repeat it through the source editor's preview debounce listener.
+            if (previewDebounceRef.current) { clearTimeout(previewDebounceRef.current); previewDebounceRef.current = null; }
+          } else {
+            editorRef.current.setValue(newValue);
+          }
+        }
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -126,15 +135,14 @@ export const useEditorTabs = (
       setTabs(prev => prev.map(t => t.id === activeTabIdRef.current ? { ...t, scrollTop: currentScrollTop, viewState: currentViewState } : t));
     }
 
-    // 현재 탭의 에디터 내용을 React 상태에 동기화 (모드 전환 시 데이터 유실 방지)
-    // 🛡️ [BUG FIX 2026-07-07] 가상 탭(path=null, model=null)은 editor.getValue()가 빈 문자열을
-    // 반환하므로 content를 덮어쓰지 않음 (탭 내용이 소멸하는 현상 방지)
-    if (editor && (previewModeRef.current === 'css-style' || previewModeRef.current === 'preview')) {
+    // 🛡️ [BUG FIX 2026-11-08] preview(위지윅) 모드일 때는 Monaco가 비활성이므로 editor.getValue()로 덮어쓰지 않고,
+    // 오직 Monaco 에디터가 활성화된 모드('editor', 'both', 'css-style')에서만 현재 모델의 최신 값을 안전하게 동기화
+    if (editor && (previewModeRef.current === 'editor' || previewModeRef.current === 'both' || previewModeRef.current === 'css-style')) {
       const prevTab = tabsRef.current.find(t => t.id === activeTabIdRef.current);
       const isPrevVirtual = prevTab && !prevTab.path && !prevTab.model;
-      if (!isPrevVirtual) {
+      if (!isPrevVirtual && prevTab?.model && editor.getModel() === prevTab.model) {
         const latestVal = editor.getValue();
-        if (activeTabIdRef.current) {
+        if (activeTabIdRef.current && latestVal !== undefined) {
           setTabs(prev => prev.map(t => t.id === activeTabIdRef.current ? { ...t, content: latestVal } : t));
         }
       }

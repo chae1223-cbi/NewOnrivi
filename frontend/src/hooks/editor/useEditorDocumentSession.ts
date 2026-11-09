@@ -2,6 +2,7 @@
 // 📊 [OMD-HOOK-useEditorDocumentSession] frontend/src/hooks/editor/useEditorDocumentSession.ts
 // 🎯 @KICK  : 에디터 탭 세션 복원, 자동 저장, 외부 파일 열기(OS 연동) 전담 훅
 // 🛡️ @GUARD : 비인증 사용자 복원 제한, 디스크 삭제 파일 예외 방어, 웹/데스크톱 플랫폼별 세션 동기화
+// 🚨 @PATCH : 2026-11-08 — [세션 복원 중 외부 파일 인입 큐잉]: 세션 복원(sessionRestoringRef) 중 외부 파일 열기 요청 시 즉시 경합하지 않고 대기 큐에 보관 후 복원 직후 순차 오픈하여 렌더러 지연 및 모델 경합 방지
 // 🚨 @PATCH : 2026-11-05 — [드라이브 404 복원 보호]: 읽을 수 없는 기존 파일 ID 대신 보관된 세션/비상 초안을 독립 로컬 탭으로 복원하고 자동 저장 대상에서 제외한다.
 // 🚨 @PATCH : 2026-11-05 — [데스크톱 세션 복원 Fast-Path 직결 및 10분 지연 병목 완전 해결]:
 //             1) 5단계 범용 링크 탐색(지식보관함 3중 쿼리 등) 및 탭별 150ms 강제 대기를 제거하고 api.readFromPath 및 캐시 초안으로 즉시 바인딩 (591초 ➔ 0.05초)
@@ -313,6 +314,11 @@ export function useEditorDocumentSession({
       sessionRestoringRef.current = false;
       sessionRestoredRef.current = true;
       setTabs(previous => [...previous]);
+      if (pendingExternalFileRef.current) {
+        const nextPending = pendingExternalFileRef.current;
+        pendingExternalFileRef.current = null;
+        void openExternalFile(nextPending);
+      }
     }
   };
 
@@ -325,6 +331,12 @@ export function useEditorDocumentSession({
    * ==========================================================================================
    */
   const openExternalFile = async (filePath: string) => {
+    if (!filePath) return;
+    // 🛡️ [세션 복원 중 외부 파일 인입 큐잉]: 복원 완료 직후 순차 실행
+    if (sessionRestoringRef.current) {
+      pendingExternalFileRef.current = filePath;
+      return;
+    }
     try {
       const api = (window as any).electronAPI;
       if (api?.readFromPath) {
@@ -448,6 +460,10 @@ export function useEditorDocumentSession({
       let unsubscribeReceiveFile: (() => void) | undefined;
       if (api.onReceiveFile) {
         unsubscribeReceiveFile = api.onReceiveFile((filePath: string) => {
+          if (sessionRestoringRef.current || !sessionRestoredRef.current) {
+            pendingExternalFileRef.current = filePath;
+            return;
+          }
           openExternalFile(filePath);
         });
       }

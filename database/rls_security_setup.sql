@@ -6,6 +6,7 @@
 --    2) 오직 RLS 활성화(ENABLE ROW LEVEL SECURITY)와 접근 권한 정책(POLICY)만 설정
 --    3) 이미 존재하는 정책과 충돌하지 않도록 DROP POLICY IF EXISTS 후 재생성(멱등성 보장)
 --    4) 백업/임시 테이블 유무에 관계없이 에러 없이 실행되도록 동적 체크(DO $$) 적용
+-- 🚨 @PATCH : 2026-11-08 — [RLS 전역 보안 최신화]: blog_posts, blog_post_revisions 및 백업/신규 테이블 포함 일괄 활성화 보장
 -- ====================================================================
 
 BEGIN;
@@ -234,6 +235,23 @@ BEGIN
       EXECUTE format('DROP POLICY IF EXISTS "rls_%I_admin_only" ON public.%I;', t, t);
       EXECUTE format(
         'CREATE POLICY "rls_%I_admin_only" ON public.%I FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());',
+        t, t
+      );
+    END IF;
+  END LOOP;
+END $$;
+
+-- [3-9] blog_posts & blog_post_revisions (블로그 게시글 및 리비전: 관리자 전체 관리 허용, 클라이언트 직접 변조 원천 차단)
+DO $$
+DECLARE
+  t text;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['blog_posts', 'blog_post_revisions']
+  LOOP
+    IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = t) THEN
+      EXECUTE format('DROP POLICY IF EXISTS "rls_%I_admin_all" ON public.%I;', t, t);
+      EXECUTE format(
+        'CREATE POLICY "rls_%I_admin_all" ON public.%I FOR ALL TO authenticated USING (public.is_admin()) WITH CHECK (public.is_admin());',
         t, t
       );
     END IF;
