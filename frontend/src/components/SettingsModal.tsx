@@ -1,5 +1,8 @@
 // ====================================================================
 // 📊 [OMD-EDIT-SettingsModal-0006 ✅ FIXED] SettingsModal.tsx ➔ SettingsModal
+// 🚨 @PATCH : **2026-11-10** — [환경설정 AES-256 암호화 백업 및 암호 검증 원복 UI 신설]:
+//             1) exportEncryptedSettings 연동: 백업 비밀번호 입력 및 API 키 포함 선택으로 안전한 .onrivicfg 암호화 백업 파일 생성
+//             2) importEncryptedSettings 연동: 백업 파일 업로드 후 암호 검증 팝업을 거쳐 일치할 때만 환경설정 100% 원복 및 리로드
 // 🚨 @PATCH : **2026-10-28** — [환경설정 내 'AI 및 MCP 연동' 독립 탭 신설 및 외부 AI(Gemini, Claude) 원클릭 연동 탑재]:
 //             1) activeTab에 'ai' 추가 및 좌측 내비게이션 바에 'AI 및 MCP 연동' 독립 탭 신설
 //             2) 일반 설정에서 복잡하게 섞여 있던 AI 설정을 분리하고, 외부 AI 도구(Gemini, Claude Desktop)를 위한 원클릭 MCP 연동 UI 탑재
@@ -58,6 +61,7 @@ import { testGeminiConnection, ONRIVI_AI_MODELS, getCachedAIModels, fetchGoogleA
 import { supabase } from '@/lib/supabaseClient';
 import { saveSecureData, loadSecureData } from '@/lib/secureStorage';
 import { getDefaultWatermarkSettings, saveDefaultWatermarkSettings, DocumentPrintSettings, WatermarkPosition, DEFAULT_WATERMARK_IMAGE, DEFAULT_WATERMARK_TEXT } from '@/lib/documentPrintSettings';
+import { exportEncryptedSettings, importEncryptedSettings, downloadBackupFile } from '@/lib/settingsBackup';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -252,6 +256,127 @@ export default function SettingsModal({
   const [watermarkSettings, setWatermarkSettings] = useState<DocumentPrintSettings>(() => getDefaultWatermarkSettings());
   const [watermarkResources,setWatermarkResources]=useState<WatermarkResource[]>([]),[watermarkBusy,setWatermarkBusy]=useState(false),[watermarkResourceError,setWatermarkResourceError]=useState(''),[watermarkPreview,setWatermarkPreview]=useState('');
   const watermarkGeneration=useRef(0),settingsOpen=useRef(isOpen);settingsOpen.current=isOpen;
+
+  // 🌟 [환경설정 암호화 백업 및 원복 상태]
+  const [isBackupDialogOpen, setIsBackupDialogOpen] = useState(false);
+  const [backupPassword, setBackupPassword] = useState('');
+  const [backupPasswordConfirm, setBackupPasswordConfirm] = useState('');
+  const [includeApiKeyInBackup, setIncludeApiKeyInBackup] = useState(true);
+  const [backupError, setBackupError] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
+
+  const [isRestoreDialogOpen, setIsRestoreDialogOpen] = useState(false);
+  const [restoreFileContent, setRestoreFileContent] = useState('');
+  const [restoreFileName, setRestoreFileName] = useState('');
+  const [restorePassword, setRestorePassword] = useState('');
+  const [restoreError, setRestoreError] = useState('');
+  const [isRestoring, setIsRestoring] = useState(false);
+  const restoreFileInputRef = useRef<HTMLInputElement>(null);
+
+  // 백업 파일 생성 및 다운로드 실행
+  const handleExecuteBackup = async () => {
+    setBackupError('');
+    const pw = backupPassword.trim();
+    if (!pw) {
+      setBackupError('백업 암호를 입력해 주세요.');
+      return;
+    }
+    if (pw.length < 4) {
+      setBackupError('비밀번호는 최소 4자 이상 입력해 주세요.');
+      return;
+    }
+    if (pw !== backupPasswordConfirm.trim()) {
+      setBackupError('비밀번호 확인이 일치하지 않습니다.');
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      let profiles: any[] = [];
+      try {
+        const cached = localStorage.getItem('onrivi_cached_drive_profiles');
+        if (cached) profiles = JSON.parse(cached);
+      } catch {}
+
+      const encryptedContent = await exportEncryptedSettings(pw, includeApiKeyInBackup, profiles);
+      downloadBackupFile(encryptedContent);
+      showToast('환경설정이 암호화되어 안전하게 백업 파일로 다운로드되었습니다.', 'success');
+      setIsBackupDialogOpen(false);
+      setBackupPassword('');
+      setBackupPasswordConfirm('');
+    } catch (err: any) {
+      setBackupError(err.message || '백업 생성에 실패했습니다.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // 복원 파일 선택 트리거
+  const handleTriggerRestoreFile = () => {
+    setRestoreError('');
+    setRestorePassword('');
+    if (restoreFileInputRef.current) {
+      restoreFileInputRef.current.value = '';
+      restoreFileInputRef.current.click();
+    }
+  };
+
+  const handleRestoreFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      if (!content) {
+        showToast('파일 내용을 읽을 수 없습니다.', 'error');
+        return;
+      }
+      setRestoreFileContent(content);
+      setRestoreFileName(file.name);
+      setRestorePassword('');
+      setRestoreError('');
+      setIsRestoreDialogOpen(true);
+    };
+    reader.onerror = () => {
+      showToast('파일을 읽는 중 오류가 발생했습니다.', 'error');
+    };
+    reader.readAsText(file, 'utf-8');
+  };
+
+  // 암호 검증 후 복원 실행
+  const handleExecuteRestore = async () => {
+    setRestoreError('');
+    const pw = restorePassword.trim();
+    if (!pw) {
+      setRestoreError('복원 암호를 입력해 주세요.');
+      return;
+    }
+
+    setIsRestoring(true);
+    try {
+      const result = await importEncryptedSettings(restoreFileContent, pw);
+      if (result.success) {
+        showToast(`🎉 환경설정 ${result.restoredCount}개 항목이 성공적으로 복원되었습니다! 화면을 새로고침합니다.`, 'success');
+        setIsRestoreDialogOpen(false);
+        setRestorePassword('');
+        setRestoreFileContent('');
+        setTimeout(() => {
+          if (typeof window !== 'undefined') {
+            window.location.reload();
+          }
+        }, 1200);
+      }
+    } catch (err: any) {
+      if (err.message?.includes('PASSWORD_MISMATCH')) {
+        setRestoreError('❌ 비밀번호가 올바르지 않습니다. 다시 입력해 주세요.');
+      } else {
+        setRestoreError(err.message || '복원 중 오류가 발생했습니다.');
+      }
+    } finally {
+      setIsRestoring(false);
+    }
+  };
   const reloadWatermarkResources=useCallback(async()=>{
     const generation=++watermarkGeneration.current;
     try{const entries=await listWatermarkResources();if(settingsOpen.current&&generation===watermarkGeneration.current){setWatermarkResources(entries);setWatermarkResourceError('');}}
@@ -1172,6 +1297,65 @@ export default function SettingsModal({
                   </div>
                 )}
               </div>
+
+              {/* 🌟 [환경설정 암호화 백업 및 원복] 섹션 */}
+              <div className="p-5 rounded-2xl bg-surface-container-low dark:bg-surface-container-low/50 border border-outline-variant/30 space-y-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 mt-0.5">
+                      <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <div className="text-[15px] font-bold text-on-surface flex items-center gap-2">
+                        환경설정 암호화 백업 및 원복
+                        <span className="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
+                          AES-256
+                        </span>
+                      </div>
+                      <div className="text-[12px] text-on-surface-variant mt-0.5 leading-relaxed">
+                        단축키, 슬래시 명령어, 서식, 테마, 폰트 및 AI 설정을 비밀번호로 안전하게 암호화하여 파일로 백업하고, 다른 브라우저나 기기에서 암호 입력 후 즉시 동일하게 원복합니다.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 pt-1">
+                  <button
+                    onClick={() => {
+                      setBackupError('');
+                      setBackupPassword('');
+                      setBackupPasswordConfirm('');
+                      setIsBackupDialogOpen(true);
+                    }}
+                    className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-[13px] font-bold shadow-sm transition-all flex items-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    환경설정 백업 파일 생성
+                  </button>
+
+                  <button
+                    onClick={handleTriggerRestoreFile}
+                    className="px-4 py-2.5 rounded-xl bg-surface-container-highest hover:bg-surface-container-high border border-outline-variant/40 text-on-surface text-[13px] font-bold shadow-xs transition-all flex items-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    백업 파일로부터 복원(원복)
+                  </button>
+
+                  <input
+                    type="file"
+                    ref={restoreFileInputRef}
+                    onChange={handleRestoreFileSelected}
+                    accept=".onrivicfg,.json"
+                    className="hidden"
+                  />
+                </div>
+              </div>
             </div>
           )}
 
@@ -1773,6 +1957,183 @@ export default function SettingsModal({
           )}
         </section>
       </main>
+
+      {/* 🌟 [환경설정 암호화 백업 다이얼로그] */}
+      {isBackupDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="w-full max-w-md p-6 rounded-2xl bg-surface-container-lowest dark:bg-zinc-900 border border-outline-variant/30 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-outline-variant/15 dark:border-zinc-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-[16px] font-bold text-on-surface">환경설정 암호화 백업</h3>
+                  <p className="text-[11px] text-on-surface-variant">AES-256 군사 등급 암호화 적용</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsBackupDialogOpen(false)}
+                className="text-on-surface-variant hover:text-on-surface p-1 rounded-lg"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <p className="text-[13px] text-on-surface-variant leading-relaxed">
+              백업 파일을 안전하게 보호할 암호를 설정해 주세요. 다른 브라우저에서 복원할 때 이 암호를 입력해야만 환경설정이 열립니다.
+            </p>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[12px] font-bold text-on-surface mb-1">백업 비밀번호 (최소 4자)</label>
+                <input
+                  type="password"
+                  value={backupPassword}
+                  onChange={(e) => setBackupPassword(e.target.value)}
+                  placeholder="비밀번호 입력"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container-low dark:bg-zinc-800 text-[13px] font-semibold text-on-surface outline-none focus:border-blue-600 dark:focus:border-blue-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[12px] font-bold text-on-surface mb-1">비밀번호 확인</label>
+                <input
+                  type="password"
+                  value={backupPasswordConfirm}
+                  onChange={(e) => setBackupPasswordConfirm(e.target.value)}
+                  placeholder="비밀번호 다시 입력"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container-low dark:bg-zinc-800 text-[13px] font-semibold text-on-surface outline-none focus:border-blue-600 dark:focus:border-blue-400"
+                />
+              </div>
+
+              {/* API 키 포함 체크박스 */}
+              <label className="flex items-center gap-2 pt-1 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={includeApiKeyInBackup}
+                  onChange={(e) => setIncludeApiKeyInBackup(e.target.checked)}
+                  className="w-4 h-4 rounded text-blue-600 accent-blue-600 cursor-pointer"
+                />
+                <span className="text-[12px] font-semibold text-on-surface">
+                  Gemini AI API 키도 함께 암호화하여 백업 (권장)
+                </span>
+              </label>
+
+              {backupError && (
+                <div className="p-2.5 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 text-[12px] font-bold flex items-center gap-1.5">
+                  <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  {backupError}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-outline-variant/15 dark:border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setIsBackupDialogOpen(false)}
+                className="px-4 py-2 rounded-xl text-[13px] font-bold text-on-surface hover:bg-surface-container-high transition-colors"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteBackup}
+                disabled={isExporting}
+                className="px-4 py-2 rounded-xl text-[13px] font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-xs transition-all flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {isExporting ? '암호화 중...' : '🔒 암호화 백업 다운로드'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🌟 [환경설정 복원 및 암호 검증 다이얼로그] */}
+      {isRestoreDialogOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="w-full max-w-md p-6 rounded-2xl bg-surface-container-lowest dark:bg-zinc-900 border border-outline-variant/30 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-outline-variant/15 dark:border-zinc-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-green-500/10 text-green-600 dark:text-green-400 flex items-center justify-center">
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-[16px] font-bold text-on-surface">환경설정 복원 (암호 검증)</h3>
+                  <p className="text-[11px] text-on-surface-variant font-mono truncate max-w-[200px]">{restoreFileName}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsRestoreDialogOpen(false)}
+                className="text-on-surface-variant hover:text-on-surface p-1 rounded-lg"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <p className="text-[13px] text-on-surface-variant leading-relaxed">
+              백업 시 설정했던 암호를 입력해 주세요. 올바른 암호가 확인되면 단축키, 서식, 테마 및 AI 설정이 즉시 복원됩니다.
+            </p>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[12px] font-bold text-on-surface mb-1">복원 비밀번호</label>
+                <input
+                  type="password"
+                  autoFocus
+                  value={restorePassword}
+                  onChange={(e) => setRestorePassword(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleExecuteRestore();
+                    }
+                  }}
+                  placeholder="비밀번호 입력"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container-low dark:bg-zinc-800 text-[13px] font-semibold text-on-surface outline-none focus:border-green-600 dark:focus:border-green-400"
+                />
+              </div>
+
+              {restoreError && (
+                <div className="p-2.5 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 text-[12px] font-bold flex items-center gap-1.5">
+                  <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  {restoreError}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-outline-variant/15 dark:border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setIsRestoreDialogOpen(false)}
+                className="px-4 py-2 rounded-xl text-[13px] font-bold text-on-surface hover:bg-surface-container-high transition-colors"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteRestore}
+                disabled={isRestoring || !restorePassword.trim()}
+                className="px-4 py-2 rounded-xl text-[13px] font-bold bg-green-600 hover:bg-green-700 text-white shadow-xs transition-all flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {isRestoring ? '복원 중...' : '🔑 암호 검증 및 원복'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>,
     document.body
   );
