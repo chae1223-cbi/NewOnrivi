@@ -2,9 +2,9 @@
  * 프로그램명 : OnriviAuthor 
  * 버전 정보 : 1.0.1
  * 프로그램 ID : oaar-visual-codec
- * 🚨 @PATCH : **2026-11-10** — [서명/발신인 블록(<div align="left|right">...</div>) 독립 분할 청킹 및 시각 렌더링 지원]:
- *             1) starts 인덱스 계산 시 <div align="left|right">부터 </div>까지를 단일 블록(inSignatureBlock)으로 감지 격리하여 일반 텍스트 문단으로 쪼개지는 현상 원천 차단
- *             2) isSignature 정규식 매칭을 통해 source_block 노드로 무손실 생성 및 비주얼 에디터 시각 렌더링 지원
+ * 🚨 @PATCH : **2026-11-10** — [서명/발신인 블록 내부 분할 starts 인덱스 완전 제거로 단일 위지윅 시각 렌더링 보장]:
+ *             1) starts 인덱스 정리 시 서명 블록 시작(<div align="left|right|center">)부터 끝(</div>) 내부의 모든 중간 분할점을 starts에서 완전 제거하여 통짜 단일 블록으로 격리 보존
+ *             2) isSignature 정규식(left|right|center) 매칭을 통해 source_block 노드로 무손실 생성 및 비주얼 에디터 시각 렌더링 지원
  * 🚨 @PATCH : **2026-11-07** — [인라인 image 노드 toDOM 꺽쇠/따옴표 정제]: schema.nodes.image toDOM에서 rawSrc의 꺽쇠(<...>) 및 따옴표를 정제하여 불필요한 브라우저 404 오요청 방어
  * 🚨 @PATCH : **2026-11-07** — [visual_image toDOM 이미지 꺽쇠 정제]: visual_image toDOM에서 rawSrc의 꺽쇠(<...>)를 정제하여 불필요한 404 오요청 방어
  * 🚨 @PATCH : **2026-11-07** — [가져오기 및 본문 내 HTML 표(<table>...</table>) 시각 렌더링 및 무손실 직렬화 지원]:
@@ -571,18 +571,30 @@ export function createVisualDocumentCodec(markdown: string) {
     }
   }
 
-  // ✍️ [서명/발신인 블록 경계 분할]: <div align="left|right">부터 </div>까지를 단일 블록으로 묶어 분리
-  let inSignatureBlock = false;
+  // ✍️ [서명/발신인 블록 경계 분할]: <div align="left|right|center">부터 </div>까지를 단일 블록으로 묶어 분리
+  // markdown-it tokenizer가 내부 빈 행으로 인해 임의로 쪼갠 starts 인덱스들을 서명 블록 내부에서 완전 제거
+  const signatureRanges: [number, number][] = [];
+  let sigStart = -1;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (!inSignatureBlock && /^\s*<div\s+align=["'](left|right)["']/i.test(line)) {
-      if (!starts.includes(i)) starts.push(i);
-      inSignatureBlock = true;
-    } else if (inSignatureBlock && /<\/div>\s*$/i.test(line.trim())) {
-      inSignatureBlock = false;
-      if (i + 1 < lines.length && !starts.includes(i + 1)) starts.push(i + 1);
+    if (sigStart === -1 && /^\s*<div\s+align=["'](left|right|center)["']/i.test(line)) {
+      sigStart = i;
+    } else if (sigStart !== -1 && /<\/div>\s*$/i.test(line.trim())) {
+      signatureRanges.push([sigStart, i]);
+      sigStart = -1;
     }
   }
+
+  signatureRanges.forEach(([start, end]) => {
+    // start 초과 end 이하의 모든 인덱스를 starts에서 제거하여 내부 문단 분할 방지
+    for (let k = starts.length - 1; k >= 0; k--) {
+      if (starts[k] > start && starts[k] <= end) {
+        starts.splice(k, 1);
+      }
+    }
+    if (!starts.includes(start)) starts.push(start);
+    if (end + 1 < lines.length && !starts.includes(end + 1)) starts.push(end + 1);
+  });
 
   starts.sort((a, b) => a - b);
   // Scene delimiters must stay together until the scene editor is implemented.
@@ -620,7 +632,7 @@ export function createVisualDocumentCodec(markdown: string) {
     const mathMatch = raw.trim().match(/^\$\$([\s\S]*?)\$\$$/);
     const codeMathMatch = raw.trim().match(/^```(?:math|latex)\s*([\s\S]*?)```$/i);
     const isHtmlTable = /^\s*(?:<!--[\s\S]*?-->\s*)*<table\b[\s\S]*<\/table>\s*$/i.test(raw.trim());
-    const isSignature = /^\s*<div\s+align=["'](left|right)["'][^>]*>[\s\S]*?<\/div>\s*$/i.test(raw.trim());
+    const isSignature = /^\s*<div\s+align=["'](left|right|center)["'][^>]*>[\s\S]*?<\/div>\s*$/i.test(raw.trim());
     if (/^(?:<!--\s*(?:onrivi:page-break|\[page-break\])\s*-->|<hr\s+class=["']page-break["']\s*\/?>)$/.test(raw.trim())) {
       node = visualSchema.nodes.page_break.create();
     } else if (/^<p>\s*<\/p>$/.test(raw.trim())) {

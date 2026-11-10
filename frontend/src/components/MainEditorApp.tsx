@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ============================================================================
  * 🏷️ 파일명 : MainEditorApp.tsx
  * 🎭 역할(Role) : Container (컨트롤 타워)
@@ -331,7 +331,7 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
   const [mediaDialogSource,setMediaDialogSource] = useState<{kind:'video'|'map';source:string}|null>(null);
   const visualMediaInsertRef = useRef<{kind:string;documentId:string;insert:(code:string)=>boolean}|null>(null);
   const visualImageInsertRef = useRef<((path: string, alt: string, fullMarkdown?: string) => boolean) | null>(null);
-  const visualCommandRef = useRef<((command: string) => boolean) | null>(null);
+  const visualCommandRef = useRef<((command: any) => boolean) | null>(null);
   const visualAITargetRef = useRef<any>(null);
   const visualSourceActionRef = useRef<{ id: string; source: string; from: number; to: number; tabId: string } | null>(null);
   const executingVisualSourceActionRef = useRef(false);
@@ -2694,3 +2694,4 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     </>
   );
 }
+

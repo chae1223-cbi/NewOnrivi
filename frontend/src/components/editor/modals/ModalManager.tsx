@@ -1,10 +1,10 @@
-import { nextReportNumber, resolveCaptionConfig } from '@/lib/aiFriendlyReport';
+﻿import { nextReportNumber, resolveCaptionConfig } from '@/lib/aiFriendlyReport';
 /**
  * 프로그램명 : OnriviAuthor
  * 프로그램 ID : oaar-modal-manager
  * 🚨 @PATCH : **2026-11-10** — [서명/발신인 서식 모달(SignatureModal) 연동 및 실시간 이벤트 리스너 탑재]:
  *             1) onrivi:open-signature-modal 이벤트를 청취하여 정렬(left/right), 날짜, 작성자, 도장 설정 다이얼로그 오픈
- *             2) 기존 서명 블록 수정(raw 마크다운 분해) 및 신규 서명 커서 위치(Monaco/위지윅) 자동 삽입 지원
+ *             2) 기존 서명 블록 수정(raw 마크다운 분해) 및 신규 서명 커서 위치(INSERT_SIGNATURE: / Monaco) 자동 삽입 지원
  * 🚨 @PATCH : **2026-10-27** — [SNS 카드뉴스 전용 내보내기(sns) 핸들러 및 서식 자동 감지 연동]: ExportModal에 isSnsCardProfile, defaultSnsRatio 전달 및 format === 'sns' 선택 시 handlers.exportSNS(exportSettings) 호출 연결
  * 🚨 @PATCH : **2026-10-24** — [문서보기 위지윅 이미지 캡션(fullMarkdown) 양방향 전달]: deps.replaceVisualImage 호출 시 fullMarkdown 파라미터를 함께 전달하여 캡션 문단과 이미지가 동시 삽입되도록 연동
  * 🚨 @PATCH : **2026-10-22** — [미디어 종류별 캡션 설정 전달]: 그림·동영상·지도·표 모달에 resolveCaptionConfig로 종류별 캡션 위치/구문(kindOverrides)을 병합해 전달
@@ -880,7 +880,7 @@ export default function ModalManager({ modals, deps }: ModalManagerProps) {
             return;
           }
           if (deps.previewRef?.current?.querySelector('.visual-document-editor') && deps.visualCommandRef?.current) {
-            deps.visualCommandRef.current('INSERT_TEXT:' + markdown);
+            deps.visualCommandRef.current('INSERT_SIGNATURE:' + markdown);
           } else if (deps.insertAtCursor) {
             deps.insertAtCursor(markdown);
           }
@@ -897,3 +897,5 @@ export default function ModalManager({ modals, deps }: ModalManagerProps) {
     </>
   );
 }
+
+

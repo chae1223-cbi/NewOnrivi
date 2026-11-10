@@ -2,6 +2,9 @@
 // 📊 [OMD-CORE-VisualEditor-ProseMirrorHandlers] frontend/src/components/visualEditor/visualEditorProseMirrorHandlers.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 ProseMirror Keymap, 키보드/텍스트 입력, 스마트 붙여넣기(handlePaste), 드롭(handleDrop), 마우스 클릭/링크 이동(handleClick) 및 DOM 이벤트 핸들러 팩토리
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 클립보드 이미지/HTML 붙여넣기 정제, 5대 정밀 진단 로깅(logError/logWarn) 준수
+// 🚨 @PATCH : 2026-11-10 — [코드블록 노드 타입 판별 name 표준화로 Shift+Enter 새 코드블록 분할 결함 영구 차단]:
+//             1) visualSchema.nodes.code_block 객체 참조 비교 대신 type.name === 'code_block' 표준 비교로 전면 교체하여 런타임 스키마 인스턴스 불일치 방어
+//             2) handleKeyDown 및 paragraphInCodeBlock에서 코드블록 내부 Shift+Enter 시 tr.split이 호출되지 않고 문단(\n\n 또는 빈행 시 \n) 삽입 후 완벽 종료 보장
 // 🚨 @PATCH : 2026-11-10 — [코드블록 내부 handleKeyDown 우선 가로채기 적용으로 새 코드블록 생성 결함 원천 차단]:
 //             1) handleKeyDown에서 code_block 내부 Shift+Enter를 직접 가로채어 문단(\\n\\n 또는 빈행 시 \\n) 삽입을 전담하고 tr.split($from.pos) 호출을 원천 차단하여 새 코드블록 생성 완벽 방어
 //             2) handleKeyDown에서 code_block 내부 Enter는 단순 문장 줄바꿈(\\n 1개) 전담
@@ -134,7 +137,7 @@ export interface VisualEditorKeymapParams {
  */
 const paragraphInCodeBlock: Command = (state, dispatch) => {
   const { $from } = state.selection;
-  if ($from.parent.type !== visualSchema.nodes.code_block) return false;
+  if ($from.parent.type.name !== 'code_block') return false;
   if (dispatch) {
     const parent = $from.parent;
     const offset = $from.parentOffset;
@@ -192,7 +195,7 @@ export function createVisualEditorKeymap({
     ),
     'Mod-Shift-k': (state, dispatch) => {
       const { $from } = state.selection;
-      if ($from.parent.type === visualSchema.nodes.code_block) {
+      if ($from.parent.type.name === 'code_block') {
         if (dispatch) {
           const pos = $from.before();
           const after = $from.after();
@@ -250,7 +253,7 @@ export function createVisualEditorKeymap({
       const table = tableContext(state);
       if (table && table.row === table.table.childCount - 1) return tableAction('afterTable')(state, dispatch, currentView);
       if (
-        state.selection.$from.parent.type === visualSchema.nodes.code_block &&
+        state.selection.$from.parent.type.name === 'code_block' &&
         state.selection.$from.parentOffset === state.selection.$from.parent.content.size
       ) {
         return exitCode(state, dispatch, currentView);
@@ -431,7 +434,7 @@ export function createVisualEditorHandlers({
           !event.metaKey &&
           !slashOpenRef.current &&
           empty &&
-          $from.parent.type === visualSchema.nodes.code_block
+          $from.parent.type.name === 'code_block'
         ) {
           event.preventDefault();
           if (event.shiftKey) {
@@ -467,7 +470,7 @@ export function createVisualEditorHandlers({
 
         let insideListItem = false;
         for (let d = $from.depth; d > 0; d--) {
-          if ($from.node(d).type === visualSchema.nodes.list_item) {
+          if ($from.node(d).type.name === 'list_item') {
             insideListItem = true;
             break;
           }
@@ -485,7 +488,7 @@ export function createVisualEditorHandlers({
           empty &&
           !insideListItem &&
           $from.parent.isTextblock &&
-          $from.parent.type !== visualSchema.nodes.code_block &&
+          $from.parent.type.name !== 'code_block' &&
           $from.parentOffset === 0 &&
           $from.parent.content.size > 0 &&
           !tableContext(currentView.state)
@@ -512,7 +515,7 @@ export function createVisualEditorHandlers({
           const parent = $from.depth > 0 ? $from.node($from.depth - 1) : null;
           const didSplit = splitListItem(
             visualSchema.nodes.list_item,
-            parent?.type === visualSchema.nodes.list_item && parent.attrs.checked !== null ? { checked: false } : undefined
+            parent?.type.name === 'list_item' && parent.attrs.checked !== null ? { checked: false } : undefined
           )(currentView.state, currentView.dispatch, currentView);
           if (didSplit) {
             event.preventDefault();
@@ -530,7 +533,7 @@ export function createVisualEditorHandlers({
           !slashOpenRef.current &&
           empty &&
           $from.parent.isTextblock &&
-          $from.parent.type !== visualSchema.nodes.code_block &&
+          $from.parent.type.name !== 'code_block' &&
           !tableContext(currentView.state)
         ) {
           // A) 리스트 내부인 경우: 리스트를 벗어나서 새로운 독립 문단(paragraph) 생성!
@@ -973,7 +976,7 @@ export function createVisualEditorHandlers({
       }
       if (event.key === 'ArrowUp' && !event.shiftKey && !event.ctrlKey && !event.altKey && !slashOpenRef.current) {
         const { $from, empty } = currentView.state.selection;
-        if (empty && $from.parent.type === visualSchema.nodes.code_block && $from.parentOffset === 0) {
+        if (empty && $from.parent.type.name === 'code_block' && $from.parentOffset === 0) {
           const dom = currentView.domAtPos($from.pos);
           const codeBlockEl =
             dom.node instanceof Element
@@ -999,13 +1002,13 @@ export function createVisualEditorHandlers({
         const { $from, empty } = currentView.state.selection;
         if (
           empty &&
-          $from.parent.type === visualSchema.nodes.code_block &&
+          $from.parent.type.name === 'code_block' &&
           $from.parentOffset === $from.parent.content.size
         ) {
           event.preventDefault();
           const afterPos = $from.after();
           let tr = currentView.state.tr;
-          if (afterPos >= tr.doc.content.size || tr.doc.nodeAt(afterPos)?.type !== visualSchema.nodes.paragraph) {
+          if (afterPos >= tr.doc.content.size || tr.doc.nodeAt(afterPos)?.type.name !== 'paragraph') {
             tr = tr.insert(afterPos, visualSchema.nodes.paragraph.create());
           }
           currentView.dispatch(tr.setSelection(TextSelection.create(tr.doc, afterPos + 1)).scrollIntoView());
@@ -1016,28 +1019,10 @@ export function createVisualEditorHandlers({
       }
       if (event.key === 'Enter' && !event.isComposing && !slashOpenRef.current) {
         const { $from, empty } = currentView.state.selection;
-        if (empty && $from.parent.type === visualSchema.nodes.code_block) {
-          const parent = $from.parent;
-          const isCodeEmpty = parent.content.size === 0;
-          const isAtEnd = $from.parentOffset === parent.content.size;
-          if (
-            isCodeEmpty ||
-            event.shiftKey ||
-            event.ctrlKey ||
-            event.metaKey ||
-            (isAtEnd && parent.textContent.endsWith('\n'))
-          ) {
-            event.preventDefault();
-            const afterPos = $from.after();
-            let tr = currentView.state.tr;
-            if (afterPos >= tr.doc.content.size || tr.doc.nodeAt(afterPos)?.type !== visualSchema.nodes.paragraph) {
-              tr = tr.insert(afterPos, visualSchema.nodes.paragraph.create());
-            }
-            currentView.dispatch(tr.setSelection(TextSelection.create(tr.doc, afterPos + 1)).scrollIntoView());
-            currentView.focus();
-            caretRef.current?.schedule();
-            return true;
-          }
+        if (empty && $from.parent.type.name === 'code_block') {
+          // 🛡️ 코드블록 내부 Enter / Shift+Enter는 이미 상단 전담 가로채기 핸들러에서 100% 처리되므로 여기서는 추가 분할 방지
+          event.preventDefault();
+          return true;
         }
       }
       if (
@@ -1116,7 +1101,7 @@ export function createVisualEditorHandlers({
 
     handlePaste(currentView, event) {
       if (!currentView.editable) return false;
-      const inCode = currentView.state.selection.$from.parent.type === visualSchema.nodes.code_block;
+      const inCode = currentView.state.selection.$from.parent.type.name === 'code_block';
       if (inCode) return false;
 
       const text = event.clipboardData?.getData('text/plain') || '';
@@ -1609,7 +1594,7 @@ export function createVisualEditorHandlers({
       }
 
       // 0-1. 복수 셀 또는 표 전체 선택 복사 시에만 마크다운 표 원본 형태(|---|) 유지
-      if (slice.content.childCount === 1 && slice.content.firstChild?.type === visualSchema.nodes.table) {
+      if (slice.content.childCount === 1 && slice.content.firstChild?.type.name === 'table') {
         try {
           const tempDoc = visualSchema.nodes.doc.create(null, [slice.content.firstChild]);
           const md = visualSerializer.serialize(tempDoc);
@@ -1619,14 +1604,14 @@ export function createVisualEditorHandlers({
         }
       }
       // 1. 단일 code_block 노드 선택 복사 시 마크다운 코드블록 원본 형태 유지
-      if (slice.content.childCount === 1 && slice.content.firstChild?.type === visualSchema.nodes.code_block) {
+      if (slice.content.childCount === 1 && slice.content.firstChild?.type.name === 'code_block') {
         const node = slice.content.firstChild;
         const params = (node.attrs.params || '').trim();
         const codeText = node.textContent;
         return '```' + params + '\n' + codeText + (codeText.endsWith('\n') ? '' : '\n') + '```';
       }
       // 2. code_block 내부 텍스트 선택 복사 시 줄바꿈 코드 텍스트 유지
-      if ($from.parent.type === visualSchema.nodes.code_block) {
+      if ($from.parent.type.name === 'code_block') {
         return slice.content.textBetween(0, slice.content.size, '\n');
       }
 
@@ -1758,7 +1743,7 @@ export function createVisualEditorHandlers({
         if (!target?.closest('a, button, input, textarea, pre, code, [contenteditable="false"]')) {
           const surfaceEl = currentView.dom;
           const lastChild = currentView.state.doc.lastChild;
-          if (lastChild && lastChild.type === visualSchema.nodes.code_block) {
+          if (lastChild && lastChild.type.name === 'code_block') {
             const rect = surfaceEl.getBoundingClientRect();
             if (e.target === surfaceEl || e.clientY > rect.bottom - 60) {
               e.preventDefault();

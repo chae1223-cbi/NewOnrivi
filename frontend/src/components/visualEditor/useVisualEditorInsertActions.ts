@@ -1,6 +1,8 @@
 // ====================================================================
 // 📊 [OMD-HOOK-VisualEditorInsertActions] frontend/src/components/visualEditor/useVisualEditorInsertActions.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 서식/블록 명령, 이미지/미디어/각주/서명/참고문헌/수식/문서링크/날짜 삽입 액션 및 외부 commandRef 브릿지 훅
+// 🚨 @PATCH : 2026-11-10 — [서명/발신인 source_block 네이티브 노드 삽입 및 범위 치환 브릿지 연동]:
+//             1) bridge에 INSERT_SIGNATURE: 및 REPLACE_RANGE 핸들러를 신설하여 서명 데이터가 일반 텍스트 노드가 아닌 source_block 위지윅 노드로 원자적 삽입/교체되도록 구현
 // 🚨 @PATCH : 2026-11-10 — [서명/발신인 실행 시 SignatureModal 대화상자 호출 연동]:
 //             1) applySignature 실행 시 고정 텍스트 즉시 삽입 대신 onrivi:open-signature-modal 이벤트를 발생시켜 정렬(left/right), 날짜, 작성자, 도장 커스텀 대화상자를 호출하도록 개선
 // 🚨 @PATCH : 2026-11-08 — [목록 항목 인용문 변환 시 글머리 기호 보존 및 번호 목록/상단 빈 볼트 오변환 원천 방어]:
@@ -57,7 +59,7 @@ export interface UseVisualEditorInsertActionsParams {
   caretRef: React.MutableRefObject<ReturnType<typeof installVisualCaret> | null>;
   host: React.RefObject<HTMLDivElement | null>;
   readOnly: boolean;
-  commandRef?: React.MutableRefObject<((command: string) => boolean) | null>;
+  commandRef?: React.MutableRefObject<((command: any) => boolean) | null>;
   slashRange: React.MutableRefObject<{ from: number; to: number } | null>;
   setSlash: React.Dispatch<React.SetStateAction<boolean>>;
   setNotice: React.Dispatch<React.SetStateAction<string>>;
@@ -1367,8 +1369,37 @@ export function useVisualEditorInsertActions({
     };
     for (let level = 1; level <= 6; level++) commands[`H${level}`] = setHeadingBlock(level);
 
-    const bridge = (command: string) => {
-      if (command.startsWith('INSERT_TEXT:')) {
+    const bridge = (command: any) => {
+      // ✍️ 서명/블록 수정 범위 치환 커맨드
+      if (typeof command === 'object' && command !== null && command.type === 'REPLACE_RANGE') {
+        const view = viewRef.current;
+        if (!view || readOnly) return true;
+        const { from, to, text } = command as { from: number; to: number; text: string };
+        const node = visualSchema.nodes.source_block.create({ source: text.trim() });
+        let tr = view.state.tr.replaceWith(from, to, node);
+        view.dispatch(closeHistory(tr).scrollIntoView());
+        view.focus();
+        caretRef.current?.schedule();
+        return true;
+      }
+      // ✍️ 서명 source_block 위지윅 블록 즉시 삽입 커맨드
+      if (typeof command === 'string' && command.startsWith('INSERT_SIGNATURE:')) {
+        const view = viewRef.current;
+        if (!view || readOnly) return true;
+        const source = command.slice('INSERT_SIGNATURE:'.length).trim();
+        const node = visualSchema.nodes.source_block.create({ source });
+        let tr = view.state.tr;
+        const { from, to } = view.state.selection;
+        tr = tr.replaceWith(from, to, node);
+        const afterPos = from + node.nodeSize;
+        tr = tr.insert(afterPos, visualSchema.nodes.paragraph.create());
+        tr = tr.setSelection(TextSelection.create(tr.doc, afterPos + 1));
+        view.dispatch(closeHistory(tr).scrollIntoView());
+        view.focus();
+        caretRef.current?.schedule();
+        return true;
+      }
+      if (typeof command === 'string' && command.startsWith('INSERT_TEXT:')) {
         const view = viewRef.current;
         if (!view || readOnly) return true;
         view.dispatch(view.state.tr.insertText(command.slice('INSERT_TEXT:'.length)).scrollIntoView());
@@ -1376,7 +1407,7 @@ export function useVisualEditorInsertActions({
         caretRef.current?.schedule();
         return true;
       }
-      if (command.startsWith('INSERT_SAVED_IMAGE:')) {
+      if (typeof command === 'string' && command.startsWith('INSERT_SAVED_IMAGE:')) {
         const savedPath = command.slice('INSERT_SAVED_IMAGE:'.length).trim();
         const view = viewRef.current;
         if (!view || readOnly) return true;
