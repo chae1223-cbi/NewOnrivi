@@ -1,4 +1,12 @@
 "use client";
+/**
+ * 프로그램명 : OnriviAuthor
+ * 파일명 : PreviewFindWidget.tsx
+ * 🚨 @PATCH : **2026-11-10** — [찾기/바꾸기 취소 ESC 키 바인딩 및 전역 캡처 이벤트 전면 지원]:
+ *             1) keyDown에서 한글 조합(isComposing) 상태와 무관하게 Escape 키 입력 시 최우선으로 handleClose를 실행하여 즉시 취소/닫힘 보장
+ *             2) isOpen 상태일 때 window 전역 keydown 캡처 리스너를 등록하여 포커스 위치와 관계없이 ESC 키 입력 시 찾기/바꾸기 즉시 취소 및 하이라이트 해제
+ * 🚨 @PATCH : **2026-09-11** — 문서 미리보기 및 위지윅 뷰 전용 실시간 찾기/바꾸기 플로팅 위젯 신설
+ */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { collectDocumentMatches, replaceDocumentMatches, type DocumentMatch } from '@/lib/documentFind';
 
@@ -30,6 +38,29 @@ export function PreviewFindWidget({ previewContainerRef, isOpen, onClose, replac
       (CSS as any).highlights.delete('preview-search-active');
     }
   }, []);
+
+  const handleClose = useCallback(() => {
+    clear();
+    matches.current = [];
+    setCount(0);
+    onClose();
+  }, [clear, onClose]);
+
+  // 🛡️ [ESC 취소 지원]: 위젯이 열려 있을 때 전역 ESC 키 입력 시 찾기/바꾸기 즉시 취소 및 닫힘
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        handleClose();
+      }
+    };
+    window.addEventListener('keydown', handleGlobalKeyDown, true);
+    return () => {
+      window.removeEventListener('keydown', handleGlobalKeyDown, true);
+    };
+  }, [isOpen, handleClose]);
   const reveal = useCallback((next: number, scroll = true) => {
     clear();
     const list = matches.current;
@@ -95,9 +126,19 @@ export function PreviewFindWidget({ previewContainerRef, isOpen, onClose, replac
     if (viewport && top !== undefined) { viewport.scrollTop = top; viewport.scrollLeft = left || 0; }
   };
   const keyDown = (event: React.KeyboardEvent) => {
+    // 🛡️ ESC 키는 한글 조합(isComposing) 상태와 무관하게 최우선으로 취소 및 닫힘 실행
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      handleClose();
+      return;
+    }
     if (event.nativeEvent.isComposing || composing.current) return;
-    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClose(); }
-    if (event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); reveal(active.current + (event.shiftKey ? -1 : 1)); }
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      event.stopPropagation();
+      reveal(active.current + (event.shiftKey ? -1 : 1));
+    }
   };
   if (!isOpen) return null;
   const currentEditable = !!matches.current[active.current]?.view?.editable;
@@ -108,7 +149,7 @@ export function PreviewFindWidget({ previewContainerRef, isOpen, onClose, replac
       <span aria-live="polite">{query ? count ? `${index} / ${count}` : '결과 없음' : ''}</span>
       <button type="button" aria-label="이전 찾기" disabled={!count} onClick={() => reveal(active.current - 1)}>↑</button>
       <button type="button" aria-label="다음 찾기" disabled={!count} onClick={() => reveal(active.current + 1)}>↓</button>
-      <button type="button" aria-label="닫기" onClick={onClose}>✕</button>
+      <button type="button" aria-label="닫기 (ESC)" title="닫기 (ESC)" onClick={handleClose}>✕</button>
     </div>
     <div className="flex items-center gap-3 mt-2">
       <label><input type="checkbox" checked={matchCase} onChange={event => setMatchCase(event.target.checked)} /> 대소문자 구분</label>
