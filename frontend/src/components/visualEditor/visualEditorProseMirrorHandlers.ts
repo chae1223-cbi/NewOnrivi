@@ -2,6 +2,8 @@
 // 📊 [OMD-CORE-VisualEditor-ProseMirrorHandlers] frontend/src/components/visualEditor/visualEditorProseMirrorHandlers.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 ProseMirror Keymap, 키보드/텍스트 입력, 스마트 붙여넣기(handlePaste), 드롭(handleDrop), 마우스 클릭/링크 이동(handleClick) 및 DOM 이벤트 핸들러 팩토리
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 클립보드 이미지/HTML 붙여넣기 정제, 5대 정밀 진단 로깅(logError/logWarn) 준수
+// 🚨 @PATCH : 2026-11-10 — [포커스 아웃(blur) 시 디바운스 대기 중인 마크다운 즉시 플러시(onBlurFlush) 연동]:
+//             1) blur 이벤트 발생 시 대기 중인 마크다운 직렬화를 즉시 실행하여 데이터 유실 없는 초고속 반응성 확보
 // 🚨 @PATCH : 2026-11-10 — [엔터의 엔터 시 hard_break 표준 판별(name === 'hard_break') 및 새 문단 내부 정확한 커서 안착]:
 //             1) visualSchema.nodes.hard_break 객체 참조 비교 대신 type.name === 'hard_break' 표준 비교로 교체하여 2번째 Enter 미감지 결함 원천 해결
 //             2) tr.split 후 tr.setSelection(breakPos + 2)으로 커서를 새로 분할된 문단의 첫머리에 정확하게 안착시켜 다음 엔터 빈행이 추가로 생성되던 결함 완전 차단
@@ -364,6 +366,7 @@ export interface VisualEditorHandlersParams {
   clearDropIndicator: () => void;
   updateDropIndicator: (currentView: EditorView, e: DragEvent) => void;
   executeDropImageInsertion: (currentView: EditorView, e: DragEvent) => Promise<boolean>;
+  onBlurFlush?: () => void;
 }
 
 /**
@@ -408,6 +411,7 @@ export function createVisualEditorHandlers({
   clearDropIndicator,
   updateDropIndicator,
   executeDropImageInsertion,
+  onBlurFlush,
 }: VisualEditorHandlersParams): Pick<
   EditorProps,
   | 'handleKeyDown'
@@ -1993,6 +1997,7 @@ export function createVisualEditorHandlers({
         return false;
       },
       blur(_currentView, event) {
+        onBlurFlush?.();
         const next = (event as FocusEvent).relatedTarget;
         if (next instanceof Node && document.getElementById('floating-toolbar')?.contains(next)) return false;
         manualFloatingRef.current = false;

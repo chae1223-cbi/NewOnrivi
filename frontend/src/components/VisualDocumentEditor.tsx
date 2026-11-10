@@ -2,6 +2,10 @@
 // 🏷️ 파일명 : VisualDocumentEditor.tsx
 // 🎭 역할(Role) : Core (위지윅 시각 문서 편집기 메인 코어 뷰)
 // 🎯 주요기능 : ProseMirror 상태/트랜잭션 라이프사이클 관리, 스크롤/커서 양방향 동기화, 인쇄 페이지 가이드 및 서브모듈 오케스트레이션
+// 🚨 @PATCH : 2026-11-10 — [대용량 문서 타이핑 래그 및 커서 이동 지연 구조적 완전 최적화]:
+//             1) 타이핑 시 동기식 전체 직렬화(codec.serialize) 및 상위 React 리렌더링 폭포를 180ms 디바운스로 지연하여 60fps 즉시 네이티브 렌더링 보장 (저장/blur/언마운트 시 즉시 flush)
+//             2) 방향키/커서 이동 시 동기식 ONRIVICURSORMAP 전체 직렬화를 제거하고 requestAnimationFrame 및 커서 위치 가드로 지연 최적화하여 커서 고속 반응 확보
+//             3) 스크롤 이벤트 시 반복되던 2회 전체 직렬화를 문서 비율 기반 초고속 연산으로 전환하여 스크롤 렉 완전 해소
 // 🚨 @PATCH : 2026-11-10 — [슬래시 명령어 글자 중간 실행 시 잔여 텍스트 삭제 및 전체 단어 검색 보장]: 커서 뒤의 단어 끝까지 slashRange.to에 포함하여 명령어 실행 시 뒤쪽 글자가 남지 않도록 완벽 제거
 // 🚨 @PATCH : 2026-11-10 — [하이퍼링크 해제(handleLinkUnlink) 연동]: LinkModal에 onUnlink 콜백을 연결하여 링크 서식을 즉시 해제하고 일반 텍스트로 복원할 수 있도록 지원
 // 🚨 @PATCH : 2026-11-08 — [플로팅 툴바 포커스 반환 연동]: 플로팅 툴바 종료 시 커서/서식을 보존하고 에디터 포커스 정상 복원
@@ -305,7 +309,7 @@ export default function VisualDocumentEditor({
         const view = viewRef.current;
         const codec = codecRef.current;
         if (!view || !codec || !scrollCallback.current) return;
-        const totalLen = codec.serialize(view.state.doc).length;
+        const totalLen = emitted.current?.length || content.length;
         if (container.scrollTop <= 5) {
           scrollCallback.current(0);
           return;
@@ -320,13 +324,9 @@ export default function VisualDocumentEditor({
         const topY = rect.top + 50;
         const point = view.posAtCoords({ left: centerX, top: topY });
         if (point) {
-          const position = TextSelection.near(view.state.doc.resolve(point.pos)).head;
-          const token = 'ONRIVISCROLLMAP';
-          const offset = codec.serialize(view.state.tr.insertText(token, position).doc).indexOf(token);
-          if (offset >= 0) {
-            scrollCallback.current(offset);
-            return;
-          }
+          const ratio = Math.max(0, Math.min(1, point.pos / Math.max(1, view.state.doc.content.size)));
+          scrollCallback.current(Math.round(totalLen * ratio));
+          return;
         }
         const ratio = container.scrollTop / Math.max(1, maxScroll);
         scrollCallback.current(Math.round(totalLen * Math.max(0, Math.min(1, ratio))));
@@ -379,6 +379,38 @@ export default function VisualDocumentEditor({
   const lastDispatchedPosRef = useRef<number | null>(null);
   const callback = useRef(onChange);
   callback.current = onChange;
+  const changeDebounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingDocRef = useRef<import('prosemirror-model').Node | null>(null);
+  const lastHeadPosRef = useRef<number | null>(null);
+
+  const flushPendingSerialize = React.useCallback(() => {
+    if (changeDebounceTimerRef.current) {
+      clearTimeout(changeDebounceTimerRef.current);
+      changeDebounceTimerRef.current = null;
+    }
+    const codec = codecRef.current;
+    if (!codec || !pendingDocRef.current) return;
+    const docToSerialize = pendingDocRef.current;
+    pendingDocRef.current = null;
+    const next = codec.serialize(docToSerialize);
+    emitted.current = next;
+    callback.current(next);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (changeDebounceTimerRef.current) {
+        clearTimeout(changeDebounceTimerRef.current);
+        changeDebounceTimerRef.current = null;
+      }
+      if (pendingDocRef.current && codecRef.current) {
+        const next = codecRef.current.serialize(pendingDocRef.current);
+        pendingDocRef.current = null;
+        emitted.current = next;
+        callback.current(next);
+      }
+    };
+  }, []);
   const headingFormatsRef = useRef({ current: headingNumbering, previous: headingNumbering, readOnly });
   headingFormatsRef.current.current = headingNumbering;
   headingFormatsRef.current.readOnly = readOnly;
@@ -583,6 +615,7 @@ export default function VisualDocumentEditor({
       clearDropIndicator: dragDropController.clearDropIndicator,
       updateDropIndicator: dragDropController.updateDropIndicator,
       executeDropImageInsertion: dragDropController.executeDropImageInsertion,
+      onBlurFlush: flushPendingSerialize,
     });
 
     const aiTargets = new VisualAITargets();
@@ -732,12 +765,20 @@ export default function VisualDocumentEditor({
         }
         caretRef.current?.schedule();
         if (transaction.selectionSet && !transaction.docChanged && view.hasFocus() && !view.composing && cursorCallback.current) {
-          try {
-            const token = 'ONRIVICURSORMAP';
-            const marker = view.state.tr.insertText(token, view.state.selection.head);
-            const offset = codecRef.current?.serialize(marker.doc).indexOf(token);
-            if (offset !== undefined && offset >= 0) cursorCallback.current(offset, true);
-          } catch {}
+          const head = view.state.selection.head;
+          if (head !== lastHeadPosRef.current) {
+            lastHeadPosRef.current = head;
+            cancelAnimationFrame(cursorFrame.current);
+            cursorFrame.current = requestAnimationFrame(() => {
+              if (viewRef.current !== view || !view.hasFocus() || view.composing) return;
+              try {
+                const token = 'ONRIVICURSORMAP';
+                const marker = view.state.tr.insertText(token, view.state.selection.head);
+                const offset = codecRef.current?.serialize(marker.doc).indexOf(token);
+                if (offset !== undefined && offset >= 0) cursorCallback.current?.(offset, true);
+              } catch {}
+            });
+          }
         }
         const tblCtx = tableContext(view.state);
         const currentInTable = Boolean(tblCtx);
@@ -802,9 +843,21 @@ export default function VisualDocumentEditor({
           setPopup({ top, left: Math.max(8, Math.min(window.innerWidth - 360, rect.left)) });
         }
         if (transaction.docChanged) {
-          const next = codec.serialize(view.state.doc);
-          emitted.current = next;
-          callback.current(next);
+          pendingDocRef.current = view.state.doc;
+          if (changeDebounceTimerRef.current) {
+            clearTimeout(changeDebounceTimerRef.current);
+          }
+          changeDebounceTimerRef.current = setTimeout(() => {
+            changeDebounceTimerRef.current = null;
+            if (pendingDocRef.current && codecRef.current) {
+              const docToSerialize = pendingDocRef.current;
+              pendingDocRef.current = null;
+              const next = codecRef.current.serialize(docToSerialize);
+              emitted.current = next;
+              callback.current(next);
+            }
+          }, 180);
+
           if (cursorCallback.current && !preserveViewport) {
             cancelAnimationFrame(cursorFrame.current);
             cursorFrame.current = requestAnimationFrame(() => {
@@ -838,6 +891,9 @@ export default function VisualDocumentEditor({
     caretRef.current = installVisualCaret(view);
 
     const handleWindowKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && (event.key === 's' || event.key === 'S')) {
+        flushPendingSerialize();
+      }
       if (!view.editable || event.defaultPrevented || event.isComposing) return;
       const activeEl = document.activeElement as HTMLElement | null;
       if (

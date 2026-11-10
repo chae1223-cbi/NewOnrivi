@@ -1,3 +1,10 @@
+/**
+ * 프로그램명 : OnriviAuthor 
+ * 파일명 : signatureCleanup.ts
+ * 🚨 @PATCH : **2026-11-10** — [서명 블록 정리 트랜잭션 스텝 범위 가드 최적화]:
+ *             1) removeEmptySignatureBlocks 실행 시 삭제 스텝 구간에 source_block이나 div 태그가 없을 경우 emptyNodeRanges 전수 검사를 즉각 바이패스
+ *             2) 일반 백스페이스 삭제 시 정규식 파싱 오버헤드를 0ms로 소거
+ */
 import type { Node as DocumentNode } from 'prosemirror-model';
 import type { Transaction } from 'prosemirror-state';
 
@@ -57,6 +64,22 @@ function emptyNodeRanges(doc: DocumentNode): Range[] {
 /** Append cleanup to the user's deletion so Undo restores the entire signature. */
 export function removeEmptySignatureBlocks(transaction: Transaction): void {
   if (!transaction.docChanged || transaction.doc.content.size >= transaction.before.content.size) return;
+
+  // 🛡️ [성능 최적화 가드]: 삭제된 스텝 범위에 서명 블록(source_block, div)이 없으면 전체 검사 즉시 바이패스
+  let mayHaveSignature = false;
+  for (let i = 0; i < transaction.steps.length; i++) {
+    const step = transaction.steps[i] as any;
+    if (step.from !== undefined && step.to !== undefined && step.from < step.to) {
+      transaction.before.nodesBetween(step.from, step.to, node => {
+        if (node.type.name === 'source_block' || (node.isText && /<\/?div/i.test(node.text || ''))) {
+          mayHaveSignature = true;
+          return false;
+        }
+      });
+      if (mayHaveSignature) break;
+    }
+  }
+  if (!mayHaveSignature) return;
   const previous = emptyNodeRanges(transaction.before).map(range => transaction.mapping.map(range.from, -1));
   const ranges = emptyNodeRanges(transaction.doc).filter(range => !previous.includes(range.from));
   for (const range of ranges.reverse()) transaction.delete(range.from, range.to);

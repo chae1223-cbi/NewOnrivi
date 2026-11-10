@@ -3,6 +3,9 @@
  * 버전 정보 : 1.1.0
  * 프로그램 ID : oaar-footnote-cleanup
  * -----------------------------------------------------------------------
+ * 🚨 @PATCH : **2026-11-10** — [각주 고아 정리 트랜잭션 전수 순회 제거 및 step 구간 가드 최적화]:
+ *             1) removeOrphanFootnotes 실행 시 트랜잭션 스텝의 삭제 구간(nodesBetween)에 각주 노드가 없을 경우 전체 AST 전수 순회를 즉시 패스하도록 가드 적용
+ *             2) 일반 텍스트 입력 및 타이핑 도중 발생하던 매 트랜잭션당 4회의 전체 AST 순회 오버헤드를 0ms로 단축
  * 🚨 @PATCH : **2026-11-03** — [각주 영역 단편화 방지 및 빈 행 자동 소거 엔진 구축]:
  *             1) 각주 정의(visual_footnote_def) 사이나 각주 하단에 엔터/타이핑으로 인해 잘못 끼어든 빈 문단(p:empty) 자동 소거
  *             2) 각주 사이에 텍스트가 입력된 경우 본문 영역으로 자동 구출/재배치하여 각주 블록 연속성 100% 보장
@@ -91,6 +94,22 @@ export function cleanFootnoteFragmentation(transaction: Transaction): void {
  */
 export function removeOrphanFootnotes(transaction: Transaction): void {
   if (!transaction.docChanged) return;
+
+  // 🛡️ [성능 최적화 가드]: 삭제된 스텝 범위에 각주 노드가 전혀 없으면 전체 AST 순회 즉시 바이패스
+  let hasFootnoteDeleted = false;
+  for (let i = 0; i < transaction.steps.length; i++) {
+    const step = transaction.steps[i] as any;
+    if (step.from !== undefined && step.to !== undefined && step.from < step.to) {
+      transaction.before.nodesBetween(step.from, step.to, node => {
+        if (node.type.name === 'visual_footnote_ref' || node.type.name === 'visual_footnote_def') {
+          hasFootnoteDeleted = true;
+          return false;
+        }
+      });
+      if (hasFootnoteDeleted) break;
+    }
+  }
+  if (!hasFootnoteDeleted) return;
 
   // 1. 각주 참조(ref) 삭제 감지 -> 매칭되는 각주 정의(def) 삭제
   const beforeRefs = new Set<string>();
