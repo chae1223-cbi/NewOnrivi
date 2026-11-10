@@ -2,6 +2,10 @@
 // 📊 [OMD-CORE-Viewer-Pipeline] frontend/src/components/viewer/markdownViewerPipeline.ts
 // 🎯 @KICK  : 마크다운 뷰어(MarkdownViewer)의 경로 보안 가드(isPathInsideWorkspace), 마크다운 원문 전처리(preprocessMarkdownContent), 줄 번호/개행 Rehype 플러그인 및 전용 CSS 스타일 시트
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 작업장 외부 경로 순회 차단, CommonMark 중첩 코드블록/인용구/위키링크 무결성 보존
+// 🚨 @PATCH : 2026-11-10 — [제한사용자 다중 리스트 간격 및 마진 전체사용자(VisualDocumentEditor) 규격 100% 일치]:
+//             1) .onrivi-content-root ul/ol의 상하 마진(0.5em)을 0으로 격리하고, 중첩 서브리스트(ul ul, ol ol, li ul/ol)의 0.25em 여백을 0으로 통일
+//             2) .onrivi-content-root ol > li에 padding-left: 6px, ul > li에 padding-left: 4px를 적용하여 번호/불릿과 텍스트 사이 여백 일치
+//             3) li의 line-height를 1.6에서 전체사용자와 동일한 inherit으로 일치시키고 padding-top/bottom 1px를 0으로 통일
 // 🚨 @PATCH : 2026-11-10 — [중첩 리스트 및 비정상 list-indent HTML 주석 정제]: preprocessMarkdownContent에서 중첩 리스트 내부나 undefined/null/0으로 기록된 onrivi:list-indent 주석을 자동 소거하여 미리보기 화면에 이상한 주석 문단이 노출되는 현상 방어
 // 🚨 @PATCH : 2026-11-10 — [인라인 코드 내부 서식 태그 외부 래핑 자동 정규화]:
 //             1) `**텍스트**`, `*텍스트*`, `~~텍스트~~`, `<u>텍스트</u>` 등 인라인 코드 내부로 들어간 서식 태그를 자동으로 외부 래핑(**`텍스트`**, *`텍스트`* 등)으로 정규화하여 미리보기에서 굵게/기울기/밑줄/취소선 서식이 정상 렌더링되도록 개선
@@ -842,39 +846,56 @@ export const MARKDOWN_VIEWER_STYLES = `
   .onrivi-content-root ul,
   .onrivi-content-root ol {
     white-space: normal !important;
-    margin-top: 0.5em !important;
-    margin-bottom: 0.5em !important;
-    padding-left: var(--list-indent, 1.5em);
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    padding-left: var(--list-indent, 28px) !important;
+  }
+  .onrivi-content-root li ul,
+  .onrivi-content-root li ol,
+  .custom-preview-container .onrivi-content-root li ul,
+  .custom-preview-container .onrivi-content-root li ol {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
   }
   .onrivi-content-root ul ul {
     list-style-type: circle !important;
-    margin-top: 0.25em !important;
-    margin-bottom: 0.25em !important;
-    padding-left: var(--list-indent, 1.5em);
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    padding-left: var(--list-indent, 28px) !important;
   }
   .onrivi-content-root ul ul ul {
     list-style-type: square !important;
-    margin-top: 0.25em !important;
-    margin-bottom: 0.25em !important;
-    padding-left: var(--list-indent, 1.5em);
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    padding-left: var(--list-indent, 28px) !important;
   }
   .onrivi-content-root ol ol {
     list-style-type: lower-alpha !important;
-    margin-top: 0.25em !important;
-    margin-bottom: 0.25em !important;
-    padding-left: var(--list-indent, 1.5em);
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    padding-left: var(--list-indent, 28px) !important;
   }
   .onrivi-content-root ol ol ol {
     list-style-type: lower-roman !important;
-    margin-top: 0.25em !important;
-    margin-bottom: 0.25em !important;
-    padding-left: var(--list-indent, 1.5em);
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    padding-left: var(--list-indent, 28px) !important;
   }
   .onrivi-content-root blockquote ul ul,
   .onrivi-content-root blockquote ol ol,
   .onrivi-content-root blockquote ul ol,
   .onrivi-content-root blockquote ol ul {
-    padding-left: var(--list-indent, 1.5em);
+    padding-left: var(--list-indent, 28px) !important;
   }
   .onrivi-content-root ul + p,
   .onrivi-content-root ol + p {
@@ -890,11 +911,31 @@ export const MARKDOWN_VIEWER_STYLES = `
     margin-left: 0;
     margin-right: 0;
     margin-bottom: var(--li-margin-bottom, 6px);
-    padding-top: 1px !important;
-    padding-bottom: 1px !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
     padding-inline-start: var(--li-marker-gap, 0px) !important;
     padding-left: var(--li-marker-gap, 0px) !important;
-    line-height: 1.6 !important;
+    line-height: inherit !important;
+  }
+  .onrivi-content-root ol > li {
+    padding-left: 6px;
+  }
+  .onrivi-content-root ul > li:not(.task-list-item) {
+    padding-left: 4px;
+  }
+  .onrivi-content-root > :is(ul,ol) + :is(ul,ol) {
+    margin-top: 4px !important;
+  }
+  .onrivi-content-root .onrivi-empty-list-row {
+    display: none !important;
+    list-style: none !important;
+    list-style-type: none !important;
+    height: 0 !important;
+    max-height: 0 !important;
+    line-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    pointer-events: none !important;
   }
   .onrivi-content-root li > p,
   .onrivi-content-root li > div,

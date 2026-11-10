@@ -2,6 +2,9 @@
 // 🏷️ 파일명 : MarkdownCustomRenderers.tsx
 // 🎭 역할(Role) : Core (ReactMarkdown 커스텀 태그 렌더러 팩토리)
 // 🎯 주요기능 : img, video, source, iframe, a(폴더/문서/외부/앵커/유튜브/동영상 링크), table/tr/th, code(인라인/Mermaid/Math/CodeBlock), h1~h6, p, ul/ol/li, blockquote(GitHub/한글 Alert 콜아웃) 커스텀 렌더링
+// 🚨 @PATCH : 2026-11-10 — [제한사용자 다중 리스트 유령 불릿(◦) 원천 차단 및 전체사용자 규격 일치]:
+//             1) \u200B(Zero-width space), \u00A0, &nbsp; 등 비가시 공백이 주입된 빈 li 행을 정확히 감지(isGhostEmpty)하여 DOM 렌더링에서 완전 배제(return null)
+//             2) 텍스트/미디어 없이 하위 서브리스트만 감싸는 컨테이너 li의 경우 불릿 마커 숨김(list-style: none) 적용
 // 🚨 @PATCH : 2026-11-10 — [제한사용자 마크다운 뷰어 빈 불릿(◦) 유령 항목 방어]: li 렌더러에서 onrivi-empty-list-row 클래스 포함 요소를 정확히 감지하여 유령 불릿 기호 및 불필요한 공백을 완전히 소거
 // 🚨 @PATCH : 2026-11-07 — [이미지 마크다운 꺽쇠(<...>) 정제 및 driveId 쿼리스트링 보존]: img 렌더러에서 URL 앞뒤 꺽쇠(<...>) 및 따옴표를 정제하여 AsyncImage로 전달
 // 🚨 @PATCH : 2026-11-07 — [HTML 병합 표(colspan/rowspan) 자동 감지 및 유연한 레이아웃(table-auto) 지원]: colspan 또는 rowspan이 존재하는 표는 table-fixed로 인한 열 뭉개짐을 방지하고 table-auto min-w-full 레이아웃을 자동 적용하여 병합 셀이 온전히 렌더링되도록 개선
@@ -1358,26 +1361,61 @@ export function createMarkdownCustomComponents({
           )
         ))
       );
-      const isEmptyRow = !hasChildList && (textContent.replace(/\s+/g, '') === 'onrivi-empty-row' || hasEmptyRowSpan);
+
+      // 🛡️ [미디어 및 인터랙티브 자식 노드 판별]
+      const hasMediaOrInteractive = Boolean(
+        (node?.children && node.children.some((c: any) => {
+          const checkNode = (n: any): boolean => {
+            if (!n) return false;
+            if (['img', 'input', 'video', 'audio', 'iframe', 'svg', 'a', 'button'].includes(n.tagName)) return true;
+            return Array.isArray(n.children) && n.children.some(checkNode);
+          };
+          return checkNode(c);
+        })) ||
+        React.Children.toArray(children).some(child => {
+          const checkReactChild = (c: any): boolean => {
+            if (!c) return false;
+            if (React.isValidElement(c)) {
+              const t = c.type;
+              if (typeof t === 'string' && ['img', 'input', 'video', 'audio', 'iframe', 'svg', 'a', 'button'].includes(t)) return true;
+              return checkReactChild((c.props as any)?.children);
+            }
+            if (Array.isArray(c)) return c.some(checkReactChild);
+            return false;
+          };
+          return checkReactChild(child);
+        })
+      );
+
+      // 🛡️ \u200B(Zero-width space), \u00A0, &nbsp;, 공백을 모두 제거한 순수 텍스트
+      const cleanText = textContent.replace(/[\s\u200B\u00A0\uFEFF]/g, '').replace(/&nbsp;/gi, '');
+      const isGhostEmpty = !hasChildList && !hasMediaOrInteractive && cleanText === '';
+      const isEmptyRow = isGhostEmpty || (!hasChildList && (cleanText === 'onrivi-empty-row' || hasEmptyRowSpan));
 
       if (isEmptyRow) {
-        const liStyle = {
-          ...style,
-          listStyleType: 'none',
-          listStyle: 'none',
-          height: '0',
-          maxHeight: '0',
-          lineHeight: '0',
-          overflow: 'hidden',
-          background: 'transparent',
-          margin: '0',
-          padding: '0',
-          display: 'none',
-          pointerEvents: 'none',
-        } as React.CSSProperties;
-
-        return <li style={liStyle} className="onrivi-empty-list-row" aria-hidden="true" {...props} />;
+        // 🛡️ 빈 불릿 및 유령 리스트 항목은 DOM에 렌더링하지 않고 완전 배제
+        return null;
       }
+
+      // 🛡️ [하위 리스트 래퍼 li 불릿 숨김]: li 자체에 직접적인 텍스트나 인라인 요소가 없고 하위 ul/ol만 감싸고 있는 경우 불릿 마커 숨김
+      const hasDirectTextOrContent = Boolean(
+        node?.children && node.children.some((c: any) => {
+          if (c.type === 'element' && (c.tagName === 'ul' || c.tagName === 'ol')) return false;
+          if (c.type === 'text') {
+            return c.value.replace(/[\s\u200B\u00A0\uFEFF]/g, '').replace(/&nbsp;/gi, '') !== '';
+          }
+          if (c.type === 'element' && c.tagName === 'p') {
+            const pText = getTextFromChildren(c).replace(/[\s\u200B\u00A0\uFEFF]/g, '').replace(/&nbsp;/gi, '');
+            const pHasMedia = c.children && c.children.some((pc: any) => ['img', 'input', 'video', 'iframe', 'svg', 'a'].includes(pc.tagName));
+            return pText !== '' || pHasMedia;
+          }
+          return true;
+        })
+      );
+      const isChildListContainerOnly = hasChildList && !hasDirectTextOrContent;
+      const containerStyle: React.CSSProperties = isChildListContainerOnly
+        ? { listStyleType: 'none', listStyle: 'none' }
+        : {};
 
       const line = node?.position?.start?.line;
       const currentLineMap = dynamicPropsRef.current.lineMap || [];
@@ -1420,7 +1458,7 @@ export function createMarkdownCustomComponents({
         <li
           data-line={dataLineVal}
           value={explicitValue}
-          style={{ ...style, ...indentStyle }}
+          style={{ ...style, ...indentStyle, ...containerStyle }}
           className={props.className}
           {...restProps}
         >
