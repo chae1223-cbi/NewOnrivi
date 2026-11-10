@@ -2,6 +2,9 @@
 // 📊 [OMD-CORE-VisualEditor-ProseMirrorHandlers] frontend/src/components/visualEditor/visualEditorProseMirrorHandlers.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 ProseMirror Keymap, 키보드/텍스트 입력, 스마트 붙여넣기(handlePaste), 드롭(handleDrop), 마우스 클릭/링크 이동(handleClick) 및 DOM 이벤트 핸들러 팩토리
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 클립보드 이미지/HTML 붙여넣기 정제, 5대 정밀 진단 로깅(logError/logWarn) 준수
+// 🚨 @PATCH : 2026-11-10 — [엔터의 엔터 입력 시 단순 줄바꿈(<br>)을 새로운 문단(<p>)으로 전환]:
+//             1) 1번째 Enter는 문단 내 단순 줄바꿈(hard_break, <br>) 유지
+//             2) 2번째 Enter(엔터의 엔터) 입력 시 앞선 hard_break를 제거하고 문단을 분할(tr.split)하여 독립된 새 문단(<p>)으로 자동 전환하여 비정상 여백 폭발 방지
 // 🚨 @PATCH : 2026-11-10 — [슬래시 메뉴 활성 시 Tab/Enter 최우선 가로채기 및 들여쓰기 탈취 방어]:
 //             1) handleKeyDown 최상단에 슬래시 메뉴 키 가로채기를 배치하여 Tab 키 입력 시 indentDocument로 빠지지 않고 선택된 슬래시 명령어가 즉시 실행되도록 보장
 //             2) 슬래시 메뉴 오픈 시 Escape 키 입력 시 슬래시 메뉴 즉시 닫힘 지원
@@ -283,6 +286,17 @@ export function createVisualEditorKeymap({
       headingEnter,
       newlineInCode,
       (state, dispatch) => {
+        const { $from, empty } = state.selection;
+        const nodeBefore = empty ? $from.nodeBefore : null;
+        if (nodeBefore && nodeBefore.type === visualSchema.nodes.hard_break) {
+          if (dispatch) {
+            const breakPos = $from.pos - nodeBefore.nodeSize;
+            let tr = state.tr.delete(breakPos, $from.pos);
+            tr = tr.split(breakPos);
+            dispatch(tr.scrollIntoView());
+          }
+          return true;
+        }
         if (dispatch) dispatch(state.tr.replaceSelectionWith(visualSchema.nodes.hard_break.create()).scrollIntoView());
         return true;
       }
@@ -555,6 +569,33 @@ export function createVisualEditorHandlers({
           )(currentView.state, currentView.dispatch, currentView);
           if (didSplit) {
             event.preventDefault();
+            caretRef.current?.schedule();
+            return true;
+          }
+        }
+
+        // 🌟 [엔터의 엔터: hard_break 상태에서 Enter 입력 시 새로운 문단(<p>)으로 전환]
+        // 1번째 Enter로 단순 줄바꿈(hard_break)된 빈 행에서 다시 Enter를 치면,
+        // 앞선 hard_break를 제거하고 해당 위치에서 문단을 분할(tr.split)하여 독립된 새 문단(paragraph)으로 전환
+        if (
+          !event.shiftKey &&
+          !event.ctrlKey &&
+          !event.altKey &&
+          !event.metaKey &&
+          !slashOpenRef.current &&
+          empty &&
+          !insideListItem &&
+          $from.parent.isTextblock &&
+          $from.parent.type.name !== 'code_block' &&
+          !tableContext(currentView.state)
+        ) {
+          const nodeBefore = $from.nodeBefore;
+          if (nodeBefore && nodeBefore.type === visualSchema.nodes.hard_break) {
+            event.preventDefault();
+            const breakPos = $from.pos - nodeBefore.nodeSize;
+            let tr = currentView.state.tr.delete(breakPos, $from.pos);
+            tr = tr.split(breakPos);
+            currentView.dispatch(tr.scrollIntoView());
             caretRef.current?.schedule();
             return true;
           }
