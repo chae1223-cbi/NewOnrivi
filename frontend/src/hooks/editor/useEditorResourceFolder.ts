@@ -2,6 +2,9 @@
 // 📊 [OMD-HOOK-useEditorResourceFolder] frontend/src/hooks/editor/useEditorResourceFolder.ts
 // 🎯 @KICK  : 공통 리소스 폴더(Local/Browser/Google Drive) 선택·해제, IndexedDB 핸들 복원, MCP 컨텍스트 동기화, .bib 참고문헌 로드, AI 자격증명 실시간 리로드 및 자가 치유 전담 훅
 // 🛡️ @GUARD : 리소스 폴더 해제 시 로컬/세션스토리지 및 IndexedDB 핸들 완전 소거, 비동기 요청 순서 역전 방어(revision 가드)
+// 🚨 @PATCH : 2026-11-10 — [로컬 작업장 사용 시 로컬 리소스 폴더 지정 강제 유도 탑재]:
+//             1) 로컬 작업장(내 PC/브라우저 로컬) 모드에서 로컬 리소스 폴더(서식/미디어/AI) 미지정 시 onrivi:require_local_resource_folder 이벤트 및 자동 온보딩을 통해 리소스 폴더 지정을 필수 유도
+//             2) 웹드라이브(Google Drive) 작업장은 일체 간섭 없이 기존 동작 100% 현행 유지
 // 🚨 @PATCH : 2026-11-04 — [표준화 및 에러 처리 강화] logError 5대 진단 필드 선제 기록 적용 및 2단계 함수 JSDoc 표준화
 //             2026-11-04 — [MainEditorApp 모듈화 및 훅 의존성 정합화]: selectResourceFolder, clearResourceFolder, IndexedDB 핸들 복원, MCP 동기화, .bib 로드, AI 자격증명 자동 로드 및 자가 치유 이펙트를 MainEditorApp.tsx에서 분리 위임하고 ESLint exhaustive-deps 경고를 0건으로 해소 (동작 변경 없음)
 // 🔗 @CALLS : getResourceSettings, saveResourceSettings, getResourceEnvironment, getEffectiveResourceFolder, loadBibliographyFiles, loadResourceAICredentials, deleteResourceAICredentials, purgeLocalStorageAICredentials, ensureDecryptedApiKey, normalizeAIModelName, idb, saveSecureData, logError
@@ -22,7 +25,7 @@ import { logError } from '@/lib/errorDiagnostics';
 export interface UseEditorResourceFolderProps {
   mounted: boolean;
   workspaceType: string;
-  rootFolder: { name: string; handle?: any; path?: string } | null;
+  rootFolder: { name: string; handle?: any; path?: string; type?: string } | null;
   resourceFolder: string | null;
   setResourceFolder: React.Dispatch<React.SetStateAction<string | null>>;
   resourceFolderHandle: any;
@@ -148,23 +151,46 @@ export function useEditorResourceFolder(props: UseEditorResourceFolderProps) {
     return () => window.removeEventListener('onrivi:resource-settings', openResourceSettings);
   }, [setIsSettingsModalOpen,setIsImageModalOpen,setIsYoutubeModalOpen,setIsStyleModalOpen,setIsReferenceModalOpen,setSettingsModalInitialTab]);
 
-  // 🌟 [전체사용자 공통 리소스 폴더 미설정 시 초기 안내 모달 트리거]
+  // 🌟 [로컬 작업장 사용 시 로컬 리소스 폴더 필수 지정 이벤트 리스너]
+  useEffect(() => {
+    const handleRequireLocalResource = () => {
+      // 🛡️ 웹드라이브(Google Drive)는 현행 그대로 사용 (일체 간섭 없음)
+      if (workspaceType === 'cloud' || rootFolder?.type === 'GDRIVE') return;
+
+      showToast('로컬 작업장을 사용하려면 서식과 미디어를 보관할 로컬 리소스 폴더(참조파일)를 지정해야 합니다.', 'warning');
+      setIsResourceGuideModalOpen(true);
+    };
+
+    window.addEventListener('onrivi:require_local_resource_folder', handleRequireLocalResource);
+    return () => window.removeEventListener('onrivi:require_local_resource_folder', handleRequireLocalResource);
+  }, [workspaceType, rootFolder, showToast, setIsResourceGuideModalOpen]);
+
+  // 🌟 [로컬 작업장 사용 시 로컬 리소스 폴더 미설정 감지 및 온보딩 모달 트리거 (웹드라이브 현행 유지)]
   useEffect(() => {
     if (!mounted) return;
-    const isMissing = !getResourceSettings()?.path && !resourceFolder && !resourceFolderHandle;
-    if (!isMissing) {
+    // 🛡️ 웹드라이브(Google Drive)는 현행 그대로 사용 (일체 간섭 없음)
+    if (workspaceType === 'cloud' || rootFolder?.type === 'GDRIVE') {
+      return;
+    }
+
+    const localSettings = getResourceSettings('local');
+    const isLocalMissing = !localSettings?.path && !resourceFolder && !resourceFolderHandle;
+    if (!isLocalMissing) {
       setIsResourceGuideModalOpen(false);
       return;
     }
     const isFullUser = !isDuplicateInstance && !isRestrictedUser && licenseStatus.isActivated && !licenseStatus?.isExpired;
 
-    if (isMissing && isFullUser && !isDismissedGuide) {
+    if (isLocalMissing && isFullUser) {
       const timer = setTimeout(() => {
-        if (!getResourceSettings()?.path) setIsResourceGuideModalOpen(true);
+        const stillMissing = !getResourceSettings('local')?.path && !(window as any).__resourceFolderHandle;
+        if (stillMissing) {
+          setIsResourceGuideModalOpen(true);
+        }
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [mounted, resourceFolder, resourceFolderHandle, licenseStatus.isActivated, licenseStatus?.isExpired, isDuplicateInstance, isRestrictedUser, isDismissedGuide, setIsResourceGuideModalOpen]);
+  }, [mounted, workspaceType, rootFolder, resourceFolder, resourceFolderHandle, licenseStatus.isActivated, licenseStatus?.isExpired, isDuplicateInstance, isRestrictedUser, setIsResourceGuideModalOpen]);
 
   // 📊 [OMD-CITATION-MainEditorApp] .bib 워크스페이스 자동 로드
   // 🎯 @KICK  : 워크스페이스 전체를 재귀 탐색하여 .bib 파일을 모두 병합 로드

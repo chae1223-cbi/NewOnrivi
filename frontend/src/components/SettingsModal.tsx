@@ -1,5 +1,8 @@
 // ====================================================================
 // 📊 [OMD-EDIT-SettingsModal-0006 ✅ FIXED] SettingsModal.tsx ➔ SettingsModal
+// 🚨 @PATCH : **2026-11-10** — [환경설정 암호화 백업/원복 팝업 클릭 버블링 방어]:
+//             1) isBackupDialogOpen 및 isRestoreDialogOpen 오버레이와 내부 카드에 e.stopPropagation() 및 onMouseDown 차단 적용하여 비밀번호 입력창 클릭 시 모달이 닫히는 현상 완벽 해결
+//             2) 백업/원복 다이얼로그 z-index를 z-[100001]로 상향하여 부모 모달(z-[99999]) 상단에 안정적으로 렌더링
 // 🚨 @PATCH : **2026-11-10** — [환경설정 AES-256 암호화 백업 및 암호 검증 원복 UI 신설]:
 //             1) exportEncryptedSettings 연동: 백업 비밀번호 입력 및 API 키 포함 선택으로 안전한 .onrivicfg 암호화 백업 파일 생성
 //             2) importEncryptedSettings 연동: 백업 파일 업로드 후 암호 검증 팝업을 거쳐 일치할 때만 환경설정 100% 원복 및 리로드
@@ -1960,8 +1963,19 @@ export default function SettingsModal({
 
       {/* 🌟 [환경설정 암호화 백업 다이얼로그] */}
       {isBackupDialogOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="w-full max-w-md p-6 rounded-2xl bg-surface-container-lowest dark:bg-zinc-900 border border-outline-variant/30 shadow-2xl space-y-5">
+        <div 
+          className="fixed inset-0 z-[100001] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsBackupDialogOpen(false);
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <div 
+            className="w-full max-w-md p-6 rounded-2xl bg-surface-container-lowest dark:bg-zinc-900 border border-outline-variant/30 shadow-2xl space-y-5"
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between border-b border-outline-variant/15 dark:border-zinc-800 pb-3">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
@@ -1975,7 +1989,10 @@ export default function SettingsModal({
                 </div>
               </div>
               <button
-                onClick={() => setIsBackupDialogOpen(false)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsBackupDialogOpen(false);
+                }}
                 className="text-on-surface-variant hover:text-on-surface p-1 rounded-lg"
               >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2037,7 +2054,10 @@ export default function SettingsModal({
             <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-outline-variant/15 dark:border-zinc-800">
               <button
                 type="button"
-                onClick={() => setIsBackupDialogOpen(false)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsBackupDialogOpen(false);
+                }}
                 className="px-4 py-2 rounded-xl text-[13px] font-bold text-on-surface hover:bg-surface-container-high transition-colors"
               >
                 취소
@@ -2057,8 +2077,19 @@ export default function SettingsModal({
 
       {/* 🌟 [환경설정 복원 및 암호 검증 다이얼로그] */}
       {isRestoreDialogOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="w-full max-w-md p-6 rounded-2xl bg-surface-container-lowest dark:bg-zinc-900 border border-outline-variant/30 shadow-2xl space-y-5">
+        <div 
+          className="fixed inset-0 z-[100001] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200"
+          onClick={(e) => {
+            e.stopPropagation();
+            setIsRestoreDialogOpen(false);
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <div 
+            className="w-full max-w-md p-6 rounded-2xl bg-surface-container-lowest dark:bg-zinc-900 border border-outline-variant/30 shadow-2xl space-y-5"
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between border-b border-outline-variant/15 dark:border-zinc-800 pb-3">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-green-500/10 text-green-600 dark:text-green-400 flex items-center justify-center">
@@ -2072,7 +2103,10 @@ export default function SettingsModal({
                 </div>
               </div>
               <button
-                onClick={() => setIsRestoreDialogOpen(false)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsRestoreDialogOpen(false);
+                }}
                 className="text-on-surface-variant hover:text-on-surface p-1 rounded-lg"
               >
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -2117,7 +2151,10 @@ export default function SettingsModal({
             <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-outline-variant/15 dark:border-zinc-800">
               <button
                 type="button"
-                onClick={() => setIsRestoreDialogOpen(false)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsRestoreDialogOpen(false);
+                }}
                 className="px-4 py-2 rounded-xl text-[13px] font-bold text-on-surface hover:bg-surface-container-high transition-colors"
               >
                 취소

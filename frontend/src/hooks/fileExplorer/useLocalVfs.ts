@@ -2,6 +2,9 @@
 // 📊 [OMD-HOOK-useLocalVfs-0001] frontend/src/hooks/fileExplorer/useLocalVfs.ts
 // 🎯 @KICK  : 로컬 폴더/브라우저 FSA/VFS/웹드라이브 파일 트리 스캔(refreshFileList), 워크스페이스 선택(selectRootFolder), 물리적 파일 저장(saveFile)
 // 🛡️ @GUARD : 지식 보관함 자동 재색인(triggerKnowledgeAutoSyncOnSave), 디바운스 새로고침, Electron 네이티브 API 및 브라우저 FSA 3중 호환
+// 🚨 @PATCH : 2026-11-10 — [로컬 작업장 연결 시 로컬 리소스 폴더 지정 강제 유도]:
+//             1) 로컬/브라우저 작업장(내 PC 폴더) 연결 시 로컬 리소스 폴더(settings/media/profiles)가 미지정이면 onrivi:require_local_resource_folder 이벤트를 발송하여 필수 지정 유도
+//             2) 웹드라이브(Google Drive)는 일체 간섭 없이 기존 동작 100% 현행 유지
 // 🚨 @PATCH : 2026-11-05 — [드라이브 404 원고 보존]: 접근할 수 없는 기존 파일 저장 실패 시 현재 원고를 로컬 비상 초안에 합쳐 보존한다.
 // 🚨 @PATCH : 2026-11-04 — [로컬/브라우저 작업장 선택 시 클라우드 상태 키 잔존 버그 수정]: selectRootFolder 및 resetBrowserWorkspace 시 onrivi_last_workspace_mode와 onrivi_active_resource_environment를 로컬 모드로 즉시 동기화하여 에디터 재시작 시 미접속 웹드라이브 오류 방지
 // 🚨 @PATCH : 2026-11-04 — [오류 처리 및 주석 표준화]: onrivi-error-handling에 따라 logError/logWarn의 file 경로를 useLocalVfs.ts로 정합화하고 refreshFileList/selectRootFolder/restoreFolderPermission 예외 로깅 추가, onrivi-source-comments 2단계 JSDoc 표준화
@@ -311,6 +314,17 @@ export function useLocalVfs({
             // 🔑 워크스페이스 변경 시 사이드바가 숨겨져 있으면 자동 표시 (변경 내용 시각적 인식 보장)
             setIsSidebarOpen(true);
             showToast(`워크스페이스가 ${finalRoot}(으)로 변경되었습니다.`, 'success');
+
+            // 🛡️ [로컬 작업장 필수] 로컬 리소스 폴더 지정 여부 검사 및 강제 유도 (웹드라이브 제외)
+            setTimeout(async () => {
+              try {
+                const localSettings = getResourceSettings('local');
+                const hasLocal = localSettings?.kind === 'local' && !!localSettings?.path;
+                if (!hasLocal) {
+                  window.dispatchEvent(new CustomEvent('onrivi:require_local_resource_folder'));
+                }
+              } catch {}
+            }, 350);
           } else if (result.status === 'canceled') {
             showToast("폴더 선택이 취소되었습니다.", "info");
           }
@@ -386,6 +400,17 @@ export function useLocalVfs({
           // 🔑 워크스페이스 변경 시 사이드바가 숨겨져 있으면 자동 표시 (변경 내용 시각적 인식 보장)
           setIsSidebarOpen(true);
           showToast(`워크스페이스 연결 완료 (${handle.name})`, "success");
+
+          // 🛡️ [로컬 작업장 필수] 브라우저 환경 로컬 리소스 폴더 지정 여부 검사 및 강제 유도 (웹드라이브 제외)
+          setTimeout(async () => {
+            try {
+              const localSettings = getResourceSettings('local');
+              const hasHandle = !!(window as any).__resourceFolderHandle || !!(await idb.get('localResourceFolderHandle')) || !!(await idb.get('resourceFolderHandle'));
+              if (!localSettings?.path || !hasHandle) {
+                window.dispatchEvent(new CustomEvent('onrivi:require_local_resource_folder'));
+              }
+            } catch {}
+          }, 350);
         } catch (err) {
           if ((err as any)?.name !== 'AbortError' && (err as any)?.name !== 'SecurityError') {
             logError({

@@ -2,6 +2,9 @@
 // 📊 [OMD-EDIT-ResourceFolderGuideModal-0001] ResourceFolderGuideModal.tsx ➔ ResourceFolderGuideModal
 // 🎯 @KICK  : 전체사용자 대상 공통 리소스 폴더(서식/미디어/AI템플릿) 필수 설정 온보딩 모달
 // 🛡️ @GUARD : isOpen 가드 및 외부 클릭/ESC 제어
+// 🚨 @PATCH : **2026-11-10** — [로컬 작업장 사용 시 로컬 리소스 폴더 지정 강제 온보딩 안내 강화]:
+//             1) 로컬 작업장(내 PC) 사용 시 서식/미디어/AI 데이터 영구 보존 및 브라우저 간 공유를 위한 로컬 리소스 폴더 지정 안내 문구 강화
+//             2) 환경설정 백업 파일 복원 및 리소스 폴더 원클릭 선택 연결성 극대화
 // 🚨 @PATCH : **2026-09-11** — Modern Technical Editorial 디자인 시스템 적용 (Cobalt #1d4ed8, Inter / Plus Jakarta Sans)
 //             2026-09-03** — 최초 작성: 전체사용자 첫 진입 시 리소스 폴더 미지정 상태를 감지하여 원클릭 설정 유도
 // 🔗 @CALLS : onSelectFolder, onClose
@@ -84,18 +87,18 @@ export default function ResourceFolderGuideModal({
           <div>
             <div className="flex items-center gap-1.5">
               <span className="text-[11px] font-extrabold px-2 py-0.5 rounded-md bg-[#1d4ed8]/15 text-[#1d4ed8]">
-                전체사용자 필수 설정
+                로컬 작업장 필수 설정
               </span>
             </div>
             <h3 className="text-xl font-extrabold tracking-tight mt-1">
-              공통 리소스 폴더를 지정해 주세요
+              로컬 리소스 폴더(참조파일)를 지정해 주세요
             </h3>
           </div>
         </div>
 
         {/* 안내 본문 */}
         <p className={`text-[13px] leading-relaxed mb-6 ${isDarkMode ? 'text-zinc-300' : 'text-slate-600'}`}>
-          온리비 어서는 사용자의 소중한 서식과 미디어 자산을 사용자 PC 내 전용 폴더에 안전하게 영구 보관합니다. 원활한 집필 환경을 위해 PC 내 작업용 폴더(예: <strong className="text-[#1d4ed8]">Onrivi_Resource</strong>)를 1회 지정해 주세요.
+          로컬 작업장(내 PC)을 사용할 때는 작성 중인 문서의 서식, 첨부 이미지, AI 설정을 사용자 PC 내 실물 폴더에 안전하게 보관해야 합니다. 원활한 집필 환경과 브라우저 간 완벽한 연동을 위해 PC 내 작업용 폴더(예: <strong className="text-[#1d4ed8]">Onrivi_Asset</strong>)를 지정해 주세요.
         </p>
 
         {/* 기능 혜택 리스트 카드 */}
@@ -141,7 +144,7 @@ export default function ResourceFolderGuideModal({
             className="w-full py-3.5 px-4 rounded-2xl bg-[#1d4ed8] hover:bg-[#1e40af] active:scale-98 text-white font-extrabold text-[14px] shadow-lg shadow-[#1d4ed8]/25 transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
             <FolderKanban size={18} />
-            <span>지금 공통 리소스 폴더 선택하기</span>
+            <span>지금 로컬 리소스 폴더 지정하기</span>
           </button>
 
           {onOpenSettings && (
@@ -157,7 +160,7 @@ export default function ResourceFolderGuideModal({
                   : 'border-slate-200 hover:bg-slate-100 text-slate-700'
               }`}
             >
-              <span>⚙️ 환경설정에서 등록하기</span>
+              <span>⚙️ 환경설정에서 지정 또는 백업 복원하기</span>
             </button>
           )}
 
