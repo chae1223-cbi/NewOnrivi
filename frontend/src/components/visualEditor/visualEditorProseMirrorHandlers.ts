@@ -2,6 +2,9 @@
 // 📊 [OMD-CORE-VisualEditor-ProseMirrorHandlers] frontend/src/components/visualEditor/visualEditorProseMirrorHandlers.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 ProseMirror Keymap, 키보드/텍스트 입력, 스마트 붙여넣기(handlePaste), 드롭(handleDrop), 마우스 클릭/링크 이동(handleClick) 및 DOM 이벤트 핸들러 팩토리
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 클립보드 이미지/HTML 붙여넣기 정제, 5대 정밀 진단 로깅(logError/logWarn) 준수
+// 🚨 @PATCH : 2026-11-10 — [리스트 항목 내부 체크박스([ ], [x]) 붙여넣기 스마트 변환]:
+//             1) 리스트 항목(list_item) 내부에서 [ ], [x], [X], - [ ], - [x] 복사 붙여넣기 시 이상한 중복 텍스트([x])로 남지 않고 list_item.attrs.checked(true/false)로 즉각 변환
+//             2) 붙여넣기 시 본문 시작부에 잔존하는 중복 [ ], [x] 텍스트 자동 소거 및 깔끔한 체크리스트 전환
 // 🚨 @PATCH : 2026-11-10 — [포커스 아웃(blur) 시 디바운스 대기 중인 마크다운 즉시 플러시(onBlurFlush) 연동]:
 //             1) blur 이벤트 발생 시 대기 중인 마크다운 직렬화를 즉시 실행하여 데이터 유실 없는 초고속 반응성 확보
 // 🚨 @PATCH : 2026-11-10 — [엔터의 엔터 시 hard_break 표준 판별(name === 'hard_break') 및 새 문단 내부 정확한 커서 안착]:
@@ -1281,6 +1284,77 @@ export function createVisualEditorHandlers({
           return true;
         }
       }
+
+      // 🌟 [리스트 항목 내부 체크박스([ ], [x]) 붙여넣기 스마트 변환]:
+      // 리스트가 적용된 행에서 [ ], [x], [X], - [ ], - [x] 등을 붙여넣기할 때,
+      // 이상한 중복 텍스트([x])로 남지 않고 해당 리스트 항목을 체크리스트(checked: true/false)로 즉각 온전하게 전환
+      const { $from: pasteFrom, empty: pasteEmpty } = currentView.state.selection;
+      let listItemPos: number | null = null;
+      let listItemNode: any = null;
+      for (let d = pasteFrom.depth; d > 0; d--) {
+        if (pasteFrom.node(d).type.name === 'list_item') {
+          listItemPos = pasteFrom.before(d);
+          listItemNode = pasteFrom.node(d);
+          break;
+        }
+      }
+
+      if (listItemNode && typeof listItemPos === 'number' && text) {
+        const trimmed = text.trim();
+        // 1) [ ], [x], [X], - [ ], - [x], * [ ] 등 단독 체크박스 기호만 복사하여 붙여넣은 경우
+        const standaloneTaskMatch = trimmed.match(/^(?:[-*+]\s+)?\[([ xX])\]$/);
+        if (standaloneTaskMatch) {
+          event.preventDefault();
+          event.stopPropagation();
+          const isChecked = standaloneTaskMatch[1].toLowerCase() === 'x';
+          let tr = currentView.state.tr;
+          if (!pasteEmpty) {
+            tr = tr.deleteSelection();
+          }
+          const parent = pasteFrom.parent;
+          const leadingDup = parent.isTextblock ? parent.textContent.match(/^\[([ xX])\][ \t]*/) : null;
+          if (leadingDup) {
+            const startPos = pasteFrom.start();
+            tr = tr.delete(startPos, startPos + leadingDup[0].length);
+          }
+          tr = tr.setNodeMarkup(listItemPos, undefined, {
+            ...listItemNode.attrs,
+            checked: isChecked,
+          }).scrollIntoView();
+          currentView.dispatch(tr);
+          caretRef.current?.schedule();
+          return true;
+        }
+
+        // 2) [ ] 본문, [x] 본문, - [ ] 본문 등 체크박스로 시작하는 텍스트를 리스트 시작 위치에서 붙여넣은 경우
+        const leadingTaskMatch = text.match(/^(?:[-*+]\s+)?\[([ xX])\][ \t]*(.*)$/s);
+        if (leadingTaskMatch && (pasteFrom.parentOffset === 0 || pasteEmpty)) {
+          event.preventDefault();
+          event.stopPropagation();
+          const isChecked = leadingTaskMatch[1].toLowerCase() === 'x';
+          const remainingText = leadingTaskMatch[2];
+          let tr = currentView.state.tr;
+          if (!pasteEmpty) {
+            tr = tr.deleteSelection();
+          }
+          const parent = pasteFrom.parent;
+          const leadingDup = parent.isTextblock ? parent.textContent.match(/^\[([ xX])\][ \t]*/) : null;
+          if (leadingDup) {
+            const startPos = pasteFrom.start();
+            tr = tr.delete(startPos, startPos + leadingDup[0].length);
+          }
+          tr = tr.setNodeMarkup(listItemPos, undefined, {
+            ...listItemNode.attrs,
+            checked: isChecked,
+          });
+          if (remainingText) {
+            tr = tr.replaceSelectionWith(currentView.state.schema.text(remainingText));
+          }
+          currentView.dispatch(tr.scrollIntoView());
+          caretRef.current?.schedule();
+          return true;
+        }
+      }
       if (text && !html && !/[\r\n\t]/.test(text)) {
         const marks = currentView.state.storedMarks ?? currentView.state.selection.$from.marks();
         if (marks?.length) {
@@ -1439,7 +1513,7 @@ export function createVisualEditorHandlers({
         }
         if (
           /^(?:\uFEFF)?---[^\S\r\n]*\r?\n/.test(processedText) ||
-          /(^|\n)(#{1,6}\s|\s*[-*+]\s|\s*\d+\.\s|\s*>\s|```|\|)|\*\*[^*]+\*\*|`[^`]+`|!\[[^\]]*\]\(|^\s*<(?:video|iframe)\b/.test(
+          /(^|\n)(#{1,6}\s|\s*[-*+]\s|\s*\[[ xX]\]\s|\s*\d+\.\s|\s*>\s|```|\|)|\*\*[^*]+\*\*|`[^`]+`|!\[[^\]]*\]\(|^\s*<(?:video|iframe)\b/.test(
             processedText
           )
         ) {

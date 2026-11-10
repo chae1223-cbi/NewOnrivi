@@ -2,6 +2,8 @@
 // 🎨 [OMD-CORE-VisualEditorStyles-0001] visualEditorStyles.ts ➔ 시각 에디터 전용 격리 CSS 스타일
 // 🎯 @KICK  : 시각 에디터 본문(.visual-document-surface), 제목 H1~H6 시각화 뱃지, 표 조판, 각주, 코드블록, 머메이드 서랍 등 위지윅 스타일 격리
 // 🛡️ @GUARD : Rule 6(Content Document Scope) 준수 - .visual-document-surface 및 컴포넌트 하위로만 스코핑
+// 🚨 @PATCH : 2026-11-10 — [체크리스트(task-list-item) 중복 불릿(•) 기호 완전 소거]:
+//             1) .visual-document-surface li.task-list-item::marker에 content: none !important 및 list-style: none !important를 적용하여 체크박스 앞에 불릿(•) 기호가 중복 노출되던 결함 완벽 해결
 // 🚨 @PATCH : 2026-11-10 — [서명 컨트롤 상단 헤더 공간(padding-top: 48px) 독립 확보로 텍스트 겹침 원천 차단]:
 //             1) 서명 블록 상단에 48px의 전용 헤더 공간을 확보하여 top: 8px에 위치한 액션 버튼들이 본문 텍스트(날짜, 작성자)를 가리던 상단 겹침 현상을 원천 해결
 // 🚨 @PATCH : 2026-11-10 — [5대 블록 컨트롤(서명/표/이미지/머메이드/코드블록) 액션 버튼 가시성 표준화]:
@@ -43,6 +45,9 @@ export const VISUAL_EDITOR_STYLES = `
   }
   .visual-document-surface li { margin-top:0!important; margin-bottom: var(--li-margin-bottom, 6px); padding-top:0!important; padding-bottom:0!important; }
   .visual-document-surface li p { margin-top:0!important; margin-bottom:0!important; }
+  .visual-document-surface li.task-list-item { list-style:none!important; list-style-type:none!important; }
+  .visual-document-surface li.task-list-item::marker { content:none!important; display:none!important; }
+  .visual-document-surface li.task-list-item::before { content:none!important; }
   .custom-preview-container .visual-document-surface li ul, .custom-preview-container .visual-document-surface li ol, .visual-document-surface li ul, .visual-document-surface li ol { margin-top:0!important; margin-bottom:0!important; padding-top:0!important; padding-bottom:0!important; }
   .visual-document-surface h1 { font-size:2em; font-weight:700; }
   .visual-document-surface h2 { font-size:1.5em; font-weight:700; }

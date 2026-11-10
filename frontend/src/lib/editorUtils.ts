@@ -156,6 +156,8 @@ export interface ProcessedMarkdown {
  */
 // ====================================================================
 // 📊 [OMD-EDIT-editorUtils-0004] editorUtils.ts ➔ preprocessMarkdownForPreview
+// 🚨 @PATCH : **2026-11-10** — [제한사용자(MarkdownViewer) 다중 하위 리스트 빈 불릿(◦) 유령 항목 생성 결함 해소]:
+//             1) preprocessMarkdownForPreview에서 하위 서브리스트(nextIndent > 0) 사이의 빈 줄에 인위적으로 주입하던 dummy 리스트 행(- onrivi-empty-list-row)을 제거하고 순수 빈 행("")으로 유지하여 마크다운 뷰어에 빈 불릿이 생기는 현상 100% 차단
 // 🚨 @PATCH : **2026-10-01** — [사용자 HTML 컨테이너(div, align, table 등) 임의 이스케이프 제거]: dangerousTags 치환 로직을 제거하여 본문 내 <div align="right"> 등 정당한 HTML 태그가 &lt;div&gt; 문자열로 파괴되어 화면에 그대로 노출되던 결함을 원천 해결하고 rehypeRaw 표준 파이프라인으로 안전하게 렌더링되도록 복원
 // 🚨 @PATCH : **2026-09-26** — [이중 중첩 코드블록 내부 &nbsp; 엔티티 오염 방어 및 코드블록 영역 마스크(getCodeBlockLineMask) 도입]: 단순 startsWith('```') 토글을 CommonMark 기반 코드블록 영역 정밀 마스크로 교체하여 이중 코드블록 내부의 들여쓰기 공백이 &nbsp;로 치환되는 버그 완벽 박멸
 // 🚨 @PATCH : **2026-09-23** — [서브리스트 들여쓰기 보존 및 최상위 리스트 분리 정밀화] 빈 줄 직후 다음 줄의 들여쓰기(Indent > 0) 존재 시 리스트를 닫지 않고 해당 들여쓰기 깊이의 onrivi-empty-row를 주입하여 하위 계층 들여쓰기를 100% 보존하고, 들여쓰기 0칸인 최상위 리스트/문단 조우 시에만 onrivi-list-spacer로 독립 블록 분리하도록 정밀 개편
@@ -396,10 +398,9 @@ export function preprocessMarkdownForPreview(content: string): ProcessedMarkdown
       if (prevNonEmpty && isAnyListLine(prevNonEmpty)) {
         const nextIndent = nextNonEmpty ? getIndentLevel(nextNonEmpty) : 0;
 
-        // 다음 줄이 들여쓰기가 있는 서브리스트인 경우 들여쓰기 계층 보존
+        // 🛡️ 다음 줄이 들여쓰기가 있는 서브리스트인 경우 인위적인 빈 리스트 항목을 주입하지 않고 빈 줄을 보존하여 유령 불릿(◦) 방어
         if (nextNonEmpty && isAnyListLine(nextNonEmpty) && nextIndent > 0) {
-          const indentSpaces = " ".repeat(nextIndent);
-          return `${indentSpaces}- <span aria-hidden="true" class="onrivi-empty-list-row"></span>`;
+          return "";
         }
 
         // 최상위 리스트 분리 및 독립 블록 보장

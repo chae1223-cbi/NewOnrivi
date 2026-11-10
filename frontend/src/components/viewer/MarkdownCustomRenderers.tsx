@@ -2,6 +2,7 @@
 // 🏷️ 파일명 : MarkdownCustomRenderers.tsx
 // 🎭 역할(Role) : Core (ReactMarkdown 커스텀 태그 렌더러 팩토리)
 // 🎯 주요기능 : img, video, source, iframe, a(폴더/문서/외부/앵커/유튜브/동영상 링크), table/tr/th, code(인라인/Mermaid/Math/CodeBlock), h1~h6, p, ul/ol/li, blockquote(GitHub/한글 Alert 콜아웃) 커스텀 렌더링
+// 🚨 @PATCH : 2026-11-10 — [제한사용자 마크다운 뷰어 빈 불릿(◦) 유령 항목 방어]: li 렌더러에서 onrivi-empty-list-row 클래스 포함 요소를 정확히 감지하여 유령 불릿 기호 및 불필요한 공백을 완전히 소거
 // 🚨 @PATCH : 2026-11-07 — [이미지 마크다운 꺽쇠(<...>) 정제 및 driveId 쿼리스트링 보존]: img 렌더러에서 URL 앞뒤 꺽쇠(<...>) 및 따옴표를 정제하여 AsyncImage로 전달
 // 🚨 @PATCH : 2026-11-07 — [HTML 병합 표(colspan/rowspan) 자동 감지 및 유연한 레이아웃(table-auto) 지원]: colspan 또는 rowspan이 존재하는 표는 table-fixed로 인한 열 뭉개짐을 방지하고 table-auto min-w-full 레이아웃을 자동 적용하여 병합 셀이 온전히 렌더링되도록 개선
 // 🚨 @PATCH : 2026-11-04 — [MarkdownViewer 코어 엔진 모듈화]: 1,200줄의 ReactMarkdown 커스텀 엘리먼트 렌더러 맵을 독립 모듈로 분리
@@ -1348,24 +1349,34 @@ export function createMarkdownCustomComponents({
       const textContent = getTextFromChildren(children).trim();
       const hasChildList =
         node.children && node.children.some((c: any) => c.type === 'element' && (c.tagName === 'ul' || c.tagName === 'ol'));
-      const isEmptyRow = !hasChildList && textContent.replace(/\s+/g, '') === 'onrivi-empty-row';
+      const hasEmptyRowSpan = Boolean(
+        (typeof props.className === 'string' && props.className.includes('onrivi-empty-list-row')) ||
+        (node.children && node.children.some((c: any) =>
+          c.tagName === 'span' && (
+            (typeof c.properties?.className === 'string' && c.properties.className.includes('onrivi-empty-list-row')) ||
+            (Array.isArray(c.properties?.className) && c.properties.className.includes('onrivi-empty-list-row'))
+          )
+        ))
+      );
+      const isEmptyRow = !hasChildList && (textContent.replace(/\s+/g, '') === 'onrivi-empty-row' || hasEmptyRowSpan);
 
       if (isEmptyRow) {
         const liStyle = {
           ...style,
           listStyleType: 'none',
           listStyle: 'none',
-          height: '12px',
-          maxHeight: '12px',
-          lineHeight: '12px',
+          height: '0',
+          maxHeight: '0',
+          lineHeight: '0',
           overflow: 'hidden',
           background: 'transparent',
           margin: '0',
           padding: '0',
+          display: 'none',
           pointerEvents: 'none',
         } as React.CSSProperties;
 
-        return <li style={liStyle} className="onrivi-empty-list-row" {...props} />;
+        return <li style={liStyle} className="onrivi-empty-list-row" aria-hidden="true" {...props} />;
       }
 
       const line = node?.position?.start?.line;
