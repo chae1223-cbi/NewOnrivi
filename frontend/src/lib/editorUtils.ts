@@ -156,6 +156,9 @@ export interface ProcessedMarkdown {
  */
 // ====================================================================
 // 📊 [OMD-EDIT-editorUtils-0004] editorUtils.ts ➔ preprocessMarkdownForPreview
+// 🚨 @PATCH : **2026-11-10** — [제한사용자(MarkdownViewer) 리스트 블록 보존 및 onrivi-list-spacer 주입 결함 완전 해결]:
+//             1) 연속된 리스트 항목 사이에 빈 줄이 존재할 때 인위적으로 onrivi-list-spacer를 주입하여 리스트가 수십 개로 쪼개지고 30px 거대 간격이 벌어지던 결함을 원천 차단
+//             2) 다음 줄이 리스트 항목인 경우(최상위 또는 서브리스트) 단일 리스트 블록으로 보존하여 전체사용자(VisualDocumentEditor)와 100% 동일한 6px 컴팩트 간격 보장
 // 🚨 @PATCH : **2026-11-10** — [제한사용자(MarkdownViewer) 다중 하위 리스트 빈 불릿(◦) 유령 항목 생성 결함 해소]:
 //             1) preprocessMarkdownForPreview에서 하위 서브리스트(nextIndent > 0) 사이의 빈 줄에 인위적으로 주입하던 dummy 리스트 행(- onrivi-empty-list-row)을 제거하고 순수 빈 행("")으로 유지하여 마크다운 뷰어에 빈 불릿이 생기는 현상 100% 차단
 // 🚨 @PATCH : **2026-10-01** — [사용자 HTML 컨테이너(div, align, table 등) 임의 이스케이프 제거]: dangerousTags 치환 로직을 제거하여 본문 내 <div align="right"> 등 정당한 HTML 태그가 &lt;div&gt; 문자열로 파괴되어 화면에 그대로 노출되던 결함을 원천 해결하고 rehypeRaw 표준 파이프라인으로 안전하게 렌더링되도록 복원
@@ -396,14 +399,14 @@ export function preprocessMarkdownForPreview(content: string): ProcessedMarkdown
       }
 
       if (prevNonEmpty && isAnyListLine(prevNonEmpty)) {
-        const nextIndent = nextNonEmpty ? getIndentLevel(nextNonEmpty) : 0;
-
-        // 🛡️ 다음 줄이 들여쓰기가 있는 서브리스트인 경우 인위적인 빈 리스트 항목을 주입하지 않고 빈 줄을 보존하여 유령 불릿(◦) 방어
-        if (nextNonEmpty && isAnyListLine(nextNonEmpty) && nextIndent > 0) {
+        // 🛡️ [리스트 연속성 보장]: 다음 줄도 리스트 항목(동일 계층 또는 서브리스트)인 경우,
+        // 인위적인 onrivi-list-spacer로 리스트를 토막내지 않고 단일 리스트 블록으로 유지하여
+        // 전체사용자(VisualDocumentEditor)와 100% 동일한 컴팩트 간격을 보장
+        if (nextNonEmpty && isAnyListLine(nextNonEmpty)) {
           return "";
         }
 
-        // 최상위 리스트 분리 및 독립 블록 보장
+        // 최상위 리스트가 완전히 끝나고 일반 문단이나 독립 블록으로 넘어갈 때만 spacer 주입
         return '<div class="onrivi-list-spacer">&nbsp;</div>';
       }
       return line;
