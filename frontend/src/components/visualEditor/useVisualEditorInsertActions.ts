@@ -1,6 +1,8 @@
 // ====================================================================
 // 📊 [OMD-HOOK-VisualEditorInsertActions] frontend/src/components/visualEditor/useVisualEditorInsertActions.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 서식/블록 명령, 이미지/미디어/각주/서명/참고문헌/수식/문서링크/날짜 삽입 액션 및 외부 commandRef 브릿지 훅
+// 🚨 @PATCH : 2026-11-10 — [링크 모달 완료 시 링크 뒤 자동 스페이스 삽입 및 커서 전진]:
+//             1) handleLinkConfirm에서 링크 삽입 후 즉시 일반 공백(' ')을 자동 삽입(또는 기존 공백 통과)하고 커서를 공백 뒤로 안착시켜 다음 입력이 링크로 이어지지 않고 일반 텍스트로 자연스럽게 작성되도록 구현
 // 🚨 @PATCH : 2026-11-10 — [하이퍼링크 해제(handleLinkUnlink) 기능 신설]:
 //             1) LinkModal에서 링크 해제 시 target 범위의 link 마크를 완전 제거(removeMark)하고 일반 텍스트로 복원하는 handleLinkUnlink 콜백 추가
 // 🚨 @PATCH : 2026-11-10 — [링크 삽입 완료 후 링크 마크 자동 탈출(removeStoredMark) 지원]:
@@ -419,9 +421,20 @@ export function useVisualEditorInsertActions({
     linkTargetRef.current = null;
     const mark = visualSchema.marks.link.create({ href });
     const textNode = view.state.schema.text(text, [mark]);
-    let tr = view.state.tr.replaceWith(target.from, target.to, textNode);
-    const nextPos = target.from + text.length;
-    tr = tr.setSelection(TextSelection.create(tr.doc, nextPos));
+
+    // 🌟 [링크 삽입 후 자동 스페이스 한 칸 삽입]: 링크 바로 뒤에 일반 공백(' ')을 자동 삽입하여 다음 입력이 링크로 이어지지 않게 처리
+    const nextChar = target.to < view.state.doc.content.size ? view.state.doc.textBetween(target.to, target.to + 1) : '';
+    const hasSpaceAfter = nextChar === ' ';
+
+    let tr = view.state.tr;
+    if (hasSpaceAfter) {
+      tr = tr.replaceWith(target.from, target.to, textNode);
+    } else {
+      const spaceNode = view.state.schema.text(' ');
+      tr = tr.replaceWith(target.from, target.to, [textNode, spaceNode]);
+    }
+    const nextPos = target.from + text.length + 1;
+    tr = tr.setSelection(TextSelection.create(tr.doc, Math.min(nextPos, tr.doc.content.size)));
     tr = tr.removeStoredMark(visualSchema.marks.link);
     tr = tr.setStoredMarks([]);
     view.dispatch(closeHistory(tr).scrollIntoView());
