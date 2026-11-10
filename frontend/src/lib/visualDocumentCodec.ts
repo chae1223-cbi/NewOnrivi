@@ -2,6 +2,9 @@
  * 프로그램명 : OnriviAuthor 
  * 버전 정보 : 1.0.1
  * 프로그램 ID : oaar-visual-codec
+ * 🚨 @PATCH : **2026-11-10** — [중첩 리스트 HTML 주석(<!-- onrivi:list-indent -->) 노출 결함 및 리스트 위계 보존 패치]:
+ *             1) visualSerializer의 bullet_list / ordered_list 직렬화 시 indentPx가 유효한 양수(> 0)이고 최상위 리스트(!state.delim)일 때만 주석을 기록하도록 제한 (undefined/null 출력 차단 및 중첩 리스트 주석 삽입 원천 방지)
+ *             2) normalizeVisualMarkdownSpacing 및 createVisualDocumentCodec 파싱 전처리에서 중첩 리스트 내부나 undefined/null로 잘못 기록된 list-indent 주석을 자동 정제하여, 기존 문서 재열기 시 이상한 태그 노출 박멸 및 내어쓰기 리스트 위계(1레벨/2레벨) 100% 정상 복원
  * 🚨 @PATCH : **2026-11-10** — [인라인 코드(code mark)의 다른 서식(굵게/기울기/밑줄/취소선) 배타성 제약(excludes) 해제]:
  *             1) visualSchema.marks의 code 마크에 excludes: ''를 명시하여 굵게(strong), 기울기(em), 밑줄(underline), 취소선(strike) 서식과 상호 배타적이지 않고 자유롭게 중첩 감싸기가 가능하도록 허용
  * 🚨 @PATCH : **2026-11-10** — [서명/발신인 블록 내부 분할 starts 인덱스 완전 제거로 단일 위지윅 시각 렌더링 보장]:
@@ -420,11 +423,11 @@ export const visualSerializer = new MarkdownSerializer({
   },
   hard_break(state) { state.write('\n'); },
   bullet_list(state,node) {
-    if(node.attrs.indentPx!==null)state.write(`<!-- onrivi:list-indent=${node.attrs.indentPx} -->\n`);
+    if(node.attrs.indentPx && Number(node.attrs.indentPx) > 0 && !(state as any).delim)state.write(`<!-- onrivi:list-indent=${node.attrs.indentPx} -->\n`);
     state.renderList(node.type.create({...node.attrs,tight:true},node.content),'  ',()=>'- ');
   },
   ordered_list(state,node) {
-    if(node.attrs.indentPx!==null)state.write(`<!-- onrivi:list-indent=${node.attrs.indentPx} -->\n`);
+    if(node.attrs.indentPx && Number(node.attrs.indentPx) > 0 && !(state as any).delim)state.write(`<!-- onrivi:list-indent=${node.attrs.indentPx} -->\n`);
     const start=node.attrs.order || 1;const width=String(start+node.childCount-1).length;
     state.renderList(node.type.create({...node.attrs,tight:true},node.content),' '.repeat(width+2),index=>String(start+index).padStart(width,' ')+'. ');
   },
@@ -860,6 +863,9 @@ export function normalizeVisualMarkdownSpacing(source: string): string {
   source = source.replace(/<p\b[^>]*>\s*<\/p>/gi, '');
   // 🛡️ 불필요하게 역슬래시로 이스케이프된 백틱(`), 대괄호([ ]), 목록 하이픈(\-) 자동 소거
   source = source.replace(/\\(`)/g, '$1').replace(/\\(\[|\])/g, '$1').replace(/(^|\s)\\([-*+])(\s)/gm, '$1$2$3');
+  // 🛡️ 중첩 리스트 내부의 잘못된 onrivi:list-indent 주석 및 undefined/null/0 주석 자동 정제
+  source = source.replace(/^[ \t]+<!--\s*onrivi:list-indent=(?:undefined|null|\d+(?:\.\d+)?)\s*-->[ \t]*\r?\n?/gm, '');
+  source = source.replace(/^<!--\s*onrivi:list-indent=(?:undefined|null|0)\s*-->[ \t]*\r?\n?/gm, '');
   const lines = source.match(/[^\n]*\n|[^\n]+$/g) || [];
   const output: string[] = [];
   let blanks: string[] = [], fence = '', fenceLength = 0, math = false, pre = false;

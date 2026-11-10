@@ -2,6 +2,7 @@
 // 📊 [OMD-CORE-Viewer-Pipeline] frontend/src/components/viewer/markdownViewerPipeline.ts
 // 🎯 @KICK  : 마크다운 뷰어(MarkdownViewer)의 경로 보안 가드(isPathInsideWorkspace), 마크다운 원문 전처리(preprocessMarkdownContent), 줄 번호/개행 Rehype 플러그인 및 전용 CSS 스타일 시트
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 작업장 외부 경로 순회 차단, CommonMark 중첩 코드블록/인용구/위키링크 무결성 보존
+// 🚨 @PATCH : 2026-11-10 — [중첩 리스트 및 비정상 list-indent HTML 주석 정제]: preprocessMarkdownContent에서 중첩 리스트 내부나 undefined/null/0으로 기록된 onrivi:list-indent 주석을 자동 소거하여 미리보기 화면에 이상한 주석 문단이 노출되는 현상 방어
 // 🚨 @PATCH : 2026-11-10 — [인라인 코드 내부 서식 태그 외부 래핑 자동 정규화]:
 //             1) `**텍스트**`, `*텍스트*`, `~~텍스트~~`, `<u>텍스트</u>` 등 인라인 코드 내부로 들어간 서식 태그를 자동으로 외부 래핑(**`텍스트`**, *`텍스트`* 등)으로 정규화하여 미리보기에서 굵게/기울기/밑줄/취소선 서식이 정상 렌더링되도록 개선
 // 🚨 @PATCH : 2026-11-07 — [HTML 표 태그 전처리 보호 및 병합 셀(colspan/rowspan) 자동 확장 CSS 지원]: HTML 태그 줄의 선행 공백을 &nbsp;로 치환하지 않도록 방어하고, colspan/rowspan이 있는 표에 table-layout: auto 및 max-content/min-width 100% 스타일을 적용하여 병합 표 레이아웃 완성
@@ -389,6 +390,10 @@ export function preprocessMarkdownContent(content: string): string {
 
   processed = processed.replace(/(^[ \t]*)-([ \t]*)$/gm, '$1\\-$2');
   processed = processed.replace(/(^[ \t]*)=+([ \t]*)$/gm, '$1\\=$2');
+
+  // 🛡️ 중첩 리스트 내부의 잘못된 onrivi:list-indent 주석 및 undefined/null/0 주석 정제
+  processed = processed.replace(/^[ \t]+<!--\s*onrivi:list-indent=(?:undefined|null|\d+(?:\.\d+)?)\s*-->[ \t]*\r?\n?/gm, '');
+  processed = processed.replace(/^<!--\s*onrivi:list-indent=(?:undefined|null|0)\s*-->[ \t]*\r?\n?/gm, '');
 
   const wikiLinkRegex = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
   processed = processed.replace(wikiLinkRegex, (_match, linkTarget, customText) => {

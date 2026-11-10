@@ -1,6 +1,8 @@
 /**
  * 프로그램명 : OnriviAuthor 
  * 파일명 : visualListCommands.ts
+ * 🚨 @PATCH : **2026-11-10** — [중첩 리스트 내어쓰기(independentLiftListItem) 시 하위 리스트 indentPx 무효화 및 위계 보존]:
+ *             1) independentLiftListItem에서 내어쓰기 분할 시 잔존/분리되는 서브 리스트(beforeBlocks, suffix)의 indentPx를 null로 초기화하여 중첩 리스트에 불필요한 HTML 주석이 생성되거나 위계가 왜곡되는 현상 원천 방어
  * 🚨 @PATCH : **2026-11-08** — [리스트 내부 Shift+Enter 시 리스트 탈출 및 새 문단(paragraph) 전환 커맨드(exitListToParagraph) 신설]:
  *             1) exitListToParagraph 신설: 리스트 항목(bullet_list / ordered_list / list_item) 내부에서 Shift + Enter 입력 시 리스트를 완전히 탈출하여 독립된 새로운 본문 문단(paragraph)을 생성하고 커서 이동
  *             2) 빈 리스트 항목에서는 exitEmptyListItem과 연계하여 불필요한 공백 항목 없이 즉시 문단 전환
@@ -350,14 +352,14 @@ export const independentLiftListItem: Command = (state, dispatch, view) => {
     const parentIndex = $from.index(range.depth - 2), childIndex = $from.index(range.depth - 1);
     const beforeBlocks: DocumentNode[] = [];
     for (let index = 0; index < childIndex; index++) beforeBlocks.push(parent.child(index));
-    if (range.startIndex) beforeBlocks.push(list.copy(Fragment.fromArray(Array.from({length:range.startIndex},(_,index)=>list.child(index)))));
+    if (range.startIndex) beforeBlocks.push(list.type.create({...list.attrs, indentPx: null}, Fragment.fromArray(Array.from({length:range.startIndex},(_,index)=>list.child(index)))));
     const lifted: DocumentNode[] = [];
     for (let index = range.startIndex; index < range.endIndex; index++) lifted.push(list.child(index));
     const suffix: DocumentNode[] = [];
     if (range.endIndex < list.childCount) {
       const remaining: DocumentNode[] = [];
       for (let index = range.endIndex; index < list.childCount; index++) remaining.push(list.child(index));
-      suffix.push(list.type.create({...list.attrs,...(list.type.name==='ordered_list'?{order:(list.attrs.order||1)+range.endIndex}:{})},Fragment.fromArray(remaining)));
+      suffix.push(list.type.create({...list.attrs, indentPx: null, ...(list.type.name==='ordered_list'?{order:(list.attrs.order||1)+range.endIndex}:{})},Fragment.fromArray(remaining)));
     }
     // Trailing quote/table/paragraph blocks belong after the moved content.
     // Standard liftListItem wraps these in a new marker-only list_item.
