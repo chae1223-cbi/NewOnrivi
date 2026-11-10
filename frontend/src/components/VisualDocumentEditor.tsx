@@ -2,6 +2,8 @@
 // 🏷️ 파일명 : VisualDocumentEditor.tsx
 // 🎭 역할(Role) : Core (위지윅 시각 문서 편집기 메인 코어 뷰)
 // 🎯 주요기능 : ProseMirror 상태/트랜잭션 라이프사이클 관리, 스크롤/커서 양방향 동기화, 인쇄 페이지 가이드 및 서브모듈 오케스트레이션
+// 🚨 @PATCH : 2026-11-10 — [/명령어 선택 시 Space(스페이스바)로 적용 지원]:
+//             1) 슬래시 메뉴에서 화살표로 리스트를 선택했거나 / 뒤에 검색어를 입력한 상태에서 Space 바 입력 시 선택된 명령어가 즉시 적용되도록 slashNavigatedRef 상태 연동
 // 🚨 @PATCH : 2026-11-10 — [대용량 문서 타이핑 래그 및 커서 이동 지연 구조적 완전 최적화]:
 //             1) 타이핑 시 동기식 전체 직렬화(codec.serialize) 및 상위 React 리렌더링 폭포를 180ms 디바운스로 지연하여 60fps 즉시 네이티브 렌더링 보장 (저장/blur/언마운트 시 즉시 flush)
 //             2) 방향키/커서 이동 시 동기식 ONRIVICURSORMAP 전체 직렬화를 제거하고 requestAnimationFrame 및 커서 위치 가드로 지연 최적화하여 커서 고속 반응 확보
@@ -481,6 +483,7 @@ export default function VisualDocumentEditor({
   });
   const [menuIndex, setMenuIndex] = useState(0);
   const menuIndexRef = useRef(0);
+  const slashNavigatedRef = useRef(false);
   const slashOpenRef = useRef(false);
   const menuItemsRef = useRef<{ id: string }[]>([]);
   const executeItemRef = useRef<(id: string, removeSlash?: boolean) => void>(() => {});
@@ -597,6 +600,7 @@ export default function VisualDocumentEditor({
       slashOpenRef,
       menuItemsRef,
       menuIndexRef,
+      slashNavigatedRef,
       slashRange,
       manualFloatingRef,
       selectionVisibleRef,
@@ -822,6 +826,7 @@ export default function VisualDocumentEditor({
           const afterMatch = after.match(/^[\p{L}\p{N}_-]+/u);
           const trailingLen = afterMatch ? afterMatch[0].length : 0;
           slashRange.current = { from: from - match[1].length, to: to + trailingLen };
+          slashNavigatedRef.current = false;
           setSlash(true);
           const leadingQuery = match[1].slice(1).toLowerCase();
           const trailingQuery = afterMatch ? afterMatch[0].toLowerCase() : '';
@@ -829,6 +834,7 @@ export default function VisualDocumentEditor({
           setQuery(fullQuery || leadingQuery);
         } else {
           slashRange.current = null;
+          slashNavigatedRef.current = false;
           setSlash(false);
           setQuery('');
         }

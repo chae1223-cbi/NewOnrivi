@@ -2,6 +2,9 @@
 // 📊 [OMD-CORE-VisualEditor-ProseMirrorHandlers] frontend/src/components/visualEditor/visualEditorProseMirrorHandlers.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 ProseMirror Keymap, 키보드/텍스트 입력, 스마트 붙여넣기(handlePaste), 드롭(handleDrop), 마우스 클릭/링크 이동(handleClick) 및 DOM 이벤트 핸들러 팩토리
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 클립보드 이미지/HTML 붙여넣기 정제, 5대 정밀 진단 로깅(logError/logWarn) 준수
+// 🚨 @PATCH : 2026-11-10 — [/명령어 선택 시 Space(스페이스바)로 적용 지원]:
+//             1) 슬래시 메뉴(/) 활성 상태에서 화살표로 리스트를 선택했거나 검색어가 입력된 상태에서 Space 입력 시 선택된 명령어를 즉시 실행
+//             2) 단순 '/' 상태에서 스페이스 입력 시에는 일반 공백('/ ')으로 통과하여 텍스트 오적용 방지
 // 🚨 @PATCH : 2026-11-10 — [빈 문단에서 Enter 시 hard_break 중첩 방지 및 단일 빈 문단 분할(split) 안착]:
 //             1) 내용이 없는 빈 문단($from.parent.content.size === 0)에서 Enter 입력 시 불필요한 hard_break(<br>)를 주입하지 않고 곧바로 새 빈 문단(<p>)을 분할 생성하여 거대 공백(84px) 발생 원천 차단
 // 🚨 @PATCH : 2026-11-10 — [리스트 항목 내부 체크박스([ ], [x]) 붙여넣기 스마트 변환]:
@@ -362,6 +365,7 @@ export interface VisualEditorHandlersParams {
   slashOpenRef: React.MutableRefObject<boolean>;
   menuItemsRef: React.MutableRefObject<{ id: string }[]>;
   menuIndexRef: React.MutableRefObject<number>;
+  slashNavigatedRef?: React.MutableRefObject<boolean>;
   slashRange: React.MutableRefObject<{ from: number; to: number } | null>;
   manualFloatingRef: React.MutableRefObject<boolean>;
   selectionVisibleRef: React.MutableRefObject<boolean>;
@@ -407,6 +411,7 @@ export function createVisualEditorHandlers({
   slashOpenRef,
   menuItemsRef,
   menuIndexRef,
+  slashNavigatedRef,
   slashRange,
   manualFloatingRef,
   selectionVisibleRef,
@@ -464,31 +469,64 @@ export function createVisualEditorHandlers({
     handleKeyDown(currentView, event) {
       if (!currentView.editable || event.isComposing) return false;
 
-      // 🌟 [슬래시 메뉴 활성 시 최우선 가로채기]: Escape 닫힘, ArrowUp/ArrowDown 이동, Enter/Tab 즉시 실행 (들여쓰기 및 기타 키 가로채기 원천 방어)
+      // 🌟 [슬래시 메뉴 활성 시 최우선 가로채기]: Escape 닫힘, ArrowUp/ArrowDown 이동, Enter/Tab/Space 즉시 실행 (들여쓰기 및 기타 키 가로채기 원천 방어)
       if (slashOpenRef.current) {
         if (event.key === 'Escape') {
           event.preventDefault();
           event.stopPropagation();
+          if (slashNavigatedRef) slashNavigatedRef.current = false;
           setSlash(false);
           slashRange.current = null;
           return true;
         }
         if (
           menuItemsRef.current.length &&
-          ['ArrowDown', 'ArrowUp', 'Enter', 'Tab'].includes(event.key)
+          (['ArrowDown', 'ArrowUp', 'Enter', 'Tab', ' '].includes(event.key) || event.code === 'Space')
         ) {
-          event.preventDefault();
-          event.stopPropagation();
           if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            event.stopPropagation();
+            if (slashNavigatedRef) slashNavigatedRef.current = true;
             const length = menuItemsRef.current.length;
             menuIndexRef.current = (menuIndexRef.current + (event.key === 'ArrowDown' ? 1 : -1) + length) % length;
             setMenuIndex(menuIndexRef.current);
-          } else {
-            // Enter or Tab: 현재 선택된 슬래시 메뉴 명령어 즉시 실행
-            const item = menuItemsRef.current[menuIndexRef.current] || menuItemsRef.current[0];
-            if (item) {
-              executeItemRef.current(item.id, true);
+            return true;
+          }
+
+          if (event.key === ' ' || event.code === 'Space') {
+            // 🌟 스페이스바(/명령어 선택 시 Space로 적용):
+            // 1) 사용자가 화살표(ArrowDown/ArrowUp)로 특정 리스트 항목을 선택했거나,
+            // 2) / 뒤에 검색어(예: /h1, /ul, /ol, /table 등)를 직접 타이핑한 경우
+            // 스페이스바를 누르면 선택된 명령어를 즉시 실행
+            const hasQuery = Boolean(
+              slashRange.current && slashRange.current.to - slashRange.current.from > 1
+            );
+            const hasNavigated = Boolean(slashNavigatedRef?.current || menuIndexRef.current > 0);
+            if (hasQuery || hasNavigated) {
+              event.preventDefault();
+              event.stopPropagation();
+              if (slashNavigatedRef) slashNavigatedRef.current = false;
+              const item = menuItemsRef.current[menuIndexRef.current] || menuItemsRef.current[0];
+              if (item) {
+                executeItemRef.current(item.id, true);
+              }
+              return true;
             }
+            // 아무 검색어도 없고 화살표 이동도 하지 않은 순수 '/' 상태에서 스페이스 입력 시에는
+            // 일반 텍스트 공백('/ ')으로 입력되도록 메뉴를 닫고 키 입력을 통과시킵니다.
+            setSlash(false);
+            slashRange.current = null;
+            if (slashNavigatedRef) slashNavigatedRef.current = false;
+            return false;
+          }
+
+          // Enter or Tab: 현재 선택된 슬래시 메뉴 명령어 즉시 실행
+          event.preventDefault();
+          event.stopPropagation();
+          if (slashNavigatedRef) slashNavigatedRef.current = false;
+          const item = menuItemsRef.current[menuIndexRef.current] || menuItemsRef.current[0];
+          if (item) {
+            executeItemRef.current(item.id, true);
           }
           return true;
         }

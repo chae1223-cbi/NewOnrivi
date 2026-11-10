@@ -2,6 +2,8 @@
 // 🎛️ [OMD-UI-VisualSlashMenu-0001] VisualSlashMenu.tsx ➔ 시각 에디터 슬래시 메뉴 및 플로팅 서식 포털
 // 🎯 @KICK  : / 슬래시 입력 시 나타나는 명령어 선택 팝업 및 텍스트 블록 지정 시 활성화되는 플로팅 서식 툴바 포털 렌더링
 // 🛡️ @GUARD : Rule 3(역할 기반 분리: Manager/Overlay) 준수 - document.body createPortal 격리 렌더링
+// 🚨 @PATCH : 2026-11-10 — [슬래시 메뉴 화살표 탐색 시 활성 항목 자동 스크롤(scrollIntoView) 연동]:
+//             1) ArrowDown/ArrowUp 키보드 탐색 시 선택된 메뉴 항목(menuIndex)이 스크롤 뷰포트 내에 항상 유지되도록 scrollIntoView({ block: 'nearest' }) 적용
 // 🚨 @PATCH : 2026-11-04 — [VisualDocumentEditor 2단계 모듈화 분리]: 슬래시 메뉴 및 플로팅 서식 포털 컴포넌트 독립 분리
 // 🔗 @CALLS : createPortal
 // ====================================================================
@@ -49,6 +51,14 @@ export default function VisualSlashMenu({
   manualFloatingRef,
   viewRef,
 }: VisualSlashMenuProps) {
+  const selectedBtnRef = React.useRef<HTMLButtonElement | null>(null);
+
+  React.useEffect(() => {
+    if (slash && selectedBtnRef.current) {
+      selectedBtnRef.current.scrollIntoView({ block: 'nearest' });
+    }
+  }, [menuIndex, slash]);
+
   if (typeof window === 'undefined') return null;
 
   return (
@@ -133,6 +143,7 @@ export default function VisualSlashMenu({
           {filtered.map((item, index) => (
             <button
               key={item.id}
+              ref={index === menuIndex ? selectedBtnRef : undefined}
               type="button"
               aria-label={`/${item.command}`}
               data-selected={index === menuIndex}
