@@ -2,6 +2,9 @@
 // 🎨 [OMD-CORE-VisualEditorStyles-0001] visualEditorStyles.ts ➔ 시각 에디터 전용 격리 CSS 스타일
 // 🎯 @KICK  : 시각 에디터 본문(.visual-document-surface), 제목 H1~H6 시각화 뱃지, 표 조판, 각주, 코드블록, 머메이드 서랍 등 위지윅 스타일 격리
 // 🛡️ @GUARD : Rule 6(Content Document Scope) 준수 - .visual-document-surface 및 컴포넌트 하위로만 스코핑
+// 🚨 @PATCH : 2026-11-10 — [5대 블록 컨트롤(서명/표/이미지/머메이드/코드블록) 액션 버튼 가시성 표준화]:
+//             1) 컨트롤에 마우스가 올라가거나 커서/포커스 진입(:hover, :focus-within, .ProseMirror-selectednode) 시에만 액션 버튼을 활성화하고 평소에는 완전 숨김 처리하여 본문 텍스트 침범 방지
+//             2) 서명(Signature) 플로팅 툴바 위치를 텍스트 상단 외곽으로 재배치하고, @media (hover:none) 강제 노출 규칙을 제거하여 상시 노출 결함 해결
 // 🚨 @PATCH : 2026-11-08 — [인용문 내부 문단 간격(p + p: 0.85em) 및 빈 문단(p:empty) 높이 보장]: Shift+Enter 문단 개행 가독성 정상화
 // 🚨 @PATCH : 2026-11-04 — [VisualDocumentEditor 2단계 모듈화 분리]: 인라인 360줄 스타일 문자열 독립 분리
 // ====================================================================
@@ -130,23 +133,36 @@ export const VISUAL_EDITOR_STYLES = `
   .visual-code-editor-panel > summary[hidden] { display:none!important; }
   .visual-code-language button[aria-label="코드 내용 복사"] { margin-left:auto; }
   .visual-code-language button[hidden] { display:none!important; }
-  .visual-document-surface .visual-code-language { display:flex!important; gap:10px; align-items:center; padding:10px 16px!important; margin:0!important; background:#eef2f7!important; border-bottom:1px solid #dbe2ea; font-family:system-ui,sans-serif!important; font-size:11px!important; line-height:1.4!important; font-weight:700; letter-spacing:.06em; color:#475569!important; }
-  .visual-document-surface .visual-code-language input { background:#fff!important; color:#334155!important; border:1px solid #cbd5e1; border-radius:6px; padding:4px 8px!important; width:120px!important; max-width:60%; height:28px; box-sizing:border-box; font-family:system-ui,sans-serif!important; font-size:12px!important; line-height:18px!important; letter-spacing:0; }
+  .visual-document-surface .visual-code-language { display:flex!important; gap:8px; align-items:center; padding:6px 14px!important; margin:0!important; background:#eef2f7!important; border-bottom:1px solid #dbe2ea; font-family:system-ui,sans-serif!important; font-size:11px!important; line-height:1.4!important; font-weight:700; letter-spacing:.06em; color:#475569!important; }
+  .visual-document-surface .visual-code-language input { background:#fff!important; color:#334155!important; border:1px solid #cbd5e1; border-radius:6px; padding:3px 8px!important; width:120px!important; max-width:60%; height:26px; box-sizing:border-box; font-family:system-ui,sans-serif!important; font-size:11px!important; line-height:16px!important; letter-spacing:0; opacity:0; pointer-events:none; transition:opacity .15s ease-in-out; }
   .visual-code-language input:focus { outline:2px solid #93c5fd; outline-offset:2px; }
+  .visual-document-surface .visual-code-language .onrivi-media-control { opacity:0; pointer-events:none; transition:opacity .15s ease-in-out; }
+  .visual-document-surface .visual-code-block:hover .visual-code-language input,
+  .visual-document-surface .visual-code-block:hover .visual-code-language .onrivi-media-control,
+  .visual-document-surface .visual-code-block:focus-within .visual-code-language input,
+  .visual-document-surface .visual-code-block:focus-within .visual-code-language .onrivi-media-control,
+  .visual-document-surface .visual-code-block.ProseMirror-selectednode .visual-code-language input,
+  .visual-document-surface .visual-code-block.ProseMirror-selectednode .visual-code-language .onrivi-media-control { opacity:1; pointer-events:auto; }
   .visual-document-surface code { background:#f4f4f5; font-family:monospace; }
   .visual-document-surface .visual-code-block { background:#1e293b; color:#e2e8f0; border:1px solid #dbe2ea; border-radius:10px; overflow:hidden; box-shadow:0 2px 8px rgba(15,23,42,.04); }
   .custom-preview-container .visual-document-surface .visual-code-block pre, .visual-document-surface .visual-code-block pre { background:transparent!important; color:inherit; margin:0!important; padding:18px 20px!important; white-space:pre; overflow-x:auto; line-height:1.65!important; }
   .custom-preview-container .visual-document-surface .visual-code-block code, .visual-document-surface .visual-code-block code { background:transparent!important; color:inherit; opacity:1; white-space:inherit; padding:0!important; font-family:"D2Coding","Cascadia Code",Consolas,monospace!important; line-height:inherit!important; letter-spacing:0!important; }
   .visual-image-block { position:relative; margin:16px 0; }
-  .visual-media-controls { position:absolute; right:12px; top:12px; display:flex; gap:6px; z-index:20; opacity:0; pointer-events:none; }
+  .visual-media-controls { position:absolute; right:12px; top:12px; display:flex; gap:6px; z-index:20; opacity:0; pointer-events:none; transition:opacity .15s ease-in-out, transform .15s ease-in-out; }
   .visual-image-block:has([data-caption-position="top"]) .visual-media-controls,
   .visual-image-block:has(figcaption[data-position="top"]) .visual-media-controls { top:34px; }
-  .visual-image-block:hover .visual-media-controls, .visual-image-block:focus-within .visual-media-controls { opacity:1; pointer-events:auto; }
+  .visual-image-block:hover .visual-media-controls,
+  .visual-image-block:focus-within .visual-media-controls,
+  .visual-image-block.ProseMirror-selectednode .visual-media-controls { opacity:1; pointer-events:auto; }
   .visual-document-surface .onrivi-image-figure[data-caption-position="top"] img { margin-top:0!important; }
   .visual-document-surface .onrivi-image-figure[data-caption-position="bottom"] img { margin-bottom:0!important; }
   .visual-document-surface[contenteditable="false"] .visual-image-edit { display:none; }
   @media print { .visual-media-controls { display:none; } }
-  @media (hover:none) { .visual-media-controls { opacity:1; pointer-events:auto; } }
+  .visual-signature-container { position:relative; padding-top:14px!important; }
+  .visual-signature-container .visual-signature-controls { position:absolute; top:-14px; right:8px; display:flex; align-items:center; gap:6px; z-index:25; opacity:0; pointer-events:none; transition:opacity .15s ease-in-out, transform .15s ease-in-out; transform:translateY(4px); }
+  .visual-signature-container:hover .visual-signature-controls,
+  .visual-signature-container:focus-within .visual-signature-controls,
+  .visual-signature-container.ProseMirror-selectednode .visual-signature-controls { opacity:1; pointer-events:auto; transform:translateY(0); }
   .visual-document-surface .visual-editable-table { border-collapse:collapse!important; width:100%!important; max-width:100%!important; table-layout:fixed!important; margin:16px 0!important; }
   .visual-document-surface .visual-editable-table :is(th, td) { position:relative; }
   .visual-document-surface .visual-editable-table :is(th, td):not(:last-child)::after,
@@ -193,6 +209,26 @@ export const VISUAL_EDITOR_STYLES = `
   .visual-source-block.visual-html-table-container .table-wrapper-area {
     margin-bottom: 4px !important;
   }
+  .table-wrapper-area .copy-button-hook,
+  .table-wrapper-area .table-header-edit-btn { opacity: 0; pointer-events: none; transition: opacity .15s ease-in-out; }
+  .table-wrapper-area:hover .copy-button-hook,
+  .table-wrapper-area:hover .table-header-edit-btn,
+  .table-wrapper-area:focus-within .copy-button-hook,
+  .table-wrapper-area:focus-within .table-header-edit-btn,
+  .visual-html-table-container:hover .copy-button-hook,
+  .visual-html-table-container:hover .table-header-edit-btn,
+  .visual-html-table-container:focus-within .copy-button-hook,
+  .visual-html-table-container:focus-within .table-header-edit-btn { opacity: 1; pointer-events: auto; }
+  .visual-mermaid-container .mermaid-header-edit-btn,
+  .visual-mermaid-container .mermaid-header-delete-btn,
+  .visual-mermaid-container [data-editor-controls] { opacity: 0; pointer-events: none; transition: opacity .15s ease-in-out; }
+  .visual-mermaid-container:hover .mermaid-header-edit-btn,
+  .visual-mermaid-container:hover .mermaid-header-delete-btn,
+  .visual-mermaid-container:hover [data-editor-controls],
+  .visual-mermaid-container:focus-within .mermaid-header-edit-btn,
+  .visual-mermaid-container:focus-within .mermaid-header-delete-btn,
+  .visual-mermaid-container:focus-within [data-editor-controls],
+  .visual-mermaid-container.ProseMirror-selectednode [data-editor-controls] { opacity: 1; pointer-events: auto; }
   .visual-html-table-editor {
     margin-top: 6px !important;
     border: 1px solid rgba(226, 232, 240, 0.9) !important;

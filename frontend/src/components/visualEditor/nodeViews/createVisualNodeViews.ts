@@ -2,6 +2,9 @@
 // 🧩 [OMD-CORE-VisualNodeViews-0001] createVisualNodeViews.ts ➔ 시각 에디터 ProseMirror NodeViews 팩토리
 // 🎯 @KICK  : table, visual_math, visual_inline_math, list_item, code_block, visual_footnote_ref, visual_footnote_def, visual_checkbox, source_block, mediaNodeView 10대 위지윅 NodeView 인스턴스화
 // 🛡️ @GUARD : Rule 3(역할 기반 분리: Core View) 준수 - DOM 렌더링 및 인터랙션 격리
+// 🚨 @PATCH : 2026-11-10 — [서명/표/코드블록/머메이드 액션 버튼 호버 및 커서 진입 시에만 활성화 연동]:
+//             1) 서명 컨트롤(visual-signature-controls)의 위치를 텍스트 상단 외곽(-top-3.5)으로 띄워 날짜/성명 텍스트 가림을 원천 방어하고, 호버 및 커서/포커스 진입 시에만 활성화
+//             2) 코드블록 헤더 액션 버튼에 호버/커서 진입 감지 연동 및 표/머메이드 컨트롤 가시성 동기화
 // 🚨 @PATCH : 2026-11-10 — [서명/발신인 블록 시각적 렌더링 및 좌/우 정렬 토글·수정 빠른 액션바 지원]:
 //             1) source_block에서 <div align="left|right">...</div> 감지 시 visual-signature-container로 격리하여 붉은색 원형 도장('인') 및 정렬 시각적 렌더링 지원
 //             2) 호버 시 ⬅️ 왼쪽 / ➡️ 오른쪽 원클릭 정렬 전환, ✏️ 서명 수정 팝업 오픈, 🗑️ 삭제 빠른 액션 컨트롤 제공
@@ -851,16 +854,16 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
     source_block(node, currentView, getPos) {
       const isMermaid = /^\s*```\s*mermaid(?:\s|$)/i.test(node.attrs.source);
       const isTable = /^\s*(?:<!--[\s\S]*?-->\s*)*<table\b[\s\S]*<\/table>\s*$/i.test(node.attrs.source.trim());
-      const isSignature = /^\s*<div\s+align=["'](left|right)["'][^>]*>[\s\S]*?<\/div>\s*$/i.test(node.attrs.source.trim());
+      const isSignature = /^\s*<div\s+align=["'](left|right|center)["'][^>]*>[\s\S]*?<\/div>\s*$/i.test(node.attrs.source.trim());
       const dom = document.createElement('div');
       dom.contentEditable = 'false';
       dom.className = isMermaid
-        ? 'visual-source-block visual-mermaid-container'
+        ? 'visual-source-block visual-mermaid-container group'
         : isTable
-        ? 'visual-source-block visual-html-table-container'
+        ? 'visual-source-block visual-html-table-container group'
         : isSignature
         ? 'visual-source-block visual-signature-container group relative my-2 p-1.5 rounded-xl transition-all hover:ring-1 hover:ring-blue-400/40'
-        : 'visual-source-block';
+        : 'visual-source-block group';
       const picture = document.createElement('div');
       const id = ++imageSequence.current;
       dom.append(picture);
@@ -1044,7 +1047,7 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
         setTimeout(syncHeaderButton, 60);
       } else if (isSignature) {
         const controls = document.createElement('div');
-        controls.className = 'visual-media-controls no-print opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5 bg-white/95 dark:bg-zinc-800/95 shadow-md border border-slate-200/80 dark:border-zinc-700/80 rounded-xl p-1 z-20';
+        controls.className = 'visual-media-controls visual-signature-controls no-print flex items-center gap-1.5 bg-white/95 dark:bg-zinc-800/95 shadow-md border border-slate-200/80 dark:border-zinc-700/80 rounded-xl p-1 z-25';
 
         const currentAlign = /align=["']right["']/i.test(node.attrs.source) ? 'right' : 'left';
 

@@ -2,6 +2,7 @@
 // 📊 [OMD-CORE-TableWrapper-0001] TableWrapper.tsx ➔ 마크다운 표 래퍼 컴포넌트
 // 🎯 @KICK  : 마크다운 렌더링 내의 표(table) 태그를 수신하여 가로 스크롤 레이아웃으로 감싸고, 마우스 오버 시 스프레드시트 호환 규격(HTML + TSV) 복사 버튼 제공
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 MarkdownViewer 대형 소스 모듈화 표준 준수
+// 🚨 @PATCH : 2026-11-10 — [표 복사 액션 버튼 호버 및 커서/포커스 진입 시 활성화 연동]: group-focus-within 및 focus 지원 추가
 // 🚨 @PATCH : 2026-11-04 — [MarkdownViewer 모듈화 분리]: TableWrapper 컴포넌트 독립 분리
 // 🔗 @CALLS : ClipboardItem, navigator.clipboard.write
 // ====================================================================
@@ -81,7 +82,7 @@ export default function TableWrapper({ children, widths, ...restProps }: TableWr
       {/* 마우스 호버 시 우측 상단에 노출되는 미려한 시트/표형식 복사 단추 */}
       <button
         onClick={handleCopy}
-        className="onrivi-media-control copy-button-hook absolute top-1 right-1 px-2 py-1 bg-black/60 dark:bg-white/20 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity text-[11px] flex items-center gap-1 z-10 hover:bg-black/80 font-medium no-print"
+        className="onrivi-media-control copy-button-hook absolute top-1 right-1 px-2 py-1 bg-black/60 dark:bg-white/20 text-white rounded opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 transition-opacity text-[11px] flex items-center gap-1 z-10 hover:bg-black/80 font-medium no-print cursor-pointer"
         title="복사"
         style={{ userSelect: 'none' }}
       >
