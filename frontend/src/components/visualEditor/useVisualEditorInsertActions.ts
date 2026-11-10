@@ -1,6 +1,8 @@
 // ====================================================================
 // 📊 [OMD-HOOK-VisualEditorInsertActions] frontend/src/components/visualEditor/useVisualEditorInsertActions.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 서식/블록 명령, 이미지/미디어/각주/서명/참고문헌/수식/문서링크/날짜 삽입 액션 및 외부 commandRef 브릿지 훅
+// 🚨 @PATCH : 2026-11-10 — [링크 삽입 완료 후 링크 마크 자동 탈출(removeStoredMark) 지원]:
+//             1) handleLinkConfirm에서 링크 삽입 후 tr.removeStoredMark(visualSchema.marks.link) 및 setStoredMarks([])를 호출하여 다음 입력 텍스트가 링크로 계속 이어지지 않고 일반 텍스트로 전환되도록 보장
 // 🚨 @PATCH : 2026-11-10 — [서명/발신인 source_block 네이티브 노드 삽입 및 범위 치환 브릿지 연동]:
 //             1) bridge에 INSERT_SIGNATURE: 및 REPLACE_RANGE 핸들러를 신설하여 서명 데이터가 일반 텍스트 노드가 아닌 source_block 위지윅 노드로 원자적 삽입/교체되도록 구현
 // 🚨 @PATCH : 2026-11-10 — [서명/발신인 실행 시 SignatureModal 대화상자 호출 연동]:
@@ -415,9 +417,11 @@ export function useVisualEditorInsertActions({
     linkTargetRef.current = null;
     const mark = visualSchema.marks.link.create({ href });
     const textNode = view.state.schema.text(text, [mark]);
-    const tr = view.state.tr.replaceWith(target.from, target.to, textNode);
+    let tr = view.state.tr.replaceWith(target.from, target.to, textNode);
     const nextPos = target.from + text.length;
-    tr.setSelection(TextSelection.create(tr.doc, nextPos));
+    tr = tr.setSelection(TextSelection.create(tr.doc, nextPos));
+    tr = tr.removeStoredMark(visualSchema.marks.link);
+    tr = tr.setStoredMarks([]);
     view.dispatch(closeHistory(tr).scrollIntoView());
     view.focus();
   };

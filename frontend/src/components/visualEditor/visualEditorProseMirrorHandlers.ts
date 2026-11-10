@@ -2,6 +2,9 @@
 // 📊 [OMD-CORE-VisualEditor-ProseMirrorHandlers] frontend/src/components/visualEditor/visualEditorProseMirrorHandlers.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 ProseMirror Keymap, 키보드/텍스트 입력, 스마트 붙여넣기(handlePaste), 드롭(handleDrop), 마우스 클릭/링크 이동(handleClick) 및 DOM 이벤트 핸들러 팩토리
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 클립보드 이미지/HTML 붙여넣기 정제, 5대 정밀 진단 로깅(logError/logWarn) 준수
+// 🚨 @PATCH : 2026-11-10 — [링크 끝 스페이스 및 방향키 입력 시 링크 마크 자동 탈출 지원]:
+//             1) 커서가 링크 텍스트의 끝($from.nodeBefore에 link 마크 존재, $from.nodeAfter에 없음)에 있을 때 Space 키 입력 시 링크 서식이 이어지지 않도록 일반 공백 삽입 및 storedMarks 초기화
+//             2) 링크 끝에서 오른쪽 방향키(ArrowRight) 입력 시 저장된 link 마크를 자동 해제하여 다음 타이핑 시 일반 텍스트로 자연스럽게 이어지도록 보장
 // 🚨 @PATCH : 2026-11-10 — [코드블록 노드 타입 판별 name 표준화로 Shift+Enter 새 코드블록 분할 결함 영구 차단]:
 //             1) visualSchema.nodes.code_block 객체 참조 비교 대신 type.name === 'code_block' 표준 비교로 전면 교체하여 런타임 스키마 인스턴스 불일치 방어
 //             2) handleKeyDown 및 paragraphInCodeBlock에서 코드블록 내부 Shift+Enter 시 tr.split이 호출되지 않고 문단(\n\n 또는 빈행 시 \n) 삽입 후 완벽 종료 보장
@@ -1044,6 +1047,53 @@ export function createVisualEditorHandlers({
         }
         return true;
       }
+
+      // 🌟 [링크 끝 공백 입력 시 링크 서식 자동 탈출]: 링크 끝에서 스페이스 입력 시 링크를 연장하지 않고 일반 공백 삽입
+      if (
+        (event.key === ' ' || event.code === 'Space') &&
+        !event.shiftKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.metaKey &&
+        !slashOpenRef.current
+      ) {
+        const { $from, empty } = currentView.state.selection;
+        if (empty && $from.parent.isTextblock) {
+          const hasLinkBefore = $from.nodeBefore?.marks.some(m => m.type.name === 'link');
+          const hasLinkAfter = $from.nodeAfter?.marks.some(m => m.type.name === 'link');
+          if (hasLinkBefore && !hasLinkAfter) {
+            event.preventDefault();
+            let tr = currentView.state.tr.insertText(' ');
+            tr = tr.removeStoredMark(visualSchema.marks.link);
+            tr = tr.setStoredMarks([]);
+            currentView.dispatch(tr.scrollIntoView());
+            caretRef.current?.schedule();
+            return true;
+          }
+        }
+      }
+
+      // 🌟 [링크 끝 오른쪽 화살표 입력 시 링크 서식 자동 해제]: 링크 끝에서 → 키 입력 시 다음 타이핑이 일반 텍스트로 전환
+      if (
+        event.key === 'ArrowRight' &&
+        !event.shiftKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.metaKey &&
+        !slashOpenRef.current
+      ) {
+        const { $from, empty } = currentView.state.selection;
+        if (empty && $from.parent.isTextblock) {
+          const hasLinkBefore = $from.nodeBefore?.marks.some(m => m.type.name === 'link');
+          const hasLinkAfter = $from.nodeAfter?.marks.some(m => m.type.name === 'link');
+          if (hasLinkBefore && !hasLinkAfter) {
+            let tr = currentView.state.tr.removeStoredMark(visualSchema.marks.link);
+            tr = tr.setStoredMarks([]);
+            currentView.dispatch(tr);
+          }
+        }
+      }
+
       if ((event.ctrlKey || event.metaKey) && (event.code === 'Space' || event.key === ' ')) {
         const { from, to, $from, empty } = currentView.state.selection;
         const before = $from.parent.isTextblock ? $from.parent.textBetween(0, $from.parentOffset, '\n', '\n') : '';
