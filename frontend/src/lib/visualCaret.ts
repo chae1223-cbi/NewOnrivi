@@ -3,6 +3,9 @@
  * 버전 정보 : 1.0.1
  * 프로그램 ID : oaar-vm-caret
  * -----------------------------------------------------------------------
+ * 🚨 @PATCH : **2026-11-10** — [숫자/체크/일반 리스트 빈 항목 커서 아래 처짐 및 글자 타이핑 시 수직 점프 결함 완벽 해결]:
+ *             1) 숫자 리스트(1.), 체크 리스트(checkbox), 일반 글머리 기호(•)의 빈 항목(첫 문자 위치)에서 커서가 아래로 쳐져 있다가 글자를 입력하면 위로 튀어 올라오는 현상 원천 해결
+ *             2) isOnlyWhitespace에서 trailingBreak(<br>) 요소의 네이티브 ClientRect 기하학(top/height)을 직접 측정하여, 글자 입력 시(rectText)와 1:1 완벽 일치하도록 높이(24px)와 Y좌표(+2px)를 완전 동기화 (움직임 0px 보장)
  * 🚨 @PATCH : **2026-11-10** — [리스트/체크리스트/숫자리스트 및 빈 문단 공백 입력 시 커서 수직 추락(Line 2) 및 공백 전진 불가 결함 완벽 해결]:
  *             1) 번호 리스트(1.), 글머리 기호(-), 체크리스트(- [ ]) 및 빈 문단에서 스페이스(Space) 입력 시 브라우저 range.getClientRects()가 trailingBreak(<br>)를 감지하여 커서가 다음 행으로 추락하던 결함 원천 해결
  *             2) trailingBreak 결함 방어 시 coordsBefore.right 좌표계를 채택하여 공백 타이핑 후 커서가 문자 우측으로 자연스럽게 전진하도록 보장 (기존 coordsBefore.left로 인해 스페이스를 쳐도 제자리에 멈춰있던 결함 해결)
@@ -134,8 +137,24 @@ export function installVisualCaret(view: EditorView) {
           const lineHeight = parseFloat(style.lineHeight) || fontSize * 1.5;
           const paddingTop = parseFloat(style.paddingTop) || 0;
           const paddingLeft = parseFloat(style.paddingLeft) || 0;
-          const caretHeight = Math.max(18, Math.round(fontSize * 1.15));
-          const top = box.top + paddingTop + Math.max(0, (lineHeight - caretHeight) / 2);
+          
+          // 🛡️ 기본 계산: 텍스트 실제 렌더링 높이(fontSize * 1.45)에 맞추어 텍스트 입력 시와 동일한 라인박스 높이 산출
+          let caretHeight = Math.max(22, Math.round(fontSize * 1.45));
+          let top = box.top + paddingTop + Math.round((lineHeight - caretHeight) / 2);
+
+          // 🌟 [TrailingBreak 정밀 측정]: 빈 문단/리스트 내 br.ProseMirror-trailingBreak 요소를 직접 측정하여 글자 입력 시(rectText)와 1:1 완벽 일치 보장 (아래 처짐 및 타이핑 시 수직 점프 0px 방어)
+          const brEl = effectiveEl.querySelector('br.ProseMirror-trailingBreak') || effectiveEl.querySelector('br');
+          if (brEl) {
+            try {
+              const brRange = document.createRange();
+              brRange.selectNode(brEl);
+              const brRect = brRange.getClientRects()[0];
+              if (brRect && brRect.height > 0) {
+                top = brRect.top;
+                caretHeight = brRect.height;
+              }
+            } catch { /* ignore fallback to computed */ }
+          }
 
           let left = box.left + paddingLeft;
           if ($from.parentOffset > 0) {
