@@ -2,6 +2,9 @@
 // 📊 [OMD-CORE-VisualEditor-ProseMirrorHandlers] frontend/src/components/visualEditor/visualEditorProseMirrorHandlers.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 ProseMirror Keymap, 키보드/텍스트 입력, 스마트 붙여넣기(handlePaste), 드롭(handleDrop), 마우스 클릭/링크 이동(handleClick) 및 DOM 이벤트 핸들러 팩토리
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 클립보드 이미지/HTML 붙여넣기 정제, 5대 정밀 진단 로깅(logError/logWarn) 준수
+// 🚨 @PATCH : 2026-11-10 — [엔터의 엔터 시 hard_break 표준 판별(name === 'hard_break') 및 새 문단 내부 정확한 커서 안착]:
+//             1) visualSchema.nodes.hard_break 객체 참조 비교 대신 type.name === 'hard_break' 표준 비교로 교체하여 2번째 Enter 미감지 결함 원천 해결
+//             2) tr.split 후 tr.setSelection(breakPos + 2)으로 커서를 새로 분할된 문단의 첫머리에 정확하게 안착시켜 다음 엔터 빈행이 추가로 생성되던 결함 완전 차단
 // 🚨 @PATCH : 2026-11-10 — [엔터의 엔터 입력 시 단순 줄바꿈(<br>)을 새로운 문단(<p>)으로 전환]:
 //             1) 1번째 Enter는 문단 내 단순 줄바꿈(hard_break, <br>) 유지
 //             2) 2번째 Enter(엔터의 엔터) 입력 시 앞선 hard_break를 제거하고 문단을 분할(tr.split)하여 독립된 새 문단(<p>)으로 자동 전환하여 비정상 여백 폭발 방지
@@ -288,11 +291,16 @@ export function createVisualEditorKeymap({
       (state, dispatch) => {
         const { $from, empty } = state.selection;
         const nodeBefore = empty ? $from.nodeBefore : null;
-        if (nodeBefore && nodeBefore.type === visualSchema.nodes.hard_break) {
+        const isAtHardBreak = Boolean(
+          nodeBefore && (nodeBefore.type.name === 'hard_break' || nodeBefore.type === visualSchema.nodes.hard_break)
+        );
+        if (isAtHardBreak && nodeBefore) {
           if (dispatch) {
             const breakPos = $from.pos - nodeBefore.nodeSize;
             let tr = state.tr.delete(breakPos, $from.pos);
             tr = tr.split(breakPos);
+            const targetPos = Math.min(tr.doc.content.size, breakPos + 2);
+            tr = tr.setSelection(TextSelection.create(tr.doc, targetPos));
             dispatch(tr.scrollIntoView());
           }
           return true;
@@ -590,11 +598,16 @@ export function createVisualEditorHandlers({
           !tableContext(currentView.state)
         ) {
           const nodeBefore = $from.nodeBefore;
-          if (nodeBefore && nodeBefore.type === visualSchema.nodes.hard_break) {
+          const isAtHardBreak = Boolean(
+            nodeBefore && (nodeBefore.type.name === 'hard_break' || nodeBefore.type === visualSchema.nodes.hard_break)
+          );
+          if (isAtHardBreak && nodeBefore) {
             event.preventDefault();
             const breakPos = $from.pos - nodeBefore.nodeSize;
             let tr = currentView.state.tr.delete(breakPos, $from.pos);
             tr = tr.split(breakPos);
+            const targetPos = Math.min(tr.doc.content.size, breakPos + 2);
+            tr = tr.setSelection(TextSelection.create(tr.doc, targetPos));
             currentView.dispatch(tr.scrollIntoView());
             caretRef.current?.schedule();
             return true;
@@ -622,13 +635,16 @@ export function createVisualEditorHandlers({
           }
 
           const nodeBefore = $from.nodeBefore;
-          // B) Enter 입력 후 한 글자도 입력 안 한 빈 행(hard_break 뒤)인 경우:
-          // 앞선 hard_break를 삭제하고 해당 위치에서 문단을 분리하여 독립된 새 문단(paragraph)으로 전환
-          if (nodeBefore && nodeBefore.type === visualSchema.nodes.hard_break) {
+          const isAtHardBreak = Boolean(
+            nodeBefore && (nodeBefore.type.name === 'hard_break' || nodeBefore.type === visualSchema.nodes.hard_break)
+          );
+          if (isAtHardBreak && nodeBefore) {
             event.preventDefault();
             const breakPos = $from.pos - nodeBefore.nodeSize;
             let tr = currentView.state.tr.delete(breakPos, $from.pos);
             tr = tr.split(breakPos);
+            const targetPos = Math.min(tr.doc.content.size, breakPos + 2);
+            tr = tr.setSelection(TextSelection.create(tr.doc, targetPos));
             currentView.dispatch(tr.scrollIntoView());
             caretRef.current?.schedule();
             return true;
