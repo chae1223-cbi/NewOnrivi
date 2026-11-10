@@ -2,6 +2,8 @@
 // 🎨 [OMD-CORE-VisualEditorStyles-0001] visualEditorStyles.ts ➔ 시각 에디터 전용 격리 CSS 스타일
 // 🎯 @KICK  : 시각 에디터 본문(.visual-document-surface), 제목 H1~H6 시각화 뱃지, 표 조판, 각주, 코드블록, 머메이드 서랍 등 위지윅 스타일 격리
 // 🛡️ @GUARD : Rule 6(Content Document Scope) 준수 - .visual-document-surface 및 컴포넌트 하위로만 스코핑
+// 🚨 @PATCH : 2026-11-10 — [ProseMirror 센티널 이미지(img.ProseMirror-separator) 스타일 제로 격리]:
+//             1) 인라인 각주(visual_footnote_ref) 등 애텀 노드 뒤에 삽입되는 invisible sentinel 이미지(img.ProseMirror-separator)를 0x0 투명 인라인으로 완전 격리하여 서식 프로필의 img 스타일(width 100%, margin 20px) 오염으로 인한 86px 거대 간격 폭발 원천 차단
 // 🚨 @PATCH : 2026-11-10 — [에디터 표면 빈 문단(p:empty) margin 0 및 1행 높이(1.75em) 보장]:
 //             1) .visual-document-surface p:empty의 margin을 0으로 격리하고 높이를 정확히 1행(1.75em)으로 보정하여 엔터 시 84px 거대 여백 폭발 방지
 // 🚨 @PATCH : 2026-11-10 — [번호 리스트(ol) 및 글머리 기호(ul) 마커와 텍스트 사이 자연스러운 여백(padding-left: 6px/4px) 확보]:
@@ -40,6 +42,26 @@ export const VISUAL_EDITOR_STYLES = `
   .visual-document-surface :is(p,h1,h2,h3,h4,h5,h6,li > div) { white-space:break-spaces!important; tab-size:inherit; }
   .visual-document-surface p { margin:0; }
   .visual-document-surface br.ProseMirror-trailingBreak { display:inline!important; content:normal!important; margin:0!important; height:auto!important; }
+  .visual-document-surface img.ProseMirror-separator,
+  .custom-preview-container .visual-document-surface img.ProseMirror-separator,
+  .onrivi-content-root .visual-document-surface img.ProseMirror-separator {
+    display: inline !important;
+    width: 0 !important;
+    height: 0 !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    max-width: 0 !important;
+    max-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    outline: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    vertical-align: baseline !important;
+    pointer-events: none !important;
+    line-height: 0 !important;
+  }
   .visual-document-surface > .visual-footnote-def + p:empty,
   .visual-document-surface > .visual-footnote-def ~ p:empty { display: none !important; }
   .visual-document-surface p:empty,

@@ -2,6 +2,8 @@
 // 🧩 [OMD-CORE-VisualNodeViews-0001] createVisualNodeViews.ts ➔ 시각 에디터 ProseMirror NodeViews 팩토리
 // 🎯 @KICK  : table, visual_math, visual_inline_math, list_item, code_block, visual_footnote_ref, visual_footnote_def, visual_checkbox, source_block, mediaNodeView 10대 위지윅 NodeView 인스턴스화
 // 🛡️ @GUARD : Rule 3(역할 기반 분리: Core View) 준수 - DOM 렌더링 및 인터랙션 격리
+// 🚨 @PATCH : 2026-11-10 — [각주 참조(visual_footnote_ref) 위첨자 인라인 스타일 안정화]:
+//             1) visual_footnote_ref의 display를 inline으로 전환하고 lineHeight: 0, verticalAlign: super를 지정하여 리스트 항목 내에서 행간 높이 팽창 방지
 // 🚨 @PATCH : 2026-11-10 — [서명 컨트롤 헤더 영역 확보 및 텍스트 겹침 방지]:
 //             1) visual-signature-container의 상단 패딩(pt-12) 및 카드 보더를 신설하여 툴바와 본문 텍스트(날짜/성명) 간의 겹침 간섭을 원천 차단
 // 🚨 @PATCH : 2026-11-10 — [서명/표/코드블록/머메이드 액션 버튼 호버 및 커서 진입 시에만 활성화 연동]:
@@ -637,7 +639,9 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
     },
     visual_footnote_ref(node, currentView) {
       const dom = document.createElement('sup');
-      dom.className = 'visual-footnote-ref inline-block text-xs font-bold text-blue-700 dark:text-blue-400 px-1 select-all cursor-pointer hover:underline';
+      dom.className = 'visual-footnote-ref inline text-xs font-bold text-blue-700 dark:text-blue-400 px-0.5 select-all cursor-pointer hover:underline align-super';
+      dom.style.lineHeight = '0';
+      dom.style.verticalAlign = 'super';
       dom.textContent = `[${node.attrs.label}]`;
       dom.setAttribute('data-footnote-ref', node.attrs.label);
       dom.title = `각주 [^${node.attrs.label}] 바로가기`;

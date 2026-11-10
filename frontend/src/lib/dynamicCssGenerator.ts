@@ -5,6 +5,7 @@
  *   - 활성 서식 프로필(CssProfile) 기반 동적 CSS(타이포그래피, 코드블록, 표, 체크박스, 구분선, 다크모드 재정의 등) 생성 엔진
  *   - @layer 캐스케이드 격리 및 그림책(Story Book) 프로필 연동
  * 🚨 @PATCH :
+ *   - 2026-11-10 : ProseMirror 센티널 이미지(img.ProseMirror-separator) 스타일 격리 및 일반 img 규칙 제외로 각주 삽입 후 행간 86px 폭발 및 문자 입력 시 축소 결함 완벽 해결
  *   - 2026-11-10 : 에디터 표면 빈 문단(p:empty) margin 0 및 1행 높이(1.75em) 보장으로 리스트 탈출 후 엔터 시 거대 여백(84px) 폭발 방지
  *   - 2026-11-08 : 인용구(blockquote) 및 알림(alert) 내부 문단 간격(p + p: 0.85em) 및 빈 문단(p:empty) 높이 보장으로 Shift+Enter 문단 개행 가독성 정상화
  *   - 2026-11-04 : 주석 표준화(1·2단계) 적용
@@ -378,6 +379,7 @@ export function generateDynamicCss(
       }
 
       const selector = tag === 'taskList' ? '.task-list-item' :
+        tag === 'img' ? 'img:not(.ProseMirror-separator)' :
         tag === 'code' ? ':not(pre) > code, code:not(pre code):not(.codeblock-area code)' :
           tag === 'map' ? 'iframe[src*="map"], iframe[src*="google.com/maps"], iframe[src*="maps.google.com"]' :
             tag === 'video' ? 'video, iframe[src*="youtube"], iframe[src*="vimeo"], a[href*="youtube.com"] img, a[href*="youtu.be"] img' : tag;
@@ -1202,6 +1204,25 @@ blockquote li p {
 .onrivi-content-root .visual-document-surface :is(ul,ol) + p:has(> br.ProseMirror-trailingBreak:only-child) {
   margin-top: 0 !important;
   margin-bottom: 0 !important;
+}
+.custom-preview-container .visual-document-surface img.ProseMirror-separator,
+.onrivi-content-root .visual-document-surface img.ProseMirror-separator {
+  display: inline !important;
+  width: 0 !important;
+  height: 0 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: 0 !important;
+  max-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  vertical-align: baseline !important;
+  pointer-events: none !important;
+  line-height: 0 !important;
 }
 .custom-preview-container .visual-document-surface ::selection,
 .custom-preview-container .visual-document-surface *::selection,

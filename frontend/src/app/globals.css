@@ -1356,10 +1356,32 @@ div.monaco-table-line {
   display: inline-block !important;
 }
 
-.prose img, .prose video {
+.prose img:not(.ProseMirror-separator), .prose video {
   display: block !important;
   margin-left: 0 !important;
   margin-right: auto !important;
+}
+
+/* ProseMirror 센티널 이미지(img.ProseMirror-separator) 스타일 제로 격리 */
+.visual-document-surface img.ProseMirror-separator,
+.custom-preview-container .visual-document-surface img.ProseMirror-separator,
+.onrivi-content-root .visual-document-surface img.ProseMirror-separator {
+  display: inline !important;
+  width: 0 !important;
+  height: 0 !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: 0 !important;
+  max-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  vertical-align: baseline !important;
+  pointer-events: none !important;
+  line-height: 0 !important;
 }
 
 /* 커스텀 스크롤바 유틸리티 (기존 GlobalSearch, FormulaModal, EmojiPicker, MergeModal에서 사용) */

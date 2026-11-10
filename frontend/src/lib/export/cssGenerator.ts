@@ -2,6 +2,7 @@
 // 📊 [OMD-IO-export-css-0001] frontend/src/lib/export/cssGenerator.ts
 // 🎯 @KICK  : 서식 프로필(CssProfile) 기반 인쇄/내보내기 동적 CSS 생성기
 // 🛡️ @GUARD : 라이트모드 기준 고정, @layer 우선순위 계층 적용, 표/코드/제목 조판 동기화
+// 🚨 @PATCH : **2026-11-10** — [ProseMirror 센티널 이미지(img.ProseMirror-separator) 스타일 예외 처리]: 일반 img 스타일 적용 시 센티널 이미지 제외
 // 🚨 @PATCH : **2026-11-04** — [모듈화 분리 & 주석 표준화]: exportHandlers.ts에서 서식 프로필 CSS 빌더 분리 및 2단계 JSDoc 적용
 // 🔗 @CALLS : headingNumberingCss, reportNumberingCss, normalizeCssProfile
 // ====================================================================
@@ -331,6 +332,7 @@ p .onrivi-line + .onrivi-line {
     }
 
     const selector = tag === 'taskList' ? '.task-list-item' :
+      tag === 'img' ? 'img:not(.ProseMirror-separator)' :
       tag === 'code' ? ':not(pre) > code' :
       tag === 'map' ? 'iframe[src*="map"], iframe[src*="google.com/maps"], iframe[src*="maps.google.com"]' :
       tag === 'video' ? 'video, iframe[src*="youtube"], iframe[src*="vimeo"], a[href*="youtube.com"] img, a[href*="youtu.be"] img' : tag;
