@@ -3,6 +3,9 @@
  * 버전 정보 : 1.0.1
  * 프로그램 ID : oaar-vm-caret
  * -----------------------------------------------------------------------
+ * 🚨 @PATCH : **2026-11-10** — [리스트/체크리스트/숫자리스트 및 빈 문단 공백 입력 시 커서 수직 추락(Line 2) 및 점프 방어]:
+ *             1) 번호 리스트(1.), 글머리 기호(-), 체크리스트(- [ ]) 및 빈 문단에서 스페이스(Space) 입력 시 브라우저 range.getClientRects()가 trailingBreak(<br>)를 감지하여 커서가 다음 행으로 추락하던 결함 원천 해결
+ *             2) coordsBefore($from.pos, -1) 기반 정밀 역방향 문자 좌표 산출 및 공백 전용 문단(isOnlyWhitespace)의 라인박스 1행 고정 좌표계 적용으로 타이핑 시 수직 점프 100% 차단
  * 🚨 @PATCH : **2026-10-27** — [빈 문단 엔터 입력 시 정밀 라인박스 캐럿 정렬 및 타이핑 시 수직 점프 방지]:
  *             1) 빈 문단(<p><br class="ProseMirror-trailingBreak"></p>)에서 view.nodeDOM 기반 정확한 문단 요소를 획득하고, 폰트 크기 및 행간(lineHeight)에 기반하여 텍스트 시작 위치에 1:1 일치하도록 캐럿 좌표 산출
  *             2) 엔터 입력 직후 커서가 과도하게 내려앉거나 글자 타이핑 시 위로 튀는 현상 100% 해소
@@ -82,30 +85,58 @@ export function installVisualCaret(view: EditorView) {
       return;
     }
     try {
+      const { $from } = view.state.selection;
       let domRect: DOMRect | undefined;
       if (hasDomSelection && selection && selection.rangeCount > 0) {
         const range = selection.getRangeAt(0);
         domRect = range.getClientRects()[0];
       }
-      let rect = domRect && domRect.height > 0 ? domRect : view.coordsAtPos(view.state.selection.head);
-      const { $from } = view.state.selection;
-      const isParagraphEmpty = $from.parent.type.name === 'paragraph' && !$from.parent.content.size;
-      if (isParagraphEmpty) {
-        // A lone ProseMirror-trailingBreak can report a range on the *next*
-        // visual line. Typing removes that break and makes the overlay jump up.
+
+      // 🛡️ 커서 직전 문자 기반 정밀 좌표 산출 (trailingBreak 및 공백 줄바꿈 오차 방어)
+      let coordsBefore: { left: number; right: number; top: number; bottom: number } | null = null;
+      try {
+        if ($from.parentOffset > 0) {
+          coordsBefore = view.coordsAtPos($from.pos, -1);
+        }
+      } catch { /* ignore */ }
+
+      let rect = domRect && domRect.height > 0 ? domRect : (coordsBefore || view.coordsAtPos(view.state.selection.head));
+
+      // 🛡️ [trailingBreak 결함 방어 1]: 텍스트 끝 공백 입력 시 domRect가 다음 행(trailingBreak)으로 떨어지는 현상 교정
+      if (coordsBefore && domRect && domRect.top > coordsBefore.top + 10) {
+        rect = coordsBefore;
+      }
+
+      // 🛡️ [trailingBreak 결함 방어 2]: 빈 문단 또는 공백만 있는 문단/리스트에서 커서가 다음 행(Line 2)으로 추락하는 현상 100% 차단
+      const isTextblock = $from.parent.isTextblock;
+      const hasHardBreak = Boolean(
+        ($from.nodeBefore && ($from.nodeBefore.type.name === 'hard_break' || $from.nodeBefore.type.name === 'visual_hard_break')) ||
+        ($from.nodeAfter && ($from.nodeAfter.type.name === 'hard_break' || $from.nodeAfter.type.name === 'visual_hard_break'))
+      );
+      const isOnlyWhitespace = isTextblock && !$from.parent.textContent.trim() && !hasHardBreak;
+      if (isOnlyWhitespace) {
         const targetNode = view.domAtPos($from.pos).node;
         const targetEl = targetNode instanceof Element ? targetNode : targetNode.parentElement;
-        const paragraph = (view.nodeDOM($from.before()) as HTMLElement | null) || targetEl?.closest('p') || null;
-        if (paragraph && view.dom.contains(paragraph)) {
-          const box = paragraph.getBoundingClientRect();
-          const style = getComputedStyle(paragraph);
+        const blockEl = (view.nodeDOM($from.before()) as HTMLElement | null) || targetEl?.closest('p, h1, h2, h3, h4, h5, h6') || null;
+        if (blockEl && view.dom.contains(blockEl)) {
+          const box = blockEl.getBoundingClientRect();
+          const style = getComputedStyle(blockEl);
           const fontSize = parseFloat(style.fontSize) || 16;
           const lineHeight = parseFloat(style.lineHeight) || fontSize * 1.5;
           const paddingTop = parseFloat(style.paddingTop) || 0;
           const paddingLeft = parseFloat(style.paddingLeft) || 0;
           const caretHeight = Math.max(18, Math.round(fontSize * 1.15));
           const top = box.top + paddingTop + Math.max(0, (lineHeight - caretHeight) / 2);
-          const left = box.left + paddingLeft;
+
+          let left = box.left + paddingLeft;
+          if ($from.parentOffset > 0) {
+            if (coordsBefore && coordsBefore.left >= left) {
+              left = coordsBefore.left;
+            } else {
+              const approxSpaceWidth = fontSize * 0.35;
+              left = left + ($from.parentOffset * approxSpaceWidth);
+            }
+          }
           rect = { left, right: left + 3, top, bottom: top + caretHeight };
         }
       }
