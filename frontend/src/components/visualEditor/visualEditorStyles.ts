@@ -2,6 +2,8 @@
 // 🎨 [OMD-CORE-VisualEditorStyles-0001] visualEditorStyles.ts ➔ 시각 에디터 전용 격리 CSS 스타일
 // 🎯 @KICK  : 시각 에디터 본문(.visual-document-surface), 제목 H1~H6 시각화 뱃지, 표 조판, 각주, 코드블록, 머메이드 서랍 등 위지윅 스타일 격리
 // 🛡️ @GUARD : Rule 6(Content Document Scope) 준수 - .visual-document-surface 및 컴포넌트 하위로만 스코핑
+// 🚨 @PATCH : 2026-11-10 — [에디터 표면 빈 문단(p:empty) margin 0 및 1행 높이(1.75em) 보장]:
+//             1) .visual-document-surface p:empty의 margin을 0으로 격리하고 높이를 정확히 1행(1.75em)으로 보정하여 엔터 시 84px 거대 여백 폭발 방지
 // 🚨 @PATCH : 2026-11-10 — [번호 리스트(ol) 및 글머리 기호(ul) 마커와 텍스트 사이 자연스러운 여백(padding-left: 6px/4px) 확보]:
 //             1) .visual-document-surface ol > li에 padding-left: 6px, ul > li에 padding-left: 4px를 적용하여 번호(1.)와 텍스트(부가지능) 및 커서(|)가 글자 간격 없이 딱 붙어버리던 결함 완벽 해결
 // 🚨 @PATCH : 2026-11-10 — [체크리스트(task-list-item) 중복 불릿(•) 기호 완전 소거]:
@@ -42,8 +44,15 @@ export const VISUAL_EDITOR_STYLES = `
   .visual-document-surface > .visual-footnote-def ~ p:empty { display: none !important; }
   .visual-document-surface p:empty,
   .visual-document-surface p:has(>br.ProseMirror-trailingBreak:only-child) {
-    min-height: 1em;
+    min-height: 1.75em !important;
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
     cursor: text;
+  }
+  .visual-document-surface :is(ul,ol) + p:empty,
+  .visual-document-surface :is(ul,ol) + p:has(>br.ProseMirror-trailingBreak:only-child) {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
   }
   .visual-document-surface li { margin-top:0!important; margin-bottom: var(--li-margin-bottom, 6px); padding-top:0!important; padding-bottom:0!important; }
   .visual-document-surface li p { margin-top:0!important; margin-bottom:0!important; }

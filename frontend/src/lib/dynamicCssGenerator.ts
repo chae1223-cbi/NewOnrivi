@@ -5,6 +5,7 @@
  *   - 활성 서식 프로필(CssProfile) 기반 동적 CSS(타이포그래피, 코드블록, 표, 체크박스, 구분선, 다크모드 재정의 등) 생성 엔진
  *   - @layer 캐스케이드 격리 및 그림책(Story Book) 프로필 연동
  * 🚨 @PATCH :
+ *   - 2026-11-10 : 에디터 표면 빈 문단(p:empty) margin 0 및 1행 높이(1.75em) 보장으로 리스트 탈출 후 엔터 시 거대 여백(84px) 폭발 방지
  *   - 2026-11-08 : 인용구(blockquote) 및 알림(alert) 내부 문단 간격(p + p: 0.85em) 및 빈 문단(p:empty) 높이 보장으로 Shift+Enter 문단 개행 가독성 정상화
  *   - 2026-11-04 : 주석 표준화(1·2단계) 적용
  *   - 2026-11-04 : MainEditorApp에서 1,234줄 인라인 CSS 생성기를 독립 라이브러리로 분리
@@ -1188,8 +1189,19 @@ blockquote li p {
 .onrivi-content-root .visual-document-surface p:empty,
 .onrivi-content-root .visual-document-surface p:has(> br:only-child),
 .onrivi-content-root .visual-document-surface p:has(> br.ProseMirror-trailingBreak:only-child) {
-  min-height: 1.25em;
+  min-height: 1.75em !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
   cursor: text;
+}
+.custom-preview-container .visual-document-surface :is(ul,ol) + p:empty,
+.custom-preview-container .visual-document-surface :is(ul,ol) + p:has(> br:only-child),
+.custom-preview-container .visual-document-surface :is(ul,ol) + p:has(> br.ProseMirror-trailingBreak:only-child),
+.onrivi-content-root .visual-document-surface :is(ul,ol) + p:empty,
+.onrivi-content-root .visual-document-surface :is(ul,ol) + p:has(> br:only-child),
+.onrivi-content-root .visual-document-surface :is(ul,ol) + p:has(> br.ProseMirror-trailingBreak:only-child) {
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
 }
 .custom-preview-container .visual-document-surface ::selection,
 .custom-preview-container .visual-document-surface *::selection,

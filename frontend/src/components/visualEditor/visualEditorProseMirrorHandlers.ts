@@ -2,6 +2,8 @@
 // 📊 [OMD-CORE-VisualEditor-ProseMirrorHandlers] frontend/src/components/visualEditor/visualEditorProseMirrorHandlers.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 ProseMirror Keymap, 키보드/텍스트 입력, 스마트 붙여넣기(handlePaste), 드롭(handleDrop), 마우스 클릭/링크 이동(handleClick) 및 DOM 이벤트 핸들러 팩토리
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 클립보드 이미지/HTML 붙여넣기 정제, 5대 정밀 진단 로깅(logError/logWarn) 준수
+// 🚨 @PATCH : 2026-11-10 — [빈 문단에서 Enter 시 hard_break 중첩 방지 및 단일 빈 문단 분할(split) 안착]:
+//             1) 내용이 없는 빈 문단($from.parent.content.size === 0)에서 Enter 입력 시 불필요한 hard_break(<br>)를 주입하지 않고 곧바로 새 빈 문단(<p>)을 분할 생성하여 거대 공백(84px) 발생 원천 차단
 // 🚨 @PATCH : 2026-11-10 — [리스트 항목 내부 체크박스([ ], [x]) 붙여넣기 스마트 변환]:
 //             1) 리스트 항목(list_item) 내부에서 [ ], [x], [X], - [ ], - [x] 복사 붙여넣기 시 이상한 중복 텍스트([x])로 남지 않고 list_item.attrs.checked(true/false)로 즉각 변환
 //             2) 붙여넣기 시 본문 시작부에 잔존하는 중복 [ ], [x] 텍스트 자동 소거 및 깔끔한 체크리스트 전환
@@ -295,6 +297,17 @@ export function createVisualEditorKeymap({
       newlineInCode,
       (state, dispatch) => {
         const { $from, empty } = state.selection;
+        // 🌟 [빈 문단에서 Enter: 불필요한 hard_break 주입 없이 깨끗한 새 빈 문단 분할]
+        if (empty && $from.parent.isTextblock && $from.parent.content.size === 0) {
+          if (dispatch) {
+            const afterPos = $from.after();
+            const tr = state.tr.insert(afterPos, visualSchema.nodes.paragraph.create());
+            tr.setSelection(TextSelection.create(tr.doc, afterPos + 1));
+            dispatch(tr.scrollIntoView());
+          }
+          return true;
+        }
+
         const nodeBefore = empty ? $from.nodeBefore : null;
         const isAtHardBreak = Boolean(
           nodeBefore && (nodeBefore.type.name === 'hard_break' || nodeBefore.type === visualSchema.nodes.hard_break)
@@ -587,6 +600,29 @@ export function createVisualEditorHandlers({
             caretRef.current?.schedule();
             return true;
           }
+        }
+
+        // 🌟 [빈 문단에서 Enter: 불필요한 hard_break 없이 바로 새로운 빈 문단으로 분할 생성]
+        if (
+          !event.shiftKey &&
+          !event.ctrlKey &&
+          !event.altKey &&
+          !event.metaKey &&
+          !slashOpenRef.current &&
+          empty &&
+          !insideListItem &&
+          $from.parent.isTextblock &&
+          $from.parent.content.size === 0 &&
+          $from.parent.type.name !== 'code_block' &&
+          !tableContext(currentView.state)
+        ) {
+          event.preventDefault();
+          const afterPos = $from.after();
+          const tr = currentView.state.tr.insert(afterPos, visualSchema.nodes.paragraph.create());
+          tr.setSelection(TextSelection.create(tr.doc, afterPos + 1));
+          currentView.dispatch(tr.scrollIntoView());
+          caretRef.current?.schedule();
+          return true;
         }
 
         // 🌟 [엔터의 엔터: hard_break 상태에서 Enter 입력 시 새로운 문단(<p>)으로 전환]
