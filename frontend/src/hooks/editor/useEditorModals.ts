@@ -4,6 +4,7 @@
  * 🎯 주요기능 :
  *   - 메인 에디터 내 모달 및 팝업(환경설정, 서식, 내보내기, 이미지, 지도, 표, 병합, 유튜브, 라이선스, 수식, 도움말, 참조문헌, 프롬프트/확인창) 열림·닫힘 상태 중앙 관리 훅
  * 🚨 @PATCH :
+ *   - 2026-11-10 : 서명/발신인 대화상자(isSignatureModalOpen, signatureModalInitialData) 상태 신설
  *   - 2026-11-04 : 주석 표준화(1·2단계) 적용
  *   - 2026-10-24 : editingImageInfo에 captionPos(top|bottom) 속성 추가
  * ============================================================================
@@ -66,6 +67,8 @@ export const useEditorModals = () => {
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);   // 도움말 모달 열림/닫힘 상태
   const [isReferenceModalOpen, setIsReferenceModalOpen] = useState(false); // 참조 관리 모달 열림/닫힘 상태
   const [isCitationModalOpen, setIsCitationModalOpen] = useState(false); // 인용구 선택 모달 열림/닫힘 상태
+  const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false); // 서명/발신인 모달 열림/닫힘 상태
+  const [signatureModalInitialData, setSignatureModalInitialData] = useState<any>(null); // 서명 모달 초기값
 
   const [promptConfig, setPromptConfig] = useState<PromptConfig>({      // 프롬프트 모달 설정 상태
     isOpen: false, title: "", defaultValue: "", type: null, error: ""
@@ -92,6 +95,8 @@ export const useEditorModals = () => {
     isHelpModalOpen, setIsHelpModalOpen,
     isReferenceModalOpen, setIsReferenceModalOpen,
     isCitationModalOpen, setIsCitationModalOpen,
+    isSignatureModalOpen, setIsSignatureModalOpen,
+    signatureModalInitialData, setSignatureModalInitialData,
     promptConfig, setPromptConfig,
     confirmConfig, setConfirmConfig
   };

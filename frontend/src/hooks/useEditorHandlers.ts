@@ -67,6 +67,8 @@ import { organizeMarkdownFootnotes } from '@/lib/footnoteOrganizer';
 //             1) 구버전의 단순 하단 정렬 방식을 탈피하여 본문 등장 순서대로 1, 2, 3... 순차 재번호 부여(organizeMarkdownFootnotes) 연동
 //             2) 영문/한글/기호 등 비정규 각주 라벨의 표준 번호화 및 본문 흩어진 각주 정의 일괄 수집
 //             3) 정리 완료/미변경/각주없음 상태별 명확한 토스트 알림 안내 제공
+// 🚨 @PATCH : **2026-11-10** — [서명/발신인 서식 모달(SignatureModal) 호출 연동]:
+//             handlers.signature 실행 시 직접 마크다운을 때려박던 레거시 대신 onrivi:open-signature-modal 이벤트를 발생시켜 left/right 정렬 및 문구 수정 대화상자를 호출하도록 전면 개선
 // 🚨 @PATCH : **2026-10-15** — [서명/발신인 서식 왼쪽 정렬 기본 전환]: 기본 템플릿 및 감싸기 태그를 <div align="left">로 변경하고 양방향 unwrap 지원
 // 🚨 @PATCH : **2026-10-14** — [간편 표(quickTable) 생성 시 첫 번째 열 헤더("구분") 자동 선택 연동]: quickTable 호출 시 첫 번째 헤더 셀로 커서 및 선택 영역을 자동 안착시켜 즉시 편집 가능하도록 개선
 // 🚨 @PATCH : **2026-10-11** — [구글 드라이브 토큰 만료 시 비상 로컬 백업 연동 및 작성 글 100% 보존]:
@@ -1581,100 +1583,28 @@ export const useEditorHandlers = ({
     quickWrap: (format: 'h1' | 'h2' | 'h3' | 'quote' | 'code') => quickWrap(format),
     // ====================================================================
     // 📊 [OMD-EDIT-USEEDITORHANDLERS-0015] useEditorHandlers.ts ➔ signature
-    // 🎯 @KICK  : 서명/발신인 우측 정렬 삽입 및 선택 영역 우측 정렬 감싸기/토글
-    // 🛡️ @GUARD : editorRef, model, selection 존재 여부 확인
-    // 🚨 @PATCH : **2026-10-01** — 신규 추가
-    // 🔗 @CALLS : editor.pushUndoStop, editor.executeEdits, editor.setSelection
+    // 🎯 @KICK  : 서명/발신인 설정 모달(SignatureModal) 호출 (선택 영역 서식 파싱 및 전달)
+    // 🛡️ @GUARD : editorRef, model 존재 여부 확인
+    // 🚨 @PATCH : **2026-11-10** — SignatureModal 대화상자 호출 방식으로 전면 개선
+    // 🔗 @CALLS : window.dispatchEvent(onrivi:open-signature-modal)
     // ====================================================================
     signature: () => {
-      if (!editorRef.current || typeof window === 'undefined' || !(window as any).monaco) return;
-      const editor = editorRef.current;
-      const model = editor.getModel();
-      if (!model) return;
-
-      let selection = editor.getSelection();
-      if ((!selection || selection.isEmpty()) && lastSelectionRef?.current && !lastSelectionRef.current.isEmpty()) {
-        selection = lastSelectionRef.current;
-      }
-      if (!selection) return;
-
-      const rawSelectedText = model.getValueInRange(selection);
-      const trimmedText = rawSelectedText.trim();
-
-      // 1. 이미 <div align="right|left">...</div> 로 감싸져 있는 경우 토글 해제(Unwrap)
-      const divRegex = /^<div\s+align=["'](right|left)["'][^>]*>([\s\S]*?)<\/div>$/i;
-      const match = trimmedText.match(divRegex);
-      if (match) {
-        const unwrapped = match[2].trim();
-        editor.pushUndoStop();
-        editor.executeEdits('signature-unwrap', [{
-          range: selection,
-          text: unwrapped,
-          forceMoveMarkers: true
-        }]);
-        editor.pushUndoStop();
-        editor.focus();
-        return;
-      }
-
-      // 2. 텍스트가 선택되어 있는 경우: 각 줄의 마크다운 줄바꿈(공백 2개) 보존하며 감싸기
-      if (trimmedText) {
-        const lines = trimmedText.split('\n');
-        const processedLines = lines.map((line: string) => {
-          const rTrimmed = line.trimEnd();
-          if (rTrimmed.length > 0 && !rTrimmed.endsWith('  ') && !rTrimmed.endsWith('<br>') && !rTrimmed.endsWith('<br/>')) {
-            return rTrimmed + '  ';
+      let initialData: any = undefined;
+      if (editorRef.current && typeof window !== 'undefined' && (window as any).monaco) {
+        const editor = editorRef.current;
+        const model = editor.getModel();
+        let selection = editor.getSelection();
+        if ((!selection || selection.isEmpty()) && lastSelectionRef?.current && !lastSelectionRef.current.isEmpty()) {
+          selection = lastSelectionRef.current;
+        }
+        if (model && selection && !selection.isEmpty()) {
+          const rawSelectedText = model.getValueInRange(selection).trim();
+          if (rawSelectedText) {
+            initialData = { raw: rawSelectedText };
           }
-          return line;
-        });
-        const contentText = processedLines.join('\n');
-        const newText = `<div align="left">\n\n${contentText}\n\n</div>\n`;
-
-        editor.pushUndoStop();
-        editor.executeEdits('signature-wrap', [{
-          range: selection,
-          text: newText,
-          forceMoveMarkers: true
-        }]);
-        editor.pushUndoStop();
-        editor.focus();
-        return;
+        }
       }
-
-      // 3. 선택 영역이 없는 경우: 오늘 날짜 기반 기본 서명 템플릿 삽입 및 작성자 성명 자동 선택
-      const now = new Date();
-      const dateStr = `${now.getFullYear()}년 ${now.getMonth() + 1}월 ${now.getDate()}일`;
-      const template = `<div align="left">\n\n${dateStr}  \n**작성자: 홍길동** <span style="color:#dc2626; border:1.5px solid #dc2626; border-radius:50%; padding:0 3px; font-size:0.85em; font-weight:bold;">인</span>\n\n</div>\n`;
-
-      const startLine = selection.startLineNumber;
-      editor.pushUndoStop();
-      editor.executeEdits('signature-insert', [{
-        range: selection,
-        text: template,
-        forceMoveMarkers: true
-      }]);
-      editor.pushUndoStop();
-
-      // 💡 [UX 최적화] 작성자 이름('홍길동') 부분을 자동 선택하여 곧바로 실제 성명 입력 가능하도록 편의 제공
-      setTimeout(() => {
-        try {
-          const targetLineNumber = startLine + 3;
-          const targetLineText = model.getLineContent(targetLineNumber) || '';
-          const nameKeyword = '홍길동';
-          const nameIndex = targetLineText.indexOf(nameKeyword);
-          if (nameIndex !== -1) {
-            const startCol = nameIndex + 1; // Monaco 1-indexed column
-            const endCol = startCol + nameKeyword.length;
-            editor.setSelection(new (window as any).monaco.Selection(
-              targetLineNumber,
-              startCol,
-              targetLineNumber,
-              endCol
-            ));
-          }
-          editor.focus();
-        } catch (_) {}
-      }, 20);
+      window.dispatchEvent(new CustomEvent('onrivi:open-signature-modal', { detail: initialData }));
     },
   };
 

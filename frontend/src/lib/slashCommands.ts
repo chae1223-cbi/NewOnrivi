@@ -39,7 +39,7 @@ export const DEFAULT_SLASH_COMMANDS = [
   { id: 'list', label: 'List (글머리 기호)', kind: 17, insertText: '- ', detail: '기호 목록' },
   { id: 'checklist', label: 'Checklist (체크리스트)', kind: 17, insertText: '- [ ] ', detail: '할 일 목록' },
   { id: 'clear', label: 'Clear Tag (태그 취소)', kind: 17, insertText: '', detail: '서식 마크다운 태그 취소', actionId: 'clear' },
-  { id: 'signature', label: 'Sign / 사인 (서명/발신인)', kind: 15, insertText: '', detail: '서명 및 발신인 왼쪽 정렬 삽입 (Ctrl+Alt+R)', actionId: 'signature' },
+  { id: 'signature', label: 'Sign / 사인 (서명/발신인)', kind: 15, insertText: '', detail: '서명 및 발신인 서식 설정 (Ctrl+Alt+R)', actionId: 'signature' },
   { id: 'image', label: 'Image (이미지)', kind: 15, insertText: '![대체 텍스트](이미지_URL)', detail: '이미지 삽입' },
   { id: 'link', label: 'Link (링크)', kind: 15, insertText: '[링크 텍스트](URL)', detail: '링크 삽입' },
   { id: 'cite', label: 'Cite (참조문헌 인용)', kind: 15, insertText: '', detail: '참조문헌(bib) 선택 및 인용 삽입', actionId: 'custom-action-citation' },

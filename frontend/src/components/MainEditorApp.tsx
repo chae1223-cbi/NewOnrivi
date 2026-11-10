@@ -7,6 +7,7 @@
  *   - EditorProvider 컨텍스트 공급 및 하위 역할 컴포넌트(EditorLayout, EditorCore, EditorOverlayManager, GuestPaywallOverlay) 렌더링 위임
  *   - 보기 모드(edit / both / preview / css-style) 전환 가드, 탭 닫기, 다중 파일 병합 선택, 플로팅 툴바 실행 제어
  * 🚨 @PATCH :
+ *   - 2026-11-10 : 서명/발신인 대화상자(isSignatureModalOpen) 및 visualCommandRef/previewRef 매니저 전달 연동
  *   - 2026-11-08 : [플로팅 툴바 서식 적용 후 툴바 유지 & ESC 닫기]: 서식 선택/엔터 시 툴바를 닫지 않고 연속 서식 선택이 가능하도록 포커스를 유지하고, ESC 입력 시에만 툴바를 닫고 에디터로 포커스 복원하도록 개선
  *   - 2026-11-08 : [플로팅 툴바 키보드 포커스 & 방향키 네비게이션 & 엔터 에디터 복귀]: 툴바 오픈 시 버튼으로 포커스를 전달하여 좌우상하 방향키로 순환 탐색 가능하게 하고, 엔터 입력 시 현재 커서에 서식을 적용한 후 에디터로 즉시 복귀하여 타이핑 가능하도록 개선
  *   - 2026-11-07 : [플로팅 툴바 커서 반환 및 선택 버튼 포커스 유지]: 툴바 닫기 시 원래 호출 위치(Visual: RESTORE_ORIGIN, Monaco: setSelection)로 커서 반환 보장, 툴바 버튼 클릭 시 첫 번째 버튼 리셋 방지 및 선택 버튼 포커스 영속 유지
@@ -645,6 +646,8 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     isHelpModalOpen, setIsHelpModalOpen,
     isReferenceModalOpen, setIsReferenceModalOpen,
     isCitationModalOpen, setIsCitationModalOpen,
+    isSignatureModalOpen, setIsSignatureModalOpen,
+    signatureModalInitialData, setSignatureModalInitialData,
     promptConfig, setPromptConfig,
     confirmConfig, setConfirmConfig
   } = useEditorModals();
@@ -2559,6 +2562,8 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
               isMapModalOpen, setIsMapModalOpen,
               isTableModalOpen, setIsTableModalOpen,
               isCitationModalOpen, setIsCitationModalOpen,
+              isSignatureModalOpen, setIsSignatureModalOpen,
+              signatureModalInitialData, setSignatureModalInitialData,
               isResourceGuideModalOpen,
               setIsResourceGuideModalOpen: (open: boolean) => {
                 setIsResourceGuideModalOpen(open);
@@ -2578,6 +2583,7 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
               licenseStatus, deviceId, handleSuccessActivation, handlers, content, bibContent, activeTabId, currentFileNodeRef,
               setCurrentFileName, setCurrentFileNode, lastSavedContentRef, setSaveStatus, refreshFileList,
               showToast, editorRef, insertAtCursor, lastSelectionRef, setIsMergeMode, selectedMergeNodes, setSelectedMergeNodes,
+              visualCommandRef, previewRef,
               formulaModalInitialLatex,
               handleFileClick, profiles, activeProfileId, dynamicCssString, setActiveProfileId: handleProfileChange, setProfiles,
               isSystemProfileId,

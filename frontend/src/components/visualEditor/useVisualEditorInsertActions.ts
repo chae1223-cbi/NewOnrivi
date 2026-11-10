@@ -1,6 +1,8 @@
 // ====================================================================
 // 📊 [OMD-HOOK-VisualEditorInsertActions] frontend/src/components/visualEditor/useVisualEditorInsertActions.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 서식/블록 명령, 이미지/미디어/각주/서명/참고문헌/수식/문서링크/날짜 삽입 액션 및 외부 commandRef 브릿지 훅
+// 🚨 @PATCH : 2026-11-10 — [서명/발신인 실행 시 SignatureModal 대화상자 호출 연동]:
+//             1) applySignature 실행 시 고정 텍스트 즉시 삽입 대신 onrivi:open-signature-modal 이벤트를 발생시켜 정렬(left/right), 날짜, 작성자, 도장 커스텀 대화상자를 호출하도록 개선
 // 🚨 @PATCH : 2026-11-08 — [목록 항목 인용문 변환 시 글머리 기호 보존 및 번호 목록/상단 빈 볼트 오변환 원천 방어]:
 //             1) setQuote 실행 시 선택 영역이 리스트(bullet_list / ordered_list) 내부에 있는 경우, ProseMirror findWrapping이 ordered_list로 오분기하고 상위에 빈 볼트(•)를 남기던 결함 완전 차단
 //             2) 선택된 리스트 항목들을 기존 리스트 타입 그대로 보존하여 blockquote로 감싸도록 개선하고, 동일 Alert 해제 시 liftTarget 기반 온전한 복구 보장
@@ -592,55 +594,17 @@ export function useVisualEditorInsertActions({
     }
 
     const { from, to } = view.state.selection;
-    const token = `ONRIVICURSOR${Date.now()}${Math.floor(Math.random() * 1000000)}`;
-    const transaction = view.state.tr.insertText(`${token}END`, to).insertText(`${token}START`, from);
-    const marked = codecRef.current.serialize(transaction.doc);
-    const start = marked.indexOf(`${token}START`);
-    const end = marked.indexOf(`${token}END`);
-    const source = marked.replace(`${token}START`, '').replace(`${token}END`, '');
-    const selectedLength = Math.max(0, end - start - `${token}START`.length);
-    const rawSelectedText = selectedLength > 0 ? source.slice(start, start + selectedLength) : '';
-    const trimmedText = rawSelectedText.trim();
-
-    let newSource = '';
-    const divRegex = /^<div\s+align=["'](right|left)["'][^>]*>([\s\S]*?)<\/div>$/i;
-    const match = trimmedText.match(divRegex);
-
-    if (match) {
-      const unwrapped = match[2].trim();
-      newSource = source.slice(0, start) + unwrapped + source.slice(start + selectedLength);
-    } else if (trimmedText) {
-      const lines = trimmedText.split('\n');
-      const processedLines = lines.map((line: string) => {
-        const rTrimmed = line.trimEnd();
-        if (
-          rTrimmed.length > 0 &&
-          !rTrimmed.endsWith('  ') &&
-          !rTrimmed.endsWith('<br>') &&
-          !rTrimmed.endsWith('<br/>')
-        ) {
-          return rTrimmed + '  ';
-        }
-        return line;
-      });
-      const contentText = processedLines.join('\n');
-      const wrapped = `<div align="left">\n\n${contentText}\n\n</div>\n`;
-      newSource = source.slice(0, start) + wrapped + source.slice(start + selectedLength);
-    } else {
-      const now = new Date();
-      const dateStr = `${now.getFullYear()}년 ${now.getMonth() + 1}월 ${now.getDate()}일`;
-      const template = `\n\n<div align="left">\n\n${dateStr}  \n**작성자: 홍길동** <span style="color:#dc2626; border:1.5px solid #dc2626; border-radius:50%; padding:0 3px; font-size:0.85em; font-weight:bold;">인</span>\n\n</div>\n\n`;
-      newSource = source.slice(0, start) + template + source.slice(start);
+    let selectedText = '';
+    if (from !== to) {
+      selectedText = view.state.doc.textBetween(from, to, '\n', '\n').trim();
     }
 
-    (view as any).replaceSource?.(newSource);
-    callback.current(newSource);
-    if (onToastRef.current) {
-      onToastRef.current('서명/발신인 서식이 적용되었습니다.', 'success');
-    } else {
-      setNotice('서명/발신인 서식이 적용되었습니다.');
-    }
-    view.focus();
+    // ✍️ 서명 모달 오픈 (선택 영역 텍스트가 있을 경우 전달)
+    window.dispatchEvent(
+      new CustomEvent('onrivi:open-signature-modal', {
+        detail: selectedText ? { customBody: selectedText } : undefined,
+      })
+    );
     return true;
   };
   applySignatureRef.current = applySignature;

@@ -2,6 +2,9 @@ import { nextReportNumber, resolveCaptionConfig } from '@/lib/aiFriendlyReport';
 /**
  * 프로그램명 : OnriviAuthor
  * 프로그램 ID : oaar-modal-manager
+ * 🚨 @PATCH : **2026-11-10** — [서명/발신인 서식 모달(SignatureModal) 연동 및 실시간 이벤트 리스너 탑재]:
+ *             1) onrivi:open-signature-modal 이벤트를 청취하여 정렬(left/right), 날짜, 작성자, 도장 설정 다이얼로그 오픈
+ *             2) 기존 서명 블록 수정(raw 마크다운 분해) 및 신규 서명 커서 위치(Monaco/위지윅) 자동 삽입 지원
  * 🚨 @PATCH : **2026-10-27** — [SNS 카드뉴스 전용 내보내기(sns) 핸들러 및 서식 자동 감지 연동]: ExportModal에 isSnsCardProfile, defaultSnsRatio 전달 및 format === 'sns' 선택 시 handlers.exportSNS(exportSettings) 호출 연결
  * 🚨 @PATCH : **2026-10-24** — [문서보기 위지윅 이미지 캡션(fullMarkdown) 양방향 전달]: deps.replaceVisualImage 호출 시 fullMarkdown 파라미터를 함께 전달하여 캡션 문단과 이미지가 동시 삽입되도록 연동
  * 🚨 @PATCH : **2026-10-22** — [미디어 종류별 캡션 설정 전달]: 그림·동영상·지도·표 모달에 resolveCaptionConfig로 종류별 캡션 위치/구문(kindOverrides)을 병합해 전달
@@ -48,6 +51,7 @@ import FormulaModal from '@/components/FormulaModal';        // 수식 모달 �
 import CssStyleModal from '@/components/CssStyleModal';        // 서식 모달 컴포넌트
 import ReferenceManagerModal from '@/components/ReferenceManagerModal'; // 참조 관리 모달 컴포넌트
 import CitationSelectionModal from '@/components/CitationSelectionModal'; // 참조자 선택 모달 컴포넌트
+import SignatureModal from '@/components/editor/modals/SignatureModal'; // 서명/발신인 모달 컴포넌트
 import ResourceFolderGuideModal from '@/components/editor/modals/ResourceFolderGuideModal'; // 리소스 폴더 안내 모달
 import { KnowledgeDetailModal } from '@/components/KnowledgeDetailModal';
 import { KnowledgeIndexProgressModal, type KnowledgeIndexProgressParams } from '@/components/knowledge/KnowledgeIndexProgressModal';
@@ -106,7 +110,8 @@ export default function ModalManager({ modals, deps }: ModalManagerProps) {
     isTableModalOpen, setIsTableModalOpen,                                 // 표 모달 열림/닫힘 상태
     isHelpModalOpen, setIsHelpModalOpen,                                 // 도움말 모달 열림/닫힘 상태
     isReferenceModalOpen, setIsReferenceModalOpen,                          // 참조 관리 모달 열림/닫힘 상태
-    isCitationModalOpen, setIsCitationModalOpen                             // 참조자 선택 모달 열림/닫힘 상태
+    isCitationModalOpen, setIsCitationModalOpen,                             // 참조자 선택 모달 열림/닫힘 상태
+    isSignatureModalOpen, setIsSignatureModalOpen
   } = modals;
 
   // deps에서 필요한 속성들 추출
@@ -132,6 +137,45 @@ export default function ModalManager({ modals, deps }: ModalManagerProps) {
     window.addEventListener('onrivi:open-print',open);
     return()=>window.removeEventListener('onrivi:open-print',open);
   },[setIsExportModalOpen]);
+
+  // ✍️ [서명/발신인 모달 상태 및 오픈 이벤트 리스너]
+  const [signatureInitial, setSignatureInitial] = React.useState<any>(null);
+  const [signatureReplaceTarget, setSignatureReplaceTarget] = React.useState<{ pos?: number; nodeSize?: number } | null>(null);
+
+  React.useEffect(() => {
+    const handleOpenSignature = (e: any) => {
+      if (e.detail?.raw) {
+        const raw = e.detail.raw as string;
+        const alignMatch = raw.match(/align=["'](left|right)["']/i);
+        const align = (alignMatch ? alignMatch[1] : 'right') as 'left' | 'right';
+        const innerMatch = raw.match(/<div[^>]*>([\s\S]*?)<\/div>/i);
+        const inner = innerMatch ? innerMatch[1].trim() : '';
+        
+        const dateMatch = inner.match(/(\d{4}년\s*\d{1,2}월\s*\d{1,2}일)/);
+        const authorMatch = inner.match(/\*\*([^:*]+?)(?::\s*([^*]+))?\*\*/);
+        const sealMatch = inner.match(/<span[^>]*>([^<]+)<\/span>/);
+        const hasSeal = Boolean(sealMatch) || /인|직인/.test(inner);
+
+        setSignatureInitial({
+          align,
+          date: dateMatch ? dateMatch[1] : '',
+          signerRole: authorMatch && authorMatch[2] ? authorMatch[1].trim() : '작성자',
+          signerText: authorMatch ? (authorMatch[2] || authorMatch[1]).trim() : '',
+          showSeal: hasSeal,
+          sealText: sealMatch ? sealMatch[1].trim() : '인',
+          customBody: (!dateMatch && !authorMatch) ? inner : undefined,
+        });
+        setSignatureReplaceTarget({ pos: e.detail.pos, nodeSize: e.detail.nodeSize });
+      } else {
+        setSignatureInitial(null);
+        setSignatureReplaceTarget(null);
+      }
+      setIsSignatureModalOpen(true);
+    };
+
+    window.addEventListener('onrivi:open-signature-modal', handleOpenSignature);
+    return () => window.removeEventListener('onrivi:open-signature-modal', handleOpenSignature);
+  }, [setIsSignatureModalOpen]);
 
   const [knowledgeDetailData, setKnowledgeDetailData] = React.useState<any | null>(null);
   const [indexProgressParams, setIndexProgressParams] = React.useState<KnowledgeIndexProgressParams | null>(null);
@@ -813,6 +857,34 @@ export default function ModalManager({ modals, deps }: ModalManagerProps) {
           window.dispatchEvent(new CustomEvent('app:open-knowledge-manager'));
         }}
         showToast={deps.showToast}
+      />
+
+      {/* ✍️ 서명 / 발신인 서식 모달 */}
+      <SignatureModal
+        isOpen={isSignatureModalOpen}
+        onClose={() => {
+          setIsSignatureModalOpen(false);
+          setSignatureInitial(null);
+          setSignatureReplaceTarget(null);
+        }}
+        initialData={signatureInitial}
+        isDarkMode={isDarkMode}
+        onInsert={(markdown) => {
+          if (signatureReplaceTarget && typeof signatureReplaceTarget.pos === 'number' && deps.visualCommandRef?.current) {
+            deps.visualCommandRef.current({
+              type: 'REPLACE_RANGE',
+              from: signatureReplaceTarget.pos,
+              to: signatureReplaceTarget.pos + (signatureReplaceTarget.nodeSize || 1),
+              text: markdown
+            });
+            return;
+          }
+          if (deps.previewRef?.current?.querySelector('.visual-document-editor') && deps.visualCommandRef?.current) {
+            deps.visualCommandRef.current('INSERT_TEXT:' + markdown);
+          } else if (deps.insertAtCursor) {
+            deps.insertAtCursor(markdown);
+          }
+        }}
       />
 
       {/* 🚀 AI 지식 문서 등록 및 실시간 진행 모달 */}

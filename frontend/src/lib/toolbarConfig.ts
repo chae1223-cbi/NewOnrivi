@@ -60,7 +60,7 @@ export const TOOLBAR_ITEMS = [
 
   // 6. 문서 (Document)
   { id: 'now', icon: '📅', name: '현재 날짜/시간', group: '문서', tagFormat: '날짜/시간', defaultHotkey: '', defaultCommand: 'now', insertText: '', kind: 15 },
-  { id: 'signature', icon: '✍️', name: '서명/발신인 (왼쪽 정렬)', group: '문서', tagFormat: '<div align="left">...</div>', defaultHotkey: 'Ctrl+Alt+R', defaultCommand: 'sign', insertText: '<div align="left">\n\n2026년 10월 1일  \n**작성자: 홍길동** <span style="color:#dc2626; border:1.5px solid #dc2626; border-radius:50%; padding:0 3px; font-size:0.85em; font-weight:bold;">인</span>\n\n</div>', kind: 15 },
+  { id: 'signature', icon: '✍️', name: '서명/발신인 서식', group: '문서', tagFormat: '<div align="right|left">...</div>', defaultHotkey: 'Ctrl+Alt+R', defaultCommand: 'sign', insertText: '', kind: 15 },
   { id: 'styleSettings', icon: '🎨', name: '서식관리', group: '문서', tagFormat: '서식 테마 갤러리', defaultHotkey: '', defaultCommand: 'style', insertText: '', kind: 17 },
 
   // 7. 부가기능 (Extra)

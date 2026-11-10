@@ -2,6 +2,9 @@
 // 🧩 [OMD-CORE-VisualNodeViews-0001] createVisualNodeViews.ts ➔ 시각 에디터 ProseMirror NodeViews 팩토리
 // 🎯 @KICK  : table, visual_math, visual_inline_math, list_item, code_block, visual_footnote_ref, visual_footnote_def, visual_checkbox, source_block, mediaNodeView 10대 위지윅 NodeView 인스턴스화
 // 🛡️ @GUARD : Rule 3(역할 기반 분리: Core View) 준수 - DOM 렌더링 및 인터랙션 격리
+// 🚨 @PATCH : 2026-11-10 — [서명/발신인 블록 시각적 렌더링 및 좌/우 정렬 토글·수정 빠른 액션바 지원]:
+//             1) source_block에서 <div align="left|right">...</div> 감지 시 visual-signature-container로 격리하여 붉은색 원형 도장('인') 및 정렬 시각적 렌더링 지원
+//             2) 호버 시 ⬅️ 왼쪽 / ➡️ 오른쪽 원클릭 정렬 전환, ✏️ 서명 수정 팝업 오픈, 🗑️ 삭제 빠른 액션 컨트롤 제공
 // 🚨 @PATCH : 2026-11-07 — [인라인 및 문단 내 마크다운 image 노드뷰 등록]: ProseMirror 표준 image 노드에 대한 NodeView(inlineImageNodeView)를 등록하여 React Portal(renderImage/AsyncImage)과 연동, 구글 드라이브(driveId) 및 로컬 미디어가 깨진 이미지 아이콘 대신 온전한 이미지로 렌더링되도록 구현
 // 🚨 @PATCH : 2026-11-07 — [HTML 표(<table>...</table>) 시각 렌더링 및 실시간 원문 편집 드로어 연동]: source_block에서 HTML <table> 감지 시 visual-html-table-container 및 접이식 'HTML 표 원문 편집' 드로어와 상단 '✏️ HTML 편집' 빠른 버튼을 제공하여 시각적 표 렌더링과 실시간 원문 수정을 동시에 지원
 // 🚨 @PATCH : 2026-11-07 — [코드블록 순수 문구 복사 및 마크다운 형태 복사 이원화]: '복사'(순수 텍스트)와 '형태 복사'(```lang\n...\n``` 마크다운 펜스 형태 포함) 버튼을 분리 제공
@@ -848,9 +851,16 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
     source_block(node, currentView, getPos) {
       const isMermaid = /^\s*```\s*mermaid(?:\s|$)/i.test(node.attrs.source);
       const isTable = /^\s*(?:<!--[\s\S]*?-->\s*)*<table\b[\s\S]*<\/table>\s*$/i.test(node.attrs.source.trim());
+      const isSignature = /^\s*<div\s+align=["'](left|right)["'][^>]*>[\s\S]*?<\/div>\s*$/i.test(node.attrs.source.trim());
       const dom = document.createElement('div');
       dom.contentEditable = 'false';
-      dom.className = isMermaid ? 'visual-source-block visual-mermaid-container' : isTable ? 'visual-source-block visual-html-table-container' : 'visual-source-block';
+      dom.className = isMermaid
+        ? 'visual-source-block visual-mermaid-container'
+        : isTable
+        ? 'visual-source-block visual-html-table-container'
+        : isSignature
+        ? 'visual-source-block visual-signature-container group relative my-2 p-1.5 rounded-xl transition-all hover:ring-1 hover:ring-blue-400/40'
+        : 'visual-source-block';
       const picture = document.createElement('div');
       const id = ++imageSequence.current;
       dom.append(picture);
@@ -1032,6 +1042,94 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
         observer = new MutationObserver(() => syncHeaderButton());
         observer.observe(picture, { childList: true, subtree: true });
         setTimeout(syncHeaderButton, 60);
+      } else if (isSignature) {
+        const controls = document.createElement('div');
+        controls.className = 'visual-media-controls no-print opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5 bg-white/95 dark:bg-zinc-800/95 shadow-md border border-slate-200/80 dark:border-zinc-700/80 rounded-xl p-1 z-20';
+
+        const currentAlign = /align=["']right["']/i.test(node.attrs.source) ? 'right' : 'left';
+
+        // ⬅️ 좌측 정렬 버튼
+        const leftBtn = document.createElement('button');
+        leftBtn.type = 'button';
+        leftBtn.className = `onrivi-media-control text-xs px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+          currentAlign === 'left'
+            ? 'bg-blue-600 text-white shadow-xs'
+            : 'text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700'
+        }`;
+        leftBtn.textContent = '⬅️ 왼쪽';
+        leftBtn.title = '서명을 왼쪽 정렬로 변경';
+        leftBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const pos = getPos();
+          if (typeof pos === 'number' && currentView.editable) {
+            const updated = node.attrs.source.replace(/align=["'](left|right)["']/i, 'align="left"');
+            currentView.dispatch(currentView.state.tr.setNodeMarkup(pos, undefined, { source: updated }));
+          }
+        });
+
+        // ➡️ 우측 정렬 버튼
+        const rightBtn = document.createElement('button');
+        rightBtn.type = 'button';
+        rightBtn.className = `onrivi-media-control text-xs px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+          currentAlign === 'right'
+            ? 'bg-blue-600 text-white shadow-xs'
+            : 'text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700'
+        }`;
+        rightBtn.textContent = '➡️ 오른쪽';
+        rightBtn.title = '서명을 오른쪽 정렬로 변경';
+        rightBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const pos = getPos();
+          if (typeof pos === 'number' && currentView.editable) {
+            const updated = node.attrs.source.replace(/align=["'](left|right)["']/i, 'align="right"');
+            currentView.dispatch(currentView.state.tr.setNodeMarkup(pos, undefined, { source: updated }));
+          }
+        });
+
+        // ✏️ 서명 수정 버튼
+        const editBtn = document.createElement('button');
+        editBtn.type = 'button';
+        editBtn.className = 'onrivi-media-control text-xs px-2.5 py-1 rounded-lg font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors cursor-pointer';
+        editBtn.textContent = '✏️ 서명 수정';
+        editBtn.title = '서명 문구 및 상세 설정 수정';
+        editBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const pos = getPos();
+          window.dispatchEvent(new CustomEvent('onrivi:open-signature-modal', {
+            detail: {
+              raw: node.attrs.source,
+              pos: typeof pos === 'number' ? pos : undefined,
+              nodeSize: node.nodeSize
+            }
+          }));
+        });
+
+        // 🗑️ 삭제 버튼
+        const deleteBtn = document.createElement('button');
+        deleteBtn.type = 'button';
+        deleteBtn.className = 'onrivi-media-control text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 text-xs px-2 py-1 rounded-lg font-medium cursor-pointer';
+        deleteBtn.textContent = '🗑️ 삭제';
+        deleteBtn.title = '서명 블록 삭제';
+        deleteBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const pos = getPos();
+          if (typeof pos === 'number' && currentView.editable) {
+            const tr = currentView.state.tr;
+            if (currentView.state.doc.childCount === 1 && pos === 0) {
+              currentView.dispatch(closeHistory(tr.replaceWith(pos, pos + node.nodeSize, visualSchema.nodes.paragraph.create())));
+            } else {
+              currentView.dispatch(closeHistory(tr.delete(pos, pos + node.nodeSize)));
+            }
+            currentView.focus();
+          }
+        });
+
+        controls.append(leftBtn, rightBtn, editBtn, deleteBtn);
+        dom.append(controls);
       } else {
         const controls = document.createElement('div');
         controls.className = 'visual-media-controls no-print';

@@ -2,6 +2,9 @@
  * 프로그램명 : OnriviAuthor 
  * 버전 정보 : 1.0.1
  * 프로그램 ID : oaar-visual-codec
+ * 🚨 @PATCH : **2026-11-10** — [서명/발신인 블록(<div align="left|right">...</div>) 독립 분할 청킹 및 시각 렌더링 지원]:
+ *             1) starts 인덱스 계산 시 <div align="left|right">부터 </div>까지를 단일 블록(inSignatureBlock)으로 감지 격리하여 일반 텍스트 문단으로 쪼개지는 현상 원천 차단
+ *             2) isSignature 정규식 매칭을 통해 source_block 노드로 무손실 생성 및 비주얼 에디터 시각 렌더링 지원
  * 🚨 @PATCH : **2026-11-07** — [인라인 image 노드 toDOM 꺽쇠/따옴표 정제]: schema.nodes.image toDOM에서 rawSrc의 꺽쇠(<...>) 및 따옴표를 정제하여 불필요한 브라우저 404 오요청 방어
  * 🚨 @PATCH : **2026-11-07** — [visual_image toDOM 이미지 꺽쇠 정제]: visual_image toDOM에서 rawSrc의 꺽쇠(<...>)를 정제하여 불필요한 404 오요청 방어
  * 🚨 @PATCH : **2026-11-07** — [가져오기 및 본문 내 HTML 표(<table>...</table>) 시각 렌더링 및 무손실 직렬화 지원]:
@@ -567,6 +570,20 @@ export function createVisualDocumentCodec(markdown: string) {
       if (i + 1 < lines.length && !starts.includes(i + 1)) starts.push(i + 1);
     }
   }
+
+  // ✍️ [서명/발신인 블록 경계 분할]: <div align="left|right">부터 </div>까지를 단일 블록으로 묶어 분리
+  let inSignatureBlock = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!inSignatureBlock && /^\s*<div\s+align=["'](left|right)["']/i.test(line)) {
+      if (!starts.includes(i)) starts.push(i);
+      inSignatureBlock = true;
+    } else if (inSignatureBlock && /<\/div>\s*$/i.test(line.trim())) {
+      inSignatureBlock = false;
+      if (i + 1 < lines.length && !starts.includes(i + 1)) starts.push(i + 1);
+    }
+  }
+
   starts.sort((a, b) => a - b);
   // Scene delimiters must stay together until the scene editor is implemented.
   const syntaxLines = [...lines];
@@ -603,6 +620,7 @@ export function createVisualDocumentCodec(markdown: string) {
     const mathMatch = raw.trim().match(/^\$\$([\s\S]*?)\$\$$/);
     const codeMathMatch = raw.trim().match(/^```(?:math|latex)\s*([\s\S]*?)```$/i);
     const isHtmlTable = /^\s*(?:<!--[\s\S]*?-->\s*)*<table\b[\s\S]*<\/table>\s*$/i.test(raw.trim());
+    const isSignature = /^\s*<div\s+align=["'](left|right)["'][^>]*>[\s\S]*?<\/div>\s*$/i.test(raw.trim());
     if (/^(?:<!--\s*(?:onrivi:page-break|\[page-break\])\s*-->|<hr\s+class=["']page-break["']\s*\/?>)$/.test(raw.trim())) {
       node = visualSchema.nodes.page_break.create();
     } else if (/^<p>\s*<\/p>$/.test(raw.trim())) {
@@ -615,7 +633,7 @@ export function createVisualDocumentCodec(markdown: string) {
     } else if (mathMatch || codeMathMatch) {
       const latexContent = (mathMatch ? mathMatch[1] : codeMathMatch![1]).trim();
       node = visualSchema.nodes.visual_math.create({ latex: latexContent });
-    } else if (isHtmlTable) {
+    } else if (isHtmlTable || isSignature) {
       node = visualSchema.nodes.source_block.create({ source: raw.trim() });
     } else {
       const safeRaw = raw

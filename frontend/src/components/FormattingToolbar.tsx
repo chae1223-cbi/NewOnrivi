@@ -137,7 +137,7 @@ export default function FormattingToolbar() {
       <FormatBtn label={<img src="/icons/Farm.png" alt="이미지" className="w-5 h-5 object-contain dark:invert" />} title="이미지" onAction={() => dispatch('IMAGE')} />
       <FormatBtn label={<img src="/icons/FilmReel.png" alt="동영상삽입" className="w-5 h-5 object-contain dark:invert" />} title="동영상삽입" onAction={() => dispatch('YOUTUBE')} />
       <FormatBtn label={<img src="/icons/Calendar.png" alt="현재 날짜/시간" className="w-5 h-5 object-contain dark:invert" />} title="현재 날짜/시간" onAction={() => dispatch('NOW')} />
-      <FormatBtn label={<Icon name="Signature" size={18} className="text-zinc-800 dark:text-zinc-100" />} title={tooltip('서명/발신인 (왼쪽 정렬)', SHORTCUTS.signature)} onAction={() => dispatch('SIGNATURE')} />
+      <FormatBtn label={<Icon name="Signature" size={18} className="text-zinc-800 dark:text-zinc-100" />} title={tooltip('서명/발신인 서식', SHORTCUTS.signature)} onAction={() => dispatch('SIGNATURE')} />
 
       <Divider />
 
