@@ -298,6 +298,8 @@ export default function VisualDocumentEditor({
   const host = useRef<HTMLDivElement>(null);
   const scrollCallback = useRef(onSourceScroll);
   scrollCallback.current = onSourceScroll;
+  const contentLengthRef = useRef(content.length);
+  contentLengthRef.current = content.length;
 
   useEffect(() => {
     let frame = 0;
@@ -309,7 +311,7 @@ export default function VisualDocumentEditor({
         const view = viewRef.current;
         const codec = codecRef.current;
         if (!view || !codec || !scrollCallback.current) return;
-        const totalLen = emitted.current?.length || content.length;
+        const totalLen = emitted.current?.length || contentLengthRef.current;
         if (container.scrollTop <= 5) {
           scrollCallback.current(0);
           return;
