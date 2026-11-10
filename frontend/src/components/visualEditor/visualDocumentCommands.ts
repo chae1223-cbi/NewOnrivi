@@ -2,6 +2,7 @@
 // ⚙️ [OMD-CORE-VisualDocCommands-0001] visualDocumentCommands.ts ➔ 시각 에디터 전용 ProseMirror 커맨드 및 정규화 플러그인
 // 🎯 @KICK  : 제목/코드블록/인용구/리스트/구분선/미디어 등 블록 조작 커맨드 및 리스트 정규화 트랜잭션 플러그인 제공
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 VisualDocumentEditor 대형 컴포넌트 모듈화 표준 준수
+// 🚨 @PATCH : 2026-11-10 — [슬래시 명령어 괄호/구두점 뒤 인식 지원]: 괄호((, [, {) 및 따옴표(", ') 직후 슬래시 입력 시에도 슬래시 메뉴가 정상 팝업되도록 패턴 확장
 // 🚨 @PATCH : 2026-11-08 — [빈 행(빈 문단) 클릭 시 다음 줄 도약(하이재킹) 방어 및 제자리 정확 안착]:
 //             1) emptyParagraphAtClick에 1순위 Direct Target(p, br) 감지 및 descendants 기반 전체 빈 텍스트블록(textContent.trim() === '') DOM 히트테스트 3중 엔진 탑재
 //             2) paragraphLineEndAtClick의 과도한 세로 패딩(0.3)을 0.15(최대 4px)로 축소하여 빈 행 클릭 시 아랫줄 문단(광복 80주년...) 시작으로 커서가 빨려 들어가던 결함 완벽 해결
@@ -22,7 +23,7 @@ import { visualSchema } from '@/lib/visualDocumentCodec';
 import { quoteIndent } from '@/lib/visualQuoteCommands';
 import { selectedList, indentWholeList } from '@/lib/visualListCommands';
 
-export const slashPattern = new RegExp('(?:^|\\s)([\\/／][\\p{L}\\p{N}_-]*)$', 'u');
+export const slashPattern = new RegExp('(?:^|[\\s(\\[{\'"«“‘])([\\/／][\\p{L}\\p{N}_-]*)$', 'u');
 
 export const setHeadingBlock = (level: number): Command => (state, dispatch, view) => {
   const { $from, $to } = state.selection;

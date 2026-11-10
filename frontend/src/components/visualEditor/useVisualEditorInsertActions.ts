@@ -1,6 +1,7 @@
 // ====================================================================
 // 📊 [OMD-HOOK-VisualEditorInsertActions] frontend/src/components/visualEditor/useVisualEditorInsertActions.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 서식/블록 명령, 이미지/미디어/각주/서명/참고문헌/수식/문서링크/날짜 삽입 액션 및 외부 commandRef 브릿지 훅
+// 🚨 @PATCH : 2026-11-10 — [슬래시 명령어 글자 중간 실행 시 잔여 텍스트 삭제 및 전체 단어 검색 보장]: 커서 뒤의 단어 끝까지 slashRange.to에 포함하여 명령어 실행 시 뒤쪽 글자가 남지 않도록 완벽 제거
 // 🚨 @PATCH : 2026-11-10 — [링크 모달 완료 시 링크 뒤 자동 스페이스 삽입 및 커서 전진]:
 //             1) handleLinkConfirm에서 링크 삽입 후 즉시 일반 공백(' ')을 자동 삽입(또는 기존 공백 통과)하고 커서를 공백 뒤로 안착시켜 다음 입력이 링크로 이어지지 않고 일반 텍스트로 자연스럽게 작성되도록 구현
 // 🚨 @PATCH : 2026-11-10 — [하이퍼링크 해제(handleLinkUnlink) 기능 신설]:
@@ -1518,10 +1519,24 @@ export function useVisualEditorInsertActions({
             : Math.max(8, Math.min(window.innerHeight - 150, rect.top - 48));
         setPopup({ top, left: Math.max(8, Math.min(window.innerWidth - 360, rect.left)) });
         if (command === 'SLASH_COMMAND') {
-          const before = $from.parent.isTextblock ? $from.parent.textBetween(0, $from.parentOffset, '\n', '\n') : '';
+          const isTextblock = $from.parent.isTextblock;
+          const before = isTextblock ? $from.parent.textBetween(0, $from.parentOffset, '\n', '\n') : '';
           const match = before.match(slashPattern);
-          slashRange.current = { from: empty && match ? from - match[1].length : from, to };
-          setQuery(empty && match ? match[1].slice(1).toLowerCase() : '');
+          if (empty && match) {
+            const after = isTextblock
+              ? $from.parent.textBetween($from.parentOffset, Math.min($from.parent.content.size, $from.parentOffset + 50), '\n', '\n')
+              : '';
+            const afterMatch = after.match(/^[\p{L}\p{N}_-]+/u);
+            const trailingLen = afterMatch ? afterMatch[0].length : 0;
+            slashRange.current = { from: from - match[1].length, to: to + trailingLen };
+            const leadingQuery = match[1].slice(1).toLowerCase();
+            const trailingQuery = afterMatch ? afterMatch[0].toLowerCase() : '';
+            const fullQuery = (leadingQuery + trailingQuery).trim();
+            setQuery(fullQuery || leadingQuery);
+          } else {
+            slashRange.current = { from, to };
+            setQuery('');
+          }
           manualFloatingRef.current = false;
           setSelection(false);
           setSlash(true);

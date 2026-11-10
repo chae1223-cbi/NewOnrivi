@@ -2,6 +2,9 @@
 // 📊 [OMD-CORE-VisualEditor-ProseMirrorHandlers] frontend/src/components/visualEditor/visualEditorProseMirrorHandlers.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 ProseMirror Keymap, 키보드/텍스트 입력, 스마트 붙여넣기(handlePaste), 드롭(handleDrop), 마우스 클릭/링크 이동(handleClick) 및 DOM 이벤트 핸들러 팩토리
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 클립보드 이미지/HTML 붙여넣기 정제, 5대 정밀 진단 로깅(logError/logWarn) 준수
+// 🚨 @PATCH : 2026-11-10 — [슬래시 메뉴 활성 시 Tab/Enter 최우선 가로채기 및 들여쓰기 탈취 방어]:
+//             1) handleKeyDown 최상단에 슬래시 메뉴 키 가로채기를 배치하여 Tab 키 입력 시 indentDocument로 빠지지 않고 선택된 슬래시 명령어가 즉시 실행되도록 보장
+//             2) 슬래시 메뉴 오픈 시 Escape 키 입력 시 슬래시 메뉴 즉시 닫힘 지원
 // 🚨 @PATCH : 2026-11-10 — [링크 끝 스페이스 및 방향키 입력 시 링크 마크 자동 탈출 지원]:
 //             1) 커서가 링크 텍스트의 끝($from.nodeBefore에 link 마크 존재, $from.nodeAfter에 없음)에 있을 때 Space 키 입력 시 링크 서식이 이어지지 않도록 일반 공백 삽입 및 storedMarks 초기화
 //             2) 링크 끝에서 오른쪽 방향키(ArrowRight) 입력 시 저장된 link 마크를 자동 해제하여 다음 타이핑 시 일반 텍스트로 자연스럽게 이어지도록 보장
@@ -418,6 +421,36 @@ export function createVisualEditorHandlers({
   return {
     handleKeyDown(currentView, event) {
       if (!currentView.editable || event.isComposing) return false;
+
+      // 🌟 [슬래시 메뉴 활성 시 최우선 가로채기]: Escape 닫힘, ArrowUp/ArrowDown 이동, Enter/Tab 즉시 실행 (들여쓰기 및 기타 키 가로채기 원천 방어)
+      if (slashOpenRef.current) {
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          event.stopPropagation();
+          setSlash(false);
+          slashRange.current = null;
+          return true;
+        }
+        if (
+          menuItemsRef.current.length &&
+          ['ArrowDown', 'ArrowUp', 'Enter', 'Tab'].includes(event.key)
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            const length = menuItemsRef.current.length;
+            menuIndexRef.current = (menuIndexRef.current + (event.key === 'ArrowDown' ? 1 : -1) + length) % length;
+            setMenuIndex(menuIndexRef.current);
+          } else {
+            // Enter or Tab: 현재 선택된 슬래시 메뉴 명령어 즉시 실행
+            const item = menuItemsRef.current[menuIndexRef.current] || menuItemsRef.current[0];
+            if (item) {
+              executeItemRef.current(item.id, true);
+            }
+          }
+          return true;
+        }
+      }
       if (event.key === 'Enter') {
         const { $from, empty } = currentView.state.selection;
         const isFootnoteDef =
@@ -1028,25 +1061,6 @@ export function createVisualEditorHandlers({
           return true;
         }
       }
-      if (
-        slashOpenRef.current &&
-        menuItemsRef.current.length &&
-        ['ArrowDown', 'ArrowUp', 'Enter', 'Tab', ' ', 'Spacebar'].includes(event.key)
-      ) {
-        event.preventDefault();
-        event.stopPropagation();
-        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-          const length = menuItemsRef.current.length;
-          menuIndexRef.current = (menuIndexRef.current + (event.key === 'ArrowDown' ? 1 : -1) + length) % length;
-          setMenuIndex(menuIndexRef.current);
-        } else {
-          const item = menuItemsRef.current[menuIndexRef.current] || menuItemsRef.current[0];
-          setTimeout(() => {
-            executeItemRef.current(item.id, true);
-          }, 0);
-        }
-        return true;
-      }
 
       // 🌟 [링크 끝 공백 입력 시 링크 서식 자동 탈출]: 링크 끝에서 스페이스 입력 시 링크를 연장하지 않고 일반 공백 삽입
       if (
@@ -1110,10 +1124,18 @@ export function createVisualEditorHandlers({
           : Math.max(8, Math.min(window.innerHeight - 150, rect.top - 48));
         setPopup({ top, left: Math.max(8, Math.min(window.innerWidth - 360, rect.left)) });
         if (slashCommand) {
-          slashRange.current = { from: from - match![1].length, to };
+          const after = $from.parent.isTextblock
+            ? $from.parent.textBetween($from.parentOffset, Math.min($from.parent.content.size, $from.parentOffset + 50), '\n', '\n')
+            : '';
+          const afterMatch = after.match(/^[\p{L}\p{N}_-]+/u);
+          const trailingLen = afterMatch ? afterMatch[0].length : 0;
+          slashRange.current = { from: from - match![1].length, to: to + trailingLen };
           setSlash(true);
           setSelection(false);
-          setQuery(match![1].slice(1).toLowerCase());
+          const leadingQuery = match![1].slice(1).toLowerCase();
+          const trailingQuery = afterMatch ? afterMatch[0].toLowerCase() : '';
+          const fullQuery = (leadingQuery + trailingQuery).trim();
+          setQuery(fullQuery || leadingQuery);
         } else {
           setSlash(false);
           slashRange.current = null;

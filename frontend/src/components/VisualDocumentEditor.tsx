@@ -2,6 +2,7 @@
 // 🏷️ 파일명 : VisualDocumentEditor.tsx
 // 🎭 역할(Role) : Core (위지윅 시각 문서 편집기 메인 코어 뷰)
 // 🎯 주요기능 : ProseMirror 상태/트랜잭션 라이프사이클 관리, 스크롤/커서 양방향 동기화, 인쇄 페이지 가이드 및 서브모듈 오케스트레이션
+// 🚨 @PATCH : 2026-11-10 — [슬래시 명령어 글자 중간 실행 시 잔여 텍스트 삭제 및 전체 단어 검색 보장]: 커서 뒤의 단어 끝까지 slashRange.to에 포함하여 명령어 실행 시 뒤쪽 글자가 남지 않도록 완벽 제거
 // 🚨 @PATCH : 2026-11-10 — [하이퍼링크 해제(handleLinkUnlink) 연동]: LinkModal에 onUnlink 콜백을 연결하여 링크 서식을 즉시 해제하고 일반 텍스트로 복원할 수 있도록 지원
 // 🚨 @PATCH : 2026-11-08 — [플로팅 툴바 포커스 반환 연동]: 플로팅 툴바 종료 시 커서/서식을 보존하고 에디터 포커스 정상 복원
 // 🚨 @PATCH : 2026-11-07 — [플로팅 툴바 커서 반환 연동]: 플로팅 툴바 오픈 시 view.state.selection을 floatingOriginSelectionRef에 기억하여 툴바 종료 시 원래 커서 위치로 복원 지원
@@ -766,14 +767,28 @@ export default function VisualDocumentEditor({
         try {
           window.dispatchEvent(new CustomEvent('onrivi:active-tag', { detail: nextTagInfo }));
         } catch {}
-        const before =
-          $from.parent.isTextblock && $from.parent.type !== visualSchema.nodes.code_block
-            ? $from.parent.textBetween(Math.max(0, $from.parentOffset - 100), $from.parentOffset, '\n', '\n')
-            : '';
+        const isTextblock = $from.parent.isTextblock && $from.parent.type !== visualSchema.nodes.code_block;
+        const before = isTextblock
+          ? $from.parent.textBetween(Math.max(0, $from.parentOffset - 100), $from.parentOffset, '\n', '\n')
+          : '';
         const match = before.match(slashPattern);
-        slashRange.current = empty && match ? { from: from - match[1].length, to } : null;
-        setSlash(Boolean(slashRange.current));
-        setQuery(match?.[1].slice(1).toLowerCase() || '');
+        if (empty && match) {
+          const after = isTextblock
+            ? $from.parent.textBetween($from.parentOffset, Math.min($from.parent.content.size, $from.parentOffset + 50), '\n', '\n')
+            : '';
+          const afterMatch = after.match(/^[\p{L}\p{N}_-]+/u);
+          const trailingLen = afterMatch ? afterMatch[0].length : 0;
+          slashRange.current = { from: from - match[1].length, to: to + trailingLen };
+          setSlash(true);
+          const leadingQuery = match[1].slice(1).toLowerCase();
+          const trailingQuery = afterMatch ? afterMatch[0].toLowerCase() : '';
+          const fullQuery = (leadingQuery + trailingQuery).trim();
+          setQuery(fullQuery || leadingQuery);
+        } else {
+          slashRange.current = null;
+          setSlash(false);
+          setQuery('');
+        }
         menuIndexRef.current = 0;
         setMenuIndex(0);
         if (!empty || slashRange.current) {
