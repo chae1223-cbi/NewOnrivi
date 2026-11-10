@@ -2,6 +2,9 @@
 // 📊 [OMD-CORE-VisualEditor-ProseMirrorHandlers] frontend/src/components/visualEditor/visualEditorProseMirrorHandlers.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 ProseMirror Keymap, 키보드/텍스트 입력, 스마트 붙여넣기(handlePaste), 드롭(handleDrop), 마우스 클릭/링크 이동(handleClick) 및 DOM 이벤트 핸들러 팩토리
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 클립보드 이미지/HTML 붙여넣기 정제, 5대 정밀 진단 로깅(logError/logWarn) 준수
+// 🚨 @PATCH : 2026-11-10 — [코드블록 내부 handleKeyDown 우선 가로채기 적용으로 새 코드블록 생성 결함 원천 차단]:
+//             1) handleKeyDown에서 code_block 내부 Shift+Enter를 직접 가로채어 문단(\\n\\n 또는 빈행 시 \\n) 삽입을 전담하고 tr.split($from.pos) 호출을 원천 차단하여 새 코드블록 생성 완벽 방어
+//             2) handleKeyDown에서 code_block 내부 Enter는 단순 문장 줄바꿈(\\n 1개) 전담
 // 🚨 @PATCH : 2026-11-10 — [코드블록 내부 Enter 문장·Shift+Enter 문단 처리 및 코드블록 탈출 방어]:
 //             1) 코드블록 내부에서 Shift+Enter 입력 시 코드블록을 벗어나 새 코드블록이 생성되던 exitCode 기능 완전 제거
 //             2) 코드블록 내부 Shift+Enter 시 paragraphInCodeBlock을 통해 문단(\\n\\n)으로 나누어 처리하고, 문장 빈행이 있을 때 Shift+Enter 입력 시 문단(\\n 추가)으로 변경
@@ -420,6 +423,48 @@ export function createVisualEditorHandlers({
           return true;
         }
 
+        // 🌟 [코드블록 내부 전용: Enter는 문장 줄바꿈(\n), Shift+Enter는 문단(\n\n 또는 빈행 시 문단 완성) 처리]
+        // 🛡️ 코드블록 내부에서 Shift+Enter 시 tr.split($from.pos)로 새 코드블록이 생성되던 결함 원천 차단
+        if (
+          !event.ctrlKey &&
+          !event.altKey &&
+          !event.metaKey &&
+          !slashOpenRef.current &&
+          empty &&
+          $from.parent.type === visualSchema.nodes.code_block
+        ) {
+          event.preventDefault();
+          if (event.shiftKey) {
+            // Shift + Enter: 문단으로 나누어 처리 (코드블록 탈출 절대 금지, 새 코드블록 분할 금지)
+            const parent = $from.parent;
+            const offset = $from.parentOffset;
+            const textBefore = parent.textBetween(0, offset, '\n', '\n');
+            const textAfter = parent.textBetween(offset, parent.content.size, '\n', '\n');
+
+            const lastNewlineBefore = textBefore.lastIndexOf('\n');
+            const currentLineBefore = lastNewlineBefore === -1 ? textBefore : textBefore.slice(lastNewlineBefore + 1);
+            const nextNewlineAfter = textAfter.indexOf('\n');
+            const currentLineAfter = nextNewlineAfter === -1 ? textAfter : textAfter.slice(0, nextNewlineAfter);
+            const currentLine = currentLineBefore + currentLineAfter;
+
+            // 현재 줄이 이미 빈 행(문장 빈행)이거나 직전에 \n이 있는 상태에서 Shift+Enter를 치면 문단(\n 1개 추가)으로 변경
+            let insertText = '\n\n';
+            if (currentLine.trim() === '' || textBefore.endsWith('\n')) {
+              insertText = '\n';
+            }
+            const tr = currentView.state.tr.replaceSelectionWith(currentView.state.schema.text(insertText)).scrollIntoView();
+            currentView.dispatch(tr);
+            caretRef.current?.schedule();
+            return true;
+          } else {
+            // Enter: 문장 줄바꿈 (\n 1개)
+            const tr = currentView.state.tr.replaceSelectionWith(currentView.state.schema.text('\n')).scrollIntoView();
+            currentView.dispatch(tr);
+            caretRef.current?.schedule();
+            return true;
+          }
+        }
+
         let insideListItem = false;
         for (let d = $from.depth; d > 0; d--) {
           if ($from.node(d).type === visualSchema.nodes.list_item) {
@@ -430,7 +475,7 @@ export function createVisualEditorHandlers({
 
         // 🌟 [요구사항 1: 문단 시작 Enter 무반응 방어]
         // 문단 맨 시작(parentOffset === 0)에서 Enter 입력 시 문단이 밀리지 않고 커서를 제자리에 유지
-        // 단, 리스트 내부(!insideListItem)나 표(!tableContext)는 제외
+        // 단, 리스트 내부(!insideListItem)나 표(!tableContext), 코드블록은 제외
         if (
           !event.shiftKey &&
           !event.ctrlKey &&
@@ -440,6 +485,7 @@ export function createVisualEditorHandlers({
           empty &&
           !insideListItem &&
           $from.parent.isTextblock &&
+          $from.parent.type !== visualSchema.nodes.code_block &&
           $from.parentOffset === 0 &&
           $from.parent.content.size > 0 &&
           !tableContext(currentView.state)
@@ -484,6 +530,7 @@ export function createVisualEditorHandlers({
           !slashOpenRef.current &&
           empty &&
           $from.parent.isTextblock &&
+          $from.parent.type !== visualSchema.nodes.code_block &&
           !tableContext(currentView.state)
         ) {
           // A) 리스트 내부인 경우: 리스트를 벗어나서 새로운 독립 문단(paragraph) 생성!

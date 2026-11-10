@@ -1,8 +1,8 @@
 // ====================================================================
 // 📊 [OMD-EDIT-SettingsModal-0006 ✅ FIXED] SettingsModal.tsx ➔ SettingsModal
-// 🚨 @PATCH : **2026-11-10** — [환경설정 암호화 백업/원복 팝업 클릭 버블링 방어]:
-//             1) isBackupDialogOpen 및 isRestoreDialogOpen 오버레이와 내부 카드에 e.stopPropagation() 및 onMouseDown 차단 적용하여 비밀번호 입력창 클릭 시 모달이 닫히는 현상 완벽 해결
-//             2) 백업/원복 다이얼로그 z-index를 z-[100001]로 상향하여 부모 모달(z-[99999]) 상단에 안정적으로 렌더링
+// 🚨 @PATCH : **2026-11-10** — [환경설정 암호화 백업/원복 팝업 클릭 버블링 방어 및 autoFocus 보강]:
+//             1) 부모 모달 및 백업/원복 오버레이에 `e.target === e.currentTarget` 엄격 가드 적용하여 입력창 클릭 또는 드래그 시 모달이 닫히는 현상 원천 차단
+//             2) 백업 다이얼로그 비밀번호 입력창에 autoFocus 및 Enter 키 바인딩 추가하여 클릭 없이도 즉시 커서 입력 가능하도록 개선
 // 🚨 @PATCH : **2026-11-10** — [환경설정 AES-256 암호화 백업 및 암호 검증 원복 UI 신설]:
 //             1) exportEncryptedSettings 연동: 백업 비밀번호 입력 및 API 키 포함 선택으로 안전한 .onrivicfg 암호화 백업 파일 생성
 //             2) importEncryptedSettings 연동: 백업 파일 업로드 후 암호 검증 팝업을 거쳐 일치할 때만 환경설정 100% 원복 및 리로드
@@ -694,7 +694,11 @@ export default function SettingsModal({
   return createPortal(
     <div 
       className={`fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${closing ? 'opacity-0' : 'opacity-100'}`} 
-      onClick={handleClose}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          handleClose();
+        }
+      }}
       onKeyDown={(e) => {
         e.stopPropagation();
         if (e.nativeEvent) {
@@ -1966,10 +1970,16 @@ export default function SettingsModal({
         <div 
           className="fixed inset-0 z-[100001] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200"
           onClick={(e) => {
-            e.stopPropagation();
-            setIsBackupDialogOpen(false);
+            if (e.target === e.currentTarget) {
+              e.stopPropagation();
+              setIsBackupDialogOpen(false);
+            }
           }}
-          onMouseDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              e.stopPropagation();
+            }
+          }}
         >
           <div 
             className="w-full max-w-md p-6 rounded-2xl bg-surface-container-lowest dark:bg-zinc-900 border border-outline-variant/30 shadow-2xl space-y-5"
@@ -1989,6 +1999,7 @@ export default function SettingsModal({
                 </div>
               </div>
               <button
+                type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   setIsBackupDialogOpen(false);
@@ -2010,8 +2021,15 @@ export default function SettingsModal({
                 <label className="block text-[12px] font-bold text-on-surface mb-1">백업 비밀번호 (최소 4자)</label>
                 <input
                   type="password"
+                  autoFocus
                   value={backupPassword}
                   onChange={(e) => setBackupPassword(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleExecuteBackup();
+                    }
+                  }}
                   placeholder="비밀번호 입력"
                   className="w-full px-3.5 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container-low dark:bg-zinc-800 text-[13px] font-semibold text-on-surface outline-none focus:border-blue-600 dark:focus:border-blue-400"
                 />
@@ -2023,6 +2041,12 @@ export default function SettingsModal({
                   type="password"
                   value={backupPasswordConfirm}
                   onChange={(e) => setBackupPasswordConfirm(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleExecuteBackup();
+                    }
+                  }}
                   placeholder="비밀번호 다시 입력"
                   className="w-full px-3.5 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container-low dark:bg-zinc-800 text-[13px] font-semibold text-on-surface outline-none focus:border-blue-600 dark:focus:border-blue-400"
                 />
@@ -2080,10 +2104,16 @@ export default function SettingsModal({
         <div 
           className="fixed inset-0 z-[100001] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200"
           onClick={(e) => {
-            e.stopPropagation();
-            setIsRestoreDialogOpen(false);
+            if (e.target === e.currentTarget) {
+              e.stopPropagation();
+              setIsRestoreDialogOpen(false);
+            }
           }}
-          onMouseDown={(e) => e.stopPropagation()}
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) {
+              e.stopPropagation();
+            }
+          }}
         >
           <div 
             className="w-full max-w-md p-6 rounded-2xl bg-surface-container-lowest dark:bg-zinc-900 border border-outline-variant/30 shadow-2xl space-y-5"
@@ -2103,6 +2133,7 @@ export default function SettingsModal({
                 </div>
               </div>
               <button
+                type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   setIsRestoreDialogOpen(false);
