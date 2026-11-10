@@ -2,6 +2,8 @@
  * 프로그램명 : OnriviAuthor 
  * 버전 정보 : 1.0.1
  * 프로그램 ID : oaar-visual-codec
+ * 🚨 @PATCH : **2026-11-10** — [인라인 코드(code mark)의 다른 서식(굵게/기울기/밑줄/취소선) 배타성 제약(excludes) 해제]:
+ *             1) visualSchema.marks의 code 마크에 excludes: ''를 명시하여 굵게(strong), 기울기(em), 밑줄(underline), 취소선(strike) 서식과 상호 배타적이지 않고 자유롭게 중첩 감싸기가 가능하도록 허용
  * 🚨 @PATCH : **2026-11-10** — [서명/발신인 블록 내부 분할 starts 인덱스 완전 제거로 단일 위지윅 시각 렌더링 보장]:
  *             1) starts 인덱스 정리 시 서명 블록 시작(<div align="left|right|center">)부터 끝(</div>) 내부의 모든 중간 분할점을 starts에서 완전 제거하여 통짜 단일 블록으로 격리 보존
  *             2) isSignature 정규식(left|right|center) 매칭을 통해 source_block 노드로 무손실 생성 및 비주얼 에디터 시각 렌더링 지원
@@ -276,7 +278,10 @@ export const visualSchema = new Schema({
   })
     // Code must be the innermost mark. HTML/Markdown delimiters inside a code
     // span are literal characters and cannot represent underline/strike marks.
-    .remove('code').addToEnd('code', markdownSchema.spec.marks.get('code')!)
+    .remove('code').addToEnd('code', {
+      ...markdownSchema.spec.marks.get('code')!,
+      excludes: '',
+    })
     .update('link', {
     ...markdownSchema.spec.marks.get('link'),
     inclusive: false,

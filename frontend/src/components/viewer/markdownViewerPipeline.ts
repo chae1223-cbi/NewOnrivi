@@ -2,6 +2,8 @@
 // 📊 [OMD-CORE-Viewer-Pipeline] frontend/src/components/viewer/markdownViewerPipeline.ts
 // 🎯 @KICK  : 마크다운 뷰어(MarkdownViewer)의 경로 보안 가드(isPathInsideWorkspace), 마크다운 원문 전처리(preprocessMarkdownContent), 줄 번호/개행 Rehype 플러그인 및 전용 CSS 스타일 시트
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 작업장 외부 경로 순회 차단, CommonMark 중첩 코드블록/인용구/위키링크 무결성 보존
+// 🚨 @PATCH : 2026-11-10 — [인라인 코드 내부 서식 태그 외부 래핑 자동 정규화]:
+//             1) `**텍스트**`, `*텍스트*`, `~~텍스트~~`, `<u>텍스트</u>` 등 인라인 코드 내부로 들어간 서식 태그를 자동으로 외부 래핑(**`텍스트`**, *`텍스트`* 등)으로 정규화하여 미리보기에서 굵게/기울기/밑줄/취소선 서식이 정상 렌더링되도록 개선
 // 🚨 @PATCH : 2026-11-07 — [HTML 표 태그 전처리 보호 및 병합 셀(colspan/rowspan) 자동 확장 CSS 지원]: HTML 태그 줄의 선행 공백을 &nbsp;로 치환하지 않도록 방어하고, colspan/rowspan이 있는 표에 table-layout: auto 및 max-content/min-width 100% 스타일을 적용하여 병합 표 레이아웃 완성
 // 🚨 @PATCH : 2026-11-04 — [MarkdownViewer 코어 엔진 모듈화]: 경로 보안 가드, 전처리 파이프라인, Rehype 플러그인, 뷰어 전용 CSS 스타일 분리
 // 🔗 @CALLS : resolveDocumentLink, resolveWorkspaceHelpLink, extractFrontmatter, partitionAndNormalizeCodeBlocks
@@ -423,6 +425,16 @@ export function preprocessMarkdownContent(content: string): string {
       }
 
       let proseText = seg.text;
+
+      // 🌟 [인라인 코드 내부 서식 태그 외부 래핑 정규화]: `**텍스트**` -> **`텍스트`**
+      proseText = proseText.replace(
+        /(?<!`)`(\*\*\*|___|\*\*|__|\*|_|~~|<u>|<del>|<s>)(.+?)(?:\1|<\/u>|<\/del>|<\/s>)`(?!`)/g,
+        (_m, openTag, text) => {
+          const closeTag = openTag === '<u>' ? '</u>' : openTag === '<del>' ? '</del>' : openTag === '<s>' ? '</s>' : openTag;
+          return `${openTag}\`${text}\`${closeTag}`;
+        }
+      );
+
       proseText = proseText.replace(
         /(?<!\*)\*\*([^\s*\n](?:[^*\n]*?[^\s*\n])?)\*\*([가-힣a-zA-Z0-9])/g,
         '**$1** $2'

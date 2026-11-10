@@ -1,5 +1,8 @@
 import { clearMarkdownFormatting } from '@/lib/clearMarkdownFormatting';
 // @ts-nocheck
+// 🚨 @PATCH : **2026-11-10** — [인라인 코드와 다른 서식(굵게/기울기/밑줄/취소선) 공존 스마트 래핑 지원]:
+//             1) 선택 영역에 기존 서식 태그(**, *, ~~, <u> 등)가 있을 때 인라인 코드로 감싸면 서식 태그를 외부에 유지하고 내부 텍스트만 백틱으로 감싸서(예: **`텍스트`**) 서식이 함께 반영되도록 구현
+//             2) 서식 태그 내에 이미 백틱이 있는 경우 인라인 코드 버튼 재클릭 시 내부 백틱만 깔끔하게 토글 해제 지원
 // 🚨 @PATCH : **2026-10-31** - [인라인 서식 빈 커서 상태에서 동일 버튼 클릭 시 태그 취소(토글 해제) 지원]: 커서가 서식 태그(**|**, <u>|</u> 등) 사이 또는 감싸진 단어 내에 있을 때 동일 서식 버튼 재클릭 시 태그를 자동 제거하여 일반 텍스트로 복귀
 // 🚨 @PATCH : **2026-10-17** - [코드블록/머메이드 및 다행 텍스트(수식 등) 삽입 시 하단 빈 행 자동 추가 및 커서 이동] insertBlockTag 종료 태그 뒤에 빈 행(\n\n)을 자동 추가하고, insertAtCursor에서 다행 텍스트 삽입 시 마지막 줄 끝으로 커서를 안착시켜 마우스 클릭 및 연속 작업을 지원
 // 🚨 @PATCH : **2026-10-02** - [미디어 삽입 Range 호환성 강화 및 즉각 상태 동기화] insertMediaAtCursor 내 Range 객체 생성 시 monaco 전역 참조 안전 폴백 및 updateContent 즉시 동기화 연동
@@ -336,6 +339,45 @@ export const insertBlockTag = (editorRef: any, startTag: string, endTag: string,
 // 🚨 @PATCH : **2026-09-03** — 선택된 텍스트에 서식(Bold/Italic 등) 적용 시 텍스트 앞뒤 태그만 분리 주입하고 pushUndoStop을 적용하여, Ctrl+Z 실행취소 시 텍스트는 보존되고 태그만 단독 취소되도록 개선
 // 🔗 @CALLS : 없음
 // ====================================================================
+function extractOuterFormatting(text: string): { prefix: string; inner: string; suffix: string } {
+  let prefix = '';
+  let suffix = '';
+  let inner = text;
+
+  const pairs: [string, string][] = [
+    ['***', '***'],
+    ['___', '___'],
+    ['**', '**'],
+    ['__', '__'],
+    ['*', '*'],
+    ['_', '_'],
+    ['~~', '~~'],
+    ['<u>', '</u>'],
+    ['<del>', '</del>'],
+    ['<s>', '</s>'],
+  ];
+
+  let matched = true;
+  while (matched) {
+    matched = false;
+    for (const [openTag, closeTag] of pairs) {
+      if (
+        inner.startsWith(openTag) &&
+        inner.endsWith(closeTag) &&
+        inner.length >= openTag.length + closeTag.length
+      ) {
+        prefix += openTag;
+        suffix = closeTag + suffix;
+        inner = inner.slice(openTag.length, inner.length - closeTag.length);
+        matched = true;
+        break;
+      }
+    }
+  }
+
+  return { prefix, inner, suffix };
+}
+
 /**
  * [ONR-15-014] wrapSelection 함수 (추출된 유틸리티)
  * @description 현재 드래그 선택된 텍스트의 앞뒤를 지정된 문자열로 감싸거나 토글식으로 제거합니다.
@@ -396,6 +438,45 @@ export const wrapSelection = (editorRef: any, lastSelectionRef: any, before: str
     }
 
     const isEmpty = !text || text.length === 0;
+
+    // 🌟 [인라인 코드와 다른 서식(굵게/기울기/밑줄/취소선) 공존 스마트 래핑]
+    if (before === '`' && after === '`' && !isEmpty) {
+      const { prefix, inner, suffix } = extractOuterFormatting(text);
+      if (prefix || suffix) {
+        let newText: string;
+        if (inner.startsWith('`') && inner.endsWith('`') && inner.length >= 2) {
+          // 이미 인라인 코드로 감싸져 있는 경우 -> 인라인 코드만 토글 해제
+          newText = prefix + inner.slice(1, -1) + suffix;
+        } else {
+          // 서식 태그(굵게, 기울기, 밑줄, 취소선 등)를 바깥에 유지하고 내부 텍스트만 백틱으로 감싸서 서식 동시 반영 보장
+          newText = prefix + '`' + inner + '`' + suffix;
+        }
+        const range = new (window as any).monaco.Range(
+          selection.startLineNumber,
+          selection.startColumn,
+          selection.endLineNumber,
+          selection.endColumn
+        );
+        editor.pushUndoStop();
+        editor.executeEdits("wrap-inline-code-smart", [{ range, text: newText, forceMoveMarkers: true }]);
+        editor.pushUndoStop();
+
+        setTimeout(() => {
+          if (!selection) return;
+          const startLine = selection.startLineNumber;
+          const startCol = selection.startColumn;
+          editor.setSelection(new (window as any).monaco.Selection(
+            startLine,
+            startCol,
+            startLine,
+            startCol + newText.length
+          ));
+          refreshTokens(startLine, startLine);
+        }, 10);
+        editor.focus();
+        return;
+      }
+    }
 
     if (before && after && text.startsWith(before) && text.endsWith(after) && text.length >= (before.length + after.length)) {
       const stripped = text.slice(before.length, text.length - after.length);
