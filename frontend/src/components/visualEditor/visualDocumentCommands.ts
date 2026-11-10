@@ -2,6 +2,7 @@
 // ⚙️ [OMD-CORE-VisualDocCommands-0001] visualDocumentCommands.ts ➔ 시각 에디터 전용 ProseMirror 커맨드 및 정규화 플러그인
 // 🎯 @KICK  : 제목/코드블록/인용구/리스트/구분선/미디어 등 블록 조작 커맨드 및 리스트 정규화 트랜잭션 플러그인 제공
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 VisualDocumentEditor 대형 컴포넌트 모듈화 표준 준수
+// 🚨 @PATCH : 2026-11-10 — [문단 끝 행 및 각 행 우측 빈 공간 클릭 시 마지막 문자 뒤 정확한 포커스 안착]: 라인별 바운딩 박스 그룹화 및 끝 행 우측 여백 클릭 감지 강화로 글자 외 빈 공간 클릭 시 해당 행의 마지막 문자 바로 다음 위치로 즉시 포커스 이동 보장
 // 🚨 @PATCH : 2026-11-10 — [슬래시 명령어 괄호/구두점 뒤 인식 지원]: 괄호((, [, {) 및 따옴표(", ') 직후 슬래시 입력 시에도 슬래시 메뉴가 정상 팝업되도록 패턴 확장
 // 🚨 @PATCH : 2026-11-08 — [빈 행(빈 문단) 클릭 시 다음 줄 도약(하이재킹) 방어 및 제자리 정확 안착]:
 //             1) emptyParagraphAtClick에 1순위 Direct Target(p, br) 감지 및 descendants 기반 전체 빈 텍스트블록(textContent.trim() === '') DOM 히트테스트 3중 엔진 탑재
@@ -467,34 +468,84 @@ export function paragraphLineEndAtClick(currentView: EditorView, event: MouseEve
       if (element.closest('td, th')) return;
     }
 
+    const elemRect = element.getBoundingClientRect();
+    // 마우스 Y가 해당 텍스트블록 요소의 상하 범위(상하 여유 4px) 안에 있는지 1차 확인
+    if (event.clientY < elemRect.top - 4 || event.clientY > elemRect.bottom + 4) return;
+
     const range = document.createRange();
     range.selectNodeContents(element);
     const textRects = Array.from(range.getClientRects()).filter(rect => rect.width > 0 && rect.height > 0);
     if (!textRects.length) return;
-    // 클릭 Y 좌표에 해당하는 텍스트 라인 검출 (빈 행 침범 방지를 위해 세로 패딩 최대 4px로 엄격 제어)
-    const lineRects = textRects.filter(rect => {
-      const padding = Math.max(2, Math.min(4, (rect.bottom - rect.top) * 0.15));
-      return event.clientY >= rect.top - padding && event.clientY <= rect.bottom + padding;
+
+    // 각 라인별 Rect 그룹화 (Y 좌표가 비슷한 조각들을 한 라인으로 병합)
+    const lines: { top: number; bottom: number; right: number; left: number }[] = [];
+    textRects.forEach(rect => {
+      const existing = lines.find(line => Math.abs(line.top - rect.top) < 6 || (rect.top >= line.top - 4 && rect.bottom <= line.bottom + 4));
+      if (existing) {
+        existing.top = Math.min(existing.top, rect.top);
+        existing.bottom = Math.max(existing.bottom, rect.bottom);
+        existing.right = Math.max(existing.right, rect.right);
+        existing.left = Math.min(existing.left, rect.left);
+      } else {
+        lines.push({ top: rect.top, bottom: rect.bottom, right: rect.right, left: rect.left });
+      }
     });
-    if (!lineRects.length) return;
-    const right = Math.max(...lineRects.map(rect => rect.right));
-    // 글자 끝보다 오른쪽에 클릭했을 때만 동작
-    if (event.clientX <= right + 2) return;
-    const lineTop = Math.min(...lineRects.map(rect => rect.top));
-    const laterLine = textRects.some(rect => rect.top > lineTop + 3);
-    if (!laterLine) {
+
+    lines.sort((a, b) => a.top - b.top);
+    if (!lines.length) return;
+
+    // 클릭한 Y 좌표와 가장 일치하는 라인 특정
+    let matchedLineIndex = -1;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      // 줄간격 및 패딩 여유 고려 (상하 여유 6px)
+      if (event.clientY >= line.top - 4 && event.clientY <= line.bottom + 6) {
+        matchedLineIndex = i;
+        break;
+      }
+    }
+
+    // 라인들 사이 여백이나 마지막 라인 아래쪽 문단 여백 클릭 판정
+    if (matchedLineIndex === -1) {
+      const lastLine = lines[lines.length - 1];
+      if (event.clientY > lastLine.bottom) {
+        matchedLineIndex = lines.length - 1; // 마지막 행으로 판정
+      } else {
+        let minDist = Infinity;
+        lines.forEach((line, idx) => {
+          const midY = (line.top + line.bottom) / 2;
+          const dist = Math.abs(event.clientY - midY);
+          if (dist < minDist) {
+            minDist = dist;
+            matchedLineIndex = idx;
+          }
+        });
+      }
+    }
+
+    if (matchedLineIndex === -1) return;
+    const targetLine = lines[matchedLineIndex];
+
+    // 클릭 X가 해당 행의 글자 끝(right)보다 오른쪽 빈 공간일 때만 동작
+    if (event.clientX <= targetLine.right + 2) return;
+
+    // 🌟 [문단의 끝 행 빈 공간 클릭 시]: 문단의 마지막 문자 바로 다음 위치로 정확히 안착!
+    if (matchedLineIndex === lines.length - 1) {
       result = pos + node.nodeSize - 1;
       return;
     }
-    const targetY = (Math.min(...lineRects.map(rect => rect.top)) + Math.max(...lineRects.map(rect => rect.bottom))) / 2;
-    const hit = currentView.posAtCoords({ left: right - 1, top: targetY });
+
+    // 🌟 [문단 중간 행 우측 빈 공간 클릭 시]: 해당 행의 글자 끝 좌표로 이동
+    const targetY = (targetLine.top + targetLine.bottom) / 2;
+    const hit = currentView.posAtCoords({ left: targetLine.right - 2, top: targetY });
     if (hit) {
       const $hit = currentView.state.doc.resolve(hit.pos);
-      if ($hit.parent === node) result = hit.pos;
-      else result = pos + node.nodeSize - 1;
-    } else {
-      result = pos + node.nodeSize - 1;
+      if ($hit.parent === node) {
+        result = hit.pos;
+        return;
+      }
     }
+    result = pos + node.nodeSize - 1;
   });
   return result;
 }
