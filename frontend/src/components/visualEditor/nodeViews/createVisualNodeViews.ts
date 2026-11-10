@@ -2,6 +2,8 @@
 // 🧩 [OMD-CORE-VisualNodeViews-0001] createVisualNodeViews.ts ➔ 시각 에디터 ProseMirror NodeViews 팩토리
 // 🎯 @KICK  : table, visual_math, visual_inline_math, list_item, code_block, visual_footnote_ref, visual_footnote_def, visual_checkbox, source_block, mediaNodeView 10대 위지윅 NodeView 인스턴스화
 // 🛡️ @GUARD : Rule 3(역할 기반 분리: Core View) 준수 - DOM 렌더링 및 인터랙션 격리
+// 🚨 @PATCH : 2026-11-10 — [서명 컨트롤 헤더 영역 확보 및 텍스트 겹침 방지]:
+//             1) visual-signature-container의 상단 패딩(pt-12) 및 카드 보더를 신설하여 툴바와 본문 텍스트(날짜/성명) 간의 겹침 간섭을 원천 차단
 // 🚨 @PATCH : 2026-11-10 — [서명/표/코드블록/머메이드 액션 버튼 호버 및 커서 진입 시에만 활성화 연동]:
 //             1) 서명 컨트롤(visual-signature-controls)의 위치를 텍스트 상단 외곽(-top-3.5)으로 띄워 날짜/성명 텍스트 가림을 원천 방어하고, 호버 및 커서/포커스 진입 시에만 활성화
 //             2) 코드블록 헤더 액션 버튼에 호버/커서 진입 감지 연동 및 표/머메이드 컨트롤 가시성 동기화
@@ -862,7 +864,7 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
         : isTable
         ? 'visual-source-block visual-html-table-container group'
         : isSignature
-        ? 'visual-source-block visual-signature-container group relative my-2 p-1.5 rounded-xl transition-all hover:ring-1 hover:ring-blue-400/40'
+        ? 'visual-source-block visual-signature-container group relative my-3 rounded-2xl transition-all border border-blue-200/50 dark:border-blue-900/40 bg-blue-50/20 dark:bg-blue-950/10 hover:border-blue-400/70 hover:shadow-xs'
         : 'visual-source-block group';
       const picture = document.createElement('div');
       const id = ++imageSequence.current;

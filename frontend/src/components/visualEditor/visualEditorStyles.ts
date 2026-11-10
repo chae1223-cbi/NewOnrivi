@@ -2,6 +2,8 @@
 // 🎨 [OMD-CORE-VisualEditorStyles-0001] visualEditorStyles.ts ➔ 시각 에디터 전용 격리 CSS 스타일
 // 🎯 @KICK  : 시각 에디터 본문(.visual-document-surface), 제목 H1~H6 시각화 뱃지, 표 조판, 각주, 코드블록, 머메이드 서랍 등 위지윅 스타일 격리
 // 🛡️ @GUARD : Rule 6(Content Document Scope) 준수 - .visual-document-surface 및 컴포넌트 하위로만 스코핑
+// 🚨 @PATCH : 2026-11-10 — [서명 컨트롤 상단 헤더 공간(padding-top: 48px) 독립 확보로 텍스트 겹침 원천 차단]:
+//             1) 서명 블록 상단에 48px의 전용 헤더 공간을 확보하여 top: 8px에 위치한 액션 버튼들이 본문 텍스트(날짜, 작성자)를 가리던 상단 겹침 현상을 원천 해결
 // 🚨 @PATCH : 2026-11-10 — [5대 블록 컨트롤(서명/표/이미지/머메이드/코드블록) 액션 버튼 가시성 표준화]:
 //             1) 컨트롤에 마우스가 올라가거나 커서/포커스 진입(:hover, :focus-within, .ProseMirror-selectednode) 시에만 액션 버튼을 활성화하고 평소에는 완전 숨김 처리하여 본문 텍스트 침범 방지
 //             2) 서명(Signature) 플로팅 툴바 위치를 텍스트 상단 외곽으로 재배치하고, @media (hover:none) 강제 노출 규칙을 제거하여 상시 노출 결함 해결
@@ -158,8 +160,8 @@ export const VISUAL_EDITOR_STYLES = `
   .visual-document-surface .onrivi-image-figure[data-caption-position="bottom"] img { margin-bottom:0!important; }
   .visual-document-surface[contenteditable="false"] .visual-image-edit { display:none; }
   @media print { .visual-media-controls { display:none; } }
-  .visual-signature-container { position:relative; padding-top:14px!important; }
-  .visual-signature-container .visual-signature-controls { position:absolute; top:-14px; right:8px; display:flex; align-items:center; gap:6px; z-index:25; opacity:0; pointer-events:none; transition:opacity .15s ease-in-out, transform .15s ease-in-out; transform:translateY(4px); }
+  .visual-signature-container { position:relative; padding-top:48px!important; padding-bottom:14px!important; padding-left:18px!important; padding-right:18px!important; }
+  .visual-signature-container .visual-signature-controls { position:absolute; top:8px; right:12px; display:flex; align-items:center; gap:6px; z-index:25; opacity:0; pointer-events:none; transition:opacity .15s ease-in-out, transform .15s ease-in-out; transform:translateY(-2px); }
   .visual-signature-container:hover .visual-signature-controls,
   .visual-signature-container:focus-within .visual-signature-controls,
   .visual-signature-container.ProseMirror-selectednode .visual-signature-controls { opacity:1; pointer-events:auto; transform:translateY(0); }

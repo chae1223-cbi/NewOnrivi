@@ -1,6 +1,8 @@
 // ====================================================================
 // 📊 [OMD-HOOK-VisualEditorInsertActions] frontend/src/components/visualEditor/useVisualEditorInsertActions.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 서식/블록 명령, 이미지/미디어/각주/서명/참고문헌/수식/문서링크/날짜 삽입 액션 및 외부 commandRef 브릿지 훅
+// 🚨 @PATCH : 2026-11-10 — [하이퍼링크 해제(handleLinkUnlink) 기능 신설]:
+//             1) LinkModal에서 링크 해제 시 target 범위의 link 마크를 완전 제거(removeMark)하고 일반 텍스트로 복원하는 handleLinkUnlink 콜백 추가
 // 🚨 @PATCH : 2026-11-10 — [링크 삽입 완료 후 링크 마크 자동 탈출(removeStoredMark) 지원]:
 //             1) handleLinkConfirm에서 링크 삽입 후 tr.removeStoredMark(visualSchema.marks.link) 및 setStoredMarks([])를 호출하여 다음 입력 텍스트가 링크로 계속 이어지지 않고 일반 텍스트로 전환되도록 보장
 // 🚨 @PATCH : 2026-11-10 — [서명/발신인 source_block 네이티브 노드 삽입 및 범위 치환 브릿지 연동]:
@@ -420,6 +422,21 @@ export function useVisualEditorInsertActions({
     let tr = view.state.tr.replaceWith(target.from, target.to, textNode);
     const nextPos = target.from + text.length;
     tr = tr.setSelection(TextSelection.create(tr.doc, nextPos));
+    tr = tr.removeStoredMark(visualSchema.marks.link);
+    tr = tr.setStoredMarks([]);
+    view.dispatch(closeHistory(tr).scrollIntoView());
+    view.focus();
+  };
+
+  const handleLinkUnlink = () => {
+    const view = viewRef.current;
+    const target = linkTargetRef.current;
+    if (!view || !target?.valid || !view.editable) {
+      setNotice('문서나 삽입 위치가 변경되었습니다.');
+      return;
+    }
+    linkTargetRef.current = null;
+    let tr = view.state.tr.removeMark(target.from, target.to, visualSchema.marks.link);
     tr = tr.removeStoredMark(visualSchema.marks.link);
     tr = tr.setStoredMarks([]);
     view.dispatch(closeHistory(tr).scrollIntoView());
@@ -1578,6 +1595,7 @@ export function useVisualEditorInsertActions({
     insertParagraphBeforeFirstBlock,
     blockCommands,
     handleLinkConfirm,
+    handleLinkUnlink,
     handleDateInsert,
     deleteCitationFromDoc,
     deleteAllCitationsFromDoc,

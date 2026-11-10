@@ -2,6 +2,7 @@
 // 📊 [OMD-UI-LinkModal-0001] LinkModal.tsx ➔ 하이퍼링크 생성 및 편집 모달
 // 🎯 @KICK  : 표시 텍스트(예: 온리비)와 링크 주소(URL)를 직관적으로 조합하여 삽입하는 모달 폼
 // 🛡️ @GUARD : isOpen/mounted false 시 null 반환, 주소 프로토콜 검증 및 자동 https:// 보정
+// 🚨 @PATCH : **2026-11-10** — [하이퍼링크 해제(Unlink) 버튼 지원]: 기존 링크 수정 시 링크 서식을 즉시 제거하여 일반 텍스트로 전환할 수 있는 '링크 해제' 액션 지원
 // 🚨 @PATCH : **2026-10-13** — [하이퍼링크 전용 스마트 모달 폼 신규 생성]:
 //             1) 표시할 텍스트와 대상 URL 2단 입력 및 실시간 마크다운/위지윅 미리보기 카드 제공
 //             2) 빠른 프로토콜 프리셋(https://, http://, mailto:) 및 Enter/Escape 키보드 완벽 연동
@@ -18,6 +19,7 @@ interface LinkModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: (data: { text: string; href: string }) => void;
+  onUnlink?: () => void;
   initialText?: string;
   initialHref?: string;
   isDarkMode?: boolean;
@@ -27,6 +29,7 @@ export default function LinkModal({
   isOpen,
   onClose,
   onConfirm,
+  onUnlink,
   initialText = '',
   initialHref = 'https://',
   isDarkMode = false
@@ -246,25 +249,41 @@ export default function LinkModal({
           </div>
 
           {/* 하단 버튼 영역 */}
-          <div className="flex items-center justify-end gap-2.5 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${
-                isDarkMode
-                  ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
-                  : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-700'
-              }`}
-            >
-              취소
-            </button>
-            <button
-              type="submit"
-              className="px-5 py-2.5 rounded-xl text-sm font-bold bg-[#1d4ed8] hover:bg-[#1e40af] active:scale-[0.98] text-white shadow-md shadow-blue-500/20 transition-all flex items-center gap-1.5"
-            >
-              <Icon name="Link" className="w-4 h-4" />
-              <span>링크 삽입</span>
-            </button>
+          <div className="flex items-center justify-between gap-2.5 pt-2">
+            {onUnlink ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onUnlink();
+                  onClose();
+                }}
+                className="px-3.5 py-2.5 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors flex items-center gap-1 cursor-pointer"
+                title="하이퍼링크 서식을 제거하고 일반 텍스트로 전환합니다"
+              >
+                <Icon name="Delete" className="w-3.5 h-3.5" />
+                <span>링크 해제</span>
+              </button>
+            ) : <div />}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+                  isDarkMode
+                    ? 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300'
+                    : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-700'
+                }`}
+              >
+                취소
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2.5 rounded-xl text-sm font-bold bg-[#1d4ed8] hover:bg-[#1e40af] active:scale-[0.98] text-white shadow-md shadow-blue-500/20 transition-all flex items-center gap-1.5"
+              >
+                <Icon name="Link" className="w-4 h-4" />
+                <span>{initialHref && initialHref !== 'https://' ? '링크 수정' : '링크 삽입'}</span>
+              </button>
+            </div>
           </div>
         </form>
       </div>

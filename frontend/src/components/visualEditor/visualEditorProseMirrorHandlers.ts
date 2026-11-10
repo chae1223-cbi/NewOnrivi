@@ -1087,9 +1087,11 @@ export function createVisualEditorHandlers({
           const hasLinkBefore = $from.nodeBefore?.marks.some(m => m.type.name === 'link');
           const hasLinkAfter = $from.nodeAfter?.marks.some(m => m.type.name === 'link');
           if (hasLinkBefore && !hasLinkAfter) {
+            event.preventDefault();
             let tr = currentView.state.tr.removeStoredMark(visualSchema.marks.link);
             tr = tr.setStoredMarks([]);
             currentView.dispatch(tr);
+            return true;
           }
         }
       }
