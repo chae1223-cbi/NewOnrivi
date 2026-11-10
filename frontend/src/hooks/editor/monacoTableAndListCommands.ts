@@ -2,6 +2,9 @@
 // ============================================================================
 // 📂 파일명 : frontend/src/hooks/editor/monacoTableAndListCommands.ts
 // 📌 역할   : Monaco 에디터 표(Table) 정렬·이동·행 편집 및 리스트/인용구/제목 자동 번호 단축키 등록 모듈
+// 🚨 @PATCH : 2026-11-10 — [코드블록 내부 Enter 문장·Shift+Enter 문단 처리 및 코드블록 유지]:
+//             1) 코드블록 내부에서 Shift+Enter 입력 시 코드블록을 탈출하지 않고 문단(\\n\\n)으로 나누며, 현재 줄이 문장 빈행일 때 Shift+Enter 입력 시 문단 간격(\\n 추가)으로 변경
+//             2) 코드블록 내부에서 Enter 입력 시 리스트/인용구 자동완성을 배제하고 순수 문장 줄바꿈(\\n) 유지
 // 🚨 @PATCH : 2026-11-08 — [인용문 Shift+Enter 커서 위치 보정 및 빈 인용문 탈출]: Shift+Enter 후 커서 열 위치(+2) 정밀화 및 빈 인용문 탈출 지원
 // 🚨 @PATCH : 2026-11-08 — [인용문 및 본문 Shift+Enter 문단 개행 전환]: Shift+Enter 입력 시 일반 본문은 \n\n, 인용문 내에서는 \n> \n>  새 인용 문단을 생성하도록 전환
 // 🚨 @PATCH : 2026-11-04 — [useMonacoSetup.ts 모듈 분리 리팩토링 (1순위 아키텍처 경량화)]:
@@ -681,6 +684,36 @@ export function registerMonacoTableAndListCommands(editor: any, monaco: any, dep
     if (!model) return;
     const lineNumber = position.lineNumber;
     const lineContent = model.getLineContent(lineNumber);
+
+    // 🛡️ [코드블록 내부 Shift + Enter 가드]
+    // 코드블록 내부에서는 코드블록을 탈출하지 않고 문단(\n\n)으로 나누어 처리하며,
+    // 현재 줄이 문장 빈행(빈 줄)일 때 Shift+Enter를 치면 문단 간격으로 완성합니다.
+    let inCodeBlock = false;
+    for (let i = 1; i < lineNumber; i++) {
+      const trimmed = model.getLineContent(i).trim();
+      if (trimmed.startsWith('```') || trimmed.startsWith('~~~')) {
+        inCodeBlock = !inCodeBlock;
+      }
+    }
+    if (inCodeBlock) {
+      if (lineContent.trim() === '') {
+        editor.executeEdits("codeBlockParagraphOnEmpty", [{
+          range: new monaco.Range(lineNumber, position.column, lineNumber, position.column),
+          text: "\n",
+          forceMoveMarkers: true
+        }]);
+        editor.setPosition({ lineNumber: lineNumber + 1, column: 1 });
+      } else {
+        editor.executeEdits("codeBlockInsertParagraph", [{
+          range: new monaco.Range(lineNumber, position.column, lineNumber, position.column),
+          text: "\n\n",
+          forceMoveMarkers: true
+        }]);
+        editor.setPosition({ lineNumber: lineNumber + 2, column: 1 });
+      }
+      return;
+    }
+
     const quoteRegex = /^([ \t]*)(>+)(?:[ \t]+(.*)|)$/;
     const quoteMatch = lineContent.match(quoteRegex);
     if (quoteMatch) {
@@ -1018,6 +1051,24 @@ export function registerMonacoTableAndListCommands(editor: any, monaco: any, dep
       const lineContent = model.getLineContent(lineNumber);
       const beforeCursor = lineContent.substring(0, position.column - 1);
       const afterCursor = lineContent.substring(position.column - 1);
+
+      // 🛡️ [코드블록 내부 Enter 가드] 코드블록 내부에서는 리스트/인용구/구분선 자동완성을 배제하고 순수 문장 줄바꿈(\n) 수행
+      let inCodeBlock = false;
+      for (let i = 1; i < lineNumber; i++) {
+        const trimmed = model.getLineContent(i).trim();
+        if (trimmed.startsWith('```') || trimmed.startsWith('~~~')) {
+          inCodeBlock = !inCodeBlock;
+        }
+      }
+      if (inCodeBlock) {
+        editor.executeEdits("codeBlockEnterSentence", [{
+          range: new monaco.Range(lineNumber, position.column, lineNumber, position.column),
+          text: "\n",
+          forceMoveMarkers: true
+        }]);
+        editor.setPosition({ lineNumber: lineNumber + 1, column: 1 });
+        return;
+      }
 
       const taskRegex = /^([ \t]*)([-*+])[ \t]+\[([ xX])\](?:[ \t]+(.*)|)$/;
       const orderRegex = /^([ \t]*)(\d+)\.(?:[ \t]+(.*)|)$/;

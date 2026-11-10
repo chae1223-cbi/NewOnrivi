@@ -921,6 +921,7 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
   const [cursorLine, setCursorLine] = useState(1);
   const [cursorColumn, setCursorColumn] = useState(1);
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved' | ''>('');
+  const lastSavedContentRef = useRef<string>('');
   const [floatingHeadingLevel, setFloatingHeadingLevel] = useState(3);
   const [floatingQuoteDropdown, setFloatingQuoteDropdown] = useState<{ open: boolean; x: number; y: number; dropUp: boolean }>({ open: false, x: 0, y: 0, dropUp: false });
   const [dateTimeFormatDropdown, setDateTimeFormatDropdown] = useState<{ open: boolean; x: number; y: number; dropUp: boolean }>({ open: false, x: 0, y: 0, dropUp: false });
@@ -988,7 +989,9 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     setActiveTabId,
     setPreviewModeRaw,
     tabsRef,
-    activeTabIdRef
+    activeTabIdRef,
+    lastSavedContentRef,
+    setSaveStatus
   );
 
   // 💡 [TDZ 방어] useEditorTabs 반환값 중 상단에서 선언되지 않은 것들만 추가 추출
@@ -1049,8 +1052,7 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
   // 🚨 @PATCH : autoSaveRef 선언 위치를 L1289→L1101로 이동 | 2026-06-15 | rS TDZ(autoSaveRef_sync useEffect) 해결
   // 🔗 @CALLS : useRef (React)
   // ====================================================================
-  // 💡 [TDZ 방어] lastSavedContentRef는 useFileExplorer에서 먼저 참조되므로 상단에 선언
-  const lastSavedContentRef = useRef<string>('');
+  // 💡 [TDZ 방어] lastSavedContentRef는 useEditorTabs 선행 참조를 위해 상단에 선언됨
   const prevActiveTabRef = useRef<string | null>(null);
 
   // 💡 [WBS CORE-02 / 요구사항 4] State Stale Closure 방지를 위한 Ref 백업 시스템 도입
@@ -1977,6 +1979,8 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     showToast,
     handlers,
     sessionRestoringRef,
+    lastSavedContentRef,
+    setSaveStatus,
   });
 
   // ====================================================================

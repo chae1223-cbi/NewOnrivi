@@ -2,6 +2,9 @@
 // 📊 [OMD-HOOK-useEditorLifecycleEffects] frontend/src/hooks/editor/useEditorLifecycleEffects.ts
 // 🎯 @KICK  : 탭 이름 변경·삭제·라인 점프 이벤트 리스너, 분할 화면 읽기 전용 가드, 에디터 테마·옵션 동기화, 제한사용자 웰컴 정리, 사이드바 리사이즈, 탭 전환 모드/미리보기 동기화, 자동 저장(autoSave), 목차(TOC) 생성 훅
 // 🛡️ @GUARD : 동일 파일명 타 경로 오종료 방어, 5초 자동저장 무한루프 및 번들 도움말 덮어쓰기 차단, 코드블록 내부 헤딩 오탐 방지
+// 🚨 @PATCH : 2026-11-10 — [문서 열기 시 불필요 자동 저장 발동 결함 원천 차단]:
+//             1) autoSave 진입 조건에서 (!activeTab || !activeTab.isModified) 엄격 가드 적용: 탭 로딩 찰나의 순간에 activeTab이 undefined이거나 미수정 문서일 때 자동 저장이 실행되던 치명적 결함 완전 해소
+//             2) saveStatusSync에서 탭 전환 및 초기 로드 시 미수정 탭(!activeTab.isModified)의 본문으로 lastSavedContentRef를 즉시 고정하여 isModified가 오작동으로 true가 되는 현상 차단
 // 🚨 @PATCH : 2026-11-05 — [개행문자(CRLF vs LF) 불일치로 인한 저장표시 점멸 및 무한 자동저장 루프 원천 차단]:
 //             1) content와 lastSavedContentRef 비교 시 CRLF/LF 정규화 통일로 윈도우 디스크 파일 오픈 시 저장표시가 무한 점멸하던 결함 완전 해결
 //             2) autoSave 진입 조건에서도 CRLF/LF 정규화 일치 비교를 적용하여 내용이 변하지 않았음에도 5초마다 불필요하게 디스크에 재저장하던 CPU 폭주 차단
@@ -723,21 +726,21 @@ export function useEditorLifecycleEffects(props: UseEditorLifecycleEffectsProps)
   useEffect(() => {
     if (sessionRestoringRef.current) return;
     if (currentFileNode && activeTabId) {
+      const activeTab = tabsRef.current.find(t => t.id === activeTabId);
       if (prevActiveTabRef.current !== activeTabId) {
         prevActiveTabRef.current = activeTabId;
-        const activeTab = tabsRef.current.find(t => t.id === activeTabId);
-        if (activeTab && !activeTab.isModified) lastSavedContentRef.current = (activeTab.content || '').replace(/\r\n/g, '\n');
+        const normTab = (activeTab?.content || content || '').replace(/\r\n/g, '\n');
+        if (activeTab && !activeTab.isModified) {
+          lastSavedContentRef.current = normTab;
+        }
         setSaveStatus(activeTab?.isModified ? 'unsaved' : 'saved');
         return;
       }
-      const activeTab = tabsRef.current.find(t => t.id === activeTabId);
       const normContent = (content || '').replace(/\r\n/g, '\n');
       const normTabContent = (activeTab?.content || '').replace(/\r\n/g, '\n');
       if (activeTab && !activeTab.isModified) {
-        if (normContent === normTabContent) {
-          lastSavedContentRef.current = normTabContent;
-          setSaveStatus('saved');
-        }
+        lastSavedContentRef.current = normTabContent;
+        setSaveStatus('saved');
         return;
       }
       const normSaved = (lastSavedContentRef.current || '').replace(/\r\n/g, '\n');
@@ -812,8 +815,9 @@ export function useEditorLifecycleEffects(props: UseEditorLifecycleEffectsProps)
     }
 
     const activeTab = tabsRef.current?.find(t => t.id === activeTabIdRef.current);
-    if (activeTab && !activeTab.isModified) return;
-    const effectiveFileNode = activeTab ? (activeTab.node || (activeTab.path ? { name: activeTab.name, path: activeTab.path, kind: 'file' } : null)) : currentFileNode;
+    // 🛡️ [문서 오픈 시 불필요 자동 저장 원천 차단]: 활성 탭이 아직 등록되지 않았거나, 탭이 수정(isModified)되지 않은 경우 무조건 저장 차단
+    if (!activeTab || !activeTab.isModified) return;
+    const effectiveFileNode = activeTab.node || (activeTab.path ? { name: activeTab.name, path: activeTab.path, kind: 'file' } : null) || currentFileNode;
 
     // Bundled help has no writable target until the user saves a copy.
     if (activeTab?.isBundledHelp || isBundledDocumentPath(effectiveFileNode?.path)) return;

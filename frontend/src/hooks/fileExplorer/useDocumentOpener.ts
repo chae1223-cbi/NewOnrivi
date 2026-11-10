@@ -2,6 +2,9 @@
 // 📊 [OMD-HOOK-useDocumentOpener-0001] frontend/src/hooks/fileExplorer/useDocumentOpener.ts
 // 🎯 @KICK  : 파일 트리 클릭(handleFileClick) 및 경로/링크 기반 문서 탐색·오픈(handleFileOpenByPath), 지식 DB 및 앵커 점프(#L..) 연동
 // 🛡️ @GUARD : 브라우저 FSA 재귀 탐색(findFileHandleInDirectoryDeep), 구글 드라이브 온디맨드 검색, VFS/도움말 폴백 및 세션 동기화
+// 🚨 @PATCH : 2026-11-10 — [문서 열기 시 lastSavedContentRef 및 tabsRef 즉시 동기화]:
+//             1) handleFileClick 및 handleFileOpenByPath에서 파일 로드 시 lastSavedContentRef.current = fileContent 및 tabsRef.current 즉시 갱신
+//             2) 파일 오픈 직후 시스템이 문서를 미수정(isModified: false)으로 정확히 인식하도록 하여 불필요한 자동 저장 격발을 100% 원천 차단
 // 🚨 @PATCH : 2026-11-08 — [세션 복원 중 탐색기 파일 클릭 경합 방어]: 앱 시작 세션 복원(sessionRestoringRef) 진행 중 탐색기 클릭 시 완료될 때까지 안전 대기 후 열도록 개선하여 렌더러 무응답(renderer unresponsive) 및 탭 충돌 원천 방어
 // 🚨 @PATCH : 2026-11-07 — [문서 링크 꺽쇠(<...>) 정제 및 2차 중복 폴더 세그먼트 축약 방어]: 꺽쇠가 포함된 링크(<./00_시작하기.md>) 정제 및 resolveWorkspaceHelpLink 이후 2차 연속 디렉토리(도움말/도움말/) 결합 완벽 방어
 // 🚨 @PATCH : 2026-11-07 — [연속 중복 디렉토리(도움말/도움말/) 자동 정제]: pathWithoutHash 초기 진입 시 연속된 동일 폴더 세그먼트를 사전 축약하여 404 방어
@@ -1239,12 +1242,15 @@ export function useDocumentOpener({
             try {
               const freshContent = await readDriveFileContent(token, driveId);
               if (freshContent) {
-                existingTab.content = freshContent;
+                const normFresh = freshContent.replace(/\r\n/g, '\n');
+                existingTab.content = normFresh;
                 if (existingTab.model && !existingTab.model.isDisposed()) {
-                  existingTab.model.setValue(freshContent);
+                  existingTab.model.setValue(normFresh);
                 }
-                setContent(freshContent);
-                setTabs(prev => prev.map(t => t.id === existingTab.id ? { ...t, content: freshContent } : t));
+                setContent(normFresh);
+                lastSavedContentRef.current = normFresh;
+                setSaveStatus('saved');
+                setTabs(prev => prev.map(t => t.id === existingTab.id ? { ...t, content: normFresh, isModified: false } : t));
               }
             } catch (err) {
               console.warn('[existingTab] 구글 드라이브 수화 실패:', err);
@@ -1278,6 +1284,10 @@ export function useDocumentOpener({
             console.warn('[existingTab] handle 수화 예외:', hErr);
           }
         }
+        if (lastSavedContentRef) {
+          lastSavedContentRef.current = (existingTab.content || '').replace(/\r\n/g, '\n');
+        }
+        setSaveStatus(existingTab.isModified ? 'unsaved' : 'saved');
         switchTab(existingTab.id);
         setIsSidebarOpen(true);
         return;
@@ -1424,7 +1434,12 @@ export function useDocumentOpener({
         model.onDidChangeContent(() => {
           const val = model.getValue();
           setContent(val);
-          setTabs(prev => prev.map(t => t.id === newTabId ? { ...t, content: val, isModified: val !== t.content } : t));
+          const normVal = val.replace(/\r\n/g, '\n');
+          setTabs(prev => prev.map(t => {
+            if (t.id !== newTabId) return t;
+            const normTabContent = (t.content || '').replace(/\r\n/g, '\n');
+            return { ...t, content: val, isModified: normVal !== normTabContent };
+          }));
         });
       }
 
@@ -1477,6 +1492,16 @@ export function useDocumentOpener({
       setContent(fileContent);
       setCurrentFileName(node.name);
       setCurrentFileNode(node);
+      if (lastSavedContentRef) {
+        lastSavedContentRef.current = fileContent;
+      }
+      setSaveStatus('saved');
+      if (tabsRef?.current) {
+        tabsRef.current = [
+          ...tabsRef.current.filter(t => t.id !== newTabId && (!node.path || t.path !== node.path)),
+          newTab
+        ];
+      }
 
       if (editorRef.current && model) {
         try {

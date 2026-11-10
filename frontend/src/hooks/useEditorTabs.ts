@@ -32,6 +32,8 @@ import { syncVisualSourceModel } from '@/lib/incrementalVisualModel';
 //             1) switchTab 시 targetTab.node가 비어있더라도 targetTab.path가 존재하면 FileNode를 자동 복원 주입하여 currentFileNode가 null로 유실되어 자동 저장이 정지되는 결함 해결
 //             2) createNewTab 시 path만 전달되더라도 effectiveNode를 자동 생성하고, 기존 탭 재사용 시 신규 tabId가 아닌 existing.id를 활성화하도록 수정하여 활성 탭 ID 미아 버그 및 파일 저장 공통 다이얼로그 팝업 결함 원천 해결
 // 🚨 @PATCH : **2026-09-26** — [경로 기준 중복 탭 생성 방어 가드]: createNewTab 호출 시 전달된 path를 기준으로 prev 배열에 동일 파일 탭이 이미 존재하는 경우 새 탭을 추가하지 않고 기존 탭 모델/내용을 갱신하도록 보강
+// 🚨 @PATCH : **2026-11-10** — [탭 전환 및 새 탭 생성 시 lastSavedContentRef 동기화 지원]:
+//             1) switchTab 및 createNewTab에서 lastSavedContentRef와 setSaveStatus를 즉시 동기화하여 탭 전환 시 불필요한 자동 저장 격발 차단
 // 🚨 @PATCH : **2026-07-04** — 서식설정(isStyleTab) 탭 전환 시 에디터 뷰캐시(viewState) 저장/복원 로직 탑재 및 모델 바인딩 예외 처리 패치 | 2026-06-15 — 내부 useState 제거 → 외부 주입 방식으로 전환 | MainEditorApp L526 tabMetadata_sync가 useEditorTabs 선언 전에 setTabs/activeTabId 참조하여 rS TDZ 에러 발생
 //              **2026-07-07** — [BUG#1] activeTabIdRef 초기값 null → activeTabId 수정 (useEffect 비동기 갱신 지연으로 early return 미작동 원인 제거)
 //              **2026-07-07** — [BUG#2] 동일 탭 재클릭 시 완전 early return; 가상 탭(path=null+model=null) Monaco 작업 건너뜀
@@ -57,7 +59,9 @@ export const useEditorTabs = (
   setActiveTabId: (id: string | null) => void,
   setPreviewModeRaw: ((mode: any) => void) | undefined,
   tabsRef: MutableRefObject<EditorTab[]>,
-  activeTabIdRef: MutableRefObject<string | null>
+  activeTabIdRef: MutableRefObject<string | null>,
+  lastSavedContentRef?: any,
+  setSaveStatus?: (status: any) => void
 ) => {
   const nextTabIdRef = useRef(0);
 
@@ -169,8 +173,14 @@ export const useEditorTabs = (
     if (isVirtualTabResolve && !targetTab.isStyleTab && resolvedContent === undefined) {
       resolvedContent = getWelcomeContent();
     }
-    setContent(resolvedContent);
+        setContent(resolvedContent);
     setCurrentFileName(targetTab.name);
+    if (lastSavedContentRef && !targetTab.isModified) {
+      lastSavedContentRef.current = (resolvedContent || '').replace(/\r\n/g, '\n');
+    }
+    if (setSaveStatus) {
+      setSaveStatus(targetTab.isModified ? 'unsaved' : 'saved');
+    }
     const resolvedNode: FileNode | null = targetTab.node || (targetTab.path ? { name: targetTab.name, path: targetTab.path, kind: 'file' } : null);
     if (!targetTab.node && resolvedNode) {
       targetTab.node = resolvedNode;
@@ -311,9 +321,15 @@ export const useEditorTabs = (
     activeTabIdRef.current = tabId;
     setActiveTabId(tabId);
 
-    setContent(contentVal);
+        setContent(contentVal);
     setCurrentFileName(tabName);
     setCurrentFileNode(effectiveNode);
+    if (lastSavedContentRef && !isModified) {
+      lastSavedContentRef.current = (contentVal || '').replace(/\r\n/g, '\n');
+    }
+    if (setSaveStatus) {
+      setSaveStatus(isModified ? 'unsaved' : 'saved');
+    }
 
     if (editorRef.current && model) {
       editorRef.current.setModel(model);

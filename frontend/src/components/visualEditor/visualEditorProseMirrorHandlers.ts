@@ -2,6 +2,10 @@
 // 📊 [OMD-CORE-VisualEditor-ProseMirrorHandlers] frontend/src/components/visualEditor/visualEditorProseMirrorHandlers.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 ProseMirror Keymap, 키보드/텍스트 입력, 스마트 붙여넣기(handlePaste), 드롭(handleDrop), 마우스 클릭/링크 이동(handleClick) 및 DOM 이벤트 핸들러 팩토리
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 클립보드 이미지/HTML 붙여넣기 정제, 5대 정밀 진단 로깅(logError/logWarn) 준수
+// 🚨 @PATCH : 2026-11-10 — [코드블록 내부 Enter 문장·Shift+Enter 문단 처리 및 코드블록 탈출 방어]:
+//             1) 코드블록 내부에서 Shift+Enter 입력 시 코드블록을 벗어나 새 코드블록이 생성되던 exitCode 기능 완전 제거
+//             2) 코드블록 내부 Shift+Enter 시 paragraphInCodeBlock을 통해 문단(\\n\\n)으로 나누어 처리하고, 문장 빈행이 있을 때 Shift+Enter 입력 시 문단(\\n 추가)으로 변경
+//             3) 코드블록 내부 Enter는 newlineInCode를 통해 단순 문장 줄바꿈(\\n) 유지
 // 🚨 @PATCH : 2026-11-08 — [리스트 내부 Enter 다음 리스트 추가 & Shift+Enter 리스트 탈출 새 문단 전환 구현]:
 //             1) 리스트 항목 내부에서 Enter 입력 시 splitListItem을 통해 다음 리스트 항목(list_item)을 즉시 추가 (빈 항목일 때는 exitEmptyListItem으로 리스트 탈출)
 //             2) 리스트 항목 내부에서 Shift+Enter 입력 시 exitListToParagraph를 실행하여 리스트를 완전히 탈출하고 독립된 새로운 일반 문단(paragraph) 생성
@@ -119,6 +123,40 @@ export interface VisualEditorKeymapParams {
  * const editorKeymap = createVisualEditorKeymap({ clearCommand, linkCommandRef, insertFootnoteRef, applySignatureRef });
  * ==========================================================================================
  */
+/**
+ * 🌟 [코드블록 내부 Shift+Enter 전담 커맨드]
+ * 1) 코드블록 내부에서 Shift+Enter 입력 시 탈출하지 않고 문단(\n\n)으로 나누어 처리
+ * 2) 현재 줄이 문장 빈행(공백/빈 줄)이거나 이전 줄바꿈 상태에서 Shift+Enter를 치면 문단 간격(\n\n)으로 변경
+ * 3) Shift+Enter로 코드블록을 벗어나서 새 코드블록이 생성되던 기존 exitCode 기능 완전 제거
+ */
+const paragraphInCodeBlock: Command = (state, dispatch) => {
+  const { $from } = state.selection;
+  if ($from.parent.type !== visualSchema.nodes.code_block) return false;
+  if (dispatch) {
+    const parent = $from.parent;
+    const offset = $from.parentOffset;
+    const textBefore = parent.textBetween(0, offset, '\n', '\n');
+    const textAfter = parent.textBetween(offset, parent.content.size, '\n', '\n');
+
+    // 현재 커서가 위치한 라인의 앞/뒤 텍스트
+    const lastNewlineBefore = textBefore.lastIndexOf('\n');
+    const currentLineBefore = lastNewlineBefore === -1 ? textBefore : textBefore.slice(lastNewlineBefore + 1);
+    const nextNewlineAfter = textAfter.indexOf('\n');
+    const currentLineAfter = nextNewlineAfter === -1 ? textAfter : textAfter.slice(0, nextNewlineAfter);
+    const currentLine = currentLineBefore + currentLineAfter;
+
+    // 만약 현재 줄이 이미 빈 행(문장 빈행)이거나 직전에 \n이 연속되어 있다면 \n 1개만 더 삽입하여 문단(\n\n)으로 완성
+    let insertText = '\n\n';
+    if (currentLine.trim() === '' || textBefore.endsWith('\n')) {
+      insertText = '\n';
+    }
+
+    const tr = state.tr.replaceSelectionWith(state.schema.text(insertText)).scrollIntoView();
+    dispatch(tr);
+  }
+  return true;
+};
+
 export function createVisualEditorKeymap({
   clearCommand,
   linkCommandRef,
@@ -238,7 +276,7 @@ export function createVisualEditorKeymap({
       }
     ),
     'Shift-Enter': chainCommands(
-      exitCode,
+      paragraphInCodeBlock,
       exitListToParagraph,
       headingEnter,
       baseKeymap.Enter

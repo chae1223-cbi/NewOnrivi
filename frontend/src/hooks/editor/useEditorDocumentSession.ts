@@ -14,6 +14,8 @@
 // 🚨 @PATCH : 2026-11-05 — [복원 활성 탭 누락 수정]: 생성 함수가 반환한 ID를 즉시 복원 맵에 넣고 상태 반영 후 활성화한다.
 // 🚨 @PATCH : 2026-11-05 — [복원 ref 소실 수정]: 로컬 복원 탭은 상태 갱신을 모아서 한 번만 반영한 뒤 활성 탭을 연결한다.
 // 🚨 @PATCH : 2026-11-05 — [빈 로컬 세션 복구]: 저장된 탭이 0개면 Electron 최근 문서 목록으로 이어서 복원한다.
+// 🚨 @PATCH : 2026-11-10 — [openExternalFile 시 lastSavedContentRef 및 tabsRef 즉시 동기화]:
+//             1) 외부에서 파일 열기 시 lastSavedContentRef = file.content 및 setSaveStatus('saved')를 즉시 지정하여 자동 저장 오작동 차단
 // 🚨 @PATCH : 2026-11-04 — [표준화 및 에러 처리 강화] openExternalFile logError 선제 기록 추가 및 1·2단계 주석 표준화
 //             2026-11-04 — [isElectron 판별식 정정] const isElectron = Boolean(api)로 정정하여 웹 브라우저 환경에서 세션 복원 조기 반환 결함 방어
 //             2026-11-04 — [MainEditorApp 모듈화] 세션 복원 및 외부 파일 오픈 파이프라인을 useEditorDocumentSession 훅으로 분리 위임
@@ -68,6 +70,8 @@ export interface UseEditorDocumentSessionOptions {
   showToast: (msg: string, type?: 'info' | 'success' | 'warning' | 'error') => void;
   handlers: any;
   sessionRestoringRef: MutableRefObject<boolean>;
+  lastSavedContentRef?: MutableRefObject<string>;
+  setSaveStatus?: (status: any) => void;
 }
 
 export interface UseEditorDocumentSessionReturn {
@@ -124,6 +128,8 @@ export function useEditorDocumentSession({
   showToast,
   handlers,
   sessionRestoringRef,
+  lastSavedContentRef,
+  setSaveStatus,
 }: UseEditorDocumentSessionOptions): UseEditorDocumentSessionReturn {
   const pendingExternalFileRef = useRef<string | null>(null);
   const sessionRestoredRef = useRef<boolean>(false);
@@ -358,6 +364,12 @@ export function useEditorDocumentSession({
               setContent(file.content);
               setCurrentFileName(file.name);
               setCurrentFileNode({ name: file.name, kind: 'file', path: file.path });
+              if (lastSavedContentRef) {
+                lastSavedContentRef.current = (file.content || '').replace(/\r\n/g, '\n');
+              }
+              if (setSaveStatus) {
+                setSaveStatus(existingTab.isModified ? 'unsaved' : 'saved');
+              }
 
               if (existingTab.model) {
                 existingTab.model.setValue(file.content);
@@ -422,6 +434,16 @@ export function useEditorDocumentSession({
           setContent(file.content);
           setCurrentFileName(file.name);
           setCurrentFileNode({ name: file.name, kind: 'file', path: file.path });
+          if (lastSavedContentRef) {
+            lastSavedContentRef.current = (file.content || '').replace(/\r\n/g, '\n');
+          }
+          if (setSaveStatus) {
+            setSaveStatus('saved');
+          }
+          tabsRef.current = [
+            ...tabsRef.current.filter(t => t.id !== newTabId && (!file.path || t.path !== file.path)),
+            newTab
+          ];
 
           if (editorRef.current && model) {
             try {
