@@ -6,6 +6,8 @@
  * 🚨 @PATCH : 2026-11-04 — [FileExplorerPanel 모듈화 분리 및 1·2단계 표준 주석 적용]
  *             1) FileExplorerPanel에서 루트 컨텍스트 메뉴 포털과 문서 가져오기 오버레이(ExplorerImportOverlays)를 전용 컴포넌트로 분리
  *             2) onrivi-source-comments 스킬 규격 준수
+ * 🚨 @PATCH : 2026-11-11 — [파일 열기 형식 안내 보완]: DOC 및 HWPX 지원 형식을 가져오기 안내에 표시
+ * 🚨 @PATCH : 2026-11-11 — [원본 폴더 저장 위치 표시]: 데스크톱 로컬 문서 변환 시 선택한 파일의 폴더를 고정 저장 위치로 안내
  * ====================================================================
  */
 "use client";
@@ -346,6 +348,8 @@ export interface ExplorerImportOverlaysProps {
   targetImportNodeRef: React.MutableRefObject<FileNode | null>;
   targetImportParentHandleRef: React.MutableRefObject<any>;
   importNameRef: React.MutableRefObject<string | null>;
+  sourceImportPathRef: React.MutableRefObject<string | null>;
+  sourceImportFolderRef: React.MutableRefObject<string | null>;
   handleImportFile: (e: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
   isImporting: boolean;
 }
@@ -372,6 +376,8 @@ export function ExplorerImportOverlays({
   targetImportNodeRef,
   targetImportParentHandleRef,
   importNameRef,
+  sourceImportPathRef,
+  sourceImportFolderRef,
   handleImportFile,
   isImporting,
 }: ExplorerImportOverlaysProps) {
@@ -392,7 +398,7 @@ export function ExplorerImportOverlays({
             <p className="text-sm">가져올 파일의 위치를 선택해 주세요. 파일은 Markdown(.md)으로 변환한 뒤 선택한 작업장 폴더에 저장합니다.</p>
             <button type="button" autoFocus className="block w-full border rounded-lg p-3 text-left" onClick={() => void openImportPicker('local')}>📁 내 PC(로컬)에서 가져오기</button>
             <button type="button" className="block w-full border rounded-lg p-3 text-left" onClick={() => void openImportPicker('drive')}>☁️ 웹드라이브에서 가져오기</button>
-            <p className="text-xs">DOCX · HWP · PDF · EPUB · TXT · MD · HTML</p>
+            <p className="text-xs">DOC · DOCX · HWP · HWPX · PDF · EPUB · TXT · MD · HTML</p>
             <div className="text-right">
               <button type="button" className="border rounded px-4 py-2" onClick={() => setShowImportSource(false)}>취소</button>
             </div>
@@ -412,17 +418,18 @@ export function ExplorerImportOverlays({
       />
       <NewDocumentModal
         isOpen={!!pendingImportFile}
-        onClose={() => setPendingImportFile(null)}
+        onClose={() => { sourceImportPathRef.current = null; sourceImportFolderRef.current = null; setPendingImportFile(null); }}
         fileList={fileList}
         rootFolder={rootFolder}
         workspaceType={workspaceType}
         initialName={pendingImportFile?.name.replace(/\.[^.]+$/, '') || '문서'}
-        dialogTitle="파일 가져올 폴더와 이름"
+        dialogTitle={sourceImportPathRef.current ? '변환 파일 이름' : '파일 가져올 폴더와 이름'}
         initialFolderNode={targetImportNodeRef.current}
+        fixedFolderPath={sourceImportFolderRef.current || undefined}
         onConfirm={async (name, node) => {
           if (!pendingImportFile) return;
           const file = pendingImportFile;
-          targetImportNodeRef.current = node;
+          targetImportNodeRef.current = sourceImportPathRef.current ? null : node;
           targetImportParentHandleRef.current = node?.handle || rootFolder?.handle || null;
           importNameRef.current = name;
           await handleImportFile({ target: { files: [file], value: '' } } as unknown as React.ChangeEvent<HTMLInputElement>);

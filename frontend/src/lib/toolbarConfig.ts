@@ -1,6 +1,7 @@
 // ====================================================================
 // 📊 [OMD-CORE-ToolbarConfig-0001] toolbarConfig.ts ➔ Toolbar Items Configuration
 // 🎯 @KICK  : 에디터 툴바, 플로팅 툴바 및 단축키/슬래시 커맨드 전역 설정 메타데이터
+// 🚨 @PATCH : **2026-11-11** — [각주 슬래시 명령어 /fn 별칭 및 자동완성 검색 확장]: SLASH_ALIASES 및 filterText에 'fn', '각주', 'footnote', '주석'을 연동하여 플로팅 툴바·단축키·슬래시 명령어 통합 보장
 // 🚨 @PATCH : **2026-10-25** — [서식·태그 지우기(clear/태그 취소) 기본 단축키 Ctrl+\\ 변경 및 한글 키보드(₩) 정규화]:
 //             1) TOOLBAR_ITEMS 태그 취소(clear) 기본 단축키를 Ctrl+Shift+0에서 Ctrl+\\로 변경
 //             2) configuredHotkeyItem에서 event.code === 'Backslash' 및 한글 원화 기호(₩)를 '\\'로 정규화하여 영문/한글 입력기 상태 무관 100% 단축키 동작 보장
@@ -123,7 +124,7 @@ export const getDefaultCommands = () => {
 // Local-language search aliases share the configured slash command action.
 export const SLASH_ALIASES: Record<string, string[]> = {
   bold: ['굵게', '강조'], italic: ['기울임'], inlineCode: ['인라인코드'],
-  underline: ['밑줄'], strikethrough: ['취소선'], footnote: ['각주'],
+  underline: ['밑줄'], strikethrough: ['취소선'], footnote: ['각주', 'fn'],
   citation: ['인용문헌'], h1: ['제목1'], h2: ['제목2'], h3: ['제목3'],
   h4: ['제목4'], h5: ['제목5'], h6: ['제목6'], divider: ['구분선'],
   orderedList: ['숫자목록'], list: ['글머리목록'],
@@ -249,6 +250,7 @@ export const getSlashCommands = (monaco: any, customCommands: Record<string, str
       else if (item.id === 'quoteCaution') aliasTerms = '경고 caution alert danger';
       else if (item.id === 'quote') aliasTerms = '인용 인용구 quote';
       else if (item.id === 'signature') aliasTerms = '사인 sign 서명 발신인 left 왼쪽정렬 좌측정렬 right 우측정렬';
+      else if (item.id === 'footnote') aliasTerms = '각주 fn footnote 주석';
 
       const filterText = `/${cmdStr} /${item.name} ${item.name} ${cmdStr} ${item.group} ${aliasTerms} ${(SLASH_ALIASES[item.id] || []).map(alias => '/' + alias).join(' ')}`;
 

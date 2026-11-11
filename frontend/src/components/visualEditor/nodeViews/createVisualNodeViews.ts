@@ -2,6 +2,7 @@
 // 🧩 [OMD-CORE-VisualNodeViews-0001] createVisualNodeViews.ts ➔ 시각 에디터 ProseMirror NodeViews 팩토리
 // 🎯 @KICK  : table, visual_math, visual_inline_math, list_item, code_block, visual_footnote_ref, visual_footnote_def, visual_checkbox, source_block, mediaNodeView 10대 위지윅 NodeView 인스턴스화
 // 🛡️ @GUARD : Rule 3(역할 기반 분리: Core View) 준수 - DOM 렌더링 및 인터랙션 격리
+// 🚨 @PATCH : 2026-11-11 — [각주 정의-본문 참조 양방향 점프 및 커서 복원 연동]: 각주 정의(visual_footnote_def)의 뱃지 클릭·복귀 버튼(↩)·엔터 입력 시 본문 각주 참조(visual_footnote_ref)로 부드럽게 스크롤 및 펄스 하이라이트 후 커서를 참조 직후로 이동하고 에디터 포커스 복원
 // 🚨 @PATCH : 2026-11-10 — [각주 참조(visual_footnote_ref) 위첨자 인라인 스타일 안정화]:
 //             1) visual_footnote_ref의 display를 inline으로 전환하고 lineHeight: 0, verticalAlign: super를 지정하여 리스트 항목 내에서 행간 높이 팽창 방지
 // 🚨 @PATCH : 2026-11-10 — [서명 컨트롤 헤더 영역 확보 및 텍스트 겹침 방지]:
@@ -647,11 +648,11 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
       dom.title = `각주 [^${node.attrs.label}] 바로가기`;
       dom.addEventListener('click', (e) => {
         e.stopPropagation();
-        const targetDef = currentView.dom.querySelector(`[data-footnote-def="${node.attrs.label}"]`);
+        const targetDef = currentView.dom.querySelector(`[data-footnote-def="${node.attrs.label}"]`) as HTMLElement | null;
         if (targetDef) {
           targetDef.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          targetDef.classList.add('ring-2', 'ring-blue-500');
-          setTimeout(() => targetDef.classList.remove('ring-2', 'ring-blue-500'), 1500);
+          targetDef.classList.add('ring-2', 'ring-blue-500', 'bg-blue-50/90', 'dark:bg-blue-950/50', 'transition-all');
+          setTimeout(() => targetDef.classList.remove('ring-2', 'ring-blue-500', 'bg-blue-50/90', 'dark:bg-blue-950/50'), 2000);
           const inputEl = targetDef.querySelector('.visual-footnote-text') as HTMLElement | null;
           if (inputEl && currentView.editable) {
             inputEl.focus();
@@ -679,18 +680,33 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
       dom.className = 'visual-footnote-def visual-footnote-def-container group flex items-start gap-2.5 px-3 py-1.5 my-1 rounded-md bg-slate-50/80 dark:bg-slate-800/40 border border-slate-200/70 dark:border-slate-700/60 hover:border-blue-400/60 dark:hover:border-blue-600/60 transition-all';
       dom.setAttribute('data-footnote-def', node.attrs.label);
 
+      const jumpToRef = () => {
+        const targetRef = currentView.dom.querySelector(`[data-footnote-ref="${node.attrs.label}"]`) as HTMLElement | null;
+        if (targetRef) {
+          targetRef.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          targetRef.classList.add('ring-2', 'ring-blue-500', 'bg-blue-100', 'dark:bg-blue-900/60', 'rounded', 'transition-all');
+          setTimeout(() => {
+            targetRef.classList.remove('ring-2', 'ring-blue-500', 'bg-blue-100', 'dark:bg-blue-900/60');
+          }, 2000);
+          try {
+            const pos = currentView.posAtDOM(targetRef, 0);
+            if (typeof pos === 'number') {
+              const nextPos = Math.min(currentView.state.doc.content.size, pos + 1);
+              const tr = currentView.state.tr.setSelection(TextSelection.create(currentView.state.doc, nextPos));
+              currentView.dispatch(tr);
+            }
+          } catch (_) {}
+          currentView.focus();
+        }
+      };
+
       const labelSpan = document.createElement('span');
       labelSpan.className = 'visual-footnote-badge font-bold text-blue-700 dark:text-blue-400 select-none whitespace-nowrap pt-0.5 cursor-pointer hover:underline shrink-0';
       labelSpan.textContent = `[^${node.attrs.label}]:`;
-      labelSpan.title = `각주 [^${node.attrs.label}] 본문 위치로`;
+      labelSpan.title = `본문 각주 [^${node.attrs.label}] 위치로 돌아가기`;
       labelSpan.addEventListener('click', (e) => {
         e.stopPropagation();
-        const targetRef = currentView.dom.querySelector(`[data-footnote-ref="${node.attrs.label}"]`);
-        if (targetRef) {
-          targetRef.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          targetRef.classList.add('ring-2', 'ring-blue-500');
-          setTimeout(() => targetRef.classList.remove('ring-2', 'ring-blue-500'), 1500);
-        }
+        jumpToRef();
       });
 
       const input = document.createElement('span');
@@ -731,13 +747,7 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
         if (e.key === 'Enter' && !e.shiftKey) {
           e.preventDefault();
           e.stopPropagation();
-          const targetRef = currentView.dom.querySelector(`[data-footnote-ref="${node.attrs.label}"]`);
-          if (targetRef) {
-            targetRef.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            targetRef.classList.add('ring-2', 'ring-blue-500');
-            setTimeout(() => targetRef.classList.remove('ring-2', 'ring-blue-500'), 1500);
-          }
-          currentView.focus();
+          jumpToRef();
         } else if (e.key === 'Escape') {
           e.preventDefault();
           e.stopPropagation();
@@ -770,12 +780,7 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
       jumpBtn.innerHTML = '<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg>';
       jumpBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        const targetRef = currentView.dom.querySelector(`[data-footnote-ref="${node.attrs.label}"]`);
-        if (targetRef) {
-          targetRef.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          targetRef.classList.add('ring-2', 'ring-blue-500');
-          setTimeout(() => targetRef.classList.remove('ring-2', 'ring-blue-500'), 1500);
-        }
+        jumpToRef();
       });
 
       const deleteBtn = document.createElement('button');

@@ -346,6 +346,8 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
     showImportSource,
     setShowImportSource,
     importNameRef,
+    sourceImportPathRef,
+    sourceImportFolderRef,
     targetImportNodeRef,
     targetImportParentHandleRef,
     chooseImportDestination,
@@ -743,6 +745,8 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
         targetImportNodeRef={targetImportNodeRef}
         targetImportParentHandleRef={targetImportParentHandleRef}
         importNameRef={importNameRef}
+        sourceImportPathRef={sourceImportPathRef}
+        sourceImportFolderRef={sourceImportFolderRef}
         handleImportFile={handleImportFile}
         isImporting={isImporting}
       />

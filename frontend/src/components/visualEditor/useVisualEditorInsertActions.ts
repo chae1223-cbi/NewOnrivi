@@ -1,6 +1,7 @@
 // ====================================================================
 // 📊 [OMD-HOOK-VisualEditorInsertActions] frontend/src/components/visualEditor/useVisualEditorInsertActions.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 서식/블록 명령, 이미지/미디어/각주/서명/참고문헌/수식/문서링크/날짜 삽입 액션 및 외부 commandRef 브릿지 훅
+// 🚨 @PATCH : 2026-11-11 — [각주 브릿지 및 슬래시 명령 실행 포커스 안정화]: bridge에 FOOTNOTE/FN 명령 직접 분기 추가 및 nativeCommands.footnote/fn에 removeSlash=true 연동하여 단축키/슬래시/플로팅툴바 각주 생성 통일
 // 🚨 @PATCH : 2026-11-10 — [슬래시 명령어 글자 중간 실행 시 잔여 텍스트 삭제 및 전체 단어 검색 보장]: 커서 뒤의 단어 끝까지 slashRange.to에 포함하여 명령어 실행 시 뒤쪽 글자가 남지 않도록 완벽 제거
 // 🚨 @PATCH : 2026-11-10 — [링크 모달 완료 시 링크 뒤 자동 스페이스 삽입 및 커서 전진]:
 //             1) handleLinkConfirm에서 링크 삽입 후 즉시 일반 공백(' ')을 자동 삽입(또는 기존 공백 통과)하고 커서를 공백 뒤로 안착시켜 다음 입력이 링크로 이어지지 않고 일반 텍스트로 자연스럽게 작성되도록 구현
@@ -1012,11 +1013,11 @@ export function useVisualEditorInsertActions({
       return true;
     },
     footnote: () => {
-      insertFootnote();
+      insertFootnote(true);
       return true;
     },
     fn: () => {
-      insertFootnote();
+      insertFootnote(true);
       return true;
     },
     signature: () => {
@@ -1334,14 +1335,6 @@ export function useVisualEditorInsertActions({
         executeItemRef.current('math');
         return true;
       },
-      FOOTNOTE: () => {
-        insertFootnoteRef.current?.();
-        return true;
-      },
-      FN: () => {
-        insertFootnoteRef.current?.();
-        return true;
-      },
       SIGNATURE: () => {
         applySignatureRef.current();
         return true;
@@ -1567,6 +1560,10 @@ export function useVisualEditorInsertActions({
       if (command === 'CITE' || command === 'CITATION') {
         if (viewRef.current) synchronizeTextSelection(viewRef.current);
         openCitationRef.current(false);
+        return true;
+      }
+      if (command === 'FOOTNOTE' || command === 'FN') {
+        insertFootnoteRef.current?.();
         return true;
       }
       if (commands[command]) {

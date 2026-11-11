@@ -1,6 +1,7 @@
 // @ts-nocheck
 // ====================================================================
 // 📊 [OMD-HOOK-useEditorHandlers-0001] useEditorHandlers.ts ➔ 에디터 액션 핸들러 훅
+// 🚨 @PATCH : **2026-11-11** — [각주 생성 시 기본 플레이스홀더 텍스트 통일]: 모나코 핸들러의 새 각주 생성 시 '각주 내용을 입력하세요' 기본 문구를 삽입하여 비주얼 에디터 플로팅 툴바 형식과 100% 동기화
 // 🚨 @PATCH : **2026-11-07** — [플로팅 툴바 toggleFloatingToolbar 커서 복원 연동]: 플로팅 툴바 토글 닫기 시 모나코 에디터 포커스 및 선택 복원 보장, setTabs 구문 오류 정돈
 // 🚨 @PATCH : **2026-11-03** — [오류 진단 로깅 2단계]: handleSaveCurrentFile에 5대 메타데이터 기반 logError 연동으로 에디터 문서 저장 실패 정밀 추적
 // 🚨 @PATCH : **2026-10-31** — [제목(H1~H6) 버튼 동일 클릭 시 취소(토글 해제) 지원]:
@@ -284,7 +285,7 @@ export const useEditorHandlers = ({
         }
   
         // 새 각주 정의 추가
-        footnotes.push({ num: nextNumber, lines: [`[^${nextNumber}]: `] });
+        footnotes.push({ num: nextNumber, lines: [`[^${nextNumber}]: 각주 내용을 입력하세요`] });
   
         // 각주 블록 내의 불필요한 후행 빈 줄 제거
         footnotes.forEach(f => {

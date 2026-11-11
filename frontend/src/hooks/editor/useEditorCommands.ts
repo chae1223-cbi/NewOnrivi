@@ -2,6 +2,7 @@
 // 📊 [OMD-HOOK-useEditorCommands] frontend/src/hooks/editor/useEditorCommands.ts
 // 🎯 @KICK  : 에디터 툴바, 플로팅 툴바, 슬래시 메뉴 및 단축키 통합 명령 디스패처
 // 🛡️ @GUARD : 비인증 사용자 제한 명령 차단, 모드별(WYSIWYG/Monaco) 분기 및 자동 포커스 보장
+// 🚨 @PATCH : 2026-11-11 — [각주(FOOTNOTE) 비주얼 에디터 가드 보강]: FOOTNOTE 명령 실행 시 비주얼 에디터 마운트 상태일 때 visualCommandRef를 최우선 실행하여 모나코 핸들러 오분기 원천 차단
 // 🚨 @PATCH : 2026-11-10 — [서명/발신인 서식 모달 오픈 연결]:
 //             1) SIGNATURE 명령 실행 시 onrivi:open-signature-modal 이벤트를 디스패치하여 정렬/문구 커스텀 대화상자 호출
 // 🚨 @PATCH : 2026-11-04 — [주석 표준화] 1단계 파일 헤더 및 2단계 useEditorCommands/dispatchCommand JSDoc 표준화 적용
@@ -458,7 +459,13 @@ export function useEditorCommands({
     switch (type as any) {
       // 서식 관련
       case 'BOLD': handlers.bold(); break;
-      case 'FOOTNOTE': handlers.footnote(); break;
+      case 'FOOTNOTE': {
+        if (previewRef.current?.querySelector('.visual-document-editor') && visualCommandRef.current?.('FOOTNOTE')) {
+          break;
+        }
+        handlers.footnote();
+        break;
+      }
       case 'ORGANIZE_FOOTNOTES':
         if (previewRef.current?.querySelector('.visual-document-editor') && visualCommandRef.current?.('ORGANIZE_FOOTNOTES')) {
           break;

@@ -3,6 +3,9 @@
 // 🎯 @KICK  : Electron 데스크톱 파일 시스템, 폴더 탐색기, 다이얼로그 IPC 핸들러 모듈
 // 🛡️ @GUARD : Rule 1(표준 주석 규격), Rule 2(대문자 코드값), 5대 정밀 진단 로깅
 // 🚨 @PATCH : 2026-11-09 — [desktopInlineImages 상대 경로 보정]: electron 폴더 내부에서 루트의 desktopInlineImages.js를 정상 참조하도록 '../desktopInlineImages'로 경로 수정
+// 🚨 @PATCH : 2026-11-11 — [DOC 파일 선택 지원]: 데스크톱 가져오기 대화상자에 기존 DOC 변환 경로의 확장자를 포함
+// 🚨 @PATCH : 2026-11-11 — [DOC 서식 보존 변환]: Word 자동화를 통한 임시 DOCX 변환 IPC를 연결
+// 🚨 @PATCH : 2026-11-11 — [원본 폴더 변환 저장]: 로컬 파일 열기로 선택한 문서의 폴더에 충돌 없이 마크다운 생성
 // 🚨 @PATCH : 2026-11-08 — [main.js 3단계 모듈 분리] main.js의 파일/폴더 I/O 및 탐색기 IPC 핸들러 1,000줄을 electron/fileIpcHandlers.cjs로 격리 모듈화
 // 🔗 @CALLS : electron(dialog, shell), node:fs, node:path, node:crypto, node:os
 // ====================================================================
@@ -11,6 +14,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const crypto = require('node:crypto');
+const { convertWordDocToDocx } = require('./wordDocConverter.cjs');
 const { shell: electronShell, dialog: electronDialog } = require('electron');
 
 /**
@@ -244,6 +248,39 @@ function registerFileIpcHandlers({
     if (typeof filePath !== 'string' || !path.isAbsolute(filePath)) throw new Error('절대 파일 경로가 필요합니다.');
     return new Uint8Array(await fs.promises.readFile(filePath));
   });
+  ipcMain.handle('file:saveConvertedSibling', async (event, sourcePath, name, content) => {
+    const win = getWin();
+    if (!win || event.sender !== win.webContents || typeof sourcePath !== 'string' || !path.isAbsolute(sourcePath) ||
+        typeof name !== 'string' || name !== path.basename(name) || !name.toLowerCase().endsWith('.md') ||
+        typeof content !== 'string') throw new TypeError('Invalid converted document input');
+    const source = await fs.promises.stat(sourcePath);
+    if (!source.isFile()) throw new TypeError('Invalid source document');
+    const folder = path.dirname(sourcePath);
+    const stem = name.slice(0, -3);
+    for (let index = 0; index < 10000; index++) {
+      const candidate = path.join(folder, `${stem}${index ? `_${index}` : ''}.md`);
+      try {
+        await fs.promises.writeFile(candidate, content, { encoding: 'utf8', flag: 'wx' });
+        return { path: candidate, folder, name: path.basename(candidate) };
+      } catch (error) {
+        if (error.code !== 'EEXIST') {
+          console.error('[Converted document save]', { code: error.code || error.name || 'UNKNOWN' });
+          throw error;
+        }
+      }
+    }
+    throw new Error('Too many converted document names');
+  });
+  ipcMain.handle('doc:convertToDocx', async (event, bytes) => {
+    const win = getWin();
+    if (!win || event.sender !== win.webContents) throw new TypeError('Invalid sender');
+    try {
+      return await convertWordDocToDocx(bytes);
+    } catch (error) {
+      console.error('[DOC conversion]', { code: error.code || error.name || 'UNKNOWN' });
+      throw error;
+    }
+  });
   ipcMain.handle('file:writeTransferCopy', async (_event, folderPath, relativePath, bytes) => {
     if (typeof folderPath !== 'string' || !path.isAbsolute(folderPath) || typeof relativePath !== 'string' || !(bytes instanceof Uint8Array)) throw new Error('전송 경로나 데이터가 올바르지 않습니다.');
     const root = path.resolve(folderPath);
@@ -311,11 +348,11 @@ function registerFileIpcHandlers({
       ? defaultPath : app.getPath('documents');
     const result = await activeDialog.showOpenDialog(getWin(), {
       title: '가져올 파일 선택', defaultPath: start, properties: ['openFile'],
-      filters: [{ name: '지원 문서 (DOCX, HWP, PDF, EPUB, TXT, MD, HTML)', extensions: ['docx', 'hwp', 'pdf', 'epub', 'txt', 'md', 'markdown', 'html', 'htm'] }],
+      filters: [{ name: '지원 문서 (DOC, DOCX, HWP, HWPX, PDF, EPUB, TXT, MD, HTML)', extensions: ['doc', 'docx', 'hwp', 'hwpx', 'pdf', 'epub', 'txt', 'md', 'markdown', 'html', 'htm'] }],
     });
     if (result.canceled || !result.filePaths.length) return null;
     const selectedPath = result.filePaths[0];
-    return { path: selectedPath, name: path.basename(selectedPath) };
+    return { path: selectedPath, name: path.basename(selectedPath), folder: path.dirname(selectedPath) };
   });
   
   ipcMain.handle('dialog:selectFolder', async (event, defaultPath) => {

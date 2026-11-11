@@ -1,6 +1,8 @@
 // ====================================================================
 // 🚨 @PATCH : **2026-11-07** — [PDF 페이지 간 마크다운 개행 분리]: 페이지 경계에서 serializePdfBlocks 반환값 뒤에 \n\n을 부여하여 다음 페이지 요소와 문단 병합 방지
 // 🚨 @PATCH : **2026-11-07** — [PDF 이미지 마크다운 URL 꺽쇠 제거]: PDF 추출 이미지 마크다운 생성 시 URL을 감싸던 꺽쇠(<...>)를 제거하여 driveId 파라미터 끝 꺽쇠 오파싱 및 404 차단
+// 🚨 @PATCH : **2026-11-11** — [DOCX lockedCanvas 이미지 복구]: Mammoth가 건너뛰는 그룹 그림을 원래 문단 위치에 저장·삽입
+// 🚨 @PATCH : **2026-11-11** — [DOC 서식 보존 가져오기]: 데스크톱에서 설치된 Word로 DOC를 임시 DOCX로 변환한 뒤 표·이미지까지 추출
 // 🚨 @PATCH : **2026-10-11** — [일반 텍스트(.txt) 파일 스마트 마크다운 변환 엔진(importPlainTextToMarkdown) 탑재]:
 //             메모장 등에서 작성된 .txt 파일을 타문서 변환으로 가져올 때 대제목(제N장/PART/Chapter), 소제목([소제목]/■/★), 번호 목록, 글머리 기호(•/·/-) 및 문단 줄바꿈을 자동으로 분석하여 규격화된 마크다운(.md) 문서로 정돈 변환
 // 🚨 @PATCH : **2026-08-20** (2차) HWP 이미지 추출 시 순차 치환으로 인해 이미지가 뒤섞이는 현상을 완벽 해결하기 위해, hwp.js의 Picture 객체의 binID를 추출하여 정확한 플레이스홀더를 삽입하고 OLE/DocInfo와 매핑. 또한 표(Table) 객체를 감지하여 뭉친 텍스트 대신 완전한 마크다운 표 구조를 생성하도록 extractText를 재귀적으로 리팩토링함.
@@ -17,6 +19,7 @@ import { htmlToImportMarkdown, importHtmlWithImages } from './importHtmlMarkdown
 import { importEpub } from './epubImporter';
 import { extractPdfPageText } from './pdfImportText';
 import { readDocxImageSizes } from './docxImageSizes';
+import { prepareDocxLockedCanvasImages } from './docxLockedCanvasImages';
 import { pdfImageBoxes, serializePdfBlocks } from './pdfImportLayout';
 import { pdfRuledTableBlocks } from './pdfImportTables';
 import { readHwpCompression, decodeHwpBody, decodeHwpParagraph, isRawHwpImage } from './hwpStreams';
@@ -99,8 +102,15 @@ export async function convertFileToMarkdown(
   const arrayBuffer = await file.arrayBuffer();
 
   switch (extension) {
-    case 'doc':
+    case 'doc': {
+      const convertDocToDocx = typeof window !== 'undefined' ? (window as any).electronAPI?.convertDocToDocx : null;
+      if (typeof convertDocToDocx === 'function') {
+        const converted = await convertDocToDocx(new Uint8Array(arrayBuffer));
+        const bytes = new Uint8Array(converted);
+        return await importDocx(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer, imageSaveCallback);
+      }
       return await importDoc(arrayBuffer);
+    }
     case 'docx':
       return await importDocx(arrayBuffer, imageSaveCallback);
     case 'pdf':
@@ -120,6 +130,15 @@ export async function convertFileToMarkdown(
   }
 }
 
+/**
+ * ========================================================================================
+ * [importDocx] Word 본문과 이미지를 마크다운으로 변환하고 lockedCanvas 그림을 복구합니다.
+ * @param arrayBuffer 원본 DOCX 바이트
+ * @param imageSaveCallback 추출 이미지의 저장 경로를 반환하는 함수
+ * @returns 변환된 마크다운 본문
+ * @throws DOCX 변환 또는 이미지 저장 실패 시 오류
+ * ========================================================================================
+ */
 async function importDocx(
   arrayBuffer: ArrayBuffer,
   imageSaveCallback?: (base64Data: string, contentType: string) => Promise<string>
@@ -127,6 +146,7 @@ async function importDocx(
   try {
     let result;
     if (imageSaveCallback) {
+      const lockedCanvas = await prepareDocxLockedCanvasImages(arrayBuffer);
       const imageSizes = await readDocxImageSizes(arrayBuffer);
       const options = {
         styleMap: ["p[style-name='Caption'] => figcaption:fresh"],
@@ -140,8 +160,13 @@ async function importDocx(
         })
       };
       // 이미지 콜백이 있을 경우 HTML 변환 후 반환
-      result = await mammoth.convertToHtml({ arrayBuffer }, options);
-      return htmlToImportMarkdown(result.value);
+      result = await mammoth.convertToHtml({ arrayBuffer: lockedCanvas.arrayBuffer }, options);
+      let markdown = htmlToImportMarkdown(result.value);
+      for (const image of lockedCanvas.images) {
+        const src = await imageSaveCallback(image.base64, image.contentType);
+        markdown = markdown.replace(image.marker, `![](<${src.replace(/>/g, '%3E')}>)`);
+      }
+      return markdown;
     } else {
       // 텍스트 추출 방식 사용
       result = await mammoth.convertToHtml({ arrayBuffer }, {

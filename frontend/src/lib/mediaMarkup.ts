@@ -2,10 +2,13 @@
 // 📊 [OMD-LIB-mediaMarkup-0001] mediaMarkup.ts ➔ Media Markup & Clipboard Image Copy Engine
 // 🎯 @KICK  : 미디어 태그 생성/파싱 및 클립보드 네이티브 비트맵 이미지 복사 지원
 // 🛡️ @GUARD : Electron IPC (clipboard:writeImage) 및 웹 브라우저 ClipboardItem 2중화
+// 🚨 @PATCH : 2026-11-11 — [Drive 이미지 복사]: driveId 원본과 렌더링된 Blob을 이용해 PNG Data URL을 네이티브 클립보드에 전달한다.
 // 🚨 @PATCH : **2026-10-14** — [클립보드 네이티브 이미지 복사 엔진(copyImageToClipboard) 탑재 및 copyMediaSource 지능형 연동]:
 //             1) copyImageToClipboard를 신설하여 Electron 네이티브 IPC 및 브라우저 Canvas/ClipboardItem으로 OS 클립보드에 실제 비트맵 이미지 직접 기록
 //             2) copyMediaSource에서 이미지 감지 시 텍스트 대신 이미지 비트맵을 우선 복사하여 외부 앱 및 에디터/ImageModal 붙여넣기 완벽 보장
 // ====================================================================
+
+import { logWarn } from '@/lib/errorDiagnostics';
 
 export type MediaKind = 'video' | 'map';
 const decode = (text: string) => text.replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&');
@@ -73,7 +76,38 @@ async function fetchImageBlob(url: string): Promise<Blob | null> {
  * 이미지 소스(경로, URL, DataURL, 마크다운 태그)를 OS 시스템 클립보드에 비트맵으로 직접 복사합니다.
  */
 export async function copyImageToClipboard(source: string, renderedImage?: HTMLImageElement | null): Promise<boolean> {
-  const cleanSource = renderedImage?.currentSrc || renderedImage?.src || source.trim();
+  const originalSource = source.trim();
+  let cleanSource = renderedImage?.currentSrc || renderedImage?.src || originalSource;
+  if (/[?&]driveId=/.test(originalSource)) {
+    try {
+      let blobUrl = cleanSource.startsWith('blob:') ? cleanSource : '';
+      if (!blobUrl) {
+        const { getSavedDriveToken, getSavedWorkspaceInfo, getDriveMediaImageBlobUrl } = await import('@/lib/gdrive/googleDriveClient');
+        const { getResourceSettings } = await import('@/lib/resourceSettings');
+        const token = getSavedDriveToken();
+        const folderId = getResourceSettings('cloud')?.mediaFolderId || getSavedWorkspaceInfo()?.mediaFolderId;
+        if (token && folderId) blobUrl = await getDriveMediaImageBlobUrl(token, folderId, originalSource) || '';
+      }
+      if (!blobUrl) return false;
+      const png = await fetchImageBlob(blobUrl);
+      if (!png) return false;
+      cleanSource = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(png);
+      });
+    } catch (error) {
+      logWarn({
+        file: 'frontend/src/lib/mediaMarkup.ts',
+        func: 'copyImageToClipboard',
+        doing: 'Drive 이미지 Blob을 클립보드용 비트맵으로 변환 중',
+        target: 'drive-media',
+        error
+      });
+      return false;
+    }
+  }
   const api = typeof window !== 'undefined' ? (window as any).electronAPI : null;
 
   // 1) Electron 네이티브 IPC 호출

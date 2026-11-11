@@ -5,6 +5,7 @@
 // 🚨 @PATCH : **2026-11-08** — [외부 표(엑셀/구글스프레드시트/웹) 붙여넣기 시 네이티브 마크다운 표 변환 연동]:
 //             1) 엑셀의 td[colspan=1] 속성으로 인해 모든 외부 표가 원시 HTML 및 source_block 드로어로 떨어지던 결함 수정
 //             2) 오직 중첩된 표(table 내부 table)만 HTML을 유지하고, 엑셀/웹 표는 온전한 마크다운 파이프 표(|---|)로 변환하여 시각적 위지윅 표로 즉시 편집 가능하도록 개선
+// 🚨 @PATCH : **2026-11-11** — [DOCX 병합 표 보존]: rowspan/colspan이 있는 표는 셀 병합 정보가 사라지는 파이프 표 대신 HTML 표로 유지
 // ====================================================================
 
 /** Deterministic document conversion. No AI request or server dependency. */
@@ -144,7 +145,7 @@ export function htmlToImportMarkdown(html: string): string {
       }).join('\n') + '\n';
     }
     if (tag === 'table') {
-      if (el.querySelector('table')) {
+      if (el.querySelector('table, [colspan]:not([colspan="1"]), [rowspan]:not([rowspan="1"])')) {
         // Pipe tables cannot represent merged cells. Keep the table structure
         // and inline formatting, without carrying source scripts or handlers.
         const table = el.cloneNode(true) as HTMLElement;

@@ -3,6 +3,7 @@
 // 🎯 @KICK  : 문서 내보내기 공통 DOM 조작, 스타일 인젝션, 이미지/폰트 인라인화 및 다운로드 헬퍼
 // 🛡️ @GUARD : CORS 방어, 비식별화, IME 강제 플러시, 리스트 마커 및 표 서식 보존
 // 🚨 @PATCH : **2026-11-04** — [모듈화 분리 & 에러/주석 표준화]: exportHandlers.ts에서 공통 DOM 전처리 및 헬퍼 함수 분리 및 2단계 JSDoc·logWarn/logError 적용
+// 🚨 @PATCH : **2026-11-11** — [내보내기 편집 패널 제거]: HTML 표 원문 편집 등 no-print 편집 UI를 복제 문서에서 제외
 // 🔗 @CALLS : materializeReportNumbers, materializeHeadingNumbers, embedExportFonts
 // ====================================================================
 import { getApiUrl } from '@/lib/apiUrlBuilder';
@@ -678,7 +679,7 @@ export function clonePreview(previewEl: HTMLElement, captureWordLayout = false):
       }
     });
   }
-  clone.querySelectorAll('[data-editor-controls], .onrivi-page-guides, .onrivi-print-tools').forEach(el => el.remove());
+  clone.querySelectorAll('[data-editor-controls], .onrivi-page-guides, .onrivi-print-tools, .no-print').forEach(el => el.remove());
   // A top caption must be first in the exported DOM as well as visually above
   // the image; DOCX/HWPX readers do not implement CSS flex ordering.
   const sourceCaptions = Array.from(previewEl.querySelectorAll('figure > figcaption'));

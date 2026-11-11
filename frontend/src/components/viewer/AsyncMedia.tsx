@@ -2,6 +2,7 @@
 // 📊 [OMD-CORE-AsyncMedia-0001] AsyncMedia.tsx ➔ 비동기 미디어(이미지·비디오) 뷰어 컴포넌트
 // 🎯 @KICK  : 미디어 리졸버(resolveMediaUrl)와 연동하여 이미지/비디오를 시각 렌더링하고 복사 컨트롤 제공
 // 🛡️ @GUARD : Rule 3(역할 기반 분리: Core Presentation) 준수 - I/O 복잡도를 mediaResolver로 위임하여 렌더링에만 집중
+// 🚨 @PATCH : 2026-11-11 — [Drive 이미지 복사]: 표시된 Blob과 원본 driveId 쿼리를 함께 전달해 비트맵 복사 대상을 유지한다.
 // 🚨 @PATCH : 2026-11-08 — [AsyncImage 로드 실패 시 데스크톱 네이티브 프로토콜(media-local://) 자가 치유 폴백 및 api 전달 보강]:
 //             1) api가 props로 전달되지 않은 경우에도 typeof window.electronAPI를 기본 주입하여 데스크톱 환경 누락 방어
 //             2) <img onError> 핸들러를 추가하여 웹 오리진 404 실패 시 media-local://로 즉시 재시도하는 자가 치유(Self-Healing) 방어막 구축
@@ -138,8 +139,8 @@ export const AsyncImage = ({
     e.preventDefault();
     e.stopPropagation();
     try {
-      const target = absolutePath || src || imgSrc;
-      const ok = await copyImageToClipboard(target);
+      const target = queryString && !src.includes('?') ? `${src}${queryString}` : src || absolutePath || imgSrc;
+      const ok = await copyImageToClipboard(target, imgRef.current);
       if (ok) {
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
