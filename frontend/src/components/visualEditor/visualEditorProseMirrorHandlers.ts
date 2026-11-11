@@ -2,6 +2,9 @@
 // 📊 [OMD-CORE-VisualEditor-ProseMirrorHandlers] frontend/src/components/visualEditor/visualEditorProseMirrorHandlers.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 ProseMirror Keymap, 키보드/텍스트 입력, 스마트 붙여넣기(handlePaste), 드롭(handleDrop), 마우스 클릭/링크 이동(handleClick) 및 DOM 이벤트 핸들러 팩토리
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 클립보드 이미지/HTML 붙여넣기 정제, 5대 정밀 진단 로깅(logError/logWarn) 준수
+// 🚨 @PATCH : 2026-11-11 — [인용문 내부 문단 Tab 들여쓰기 & Shift+Tab 내어쓰기 연동]:
+//             1) 인용문(blockquote) 내부 텍스트블록에서 Tab 입력 시 indentDocument(false)를 호출하여 탭 들여쓰기(공백 삽입) 실행
+//             2) 인용문 내부 텍스트블록에서 Shift+Tab 입력 시 indentDocument(true)를 호출하여 내어쓰기(앞선 공백 삭제) 실행
 // 🚨 @PATCH : 2026-11-11 — [인용문 탈출 시 말단 빈 행 자동 소거 및 Enter/Shift+Enter 인용문 탈출 연동]:
 //             1) 인용문(blockquote) 내 빈 문단에서 Enter 입력 시 exitQuote(true)를 우선 호출하여 인용문을 탈출하고 말단 빈 행 자동 정제
 //             2) 인용문 내부에서 Shift+Enter 입력 시 exitQuote()를 실행하여 인용문 말단 빈행 소거 후 인용문 바깥의 독립 문단으로 즉시 이동
@@ -1128,6 +1131,21 @@ export function createVisualEditorHandlers({
           if (position.node(depth).type === visualSchema.nodes.list_item) inList = true;
           if (position.node(depth).type === visualSchema.nodes.blockquote) inQuote = true;
         }
+
+        // 🌟 [인용문 내부 문단 Tab 들여쓰기 & Shift+Tab 내어쓰기]:
+        // 인용문(blockquote) 내부의 텍스트블록(리스트 제외)에서 Tab은 들여쓰기, Shift+Tab은 내어쓰기 실행
+        if (
+          inQuote &&
+          !inList &&
+          !tableContext(currentView.state) &&
+          position.parent.isTextblock
+        ) {
+          event.preventDefault();
+          const handled = indentDocument(event.shiftKey)(currentView.state, currentView.dispatch, currentView);
+          caretRef.current?.schedule();
+          return handled;
+        }
+
         if (
           !inList &&
           !inQuote &&
