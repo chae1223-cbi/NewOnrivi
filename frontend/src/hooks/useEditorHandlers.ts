@@ -1,6 +1,7 @@
 // @ts-nocheck
 // ====================================================================
 // 📊 [OMD-HOOK-useEditorHandlers-0001] useEditorHandlers.ts ➔ 에디터 액션 핸들러 훅
+// 🚨 @PATCH : **2026-11-11** — [모나코 각주 삽입 후 커서 다음 칼럼 전진 및 본문 포커스 유지]: 하단으로 커서 강제 이동하던 로직을 제거하고 본문 각주 직후(다음 칼럼)로 커서 위치 유지
 // 🚨 @PATCH : **2026-11-11** — [각주 생성 시 기본 플레이스홀더 텍스트 통일]: 모나코 핸들러의 새 각주 생성 시 '각주 내용을 입력하세요' 기본 문구를 삽입하여 비주얼 에디터 플로팅 툴바 형식과 100% 동기화
 // 🚨 @PATCH : **2026-11-07** — [플로팅 툴바 toggleFloatingToolbar 커서 복원 연동]: 플로팅 툴바 토글 닫기 시 모나코 에디터 포커스 및 선택 복원 보장, setTabs 구문 오류 정돈
 // 🚨 @PATCH : **2026-11-03** — [오류 진단 로깅 2단계]: handleSaveCurrentFile에 5대 메타데이터 기반 logError 연동으로 에디터 문서 저장 실패 정밀 추적
@@ -247,9 +248,11 @@ export const useEditorHandlers = ({
         }
         const nextNumber = maxNumber + 1;
         const footnoteRef = `[^${nextNumber}]`;
+        const hasSpaceAfter = fullText.charAt(endOffset) === ' ';
+        const insertFootnoteStr = hasSpaceAfter ? footnoteRef : footnoteRef + ' ';
   
         // 2. 인라인 각주 문자열 병합 (선택 영역 보존하고 선택된 문구 바로 뒤에 각주 부착)
-        const textWithRef = fullText.substring(0, endOffset) + footnoteRef + fullText.substring(endOffset);
+        const textWithRef = fullText.substring(0, endOffset) + insertFootnoteStr + fullText.substring(endOffset);
   
         // 3. 전체 문서 파싱 및 각주 수집
         const lines = textWithRef.split('\n');
@@ -322,14 +325,11 @@ export const useEditorHandlers = ({
         }]);
         editor.pushUndoStop();
   
-        // 5. 커서를 맨 마지막으로 이동시켜 입력 대기
+        // 5. 커서를 각주 직후(다음 칼럼)로 이동하고 본문 포커스 유지
         setTimeout(() => {
-          const newLineCount = model.getLineCount();
-          const newLastLineLength = model.getLineLength(newLineCount);
-          editor.setPosition({
-            lineNumber: newLineCount,
-            column: newLastLineLength + 1
-          });
+          const afterRefOffset = endOffset + insertFootnoteStr.length;
+          const nextPosition = model.getPositionAt(afterRefOffset);
+          editor.setPosition(nextPosition);
           editor.focus();
         }, 20);
       },

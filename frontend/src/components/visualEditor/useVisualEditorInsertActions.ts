@@ -1,6 +1,7 @@
 // ====================================================================
 // 📊 [OMD-HOOK-VisualEditorInsertActions] frontend/src/components/visualEditor/useVisualEditorInsertActions.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 서식/블록 명령, 이미지/미디어/각주/서명/참고문헌/수식/문서링크/날짜 삽입 액션 및 외부 commandRef 브릿지 훅
+// 🚨 @PATCH : 2026-11-11 — [각주 삽입 후 커서 다음 칼럼 전진 및 본문 포커스 유지]: 각주 삽입 후 하단 각주 정의로 포커스/스크롤 이동을 제거하고 본문 각주 뒤 공백 추가 및 다음 칼럼으로 커서 전진 유지
 // 🚨 @PATCH : 2026-11-11 — [각주 브릿지 및 슬래시 명령 실행 포커스 안정화]: bridge에 FOOTNOTE/FN 명령 직접 분기 추가 및 nativeCommands.footnote/fn에 removeSlash=true 연동하여 단축키/슬래시/플로팅툴바 각주 생성 통일
 // 🚨 @PATCH : 2026-11-10 — [슬래시 명령어 글자 중간 실행 시 잔여 텍스트 삭제 및 전체 단어 검색 보장]: 커서 뒤의 단어 끝까지 slashRange.to에 포함하여 명령어 실행 시 뒤쪽 글자가 남지 않도록 완벽 제거
 // 🚨 @PATCH : 2026-11-10 — [링크 모달 완료 시 링크 뒤 자동 스페이스 삽입 및 커서 전진]:
@@ -581,42 +582,28 @@ export function useVisualEditorInsertActions({
     }
     const { to } = tr.selection;
     const refNode = visualSchema.nodes.visual_footnote_ref.create({ label });
-    tr = tr.insert(to, refNode);
     const defNode = visualSchema.nodes.visual_footnote_def.create({
       label,
       content: '각주 내용을 입력하세요',
     });
     const insertPos = tr.doc.content.size;
     tr = tr.insert(insertPos, defNode);
-    const nextPos = to + refNode.nodeSize;
-    tr = tr.setSelection(TextSelection.create(tr.doc, nextPos));
+
+    // 🌟 [각주 삽입 후 커서 다음 칼럼(공백) 전진 및 본문 포커스 유지]:
+    const nextChar = to < tr.doc.content.size ? tr.doc.textBetween(to, to + 1) : '';
+    const hasSpaceAfter = nextChar === ' ';
+
+    if (hasSpaceAfter) {
+      tr = tr.insert(to, refNode);
+    } else {
+      const spaceNode = view.state.schema.text(' ');
+      tr = tr.insert(to, [refNode, spaceNode]);
+    }
+    const nextPos = to + refNode.nodeSize + 1;
+    tr = tr.setSelection(TextSelection.create(tr.doc, Math.min(nextPos, tr.doc.content.size)));
     view.dispatch(closeHistory(tr).scrollIntoView());
-
-    const focusFootnoteInput = () => {
-      const defEl = view.dom.querySelector(`[data-footnote-def="${label}"]`);
-      if (defEl) {
-        defEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        const inputEl = defEl.querySelector('.visual-footnote-text') as HTMLElement | null;
-        if (inputEl) {
-          inputEl.focus();
-          const sel = window.getSelection();
-          if (sel) {
-            const range = document.createRange();
-            range.selectNodeContents(inputEl);
-            sel.removeAllRanges();
-            sel.addRange(range);
-          }
-          return true;
-        }
-      }
-      return false;
-    };
-
-    requestAnimationFrame(() => {
-      if (!focusFootnoteInput()) {
-        setTimeout(focusFootnoteInput, 50);
-      }
-    });
+    view.focus();
+    caretRef.current?.schedule();
   };
   insertFootnoteRef.current = insertFootnote;
 
