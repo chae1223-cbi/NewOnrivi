@@ -1,6 +1,7 @@
 // ====================================================================
 // 📊 [OMD-LIB-VisualQuoteCommands] frontend/src/lib/visualQuoteCommands.ts
 // 🎯 @KICK  : 시각 에디터 인용문 들여쓰기·목록 분리·경계 보호·단계 해제 커맨드
+// 🚨 @PATCH : 2026-11-11 — [빈 문단 Delete 시 protectQuoteBoundary 가로채기 방어]: protectQuoteBoundary에서 빈 문단(isBlank)인 경우 보호 가드를 통과시켜 deleteEmptyParagraphBeforeList가 빈 행을 정상 삭제하도록 개선
 // 🚨 @PATCH : 2026-11-07 — [중첩 인용문 단계 해제]: liftQuoteAtStart 신설 — 인용문 첫 문단 맨 앞 Backspace 시 인용 단계를 한 단계씩 해제
 // ====================================================================
 import {Fragment,Node as DocumentNode} from 'prosemirror-model';
@@ -125,6 +126,16 @@ export function quoteIndent(backward=false):Command{
 export const protectQuoteBoundary:Command=(state)=>{
   const {$from,empty}=state.selection;
   if(!empty || !$from.parent.isTextblock || $from.parentOffset!==$from.parent.content.size)return false;
+
+  // 🛡️ 빈 문단(내용 없는 문단)일 때는 protectQuoteBoundary가 가로채지 않고 deleteEmptyParagraphBeforeList 등에 위임!
+  let isBlank = true;
+  $from.parent.forEach(node => {
+    if (node.type !== visualSchema.nodes.hard_break && (!node.isText || /[^\s\u200b\ufeff]/.test(node.text || ''))) {
+      isBlank = false;
+    }
+  });
+  if (isBlank) return false;
+
   let inList=false,inQuote=false;
   for(let d=1;d<$from.depth;d++){inList ||= $from.node(d).type===visualSchema.nodes.list_item;inQuote ||= $from.node(d).type===visualSchema.nodes.blockquote;}
   for(let d=$from.depth;d>0;d--){
