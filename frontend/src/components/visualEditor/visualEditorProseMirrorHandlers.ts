@@ -2,6 +2,9 @@
 // 📊 [OMD-CORE-VisualEditor-ProseMirrorHandlers] frontend/src/components/visualEditor/visualEditorProseMirrorHandlers.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 ProseMirror Keymap, 키보드/텍스트 입력, 스마트 붙여넣기(handlePaste), 드롭(handleDrop), 마우스 클릭/링크 이동(handleClick) 및 DOM 이벤트 핸들러 팩토리
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 클립보드 이미지/HTML 붙여넣기 정제, 5대 정밀 진단 로깅(logError/logWarn) 준수
+// 🚨 @PATCH : 2026-11-11 — [인용문 탈출 시 말단 빈 행 자동 소거 및 Enter/Shift+Enter 인용문 탈출 연동]:
+//             1) 인용문(blockquote) 내 빈 문단에서 Enter 입력 시 exitQuote(true)를 우선 호출하여 인용문을 탈출하고 말단 빈 행 자동 정제
+//             2) 인용문 내부에서 Shift+Enter 입력 시 exitQuote()를 실행하여 인용문 말단 빈행 소거 후 인용문 바깥의 독립 문단으로 즉시 이동
 // 🚨 @PATCH : 2026-11-10 — [/명령어 선택 시 Space(스페이스바)로 적용 지원]:
 //             1) 슬래시 메뉴(/) 활성 상태에서 화살표로 리스트를 선택했거나 검색어가 입력된 상태에서 Space 입력 시 선택된 명령어를 즉시 실행
 //             2) 단순 '/' 상태에서 스페이스 입력 시에는 일반 공백('/ ')으로 통과하여 텍스트 오적용 방지
@@ -333,6 +336,7 @@ export function createVisualEditorKeymap({
     'Shift-Enter': chainCommands(
       paragraphInCodeBlock,
       exitListToParagraph,
+      exitQuote(),
       headingEnter,
       baseKeymap.Enter
     ),
@@ -585,11 +589,11 @@ export function createVisualEditorHandlers({
         }
 
         let insideListItem = false;
+        let insideBlockquote = false;
         for (let d = $from.depth; d > 0; d--) {
-          if ($from.node(d).type.name === 'list_item') {
-            insideListItem = true;
-            break;
-          }
+          const nodeType = $from.node(d).type;
+          if (nodeType.name === 'list_item') insideListItem = true;
+          if (nodeType === visualSchema.nodes.blockquote || nodeType.name === 'blockquote') insideBlockquote = true;
         }
 
         // 🌟 [요구사항 1: 문단 시작 Enter 무반응 방어]
@@ -641,6 +645,7 @@ export function createVisualEditorHandlers({
         }
 
         // 🌟 [빈 문단에서 Enter: 불필요한 hard_break 없이 바로 새로운 빈 문단으로 분할 생성]
+        // 🛡️ 인용문(blockquote) 내부의 빈 문단일 때는 exitQuote(true)로 인용문 탈출 및 말단 빈행 자동 정제
         if (
           !event.shiftKey &&
           !event.ctrlKey &&
@@ -654,6 +659,11 @@ export function createVisualEditorHandlers({
           $from.parent.type.name !== 'code_block' &&
           !tableContext(currentView.state)
         ) {
+          if (insideBlockquote && exitQuote(true)(currentView.state, currentView.dispatch, currentView)) {
+            event.preventDefault();
+            caretRef.current?.schedule();
+            return true;
+          }
           event.preventDefault();
           const afterPos = $from.after();
           const tr = currentView.state.tr.insert(afterPos, visualSchema.nodes.paragraph.create());
@@ -695,7 +705,7 @@ export function createVisualEditorHandlers({
           }
         }
 
-        // 🌟 [요구사항 2: Shift + Enter 리스트 탈출 및 빈 행 문단 전환 및 글이 있을 때 새 문단 생성]
+        // 🌟 [요구사항 2: Shift + Enter 리스트/인용문 탈출 및 빈 행 문단 전환 및 글이 있을 때 새 문단 생성]
         if (
           event.shiftKey &&
           !event.ctrlKey &&
@@ -711,6 +721,14 @@ export function createVisualEditorHandlers({
           if (insideListItem) {
             event.preventDefault();
             exitListToParagraph(currentView.state, currentView.dispatch, currentView);
+            caretRef.current?.schedule();
+            return true;
+          }
+
+          // A-2) 인용문(blockquote) 내부인 경우: 인용문을 벗어나서 새로운 독립 문단(paragraph) 생성!
+          if (insideBlockquote) {
+            event.preventDefault();
+            exitQuote()(currentView.state, currentView.dispatch, currentView);
             caretRef.current?.schedule();
             return true;
           }

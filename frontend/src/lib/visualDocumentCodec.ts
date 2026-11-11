@@ -2,6 +2,7 @@
  * 프로그램명 : OnriviAuthor 
  * 버전 정보 : 1.0.1
  * 프로그램 ID : oaar-visual-codec
+ * 🚨 @PATCH : **2026-11-11** — [4칸/탭 들여쓰기 코드블록 오인식 방지]: markdown-it tokenizer에서 indented code block('code' 룰)을 비활성화하여 인용문 및 본문 내 들여쓰기 텍스트가 문서 재오픈 시 코드블록으로 오분기되는 결함 원천 차단
  * 🚨 @PATCH : **2026-11-11** — [각주 참조(visual_footnote_ref) user-select none 지정]: 각주 인접 커서 위치 시 브라우저 네이티브 위첨자 텍스트 선택 방지
  * 🚨 @PATCH : **2026-11-10** — [중첩 리스트 HTML 주석(<!-- onrivi:list-indent -->) 노출 결함 및 리스트 위계 보존 패치]:
  *             1) visualSerializer의 bullet_list / ordered_list 직렬화 시 indentPx가 유효한 양수(> 0)이고 최상위 리스트(!state.delim)일 때만 주석을 기록하도록 제한 (undefined/null 출력 차단 및 중첩 리스트 주석 삽입 원천 방지)
@@ -311,7 +312,7 @@ export const visualSchema = new Schema({
   }),
 });
 
-const tokenizer = defaultMarkdownParser.tokenizer.enable(['table','strikethrough']);
+const tokenizer = defaultMarkdownParser.tokenizer.enable(['table','strikethrough']).disable('code');
 const validateOriginalLink = tokenizer.validateLink.bind(tokenizer);
 tokenizer.validateLink = href => /^file:\/\/\/[^\r\n]*\.(?:md|markdown)(?:[?#]|$)/i.test(href) || validateOriginalLink(href);
 const strongClosingPunctuation = new RegExp('[\\p{Pe}\\p{Pf}\x27"`:;.!?%…]', 'u');

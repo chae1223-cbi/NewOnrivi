@@ -2,6 +2,7 @@
 // ⚙️ [OMD-CORE-VisualDocCommands-0001] visualDocumentCommands.ts ➔ 시각 에디터 전용 ProseMirror 커맨드 및 정규화 플러그인
 // 🎯 @KICK  : 제목/코드블록/인용구/리스트/구분선/미디어 등 블록 조작 커맨드 및 리스트 정규화 트랜잭션 플러그인 제공
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 VisualDocumentEditor 대형 컴포넌트 모듈화 표준 준수
+// 🚨 @PATCH : 2026-11-11 — [인용문 탈출 시 말단 빈 행/빈 문단 자동 정제]: exitQuote 실행 시 인용문 끝에 남아있는 빈 문단 및 trailing hard_break를 완전 소탕하여 인용문 내부에 빈 행이 남지 않도록 개선
 // 🚨 @PATCH : 2026-11-10 — [문단 끝 행 및 각 행 우측 빈 공간 클릭 시 마지막 문자 뒤 정확한 포커스 안착]: 라인별 바운딩 박스 그룹화 및 끝 행 우측 여백 클릭 감지 강화로 글자 외 빈 공간 클릭 시 해당 행의 마지막 문자 바로 다음 위치로 즉시 포커스 이동 보장
 // 🚨 @PATCH : 2026-11-10 — [슬래시 명령어 괄호/구두점 뒤 인식 지원]: 괄호((, [, {) 및 따옴표(", ') 직후 슬래시 입력 시에도 슬래시 메뉴가 정상 팝업되도록 패턴 확장
 // 🚨 @PATCH : 2026-11-08 — [빈 행(빈 문단) 클릭 시 다음 줄 도약(하이재킹) 방어 및 제자리 정확 안착]:
@@ -225,6 +226,41 @@ export const calloutEnter: Command = (state, dispatch) => {
   return false;
 };
 
+export const cleanQuoteTail = (tr: any, quoteStartPos: number) => {
+  let quote = tr.doc.nodeAt(quoteStartPos);
+  if (!quote || quote.type !== visualSchema.nodes.blockquote) return;
+
+  // 1. 인용문 끝에서부터 내용 없는 빈 문단 연속 삭제
+  while (quote.childCount > 1) {
+    const lastChild = quote.lastChild;
+    if (lastChild && lastChild.isTextblock && !lastChild.textContent.trim() && lastChild.content.size === 0) {
+      const childStart = quoteStartPos + quote.nodeSize - 1 - lastChild.nodeSize;
+      tr.delete(childStart, childStart + lastChild.nodeSize);
+      quote = tr.doc.nodeAt(quoteStartPos);
+      if (!quote || quote.type !== visualSchema.nodes.blockquote) return;
+    } else {
+      break;
+    }
+  }
+
+  // 2. 인용문 내 마지막 텍스트블록 끝의 trailing hard_break 삭제
+  if (quote && quote.childCount >= 1) {
+    let lastChild = quote.lastChild;
+    if (lastChild && lastChild.isTextblock && lastChild.content.size > 0) {
+      const childStart = quoteStartPos + quote.nodeSize - 1 - lastChild.nodeSize;
+      while (lastChild && lastChild.lastChild && lastChild.lastChild.type === visualSchema.nodes.hard_break) {
+        const breakNode = lastChild.lastChild;
+        const breakEnd = childStart + lastChild.nodeSize - 1;
+        const breakStart = breakEnd - breakNode.nodeSize;
+        tr.delete(breakStart, breakEnd);
+        quote = tr.doc.nodeAt(quoteStartPos);
+        if (!quote || quote.type !== visualSchema.nodes.blockquote) return;
+        lastChild = quote.lastChild;
+      }
+    }
+  }
+};
+
 export const exitQuote = (emptyOnly = false): Command => (state, dispatch) => {
   const position = state.selection.$from;
   if (!state.selection.empty) return false;
@@ -238,17 +274,30 @@ export const exitQuote = (emptyOnly = false): Command => (state, dispatch) => {
   if (!depth) return false;
   const quote = position.node(depth), start = position.before(depth), end = start + quote.nodeSize;
   const trailingBreak = position.parentOffset === position.parent.content.size && position.parent.lastChild?.type === visualSchema.nodes.hard_break;
-  const emptyLast = position.depth === depth + 1 && position.parent.type === visualSchema.nodes.paragraph && (!position.parent.content.size || trailingBreak) && position.index(depth) === quote.childCount - 1;
+  const isCurrentBlockEmpty = !position.parent.content.size || (!position.parent.textContent.trim() && !position.parent.firstChild);
+  const emptyLast = position.depth === depth + 1 && position.parent.type === visualSchema.nodes.paragraph && (isCurrentBlockEmpty || trailingBreak) && position.index(depth) === quote.childCount - 1;
   if (emptyOnly && !emptyLast) return false;
   if (dispatch) {
     let tr = state.tr;
-    if (emptyOnly && quote.childCount === 1 && !position.parent.content.size) {
+    if (emptyOnly && quote.childCount === 1 && !quote.textContent.trim()) {
       tr = tr.replaceWith(start, end, visualSchema.nodes.paragraph.create());
       tr = tr.setSelection(TextSelection.create(tr.doc, start + 1));
     } else {
-      if (emptyOnly) tr = trailingBreak ? tr.delete(position.pos - 1, position.pos) : tr.delete(position.before(), position.after());
-      const after = tr.mapping.map(end, -1), following = tr.doc.nodeAt(after);
-      if (following?.type !== visualSchema.nodes.paragraph) tr = tr.insert(after, visualSchema.nodes.paragraph.create());
+      if (emptyOnly) {
+        if (trailingBreak) {
+          tr = tr.delete(position.pos - 1, position.pos);
+        } else if (isCurrentBlockEmpty) {
+          tr = tr.delete(position.before(), position.after());
+        }
+      }
+      const currentQuoteStart = tr.mapping.map(start, -1);
+      cleanQuoteTail(tr, currentQuoteStart);
+      const updatedQuote = tr.doc.nodeAt(currentQuoteStart);
+      const after = updatedQuote ? currentQuoteStart + updatedQuote.nodeSize : tr.mapping.map(end, -1);
+      const following = tr.doc.nodeAt(after);
+      if (following?.type !== visualSchema.nodes.paragraph) {
+        tr = tr.insert(after, visualSchema.nodes.paragraph.create());
+      }
       tr = tr.setSelection(TextSelection.create(tr.doc, after + 1));
     }
     dispatch(closeHistory(tr).scrollIntoView());
