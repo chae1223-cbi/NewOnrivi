@@ -1,6 +1,9 @@
 /**
  * 프로그램명 : OnriviAuthor 
  * 파일명 : visualListCommands.ts
+ * 🚨 @PATCH : **2026-11-11** — [리스트 취소(clear) 시 각 항목을 문단간격이 아닌 문장간격(줄간격)으로 전환]:
+ *             1) selectedList('clear')에서 각 리스트 항목을 개별 paragraph로 분할하던 동작을 단일 paragraph 내부의 hard_break(줄바꿈) 연결 구조로 개선
+ *             2) 단축키/플로팅툴바/슬래시명령어로 숫자리스트/글머리기호 목록을 취소할 때 각 줄 사이에 과도한 문단 마진(문단간격)이 벌어지지 않고 줄간격(문장간격)으로 매끄럽게 연결되도록 보장
  * 🚨 @PATCH : **2026-11-10** — [중첩 리스트 내어쓰기(independentLiftListItem) 시 하위 리스트 indentPx 무효화 및 위계 보존]:
  *             1) independentLiftListItem에서 내어쓰기 분할 시 잔존/분리되는 서브 리스트(beforeBlocks, suffix)의 indentPx를 null로 초기화하여 중첩 리스트에 불필요한 HTML 주석이 생성되거나 위계가 왜곡되는 현상 원천 방어
  * 🚨 @PATCH : **2026-11-08** — [리스트 내부 Shift+Enter 시 리스트 탈출 및 새 문단(paragraph) 전환 커맨드(exitListToParagraph) 신설]:
@@ -971,12 +974,24 @@ export function selectedList(kind:'bullet'|'ordered'|'check'|'clear'):Command {
     const singleIndentedPara = !listRange && selected.length === 1 && selected[0].type === nodes.paragraph ? (selected[0].attrs.indentPx ?? 0) : 0;
     const prevNodeBeforeFrom = !listRange && range.start > 0 ? state.doc.resolve(range.start).nodeBefore : null;
     const shouldAutoNestAfterConvert = Boolean(kind !== 'clear' && singleIndentedPara > 0 && prevNodeBeforeFrom && isList(prevNodeBeforeFrom));
-    // Each former item becomes its own paragraph. Joining with bare newlines
-    // lets Markdown reparse the second numeric line as a new ordered list.
-    const targets=kind==='clear'?lines.map(line=>{
-      const content:DocumentNode[]=[];line.forEach(node=>content.push(node.mark([])));
-      return nodes.paragraph.create(null,Fragment.fromArray(content));
-    }):[(kind==='ordered'?nodes.ordered_list:nodes.bullet_list).create({tight:true,order:1,bullet:'-',indentPx:(!shouldAutoNestAfterConvert && singleIndentedPara>0)?singleIndentedPara:null},lines.map(line=>nodes.list_item.create({checked:kind==='check'?false:null},nodes.paragraph.create(null,line))))];
+    // 🌟 [리스트 취소(clear) 시 각 항목을 문단간격(개별 p)이 아닌 문장간격(단일 p + hard_break)으로 결합]:
+    const targets = kind === 'clear' ? (() => {
+      const content: DocumentNode[] = [];
+      lines.forEach((line, index) => {
+        if (index > 0) {
+          content.push(nodes.hard_break.create());
+        }
+        line.forEach(node => content.push(node.mark([])));
+      });
+      return [nodes.paragraph.create(null, Fragment.fromArray(content))];
+    })() : [(kind === 'ordered' ? nodes.ordered_list : nodes.bullet_list).create({
+      tight: true,
+      order: 1,
+      bullet: '-',
+      indentPx: (!shouldAutoNestAfterConvert && singleIndentedPara > 0) ? singleIndentedPara : null
+    }, lines.map(line => nodes.list_item.create({
+      checked: kind === 'check' ? false : null
+    }, nodes.paragraph.create(null, line))))];
     const target=targets[0];
     const replacement:DocumentNode[]=[];
     let from=range.start,to=range.end;
