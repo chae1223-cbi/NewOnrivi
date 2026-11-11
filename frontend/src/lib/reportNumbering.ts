@@ -2,6 +2,9 @@
 // 📊 [OMD-STYLE-reportNumbering-0001] reportNumbering.ts ➔ 리스트 번호 체계 및 불릿 서식 엔진
 // 🎯 @KICK  : 한국형 보고서 번호 체계, 원문자(①, ②, ③) 목록 및 계층별(1~3단계) 글머리 불릿 동적 CSS & 내보내기 마커 생성
 // 🛡️ @GUARD : Rule 1(단일 주석 관리), task-list-item 불릿 침범 방어, @counter-style 미지원 환경 폴백 보장
+// 🚨 @PATCH : **2026-11-11** — [글머리 기호 상위 리스트 인식 기반 상대적 레벨(1~3단계) 기호 적용]:
+//             1) listBulletCss에서 상위 리스트가 ul뿐만 아니라 ol(번호 목록)인 경우(:is(ul, ol) ul) 및 직전 번호 목록 후행(ol + ul)인 경우도 2단계 레벨(l2.css)로 상대적 기호 자동 결정
+//             2) 3단계 이상 중첩(:is(ul, ol) :is(ul, ol) ul) 시 상대적 3단계 레벨(l3.css)을 부여하여 상위 리스트 존재 여부에 따른 기호 계층 일관성 완벽 보장
 // 🚨 @PATCH : **2026-11-08** — [들여쓰기된 목록(indentPx)의 2·3단계 글머리 기호 서식 반영 완비]:
 //             1) listBulletCss에 data-onrivi-list-indent 속성 선택자를 탑재하여, DOM 중첩(ul ul)뿐만 아니라 indentPx로 들여쓰기된 목록에서도 2단계(▸), 3단계(※) 서식 기호가 정확히 일치 렌더링되도록 개선
 // 🚨 @PATCH : **2026-10-26** — [글머리 마커와 글자 사이 간격 초밀착 및 문자열 불릿 공백 제거]:
@@ -94,9 +97,12 @@ export function listBulletCss(profile: CssProfile): string {
   const roots = ':is(.custom-preview-container,.onrivi-content-root,.markdown-viewer-root,.visual-document-surface)';
   return `
 ${roots} ul > li:not(.task-list-item) { list-style-type: ${l1.css} !important; }
-${roots} ul ul > li:not(.task-list-item),
+${roots} :is(ul, ol) ul > li:not(.task-list-item),
+${roots} ol + ul > li:not(.task-list-item),
 ${roots} ul[data-onrivi-list-indent]:not([data-onrivi-list-indent="0"]):not([data-onrivi-list-indent=""]) > li:not(.task-list-item) { list-style-type: ${l2.css} !important; }
-${roots} ul ul ul > li:not(.task-list-item),
+${roots} :is(ul, ol) :is(ul, ol) ul > li:not(.task-list-item),
+${roots} ol + ul ul > li:not(.task-list-item),
+${roots} :is(ul, ol) ul[data-onrivi-list-indent]:not([data-onrivi-list-indent="0"]):not([data-onrivi-list-indent=""]) > li:not(.task-list-item),
 ${roots} ul[data-onrivi-list-indent]:not([data-onrivi-list-indent="0"]):not([data-onrivi-list-indent=""]) ul > li:not(.task-list-item) { list-style-type: ${l3.css} !important; }
 `;
 }

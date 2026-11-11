@@ -3,6 +3,8 @@
 // 🎯 @KICK  : 문서 내보내기 공통 DOM 조작, 스타일 인젝션, 이미지/폰트 인라인화 및 다운로드 헬퍼
 // 🛡️ @GUARD : CORS 방어, 비식별화, IME 강제 플러시, 리스트 마커 및 표 서식 보존
 // 🚨 @PATCH : **2026-11-04** — [모듈화 분리 & 에러/주석 표준화]: exportHandlers.ts에서 공통 DOM 전처리 및 헬퍼 함수 분리 및 2단계 JSDoc·logWarn/logError 적용
+// 🚨 @PATCH : **2026-11-11** — [내보내기 시 글머리 기호 상위 리스트(OL/UL) 및 인접 OL 상대적 레벨 계층 반영]:
+//             1) clone DOM 전처리에서 ul의 depth 계산 시 상위 OL 조상 및 직전 형제 OL 요소를 감지하여 상대적 2단계/3단계 불릿 기호 일치 주입
 // 🚨 @PATCH : **2026-11-11** — [내보내기 편집 패널 제거]: HTML 표 원문 편집 등 no-print 편집 UI를 복제 문서에서 제외
 // 🔗 @CALLS : materializeReportNumbers, materializeHeadingNumbers, embedExportFonts
 // ====================================================================
@@ -747,9 +749,11 @@ export function fixListMarkers(clone: HTMLElement, profile?: CssProfile): void {
     let depth = 1;
     let parent = ul.parentElement;
     while (parent && parent !== clone) {
-      if (parent.tagName === 'UL') depth++;
+      if (parent.tagName === 'UL' || parent.tagName === 'OL') depth++;
       parent = parent.parentElement;
     }
+    // 직전 형제 요소가 OL(번호 목록)인 경우에도 상위 번호 아래의 하위 목록으로 상대적 2단계 반영
+    if (depth === 1 && ul.previousElementSibling?.tagName === 'OL') depth = 2;
     const bulletChar = depth === 1 ? l1Text : depth === 2 ? l2Text : l3Text;
 
     ul.querySelectorAll(':scope > li').forEach((li) => {

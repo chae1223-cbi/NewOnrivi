@@ -1,6 +1,8 @@
 /**
  * 프로그램명 : OnriviAuthor 
  * 파일명 : visualListCommands.ts
+ * 🚨 @PATCH : **2026-11-11** — [글머리 기호 적용 시 상위 번호 목록 감지 기반 상대적 하위 레벨 자동 중첩]:
+ *             1) selectedList('bullet') 실행 시 직전에 상위 번호 목록(ordered_list)이 존재하는 경우, 독립된 1단계 목록으로 분리되지 않고 상위 목록의 하위 레벨(2단계 상대적 목록)로 자동 편입(auto-nest)되도록 개선
  * 🚨 @PATCH : **2026-11-11** — [문장간격(hard_break) 포함 단일 문단에서 커서 위치 라인만 개별 리스트 변환 지원]:
  *             1) 줄바꿈(hard_break)으로 연결된 문단에서 특정 라인에만 커서가 있거나 일부 라인만 선택된 경우, 전체 문단이 모두 리스트로 묶이지 않고 선택된 라인만 정확히 독립 리스트로 변환
  *             2) 비선택 라인은 이전/다음 문단으로 자동 분할 보존되어 '사과' 하나만 숫자리스트 적용 시 나머지('바나나', '애플')가 함께 리스트에 포함되는 결함 완벽 해결
@@ -1088,7 +1090,12 @@ export function selectedList(kind:'bullet'|'ordered'|'check'|'clear'):Command {
     if(!lines.length)return false;
     const singleIndentedPara = !listRange && selected.length === 1 && selected[0].type === nodes.paragraph ? (selected[0].attrs.indentPx ?? 0) : 0;
     const prevNodeBeforeFrom = !listRange && range.start > 0 ? state.doc.resolve(range.start).nodeBefore : null;
-    const shouldAutoNestAfterConvert = Boolean(kind !== 'clear' && singleIndentedPara > 0 && prevNodeBeforeFrom && isList(prevNodeBeforeFrom));
+    const shouldAutoNestAfterConvert = Boolean(
+      kind !== 'clear' &&
+      prevNodeBeforeFrom &&
+      isList(prevNodeBeforeFrom) &&
+      (singleIndentedPara > 0 || (kind === 'bullet' && prevNodeBeforeFrom.type === nodes.ordered_list))
+    );
     // 🌟 [리스트 취소(clear) 시 각 항목을 문단간격(개별 p)이 아닌 문장간격(단일 p + hard_break)으로 결합]:
     const targets = kind === 'clear' ? (() => {
       const content: DocumentNode[] = [];

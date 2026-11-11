@@ -2,6 +2,9 @@
 // 📊 [OMD-CORE-Viewer-Pipeline] frontend/src/components/viewer/markdownViewerPipeline.ts
 // 🎯 @KICK  : 마크다운 뷰어(MarkdownViewer)의 경로 보안 가드(isPathInsideWorkspace), 마크다운 원문 전처리(preprocessMarkdownContent), 줄 번호/개행 Rehype 플러그인 및 전용 CSS 스타일 시트
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 작업장 외부 경로 순회 차단, CommonMark 중첩 코드블록/인용구/위키링크 무결성 보존
+// 🚨 @PATCH : 2026-11-11 — [글머리 기호 상위 리스트 인식 기반 상대적 레벨(circle/square) 스타일 적용]:
+//             1) .onrivi-content-root :is(ul, ol) ul 및 ol + ul에 circle 불릿을 적용하여 상위 번호 목록 아래 글머리 기호의 상대적 2단계 레벨 일관성 확보
+//             2) :is(ul, ol) :is(ul, ol) ul에 square 불릿을 적용하여 3단계 이상 상대적 레벨 계층 보장
 // 🚨 @PATCH : 2026-11-10 — [제한사용자 다중 리스트 간격 및 마진 전체사용자(VisualDocumentEditor) 규격 100% 일치]:
 //             1) .onrivi-content-root ul/ol의 상하 마진(0.5em)을 0으로 격리하고, 중첩 서브리스트(ul ul, ol ol, li ul/ol)의 0.25em 여백을 0으로 통일
 //             2) .onrivi-content-root ol > li에 padding-left: 6px, ul > li에 padding-left: 4px를 적용하여 번호/불릿과 텍스트 사이 여백 일치
@@ -859,7 +862,8 @@ export const MARKDOWN_VIEWER_STYLES = `
     padding-top: 0 !important;
     padding-bottom: 0 !important;
   }
-  .onrivi-content-root ul ul {
+  .onrivi-content-root :is(ul, ol) ul,
+  .onrivi-content-root ol + ul {
     list-style-type: circle !important;
     margin-top: 0 !important;
     margin-bottom: 0 !important;
@@ -867,7 +871,8 @@ export const MARKDOWN_VIEWER_STYLES = `
     padding-bottom: 0 !important;
     padding-left: var(--list-indent, 28px) !important;
   }
-  .onrivi-content-root ul ul ul {
+  .onrivi-content-root :is(ul, ol) :is(ul, ol) ul,
+  .onrivi-content-root ol + ul ul {
     list-style-type: square !important;
     margin-top: 0 !important;
     margin-bottom: 0 !important;
