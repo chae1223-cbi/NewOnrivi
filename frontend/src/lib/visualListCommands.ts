@@ -1,6 +1,9 @@
 /**
  * 프로그램명 : OnriviAuthor 
  * 파일명 : visualListCommands.ts
+ * 🚨 @PATCH : **2026-11-11** — [문장간격(hard_break) 포함 단일 문단에서 커서 위치 라인만 개별 리스트 변환 지원]:
+ *             1) 줄바꿈(hard_break)으로 연결된 문단에서 특정 라인에만 커서가 있거나 일부 라인만 선택된 경우, 전체 문단이 모두 리스트로 묶이지 않고 선택된 라인만 정확히 독립 리스트로 변환
+ *             2) 비선택 라인은 이전/다음 문단으로 자동 분할 보존되어 '사과' 하나만 숫자리스트 적용 시 나머지('바나나', '애플')가 함께 리스트에 포함되는 결함 완벽 해결
  * 🚨 @PATCH : **2026-11-11** — [리스트 취소(clear) 시 각 항목을 문단간격이 아닌 문장간격(줄간격)으로 전환]:
  *             1) selectedList('clear')에서 각 리스트 항목을 개별 paragraph로 분할하던 동작을 단일 paragraph 내부의 hard_break(줄바꿈) 연결 구조로 개선
  *             2) 단축키/플로팅툴바/슬래시명령어로 숫자리스트/글머리기호 목록을 취소할 때 각 줄 사이에 과도한 문단 마진(문단간격)이 벌어지지 않고 줄간격(문장간격)으로 매끄럽게 연결되도록 보장
@@ -966,11 +969,123 @@ export function selectedList(kind:'bullet'|'ordered'|'check'|'clear'):Command {
     if(kind==='clear' && !listRange && !selected.some(isList))return false;
     let unsupported=false;selected.forEach(node=>{if(node.isLeaf && !node.isTextblock)unsupported=true;node.descendants(child=>{if(child.isBlock && child.isLeaf && !child.isTextblock)unsupported=true;});});
     if(unsupported)return false;
+    const nodes = visualSchema.nodes;
+
+    // 🌟 [문장간격(hard_break) 포함 단일 문단에서 특정 라인만 선택/커서 위치 시 해당 라인만 리스트로 변환]:
+    if (kind !== 'clear' && !listRange && selected.length === 1 && selected[0].type === nodes.paragraph) {
+      const singlePara = selected[0];
+      let hasHardBreak = false;
+      singlePara.forEach(child => {
+        if (child.type === nodes.hard_break) hasHardBreak = true;
+      });
+
+      if (hasHardBreak) {
+        interface ParaLine {
+          start: number;
+          end: number;
+          nodes: DocumentNode[];
+        }
+        const paraLines: ParaLine[] = [];
+        let currentNodes: DocumentNode[] = [];
+        let currentStart = 0;
+        let offset = 0;
+
+        singlePara.forEach(child => {
+          if (child.type === nodes.hard_break) {
+            paraLines.push({ start: currentStart, end: offset, nodes: currentNodes });
+            offset += child.nodeSize;
+            currentStart = offset;
+            currentNodes = [];
+          } else {
+            currentNodes.push(child);
+            offset += child.nodeSize;
+          }
+        });
+        paraLines.push({ start: currentStart, end: offset, nodes: currentNodes });
+
+        const selFrom = Math.min($from.parentOffset, $to.parentOffset);
+        const selTo = Math.max($from.parentOffset, $to.parentOffset);
+
+        const getSelectedLineIndices = (): number[] => {
+          if (selFrom === selTo) {
+            for (let i = 0; i < paraLines.length; i++) {
+              if (selFrom >= paraLines[i].start && selFrom <= paraLines[i].end) return [i];
+              if (i < paraLines.length - 1 && selFrom > paraLines[i].end && selFrom < paraLines[i + 1].start) return [i];
+            }
+            return [paraLines.length - 1];
+          }
+          const result: number[] = [];
+          paraLines.forEach((l, idx) => {
+            if (l.start < selTo && (l.end > selFrom || (l.start === l.end && l.start >= selFrom && l.start <= selTo))) {
+              result.push(idx);
+            }
+          });
+          return result.length ? result : [0];
+        };
+
+        const selectedIndices = getSelectedLineIndices();
+        const beforeLines = paraLines.slice(0, selectedIndices[0]);
+        const targetLines = paraLines.slice(selectedIndices[0], selectedIndices[selectedIndices.length - 1] + 1);
+        const afterLines = paraLines.slice(selectedIndices[selectedIndices.length - 1] + 1);
+
+        const replacementBlocks: DocumentNode[] = [];
+
+        // 앞선 비선택 라인들 -> 이전 문단으로 보존
+        if (beforeLines.length > 0) {
+          const content: DocumentNode[] = [];
+          beforeLines.forEach((l, idx) => {
+            if (idx > 0) content.push(nodes.hard_break.create());
+            content.push(...l.nodes);
+          });
+          replacementBlocks.push(nodes.paragraph.create(singlePara.attrs, Fragment.fromArray(content)));
+        }
+
+        // 선택된 라인들 -> 리스트(ordered_list / bullet_list)로 변환
+        const listLines = targetLines.map(l => Fragment.fromArray(l.nodes)).map(line => kind === 'ordered' ? withoutTypedMarker(line) : line);
+        const listNode = (kind === 'ordered' ? nodes.ordered_list : nodes.bullet_list).create({
+          tight: true,
+          order: 1,
+          bullet: '-',
+          indentPx: null
+        }, listLines.map(line => nodes.list_item.create({
+          checked: kind === 'check' ? false : null
+        }, nodes.paragraph.create(null, line))));
+        replacementBlocks.push(listNode);
+
+        // 뒤쪽 비선택 라인들 -> 다음 문단으로 보존
+        if (afterLines.length > 0) {
+          const content: DocumentNode[] = [];
+          afterLines.forEach((l, idx) => {
+            if (idx > 0) content.push(nodes.hard_break.create());
+            content.push(...l.nodes);
+          });
+          replacementBlocks.push(nodes.paragraph.create(singlePara.attrs, Fragment.fromArray(content)));
+        }
+
+        if (dispatch) {
+          let tr = state.tr.replaceWith(range.start, range.end, replacementBlocks);
+          let listPos = range.start;
+          for (const block of replacementBlocks) {
+            if (block === listNode) break;
+            listPos += block.nodeSize;
+          }
+          const fromPos = listPos + 3;
+          const toPos = listPos + listNode.nodeSize - 3;
+          if (selFrom === selTo) {
+            tr = tr.setSelection(Selection.near(tr.doc.resolve(Math.min(fromPos, tr.doc.content.size))));
+          } else {
+            tr = tr.setSelection(TextSelection.between(tr.doc.resolve(fromPos), tr.doc.resolve(toPos)));
+          }
+          dispatch(closeHistory(tr));
+        }
+        return true;
+      }
+    }
+
     // Numbers can be intentional text in a bullet/checklist. Only interpret
     // them as redundant ordinals when explicitly choosing a numbered list.
     const lines=selected.flatMap(inlineLines).map(line=>kind==='ordered'?withoutTypedMarker(line):line);
     if(!lines.length)return false;
-    const nodes=visualSchema.nodes;
     const singleIndentedPara = !listRange && selected.length === 1 && selected[0].type === nodes.paragraph ? (selected[0].attrs.indentPx ?? 0) : 0;
     const prevNodeBeforeFrom = !listRange && range.start > 0 ? state.doc.resolve(range.start).nodeBefore : null;
     const shouldAutoNestAfterConvert = Boolean(kind !== 'clear' && singleIndentedPara > 0 && prevNodeBeforeFrom && isList(prevNodeBeforeFrom));
