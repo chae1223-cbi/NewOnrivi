@@ -3,6 +3,10 @@
  * 버전 정보 : 1.0.1
  * 프로그램 ID : oaar-vm-caret
  * -----------------------------------------------------------------------
+ * 🚨 @PATCH : **2026-11-11** — [각주(visual_footnote_ref) 위첨자 캐럿 수직 상승 방어 및 본문 베이스라인 완전 동기화]:
+ *             1) 각주 참조 뱃지 직후 또는 각주 뒤 공백에서 위첨자(<sup>)의 작은 높이(12px) 및 상단 Y좌표로 인해 커서가 각주 뱃지 상단에 매달려 위로 떠 있는 결함 원천 해결
+ *             2) 각주 직전 본문 단어(textCoords)의 실제 렌더링 line-box 기하학을 획득하여 커서 높이(22~24px)와 Y좌표를 본문 기준선으로 100% 완전 동기화
+ *             3) 각주 뒤 스페이스(공백) 입력 시 collapsed trailing space 결함을 방어하여 우측으로 spaceWidth만큼 정상 전진하도록 보장
  * 🚨 @PATCH : **2026-11-10** — [숫자/체크/일반 리스트 빈 항목 커서 아래 처짐 및 글자 타이핑 시 수직 점프 결함 완벽 해결]:
  *             1) 숫자 리스트(1.), 체크 리스트(checkbox), 일반 글머리 기호(•)의 빈 항목(첫 문자 위치)에서 커서가 아래로 쳐져 있다가 글자를 입력하면 위로 튀어 올라오는 현상 원천 해결
  *             2) isOnlyWhitespace에서 trailingBreak(<br>) 요소의 네이티브 ClientRect 기하학(top/height)을 직접 측정하여, 글자 입력 시(rectText)와 1:1 완벽 일치하도록 높이(24px)와 Y좌표(+2px)를 완전 동기화 (움직임 0px 보장)
@@ -105,6 +109,87 @@ export function installVisualCaret(view: EditorView) {
       } catch { /* ignore */ }
 
       let rect = domRect && domRect.height > 0 ? domRect : (coordsBefore || view.coordsAtPos(view.state.selection.head));
+
+      // 🛡️ [각주(visual_footnote_ref) 위첨자 캐럿 수직 상승 방어 및 본문 베이스라인 완전 동기화]:
+      // 각주 참조 뱃지 직후(또는 각주 뒤 공백)에 커서가 위치할 때, 위첨자(<sup>)의 작은 높이(12px) 및 상단 솟구침 Y좌표로 인해
+      // 캐럿이 각주에 매달려 위로 떠 있는 현상을 원천 방어하고, 본문 텍스트 기준선(baseline) 높이와 Y좌표로 완전 동기화
+      let footnoteRefPos = -1;
+      let spaceCountAfterRef = 0;
+      if ($from.nodeBefore?.type.name === 'visual_footnote_ref') {
+        footnoteRefPos = $from.pos - $from.nodeBefore.nodeSize;
+      } else if ($from.nodeBefore?.isText && $from.nodeBefore.text && /^\s+$/.test($from.nodeBefore.text)) {
+        const spaceLen = $from.nodeBefore.text.length;
+        const posBeforeSpace = $from.pos - $from.nodeBefore.nodeSize;
+        const resolvedBeforeSpace = view.state.doc.resolve(posBeforeSpace);
+        if (resolvedBeforeSpace.nodeBefore?.type.name === 'visual_footnote_ref') {
+          footnoteRefPos = posBeforeSpace - resolvedBeforeSpace.nodeBefore.nodeSize;
+          spaceCountAfterRef = spaceLen;
+        }
+      }
+
+      if (footnoteRefPos >= 0) {
+        let baselineTop: number | null = null;
+        let baselineHeight: number | null = null;
+        let refRight: number | null = null;
+
+        try {
+          const supCoords = view.coordsAtPos(footnoteRefPos + 1, -1);
+          if (supCoords) refRight = supCoords.right;
+        } catch { /* ignore */ }
+
+        // 1) 각주 직전의 본문 단어(텍스트) 기하학 획득
+        if (footnoteRefPos > $from.start()) {
+          try {
+            const textCoords = view.coordsAtPos(footnoteRefPos, -1);
+            if (textCoords && textCoords.bottom > textCoords.top) {
+              baselineTop = textCoords.top;
+              baselineHeight = textCoords.bottom - textCoords.top;
+            }
+          } catch { /* ignore */ }
+        }
+
+        // 2) 각주 뒤에 본문 텍스트가 있는 경우
+        if (!baselineTop && $from.pos < $from.end()) {
+          try {
+            const nextTextCoords = view.coordsAtPos($from.pos, 1);
+            if (nextTextCoords && nextTextCoords.bottom > nextTextCoords.top) {
+              baselineTop = nextTextCoords.top;
+              baselineHeight = nextTextCoords.bottom - nextTextCoords.top;
+            }
+          } catch { /* ignore */ }
+        }
+
+        // 3) 폴백: 상위 블록(p, li, h1~h6) 계산 기하학
+        const targetNode = view.domAtPos($from.pos).node;
+        const targetEl = targetNode instanceof Element ? targetNode : targetNode.parentElement;
+        const blockEl = targetEl?.closest('p, h1, h2, h3, h4, h5, h6, li') || (view.nodeDOM($from.before()) as HTMLElement | null) || null;
+        let fontSize = 16;
+        if (blockEl && view.dom.contains(blockEl)) {
+          const effectiveEl = (blockEl.tagName === 'LI' ? (blockEl.querySelector('p') || blockEl) : blockEl) as HTMLElement;
+          const style = getComputedStyle(effectiveEl);
+          fontSize = parseFloat(style.fontSize) || 16;
+          if (!baselineTop) {
+            const box = effectiveEl.getBoundingClientRect();
+            const lineHeight = parseFloat(style.lineHeight) || fontSize * 1.5;
+            const paddingTop = parseFloat(style.paddingTop) || 0;
+            baselineHeight = Math.max(22, Math.round(fontSize * 1.45));
+            baselineTop = box.top + paddingTop + Math.round((lineHeight - baselineHeight) / 2);
+          }
+        }
+
+        if (baselineTop !== null && baselineHeight !== null) {
+          const baseLeft = refRight ?? (coordsBefore ? coordsBefore.right : rect.left);
+          const approxSpaceWidth = fontSize * 0.35;
+          const leftOffset = spaceCountAfterRef > 0 ? (spaceCountAfterRef * approxSpaceWidth) : 1;
+          const finalLeft = baseLeft + leftOffset;
+          rect = {
+            left: finalLeft,
+            right: finalLeft + 3,
+            top: baselineTop,
+            bottom: baselineTop + baselineHeight,
+          };
+        }
+      }
 
       // 🛡️ [trailingBreak 결함 방어 1]: 텍스트 끝 공백 입력 시 domRect가 다음 행(trailingBreak)으로 떨어지는 현상 교정
       // 이때 문자 우측(coordsBefore.right)에 캐럿을 위치시켜 공백 입력 시 커서가 우측으로 자연스럽게 전진하도록 보장

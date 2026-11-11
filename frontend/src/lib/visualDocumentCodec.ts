@@ -2,6 +2,7 @@
  * 프로그램명 : OnriviAuthor 
  * 버전 정보 : 1.0.1
  * 프로그램 ID : oaar-visual-codec
+ * 🚨 @PATCH : **2026-11-11** — [각주 참조(visual_footnote_ref) user-select none 지정]: 각주 인접 커서 위치 시 브라우저 네이티브 위첨자 텍스트 선택 방지
  * 🚨 @PATCH : **2026-11-10** — [중첩 리스트 HTML 주석(<!-- onrivi:list-indent -->) 노출 결함 및 리스트 위계 보존 패치]:
  *             1) visualSerializer의 bullet_list / ordered_list 직렬화 시 indentPx가 유효한 양수(> 0)이고 최상위 리스트(!state.delim)일 때만 주석을 기록하도록 제한 (undefined/null 출력 차단 및 중첩 리스트 주석 삽입 원천 방지)
  *             2) normalizeVisualMarkdownSpacing 및 createVisualDocumentCodec 파싱 전처리에서 중첩 리스트 내부나 undefined/null로 잘못 기록된 list-indent 주석을 자동 정제하여, 기존 문서 재열기 시 이상한 태그 노출 박멸 및 내어쓰기 리스트 위계(1레벨/2레벨) 100% 정상 복원
@@ -223,7 +224,7 @@ export const visualSchema = new Schema({
     toDOM: node => ['sup', {
       class: 'visual-footnote-ref',
       'data-footnote-ref': node.attrs.label,
-      style: 'font-size: 0.75em; vertical-align: super; line-height: 0; padding: 0 3px; color: #1d4ed8; font-weight: 700; user-select: all; cursor: default;'
+      style: 'font-size: 0.75em; vertical-align: super; line-height: 0; padding: 0 3px; color: #1d4ed8; font-weight: 700; user-select: none; cursor: pointer;'
     }, `[${node.attrs.label}]`],
     parseDOM: [{ tag: 'sup[data-footnote-ref]', getAttrs: dom => ({ label: (dom as HTMLElement).getAttribute('data-footnote-ref') || '' }) }],
   }).addToEnd('visual_footnote_def', {

@@ -2,6 +2,7 @@
 // 🧩 [OMD-CORE-VisualNodeViews-0001] createVisualNodeViews.ts ➔ 시각 에디터 ProseMirror NodeViews 팩토리
 // 🎯 @KICK  : table, visual_math, visual_inline_math, list_item, code_block, visual_footnote_ref, visual_footnote_def, visual_checkbox, source_block, mediaNodeView 10대 위지윅 NodeView 인스턴스화
 // 🛡️ @GUARD : Rule 3(역할 기반 분리: Core View) 준수 - DOM 렌더링 및 인터랙션 격리
+// 🚨 @PATCH : 2026-11-11 — [각주 참조(visual_footnote_ref) 선택 방어 및 커서 포커스 격리]: select-all을 select-none으로 전환하여 각주 인접 커서 위치 시 브라우저 네이티브 뱃지 텍스트 선택 방지
 // 🚨 @PATCH : 2026-11-11 — [각주 정의-본문 참조 양방향 점프 및 커서 복원 연동]: 각주 정의(visual_footnote_def)의 뱃지 클릭·복귀 버튼(↩)·엔터 입력 시 본문 각주 참조(visual_footnote_ref)로 부드럽게 스크롤 및 펄스 하이라이트 후 커서를 참조 직후로 이동하고 에디터 포커스 복원
 // 🚨 @PATCH : 2026-11-10 — [각주 참조(visual_footnote_ref) 위첨자 인라인 스타일 안정화]:
 //             1) visual_footnote_ref의 display를 inline으로 전환하고 lineHeight: 0, verticalAlign: super를 지정하여 리스트 항목 내에서 행간 높이 팽창 방지
@@ -640,7 +641,7 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
     },
     visual_footnote_ref(node, currentView) {
       const dom = document.createElement('sup');
-      dom.className = 'visual-footnote-ref inline text-xs font-bold text-blue-700 dark:text-blue-400 px-0.5 select-all cursor-pointer hover:underline align-super';
+      dom.className = 'visual-footnote-ref inline text-xs font-bold text-blue-700 dark:text-blue-400 px-0.5 select-none cursor-pointer hover:underline align-super';
       dom.style.lineHeight = '0';
       dom.style.verticalAlign = 'super';
       dom.textContent = `[${node.attrs.label}]`;

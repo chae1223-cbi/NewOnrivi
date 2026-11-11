@@ -248,8 +248,7 @@ export const useEditorHandlers = ({
         }
         const nextNumber = maxNumber + 1;
         const footnoteRef = `[^${nextNumber}]`;
-        const hasSpaceAfter = fullText.charAt(endOffset) === ' ';
-        const insertFootnoteStr = hasSpaceAfter ? footnoteRef : footnoteRef + ' ';
+        const insertFootnoteStr = footnoteRef;
   
         // 2. 인라인 각주 문자열 병합 (선택 영역 보존하고 선택된 문구 바로 뒤에 각주 부착)
         const textWithRef = fullText.substring(0, endOffset) + insertFootnoteStr + fullText.substring(endOffset);
