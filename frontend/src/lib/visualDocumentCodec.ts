@@ -2,6 +2,10 @@
  * 프로그램명 : OnriviAuthor 
  * 버전 정보 : 1.0.1
  * 프로그램 ID : oaar-visual-codec
+ * 🚨 @PATCH : **2026-11-12** — [문서 내 빈 행(빈 문단) 공간 영구 보존 및 재열기 시 행간 축소 방어]:
+ *             1) [빈 문단 영구 직렬화]: doc.forEach 직렬화 시 문서 중간의 빈 문단(empty paragraph)을 <p></p> HTML 블록으로 온전히 직렬화하여 저장·재열기 시 공백 소멸 방어
+ *             2) [독립 블록 경계 등록]: starts 분할 시 <p></p> 태그 행을 독립 블록 경계로 명시 등록하여 연속된 빈 문단이 뭉치지 않고 1:1로 정확 복원
+ *             3) [임의 소거 정규식 제거]: normalizeVisualMarkdownSpacing에서 <p></p> 태그를 임의 소거하던 정규식을 제거하여 사용자가 띄워놓은 행간 공백 100% 보존
  * 🚨 @PATCH : **2026-11-11** — [4칸/탭 들여쓰기 코드블록 오인식 방지]: markdown-it tokenizer에서 indented code block('code' 룰)을 비활성화하여 인용문 및 본문 내 들여쓰기 텍스트가 문서 재오픈 시 코드블록으로 오분기되는 결함 원천 차단
  * 🚨 @PATCH : **2026-11-11** — [각주 참조(visual_footnote_ref) user-select none 지정]: 각주 인접 커서 위치 시 브라우저 네이티브 위첨자 텍스트 선택 방지
  * 🚨 @PATCH : **2026-11-10** — [중첩 리스트 HTML 주석(<!-- onrivi:list-indent -->) 노출 결함 및 리스트 위계 보존 패치]:
@@ -564,6 +568,8 @@ export function createVisualDocumentCodec(markdown: string) {
     // 🛡️ HTML 표 태그(<table... 및 </table>) 경계 분할: 일반 문단과 뭉치지 않고 독립 블록으로 분리
     if (/^\s*<table\b/i.test(line) && !starts.includes(index)) starts.push(index);
     if (/<\/table>\s*$/i.test(line) && index + 1 < lines.length && lines[index + 1].trim() && !starts.includes(index + 1)) starts.push(index + 1);
+    // 🛡️ 빈 문단(<p></p>) 경계 분할: 연속된 빈 행이 뭉치지 않고 각각 독립 빈 문단 노드로 100% 복원
+    if (/^\s*<p\b[^>]*>\s*<\/p>/i.test(line) && !starts.includes(index)) starts.push(index);
   });
   let inMathBlock = false;
   for (let i = 0; i < lines.length; i++) {
@@ -645,7 +651,7 @@ export function createVisualDocumentCodec(markdown: string) {
     const isSignature = /^\s*<div\s+align=["'](left|right|center)["'][^>]*>[\s\S]*?<\/div>\s*$/i.test(raw.trim());
     if (/^(?:<!--\s*(?:onrivi:page-break|\[page-break\])\s*-->|<hr\s+class=["']page-break["']\s*\/?>)$/.test(raw.trim())) {
       node = visualSchema.nodes.page_break.create();
-    } else if (/^<p>\s*<\/p>$/.test(raw.trim())) {
+    } else if (/^<p\b[^>]*>\s*<\/p>$/i.test(raw.trim())) {
       node = visualSchema.nodes.paragraph.create();
     } else if (footnoteDefMatch) {
       node = visualSchema.nodes.visual_footnote_def.create({
@@ -814,10 +820,6 @@ export function createVisualDocumentCodec(markdown: string) {
         const isListAdjacent = isListType(previousNode?.type.name) || isListType(nextNode?.type.name);
 
         let original = originals.get(node);
-        // 리스트와 인접하지 않은 일반 본문/헤딩/수평선 등의 빈 문단에 저장되어 있던 <p></p>는 제거하여 순수 마크다운 개행으로 정돈
-        if (original && /^<p\b[^>]*>\s*<\/p>$/i.test(original.trim())) {
-          original = undefined;
-        }
 
         if(changed && node.type.name==='heading'){
           if(result && !result.endsWith('\n\n')) result += result.endsWith('\n') ? '\n' : '\n\n';
@@ -841,8 +843,11 @@ export function createVisualDocumentCodec(markdown: string) {
         }
         // Blank lines alone cannot encode an empty paragraph adjacent to a list:
         // Markdown merges lists on the next parse. A standard empty HTML paragraph preserves the editable exit position through save/reload.
-        result += original ?? (node.type.name==='paragraph' && node.content.size===0 && doc.childCount>1
-          ? '' : ['source_block', 'visual_image', 'visual_media'].includes(node.type.name)
+        const isEmptyPara = node.type.name === 'paragraph' && node.content.size === 0;
+        const isTrailingLastEmpty = index === doc.childCount - 1 && isEmptyPara;
+        result += original ?? (isEmptyPara
+          ? (isTrailingLastEmpty ? '' : '<p></p>')
+          : ['source_block', 'visual_image', 'visual_media'].includes(node.type.name)
           ? node.attrs.source
           : node.type.name === 'visual_math'
           ? `\n$$\n${(node.attrs.latex || '').trim()}\n$$\n\n`
@@ -861,8 +866,6 @@ export function createVisualDocumentCodec(markdown: string) {
 export function normalizeVisualMarkdownSpacing(source: string): string {
   // 🛡️ 이중 불릿(- - , * - 등) 패턴을 단일 불릿으로 자동 치유
   source = source.replace(/^([ \t]*[-*+])[ \t]+[-*+][ \t]+/gm, '$1 ');
-  // 🛡️ 잔존하는 <p></p> 태그 소거
-  source = source.replace(/<p\b[^>]*>\s*<\/p>/gi, '');
   // 🛡️ 불필요하게 역슬래시로 이스케이프된 백틱(`), 대괄호([ ]), 목록 하이픈(\-) 자동 소거
   source = source.replace(/\\(`)/g, '$1').replace(/\\(\[|\])/g, '$1').replace(/(^|\s)\\([-*+])(\s)/gm, '$1$2$3');
   // 🛡️ 중첩 리스트 내부의 잘못된 onrivi:list-indent 주석 및 undefined/null/0 주석 자동 정제
