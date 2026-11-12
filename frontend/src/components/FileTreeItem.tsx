@@ -4,6 +4,7 @@
 // 📊 [OMD-FILE-FileTreeItem-0001] FileTreeItem ➔ FileTreeItem
 // 🎭 역할(Role) : Core (핵심 도메인 뷰 — 파일 탐색기 트리 항목 컴포넌트)
 // 🎯 @KICK  : 파일 탐색기 트리 항목 렌더링 및 지연 로딩/선택/폴더 토글 제어 (액션 훅 및 컨텍스트 메뉴 위임)
+// 🚨 @PATCH : **2026-11-11** — [선택 폴더 가져오기 연동]: 폴더 클릭·우클릭 시 파일 열기 대상 폴더를 탐색기 가져오기 훅에 전달
 // 🚨 @PATCH : **2026-11-04** — [1순위 모듈화 분리 및 렌더링 성능 최적화]:
 //             1) 2,221줄이던 단일 파일에서 CRUD/드래그앤드롭 액션 로직을 `useFileNodeActions.ts` 훅으로, 컨텍스트 메뉴 포털 및 지식 베이스 메뉴를 `FileTreeContextMenu.tsx`로 분리
 //             2) 모든 트리 노드에 상시 마운트되던 `<PromptModal />`을 `promptConfig.isOpen` 조건부 마운트로 최적화하여 대규모 파일 트리 렌더링 성능 개선
@@ -419,6 +420,7 @@ const FileTreeItem = ({
       return;
     }
     if (node.kind === 'directory') {
+      window.dispatchEvent(new CustomEvent('file-explorer:folder-selected', { detail: { node, parentHandle } }));
       openFile(node, parentHandle);
       const willOpen = !isOpen;
       if (willOpen && onLazyLoad && (!localChildren || localChildren.length === 0)) {
@@ -598,6 +600,7 @@ const FileTreeItem = ({
           if (isMergeMode) return;
           e.preventDefault();
           e.stopPropagation();
+          if (node.kind === 'directory') window.dispatchEvent(new CustomEvent('file-explorer:folder-selected', { detail: { node, parentHandle } }));
           window.dispatchEvent(new CustomEvent('close-context-menus'));
           setContextMenu({ x: e.clientX, y: e.clientY });
         }}

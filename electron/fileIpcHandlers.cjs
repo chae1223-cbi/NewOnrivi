@@ -5,7 +5,7 @@
 // 🚨 @PATCH : 2026-11-09 — [desktopInlineImages 상대 경로 보정]: electron 폴더 내부에서 루트의 desktopInlineImages.js를 정상 참조하도록 '../desktopInlineImages'로 경로 수정
 // 🚨 @PATCH : 2026-11-11 — [DOC 파일 선택 지원]: 데스크톱 가져오기 대화상자에 기존 DOC 변환 경로의 확장자를 포함
 // 🚨 @PATCH : 2026-11-11 — [DOC 서식 보존 변환]: Word 자동화를 통한 임시 DOCX 변환 IPC를 연결
-// 🚨 @PATCH : 2026-11-11 — [원본 폴더 변환 저장]: 로컬 파일 열기로 선택한 문서의 폴더에 충돌 없이 마크다운 생성
+// 🚨 @PATCH : 2026-11-11 — [변환 저장 위치 수정]: 원본 폴더 저장 분기를 제거하고 사이드바 선택 폴더 저장 흐름 복원
 // 🚨 @PATCH : 2026-11-08 — [main.js 3단계 모듈 분리] main.js의 파일/폴더 I/O 및 탐색기 IPC 핸들러 1,000줄을 electron/fileIpcHandlers.cjs로 격리 모듈화
 // 🔗 @CALLS : electron(dialog, shell), node:fs, node:path, node:crypto, node:os
 // ====================================================================
@@ -248,29 +248,6 @@ function registerFileIpcHandlers({
     if (typeof filePath !== 'string' || !path.isAbsolute(filePath)) throw new Error('절대 파일 경로가 필요합니다.');
     return new Uint8Array(await fs.promises.readFile(filePath));
   });
-  ipcMain.handle('file:saveConvertedSibling', async (event, sourcePath, name, content) => {
-    const win = getWin();
-    if (!win || event.sender !== win.webContents || typeof sourcePath !== 'string' || !path.isAbsolute(sourcePath) ||
-        typeof name !== 'string' || name !== path.basename(name) || !name.toLowerCase().endsWith('.md') ||
-        typeof content !== 'string') throw new TypeError('Invalid converted document input');
-    const source = await fs.promises.stat(sourcePath);
-    if (!source.isFile()) throw new TypeError('Invalid source document');
-    const folder = path.dirname(sourcePath);
-    const stem = name.slice(0, -3);
-    for (let index = 0; index < 10000; index++) {
-      const candidate = path.join(folder, `${stem}${index ? `_${index}` : ''}.md`);
-      try {
-        await fs.promises.writeFile(candidate, content, { encoding: 'utf8', flag: 'wx' });
-        return { path: candidate, folder, name: path.basename(candidate) };
-      } catch (error) {
-        if (error.code !== 'EEXIST') {
-          console.error('[Converted document save]', { code: error.code || error.name || 'UNKNOWN' });
-          throw error;
-        }
-      }
-    }
-    throw new Error('Too many converted document names');
-  });
   ipcMain.handle('doc:convertToDocx', async (event, bytes) => {
     const win = getWin();
     if (!win || event.sender !== win.webContents) throw new TypeError('Invalid sender');
@@ -352,7 +329,7 @@ function registerFileIpcHandlers({
     });
     if (result.canceled || !result.filePaths.length) return null;
     const selectedPath = result.filePaths[0];
-    return { path: selectedPath, name: path.basename(selectedPath), folder: path.dirname(selectedPath) };
+    return { path: selectedPath, name: path.basename(selectedPath) };
   });
   
   ipcMain.handle('dialog:selectFolder', async (event, defaultPath) => {

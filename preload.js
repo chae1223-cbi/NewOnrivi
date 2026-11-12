@@ -4,7 +4,7 @@
 // 🛡️ @GUARD : contextIsolation 및 nodeIntegration 보안 원칙 준수
 // 🚨 @PATCH : **2026-11-07** — [탐색기 외부 변경 자동 반영 복구]: removeListeners()에서 'workspace-changed' 일괄 제거를 중단하여, 문서 편집 시마다 워크스페이스 감시 리스너가 해제되던 결함 수정
 // 🚨 @PATCH : **2026-11-11** — [DOC 서식 보존 가져오기]: Word DOC를 임시 DOCX 바이트로 변환하는 IPC 브리지 노출
-// 🚨 @PATCH : **2026-11-11** — [원본 폴더 변환 저장]: 로컬 파일 열기 문서의 형제 마크다운 생성 IPC 브리지 노출
+// 🚨 @PATCH : **2026-11-11** — [변환 저장 위치 수정]: 사용하지 않는 원본 폴더 저장 IPC 브리지 제거
 // 🚨 @PATCH : **2026-10-28** — [외부 AI MCP 타겟(Gemini, Claude) 자동 감지 및 원클릭 연동 브리지 노출]: checkMcpTargets, installMcpTarget, uninstallMcpTarget IPC 브리지 연동
 // 🚨 @PATCH : **2026-10-26** — [단축코드 정의서(shortcodes.json) 브리지(loadShortcodes, saveShortcodes) 노출]: 리소스 폴더 settings/shortcodes.json 파일 IPC 브리지 연동
 // 🚨 @PATCH : **2026-10-21** — [AI 인증정보 리소스 폴더 암호화 브리지(loadAICredentials, saveAICredentials, getDeviceInfo) 노출]: 리소스 폴더 settings/ai_credentials.enc 파일 및 물리 기기 정보 IPC 브리지 연동
@@ -27,7 +27,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveFileAs: (content, suggestedName, defaultDir, filters) => ipcRenderer.invoke('file:saveAs', content, suggestedName, defaultDir, filters),
   saveBinaryFile: (filePath, bytes) => ipcRenderer.invoke('file:saveBinary', filePath, bytes),
   readTransferFile: (filePath) => ipcRenderer.invoke('file:readTransferFile', filePath),
-  saveConvertedSibling: (sourcePath, name, content) => ipcRenderer.invoke('file:saveConvertedSibling', sourcePath, name, content),
   convertDocToDocx: (bytes) => ipcRenderer.invoke('doc:convertToDocx', bytes),
   writeTransferCopy: (folderPath, relativePath, bytes) => ipcRenderer.invoke('file:writeTransferCopy', folderPath, relativePath, bytes),
 

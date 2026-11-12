@@ -3,6 +3,7 @@
 // 🚨 @PATCH : **2026-11-07** — [PDF 이미지 마크다운 URL 꺽쇠 제거]: PDF 추출 이미지 마크다운 생성 시 URL을 감싸던 꺽쇠(<...>)를 제거하여 driveId 파라미터 끝 꺽쇠 오파싱 및 404 차단
 // 🚨 @PATCH : **2026-11-11** — [DOCX lockedCanvas 이미지 복구]: Mammoth가 건너뛰는 그룹 그림을 원래 문단 위치에 저장·삽입
 // 🚨 @PATCH : **2026-11-11** — [DOC 서식 보존 가져오기]: 데스크톱에서 설치된 Word로 DOC를 임시 DOCX로 변환한 뒤 표·이미지까지 추출
+// 🚨 @PATCH : **2026-11-11** — [PDF 복합 도표 원형 보존]: 수치가 뒤섞인 표가 감지되면 같은 페이지의 도표 구간을 원본 이미지로 가져와 열·차트 배치 손실 방지
 // 🚨 @PATCH : **2026-10-11** — [일반 텍스트(.txt) 파일 스마트 마크다운 변환 엔진(importPlainTextToMarkdown) 탑재]:
 //             메모장 등에서 작성된 .txt 파일을 타문서 변환으로 가져올 때 대제목(제N장/PART/Chapter), 소제목([소제목]/■/★), 번호 목록, 글머리 기호(•/·/-) 및 문단 줄바꿈을 자동으로 분석하여 규격화된 마크다운(.md) 문서로 정돈 변환
 // 🚨 @PATCH : **2026-08-20** (2차) HWP 이미지 추출 시 순차 치환으로 인해 이미지가 뒤섞이는 현상을 완벽 해결하기 위해, hwp.js의 Picture 객체의 binID를 추출하여 정확한 플레이스홀더를 삽입하고 OLE/DocInfo와 매핑. 또한 표(Table) 객체를 감지하여 뭉친 텍스트 대신 완전한 마크다운 표 구조를 생성하도록 extractText를 재귀적으로 리팩토링함.
@@ -215,6 +216,42 @@ async function importPdf(
       });
       const blocks = pdfRuledTableBlocks(content.items, operators.fnArray, operators.argsArray, pdfjsLib.OPS,
         allBoxes.filter(box=>!boxes.includes(box)));
+      // A repeated numeric run in one inferred cell followed by empty cells is
+      // a collapsed visual grid, not a trustworthy editable Markdown table.
+      const brokenTable = blocks.filter(block => /^\|[^\n]+\n\|\s*:?-{3}/.test(block.markdown)).find(block =>
+        block.markdown.split('\n').slice(2).some(row => {
+          const cells = row.split('|').slice(1, -1).map(cell => cell.trim());
+          return cells.length >= 3 && cells.some(cell => (cell.match(/-?\d+(?:[.,]\d+)?/g) || []).length >= 5) &&
+            cells.filter(cell => !cell).length >= 2;
+        }));
+      if (brokenTable && typeof document !== 'undefined') {
+        const pageHeight = page.getViewport({ scale: 1 }).height;
+        const graphicTop = boxes.map(box => box.y + box.height)
+          .filter(top => top >= brokenTable.y && top < pageHeight * 0.85);
+        const cropTopY = Math.min(pageHeight, Math.max(brokenTable.y, ...graphicTop) + 8);
+        const viewport = page.getViewport({ scale: 2 });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.ceil(viewport.width);
+        canvas.height = Math.ceil(viewport.height);
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error(`PDF ${i}페이지의 이미지를 추출하지 못했습니다.`);
+        await page.render({ canvasContext: context, viewport, canvas } as any).promise;
+        const [, top] = viewport.convertToViewportPoint(0, cropTopY);
+        const crop = document.createElement('canvas');
+        crop.width = canvas.width;
+        crop.height = Math.max(1, canvas.height - Math.floor(top));
+        const cropContext = crop.getContext('2d');
+        if (!cropContext) throw new Error(`PDF ${i}페이지의 이미지를 추출하지 못했습니다.`);
+        cropContext.drawImage(canvas, 0, Math.floor(top), crop.width, crop.height, 0, 0, crop.width, crop.height);
+        const data = crop.toDataURL('image/png');
+        const src = imageSaveCallback ? await imageSaveCallback(data.split(',')[1], 'image/png') : data;
+        canvas.width = canvas.height = 0;
+        crop.width = crop.height = 0;
+        const prose = blocks.filter(block => block.y > cropTopY + 2);
+        prose.push({ y: cropTopY, markdown: `![PDF ${i}페이지 도표](${src})` });
+        text += serializePdfBlocks(prose.sort((a, b) => b.y - a.y), true) + '\n\n';
+        continue;
+      }
       if (boxes.length && typeof document !== 'undefined') {
         // Render once, then crop individual embedded image regions. Never turn
         // the complete page or its editable text into a bitmap.

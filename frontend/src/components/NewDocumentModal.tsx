@@ -5,7 +5,7 @@
 // 🚨 @PATCH : **2026-10-11** — [폴더 선택 및 파일명 지정 새 문서 생성 모달 신규 구축]:
 //             1) 상단 탭(+) 및 메뉴바(새 문서 Ctrl+N) 클릭 시 폴더 선택(작업장 루트 및 모든 하위 폴더 트리)과 파일명 입력창 제공
 //             2) .md 확장자 자동 보정, Modern Technical Editorial 코발트 테마 적용, 단축키(ESC/Enter) 및 유효성 검증 탑재
-// 🚨 @PATCH : **2026-11-11** — [원본 폴더 고정 표시]: 파일 열기 변환 시 원본 문서 폴더를 저장 위치로 표시
+// 🚨 @PATCH : **2026-11-11** — [지연 로딩 폴더 선택 보존]: 현재 선택 폴더가 목록에 없어도 가져오기 저장 대상으로 유지
 // 🔗 @CALLS : FileNode, Icon
 // ====================================================================
 "use client";
@@ -35,7 +35,6 @@ interface NewDocumentModalProps {
   dialogTitle?: string;
   initialFolderNode?: FileNode | null;
   hideFolderSelection?: boolean;
-  fixedFolderPath?: string;
   confirmLabel?: string;
 }
 
@@ -51,7 +50,6 @@ export default function NewDocumentModal({
   dialogTitle,
   initialFolderNode,
   hideFolderSelection = false,
-  fixedFolderPath,
   confirmLabel
 }: NewDocumentModalProps) {
   useModalEscape(isOpen, onClose);
@@ -98,8 +96,21 @@ export default function NewDocumentModal({
     };
 
     collectDirs(fileList, 1, '');
+    if (initialFolderNode?.kind === 'directory' && !list.some(option => option.node && (
+      (initialFolderNode.path && option.node.path === initialFolderNode.path) ||
+      (initialFolderNode.id && option.node.id === initialFolderNode.id) ||
+      (initialFolderNode.driveId && option.node.driveId === initialFolderNode.driveId)
+    ))) {
+      list.push({
+        id: initialFolderNode.path || initialFolderNode.id || initialFolderNode.driveId || initialFolderNode.name,
+        name: initialFolderNode.name,
+        depth: 1,
+        node: initialFolderNode,
+        pathDisplay: initialFolderNode.path || initialFolderNode.name,
+      });
+    }
     return list;
-  }, [fileList, rootFolder, workspaceType]);
+  }, [fileList, rootFolder, workspaceType, initialFolderNode]);
 
   // 모달이 열릴 때 기본값 리셋 및 인풋 포커스
   useEffect(() => {
@@ -258,10 +269,7 @@ export default function NewDocumentModal({
           </div>
 
           {/* 2. 저장 위치(폴더) 선택 */}
-          {fixedFolderPath ? <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-slate-700 dark:text-zinc-300">저장할 폴더 위치</label>
-            <p className="text-[11px] text-[#1d4ed8] dark:text-blue-400 font-medium break-all">선택 경로: {fixedFolderPath}</p>
-          </div> : hideFolderSelection ? <p className="text-sm text-slate-500">이름을 입력한 뒤 저장할 폴더를 선택합니다. 저장 완료 후 새 위치에서 계속 편집합니다.</p> : <div className="space-y-1.5">
+          {hideFolderSelection ? <p className="text-sm text-slate-500">이름을 입력한 뒤 저장할 폴더를 선택합니다. 저장 완료 후 새 위치에서 계속 편집합니다.</p> : <div className="space-y-1.5">
             <label className="block text-xs font-bold text-slate-700 dark:text-zinc-300">
               저장할 폴더 위치
             </label>

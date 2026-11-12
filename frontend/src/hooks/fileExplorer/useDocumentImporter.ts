@@ -3,7 +3,7 @@
  * 🏷️ 파일명 : useDocumentImporter.ts
  * 🎯 주요기능 : 외부 문서(DOC, DOCX, HWP, HWPX, PDF, EPUB, TXT, MD, HTML) 선택·마크다운 변환·이미지 리소스 추출 및 워크스페이스 저장 훅
  * 🚨 @PATCH : 2026-11-11 — [파일 열기 형식 안내 보완]: DOC 및 HWPX 지원 형식을 검증 안내에 표시
- * 🚨 @PATCH : 2026-11-11 — [로컬 파일 열기 원본 폴더 저장]: 선택한 파일과 같은 폴더에 변환 마크다운을 생성하고 이름 충돌 시 번호 부여
+ * 🚨 @PATCH : 2026-11-11 — [사이드바 선택 폴더 저장 복원]: 원본 파일 폴더 강제 저장을 제거하고 탐색기에서 선택한 대상 폴더를 사용
  * 🚨 @PATCH : 2026-11-08 — [useDocumentImporter 다이어트 및 미디어 저장기(saveImportedMedia) 분리]:
  *             1) 내부 imageSaveCallback의 70줄에 달하던 Drive/Browser/Electron 이미지 저장 분기문을 saveImportedMedia 모듈로 추출하여 훅 코드 80줄 이상 다이어트
  *             2) 단일 책임 원칙 준수로 가져오기 파이프라인의 가독성 및 유지보수성 대폭 개선
@@ -64,10 +64,20 @@ export function useDocumentImporter({
   const [showImportSource, setShowImportSource] = useState(false);
   const selectingImportRef = useRef(false);
   const importNameRef = useRef<string | null>(null);
-  const sourceImportPathRef = useRef<string | null>(null);
-  const sourceImportFolderRef = useRef<string | null>(null);
   const targetImportNodeRef = useRef<FileNode | null>(null);
   const targetImportParentHandleRef = useRef<any>(null);
+  const selectedSidebarFolderRef = useRef<{ node: FileNode; parentHandle?: any } | null>(null);
+
+  useEffect(() => {
+    const handleFolderSelection = (event: Event) => {
+      const detail = (event as CustomEvent<{ node?: FileNode; parentHandle?: any }>).detail;
+      if (detail?.node?.kind === 'directory') selectedSidebarFolderRef.current = { node: detail.node, parentHandle: detail.parentHandle };
+    };
+    window.addEventListener('file-explorer:folder-selected', handleFolderSelection);
+    return () => window.removeEventListener('file-explorer:folder-selected', handleFolderSelection);
+  }, []);
+
+  useEffect(() => { selectedSidebarFolderRef.current = null; }, [rootFolder?.path, rootFolder?.name]);
 
   /**
    * ==== [chooseImportDestination] ====
@@ -92,8 +102,6 @@ export function useDocumentImporter({
       return;
     }
     setShowImportSource(false);
-    sourceImportPathRef.current = null;
-    sourceImportFolderRef.current = null;
     const start = importStartFolder(rootFolder, targetImportNodeRef.current, targetImportParentHandleRef.current, fileList, getSavedWorkspaceInfo()?.workspacePath);
     if (source === 'drive') {
       selectingImportRef.current = true;
@@ -134,8 +142,6 @@ export function useDocumentImporter({
         const selected = await api.chooseImportDocument(start.localPath);
         if (!selected) return;
         const bytes = await api.readTransferFile(selected.path);
-        sourceImportPathRef.current = selected.path;
-        sourceImportFolderRef.current = selected.folder;
         chooseImportDestination(new File([bytes], selected.name));
       } catch (error: any) {
         if (error?.name !== 'AbortError') {
@@ -186,8 +192,9 @@ export function useDocumentImporter({
   useEffect(() => {
     const handleTriggerImport = (e?: any) => {
       if (isRestrictedUser) return;
-      targetImportNodeRef.current = e?.detail?.node || null;
-      targetImportParentHandleRef.current = e?.detail?.parentHandle || null;
+      const selected = selectedSidebarFolderRef.current;
+      targetImportNodeRef.current = e?.detail?.node || selected?.node || null;
+      targetImportParentHandleRef.current = e?.detail?.parentHandle || selected?.parentHandle || null;
       void openImportPicker(e?.detail?.source);
     };
     window.addEventListener('TRIGGER_IMPORT', handleTriggerImport);
@@ -202,8 +209,6 @@ export function useDocumentImporter({
     if (isImporting) return;
     const file = e.target.files?.[0];
     if (!file) return;
-    const sourceImportPath = sourceImportPathRef.current;
-    sourceImportPathRef.current = null;
 
     if (!isSupportedImportFile(file.name)) {
       e.target.value = '';
@@ -282,8 +287,8 @@ export function useDocumentImporter({
         } catch {}
       }
 
-      const triggerExplorerRefresh = async (createdFilePath?: string, savedFolderPath?: string) => {
-        const refreshDir = savedFolderPath || targetNode?.path || targetPath;
+      const triggerExplorerRefresh = async (createdFilePath?: string) => {
+        const refreshDir = targetNode?.path || targetPath;
         await refreshFileList(true);
         window.dispatchEvent(new CustomEvent('file:refresh-all-directories', {
           detail: { force: true, targetDir: refreshDir }
@@ -300,17 +305,6 @@ export function useDocumentImporter({
           }));
         }, 120);
       };
-
-      const desktopApi = (window as any).electronAPI;
-      if (sourceImportPath && desktopApi?.saveConvertedSibling) {
-        const saved = await desktopApi.saveConvertedSibling(sourceImportPath, finalName, markdown);
-        await triggerExplorerRefresh(saved.path, saved.folder);
-        if (workspaceType !== 'browser' && rootFolder?.type !== 'GDRIVE') {
-          openFile({ name: saved.name, kind: 'file', path: saved.path });
-        }
-        showToast(`'${file.name}' 문서가 성공적으로 변환되었습니다.`, 'success');
-        return;
-      }
 
       if (rootFolder?.type === 'GDRIVE') {
         const { createDriveMarkdownFile, listDriveChildren } = await import('@/lib/gdrive/googleDriveClient');
@@ -402,8 +396,6 @@ export function useDocumentImporter({
     showImportSource,
     setShowImportSource,
     importNameRef,
-    sourceImportPathRef,
-    sourceImportFolderRef,
     targetImportNodeRef,
     targetImportParentHandleRef,
     chooseImportDestination,
