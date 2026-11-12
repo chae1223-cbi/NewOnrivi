@@ -643,22 +643,15 @@ export const outdentBlockquote = quoteIndent(true);
 export const safeListIndent: Command = (state, dispatch, currentView) => {
   const { $from } = state.selection;
   let inListItem = false;
-  let listDepth = -1;
   for (let d = $from.depth; d > 0; d--) {
     if ($from.node(d).type === visualSchema.nodes.list_item) {
       inListItem = true;
-      listDepth = d - 1;
       break;
     }
   }
   if (inListItem) {
-    const itemIndexInList = $from.index(listDepth);
-    if (itemIndexInList > 0) {
-      sinkListItem(visualSchema.nodes.list_item)(state, dispatch, currentView);
-    } else {
-      // 🛡️ 첫 번째 항목에서는 전체 목록 이동(indentWholeList)을 수행하지 않고, 선행 리스트 편입 여부만 안전 처리
-      independentIndentListItem(state, dispatch, currentView);
-    }
+    // 🌟 리스트 내부에서는 상위 항목에 구속되지 않고 독립적인 단계별 이동(indentPx +28px)을 보장
+    independentIndentListItem(state, dispatch, currentView);
     return true; // 리스트 내부에서는 추가적인 indentDocument로 구조가 깨지지 않도록 방어
   }
   return indentDocument()(state, dispatch, currentView);
