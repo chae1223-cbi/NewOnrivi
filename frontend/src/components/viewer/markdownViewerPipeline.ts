@@ -2,6 +2,8 @@
 // 📊 [OMD-CORE-Viewer-Pipeline] frontend/src/components/viewer/markdownViewerPipeline.ts
 // 🎯 @KICK  : 마크다운 뷰어(MarkdownViewer)의 경로 보안 가드(isPathInsideWorkspace), 마크다운 원문 전처리(preprocessMarkdownContent), 줄 번호/개행 Rehype 플러그인 및 전용 CSS 스타일 시트
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 작업장 외부 경로 순회 차단, CommonMark 중첩 코드블록/인용구/위키링크 무결성 보존
+// 🚨 @PATCH : 2026-11-12 — [번호 목록 직후 동급 글머리 기호의 하위 불릿(circle) 오변환 결함 해결]:
+//             1) .onrivi-content-root에서 형제 결합자(ol + ul)를 제거하여, 번호 목록 뒤에 이어지는 동일 레벨(동급) 글머리 목록이 2단계 하위 불릿(circle)으로 오변환되지 않고 정상 1단계(disc)로 렌더링되도록 수정
 // 🚨 @PATCH : 2026-11-11 — [글머리 기호 상위 리스트 인식 기반 상대적 레벨(circle/square) 스타일 적용]:
 //             1) .onrivi-content-root :is(ul, ol) ul 및 ol + ul에 circle 불릿을 적용하여 상위 번호 목록 아래 글머리 기호의 상대적 2단계 레벨 일관성 확보
 //             2) :is(ul, ol) :is(ul, ol) ul에 square 불릿을 적용하여 3단계 이상 상대적 레벨 계층 보장
@@ -862,8 +864,7 @@ export const MARKDOWN_VIEWER_STYLES = `
     padding-top: 0 !important;
     padding-bottom: 0 !important;
   }
-  .onrivi-content-root :is(ul, ol) ul,
-  .onrivi-content-root ol + ul {
+  .onrivi-content-root :is(ul, ol) ul {
     list-style-type: circle !important;
     margin-top: 0 !important;
     margin-bottom: 0 !important;
@@ -871,8 +872,7 @@ export const MARKDOWN_VIEWER_STYLES = `
     padding-bottom: 0 !important;
     padding-left: var(--list-indent, 28px) !important;
   }
-  .onrivi-content-root :is(ul, ol) :is(ul, ol) ul,
-  .onrivi-content-root ol + ul ul {
+  .onrivi-content-root :is(ul, ol) :is(ul, ol) ul {
     list-style-type: square !important;
     margin-top: 0 !important;
     margin-bottom: 0 !important;
