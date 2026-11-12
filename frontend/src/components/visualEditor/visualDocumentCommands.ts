@@ -2,6 +2,7 @@
 // ⚙️ [OMD-CORE-VisualDocCommands-0001] visualDocumentCommands.ts ➔ 시각 에디터 전용 ProseMirror 커맨드 및 정규화 플러그인
 // 🎯 @KICK  : 제목/코드블록/인용구/리스트/구분선/미디어 등 블록 조작 커맨드 및 리스트 정규화 트랜잭션 플러그인 제공
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 VisualDocumentEditor 대형 컴포넌트 모듈화 표준 준수
+// 🚨 @PATCH : 2026-11-12 — [리스트 1번째 항목 전체 이동 방어 및 단일/선택 행 안전 들여쓰기 위임]: safeListIndent에서 첫 항목(itemIndexInList === 0) 시 전체 목록 이동(indentWholeList)을 원천 차단하고 independentIndentListItem으로 위임하여 선행 리스트 편입 또는 안전 정지 처리
 // 🚨 @PATCH : 2026-11-11 — [인용문 탈출 시 말단 빈 행/빈 문단 자동 정제]: exitQuote 실행 시 인용문 끝에 남아있는 빈 문단 및 trailing hard_break를 완전 소탕하여 인용문 내부에 빈 행이 남지 않도록 개선
 // 🚨 @PATCH : 2026-11-10 — [문단 끝 행 및 각 행 우측 빈 공간 클릭 시 마지막 문자 뒤 정확한 포커스 안착]: 라인별 바운딩 박스 그룹화 및 끝 행 우측 여백 클릭 감지 강화로 글자 외 빈 공간 클릭 시 해당 행의 마지막 문자 바로 다음 위치로 즉시 포커스 이동 보장
 // 🚨 @PATCH : 2026-11-10 — [슬래시 명령어 괄호/구두점 뒤 인식 지원]: 괄호((, [, {) 및 따옴표(", ') 직후 슬래시 입력 시에도 슬래시 메뉴가 정상 팝업되도록 패턴 확장
@@ -23,7 +24,7 @@ import { closeHistory } from 'prosemirror-history';
 import { sinkListItem } from 'prosemirror-schema-list';
 import { visualSchema } from '@/lib/visualDocumentCodec';
 import { quoteIndent } from '@/lib/visualQuoteCommands';
-import { selectedList, indentWholeList } from '@/lib/visualListCommands';
+import { selectedList, indentWholeList, independentIndentListItem } from '@/lib/visualListCommands';
 
 export const slashPattern = new RegExp('(?:^|[\\s(\\[{\'"«“‘])([\\/／][\\p{L}\\p{N}_-]*)$', 'u');
 
@@ -655,7 +656,8 @@ export const safeListIndent: Command = (state, dispatch, currentView) => {
     if (itemIndexInList > 0) {
       sinkListItem(visualSchema.nodes.list_item)(state, dispatch, currentView);
     } else {
-      indentWholeList(state, dispatch, currentView, listDepth);
+      // 🛡️ 첫 번째 항목에서는 전체 목록 이동(indentWholeList)을 수행하지 않고, 선행 리스트 편입 여부만 안전 처리
+      independentIndentListItem(state, dispatch, currentView);
     }
     return true; // 리스트 내부에서는 추가적인 indentDocument로 구조가 깨지지 않도록 방어
   }

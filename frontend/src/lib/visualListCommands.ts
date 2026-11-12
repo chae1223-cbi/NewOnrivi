@@ -1,8 +1,10 @@
 /**
  * 프로그램명 : OnriviAuthor 
  * 파일명 : visualListCommands.ts
- * 🚨 @PATCH : **2026-11-12** — [목록 서식 변환 시 들여쓰기 위치(indentPx) 보존 및 내어쓰기 오동작 방어]:
- *             1) selectedList에서 기존 목록의 서식을 체크리스트, 번호 목록, 글머리 목록 등으로 상호 변환할 때 기존 목록의 들여쓰기(parent.attrs.indentPx)를 신규 목록 노드에 온전히 계승하여, 변환 시 목록이 좌측으로 튀어나가지 않고 자기자리에서 안정적으로 변환되도록 보장
+ * 🚨 @PATCH : **2026-11-12** — [다중 리스트 3대 표준 동작 원칙 완비]:
+ *             1) [선택 행만 이동]: 들여쓰기/내어쓰기 시 전체 목록 이동이나 후속 하위 항목 끌림을 원천 차단하고 오직 선택되거나 현재 행만 독립적으로 이동
+ *             2) [현재 위치 형태 변환]: 리스트 서식 변경(글머리↔번호↔체크) 시 내부 하위 목록을 평탄화(inlineLines)하지 않고 원래 위치·계층을 100% 보존하며 해당 항목만 변환
+ *             3) [단계별 제한 이동]: 들여쓰기 시 선행 부모가 없는 첫 항목은 허공으로 건너뛰지 않고 중단하며, 내어쓰기 역시 1단계 이전 레벨까지만 안전 이동
  * 🚨 @PATCH : **2026-11-11** — [글머리 기호 적용 시 상위 번호 목록 감지 기반 상대적 하위 레벨 자동 중첩]:
  *             1) selectedList('bullet') 실행 시 직전에 상위 번호 목록(ordered_list)이 존재하는 경우, 독립된 1단계 목록으로 분리되지 않고 상위 목록의 하위 레벨(2단계 상대적 목록)로 자동 편입(auto-nest)되도록 개선
  * 🚨 @PATCH : **2026-11-11** — [문장간격(hard_break) 포함 단일 문단에서 커서 위치 라인만 개별 리스트 변환 지원]:
@@ -66,18 +68,22 @@ function indentItemIntoPreviousList(
   const { $from } = state.selection;
   const currentList = $from.node(listDepth);
   const currentItem = $from.node(itemDepth);
-  const selectedRange = $from.blockRange(state.selection.$to, node=>node===currentList);
+  const selectedRange = $from.blockRange(state.selection.$to, node => node === currentList);
   if (!state.selection.empty && !selectedRange) return false;
+
+  const startIndex = selectedRange ? selectedRange.startIndex : 0;
+  const endIndex = selectedRange ? selectedRange.endIndex : 1;
+  const selectedCount = endIndex - startIndex;
   const selectedItems: DocumentNode[] = [];
-  const selectedCount = selectedRange ? selectedRange.endIndex - selectedRange.startIndex : 1;
-  for (let index = 0; index < selectedCount; index++) selectedItems.push(currentList.child(index));
+  for (let index = startIndex; index < endIndex; index++) selectedItems.push(currentList.child(index));
+
   const originalItemPos = $from.before(itemDepth);
   const listPos = $from.before(listDepth);
   const currentEnd = $from.after(listDepth);
 
   // prevList의 마지막 항목(lastChild) 가져오기
   const lastChild = prevList.lastChild;
-  if (!lastChild) return true;
+  if (!lastChild) return false;
 
   // 🛡️ currentItem 전체(하위 리스트 포함)를 온전히 유지하여 하위 레벨이 상위로 튀어나오지 않도록 보존
   const lastChildChildren: DocumentNode[] = [];
@@ -113,7 +119,10 @@ function indentItemIntoPreviousList(
 
   // 현재 리스트에 남은 항목들
   const remainingInCurrent: DocumentNode[] = [];
-  for (let i = selectedCount; i < currentList.childCount; i++) {
+  for (let i = 0; i < startIndex; i++) {
+    remainingInCurrent.push(currentList.child(i));
+  }
+  for (let i = endIndex; i < currentList.childCount; i++) {
     remainingInCurrent.push(currentList.child(i));
   }
 
@@ -166,58 +175,14 @@ export const independentIndentListItem: Command = (state, dispatch, currentView)
   const listDepth = itemDepth - 1;
   const itemIndexInList = $from.index(listDepth);
 
-  if (!state.selection.empty && state.selection instanceof TextSelection) {
-    const list = $from.node(listDepth);
-    const listPos = $from.before(listDepth);
-    const items: DocumentNode[] = [];
-    let first = -1;
-    let last = -1;
-    list.forEach((item, offset) => {
-      const start = listPos + 1 + offset;
-      items.push(item);
-      if (start < state.selection.to && start + item.nodeSize > state.selection.from) {
-        if (first < 0) first = items.length - 1;
-        last = items.length - 1;
-      }
-    });
-    if (first >= 0) {
-      if (dispatch) {
-        const replacement: DocumentNode[] = [];
-        const makeList = (part: DocumentNode[], startIndex: number, indentPx: number | null) =>
-          list.type.create({
-            ...list.attrs,
-            indentPx,
-            ...(list.type === visualSchema.nodes.ordered_list ? { order: (list.attrs.order || 1) + startIndex } : {}),
-          }, Fragment.fromArray(part));
-        if (first > 0) replacement.push(makeList(items.slice(0, first), 0, list.attrs.indentPx));
-        replacement.push(makeList(items.slice(first, last + 1), first, bounded((list.attrs.indentPx || 0) + listStep(currentView))));
-        if (last + 1 < items.length) replacement.push(makeList(items.slice(last + 1), last + 1, list.attrs.indentPx));
-        const tr = state.tr.replaceWith(listPos, $from.after(listDepth), Fragment.fromArray(replacement));
-        const relocate = ($position: typeof state.selection.$anchor) => {
-          let found: number | undefined;
-          tr.doc.descendants((node, pos) => {
-            if (node === $position.parent && found === undefined) found = pos + 1 + $position.parentOffset;
-          });
-          return found;
-        };
-        const anchor = relocate(state.selection.$anchor);
-        const head = relocate(state.selection.$head);
-        if (anchor !== undefined && head !== undefined) tr.setSelection(TextSelection.create(tr.doc, anchor, head));
-        dispatch(closeHistory(tr).scrollIntoView());
-      }
-      return true;
-    }
-  }
-
-  // 1) 같은 리스트 내에서 이전 형제가 있는 경우 -> sinkListItem으로 이전 항목의 하위로 안전 들여쓰기
-  // 🛡️ 하위 리스트(사전 동의 원칙 등)가 상위 레벨(1레벨)로 튀어나오지 않고 하위 위계를 100% 온전히 유지
+  // 1) 같은 리스트 내에서 이전 형제가 있는 경우 -> sinkListItem으로 선택된 행만 이전 항목의 하위로 1단계 안전 들여쓰기
+  // 🛡️ 다중 선택된 list_item 또는 현재 단일 행만 이전 형제의 하위로 이동하며, 하위 위계를 100% 온전히 유지
   if (itemIndexInList > 0) {
-    sinkListItem(visualSchema.nodes.list_item)(state, dispatch, currentView);
-    return true;
+    return sinkListItem(visualSchema.nodes.list_item)(state, dispatch, currentView);
   }
 
   // 2) 리스트의 첫 번째 항목(itemIndexInList === 0)인 경우:
-  // 바로 앞 블록(또는 빈 줄 너머의 이전 블록)이 리스트인지 검사하여 이전 리스트의 하위로 안전 들여쓰기
+  // 바로 앞 블록(또는 빈 줄 너머의 이전 블록)이 리스트인지 검사하여 이전 리스트의 하위로 안전 들여쓰기 (+1단계)
   const listPos = $from.before(listDepth);
   if (listPos > 0) {
     let prevNode = state.doc.resolve(listPos).nodeBefore;
@@ -235,8 +200,8 @@ export const independentIndentListItem: Command = (state, dispatch, currentView)
     }
   }
 
-  // 3) 이전 리스트가 없는 첫 번째 항목인 경우 -> 빈 상위 항목 생성 없이 목록 전체를 오른쪽으로 문단 들여쓰기
-  return indentWholeList(state, dispatch, currentView, listDepth);
+  // 3) 이전 항목이나 선행 리스트가 없는 첫 번째 항목인 경우 -> 전체 목록 이동 및 허공 이동 금지 (안전 방어)
+  return false;
 };
 
 function listStep(view?: any): number {
@@ -365,17 +330,17 @@ export const independentLiftListItem: Command = (state, dispatch, view) => {
     if (range.startIndex) beforeBlocks.push(list.type.create({...list.attrs, indentPx: null}, Fragment.fromArray(Array.from({length:range.startIndex},(_,index)=>list.child(index)))));
     const lifted: DocumentNode[] = [];
     for (let index = range.startIndex; index < range.endIndex; index++) lifted.push(list.child(index));
-    const suffix: DocumentNode[] = [];
+    
+    // 🛡️ 선택되지 않은 후속 형제 항목들은 내어써진(lifted) 항목의 자식으로 끌려가지 않고, 부모(parent) 내부에 그대로 보존
+    const remainingSubItems: DocumentNode[] = [];
     if (range.endIndex < list.childCount) {
       const remaining: DocumentNode[] = [];
       for (let index = range.endIndex; index < list.childCount; index++) remaining.push(list.child(index));
-      suffix.push(list.type.create({...list.attrs, indentPx: null, ...(list.type.name==='ordered_list'?{order:(list.attrs.order||1)+range.endIndex}:{})},Fragment.fromArray(remaining)));
+      remainingSubItems.push(list.type.create({...list.attrs, indentPx: null, ...(list.type.name==='ordered_list'?{order:(list.attrs.order||1)+range.endIndex}:{})},Fragment.fromArray(remaining)));
     }
-    // Trailing quote/table/paragraph blocks belong after the moved content.
-    // Standard liftListItem wraps these in a new marker-only list_item.
-    for (let index = childIndex + 1; index < parent.childCount; index++) suffix.push(parent.child(index));
-    const last = lifted[lifted.length - 1];
-    lifted[lifted.length - 1] = last.copy(last.content.append(Fragment.fromArray(suffix)));
+    for (let index = childIndex + 1; index < parent.childCount; index++) remainingSubItems.push(parent.child(index));
+    if (remainingSubItems.length) beforeBlocks.push(...remainingSubItems);
+
     const items: DocumentNode[] = [];
     for (let index = 0; index < parentIndex; index++) items.push(outer.child(index));
     if (beforeBlocks.length) items.push(parent.copy(Fragment.fromArray(beforeBlocks)));
@@ -1086,10 +1051,6 @@ export function selectedList(kind:'bullet'|'ordered'|'check'|'clear'):Command {
       }
     }
 
-    // Numbers can be intentional text in a bullet/checklist. Only interpret
-    // them as redundant ordinals when explicitly choosing a numbered list.
-    const lines=selected.flatMap(inlineLines).map(line=>kind==='ordered'?withoutTypedMarker(line):line);
-    if(!lines.length)return false;
     const existingListIndent = listRange ? (parent.attrs.indentPx ?? null) : null;
     const singleIndentedPara = !listRange && selected.length === 1 && selected[0].type === nodes.paragraph ? (selected[0].attrs.indentPx ?? 0) : 0;
     const prevNodeBeforeFrom = !listRange && range.start > 0 ? state.doc.resolve(range.start).nodeBefore : null;
@@ -1099,8 +1060,11 @@ export function selectedList(kind:'bullet'|'ordered'|'check'|'clear'):Command {
       isList(prevNodeBeforeFrom) &&
       (singleIndentedPara > 0 || (kind === 'bullet' && prevNodeBeforeFrom.type === nodes.ordered_list))
     );
+
     // 🌟 [리스트 취소(clear) 시 각 항목을 문단간격(개별 p)이 아닌 문장간격(단일 p + hard_break)으로 결합]:
-    const targets = kind === 'clear' ? (() => {
+    let targets: DocumentNode[] = [];
+    if (kind === 'clear') {
+      const lines = selected.flatMap(inlineLines);
       const content: DocumentNode[] = [];
       lines.forEach((line, index) => {
         if (index > 0) {
@@ -1108,26 +1072,64 @@ export function selectedList(kind:'bullet'|'ordered'|'check'|'clear'):Command {
         }
         line.forEach(node => content.push(node.mark([])));
       });
-      return [nodes.paragraph.create(null, Fragment.fromArray(content))];
-    })() : [(kind === 'ordered' ? nodes.ordered_list : nodes.bullet_list).create({
-      tight: true,
-      order: 1,
-      bullet: '-',
-      indentPx: existingListIndent !== null
-        ? existingListIndent
-        : ((!shouldAutoNestAfterConvert && singleIndentedPara > 0) ? singleIndentedPara : null)
-    }, lines.map(line => nodes.list_item.create({
-      checked: kind === 'check' ? false : null
-    }, nodes.paragraph.create(null, line))))];
-    const target=targets[0];
-    const replacement:DocumentNode[]=[];
-    let from=range.start,to=range.end;
-    if(listRange){
-      from=$from.before(listRange.depth);to=from+parent.nodeSize;
-      if(range.startIndex)replacement.push(parent.copy(Fragment.fromArray(Array.from({length:range.startIndex},(_,i)=>parent.child(i)))));
+      targets = [nodes.paragraph.create(null, Fragment.fromArray(content))];
+    } else if (listRange) {
+      // 🛡️ 기존 리스트 항목(list_item)의 서식 변경 시:
+      // 하위 리스트(sub-lists)를 평탄화하지 않고, 각 list_item의 내부 content를 온전히 유지한 채 리스트 형태만 변환
+      const convertedItems = selected.map(item => {
+        if (item.type !== nodes.list_item) return item;
+        let newContent = item.content;
+        if (kind === 'ordered' && item.firstChild && item.firstChild.isTextblock) {
+          const stripped = withoutTypedMarker(item.firstChild.content);
+          newContent = item.content.replaceChild(0, item.firstChild.copy(stripped));
+        }
+        const newChecked = kind === 'check'
+          ? (item.attrs.checked !== null && item.attrs.checked !== undefined ? item.attrs.checked : false)
+          : null;
+        return nodes.list_item.create({ ...item.attrs, checked: newChecked }, newContent);
+      });
+      targets = [(kind === 'ordered' ? nodes.ordered_list : nodes.bullet_list).create({
+        tight: true,
+        order: 1,
+        bullet: '-',
+        indentPx: existingListIndent
+      }, convertedItems)];
+    } else {
+      const lines = selected.flatMap(inlineLines).map(line => kind === 'ordered' ? withoutTypedMarker(line) : line);
+      if (!lines.length) return false;
+      targets = [(kind === 'ordered' ? nodes.ordered_list : nodes.bullet_list).create({
+        tight: true,
+        order: 1,
+        bullet: '-',
+        indentPx: existingListIndent !== null
+          ? existingListIndent
+          : ((!shouldAutoNestAfterConvert && singleIndentedPara > 0) ? singleIndentedPara : null)
+      }, lines.map(line => nodes.list_item.create({
+        checked: kind === 'check' ? false : null
+      }, nodes.paragraph.create(null, line))))];
+    }
+
+    const target = targets[0];
+    const replacement: DocumentNode[] = [];
+    let from = range.start, to = range.end;
+    if (listRange) {
+      from = $from.before(listRange.depth);
+      to = from + parent.nodeSize;
+      if (range.startIndex) {
+        replacement.push(parent.copy(Fragment.fromArray(Array.from({ length: range.startIndex }, (_, i) => parent.child(i)))));
+      }
       replacement.push(...targets);
-      if(range.endIndex<parent.childCount)replacement.push(parent.copy(Fragment.fromArray(Array.from({length:parent.childCount-range.endIndex},(_,i)=>parent.child(i+range.endIndex)))));
-    } else replacement.push(...targets);
+      if (range.endIndex < parent.childCount) {
+        const afterChildren = Array.from({ length: parent.childCount - range.endIndex }, (_, i) => parent.child(i + range.endIndex));
+        const afterAttrs = {
+          ...parent.attrs,
+          ...(parent.type === nodes.ordered_list ? { order: (parent.attrs.order || 1) + range.endIndex } : {})
+        };
+        replacement.push(parent.type.create(afterAttrs, Fragment.fromArray(afterChildren)));
+      }
+    } else {
+      replacement.push(...targets);
+    }
     if(dispatch){
       let tr=state.tr.replaceWith(from,to,replacement);let start=-1;
       tr.doc.descendants((node,pos)=>{if(node===target){start=pos;return false;}});
