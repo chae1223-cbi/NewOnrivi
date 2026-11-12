@@ -2,6 +2,9 @@
  * 프로그램명 : OnriviAuthor 
  * 버전 정보 : 1.0.1
  * 프로그램 ID : oaar-visual-codec
+ * 🚨 @PATCH : **2026-11-12** — [인접 리스트 마크다운 자동 병합 방지 및 list-boundary 경계 보존]:
+ *             1) [인접 리스트 경계 마커 직렬화]: doc.forEach 직렬화 시 들여쓰기(indentPx)나 체크박스 서식이 다른 인접 리스트 사이에 <!-- onrivi:list-boundary --> 마커를 자동 삽입하여, 문서 재오픈 시 마크다운 파서가 두 리스트를 하나로 합쳐 후속 리스트가 하위 레벨(◦)로 빨려들어가는 왜곡 현상 원천 차단
+ *             2) [리스트 경계 무손실 복원]: createVisualDocumentCodec 파싱 시 list-boundary 마커를 인식하여 불필요한 노드 생성 없이 앞뒤 리스트를 100% 원래 레벨(•) 그대로 온전히 분리 복원
  * 🚨 @PATCH : **2026-11-12** — [문서 내 빈 행(빈 문단) 공간 영구 보존 및 재열기 시 행간 축소 방어]:
  *             1) [빈 문단 영구 직렬화]: doc.forEach 직렬화 시 문서 중간의 빈 문단(empty paragraph)을 <p></p> HTML 블록으로 온전히 직렬화하여 저장·재열기 시 공백 소멸 방어
  *             2) [독립 블록 경계 등록]: starts 분할 시 <p></p> 태그 행을 독립 블록 경계로 명시 등록하여 연속된 빈 문단이 뭉치지 않고 1:1로 정확 복원
@@ -633,6 +636,9 @@ export function createVisualDocumentCodec(markdown: string) {
     if(listIndentMarker && i+1<ranges.length && /^\s*(?:[-*+]|\d+\.)\s/.test(lines[ranges[i+1]])){
       listIndent={value:Math.max(0,Math.min(4096,Number(listIndentMarker[1]))),raw};continue;
     }
+    if (/^<!--\s*onrivi:list-boundary\s*-->$/.test(raw.trim())) {
+      continue;
+    }
     const tableMarker = raw.trim().match(/^<!--\s*onrivi:table-widths=([\d.,]+)\s*-->$/);
     if (tableMarker && i + 1 < ranges.length && /^\s*\|/.test(lines[ranges[i + 1]])) {
       tableWidths = { value: tableMarker[1].split(',').map(Number), raw };
@@ -841,6 +847,20 @@ export function createVisualDocumentCodec(markdown: string) {
             if (!result.endsWith('\n\n')) result += result.endsWith('\n') ? '\n' : '\n\n';
           }
         }
+
+        // 🛡️ [인접 리스트 자동 병합 방지]: 들여쓰기(indentPx)나 체크박스 서식이 다른 인접 리스트 사이에 경계 마커 삽입
+        const isPrevList = isListType(previousNode?.type.name);
+        const isCurList = isListType(node.type.name);
+        if (isPrevList && isCurList) {
+          const curIndent = Number(node.attrs.indentPx) || 0;
+          const prevIndent = Number(previousNode?.attrs.indentPx) || 0;
+          const prevIsTask = previousNode?.firstChild?.attrs?.checked !== null && previousNode?.firstChild?.attrs?.checked !== undefined;
+          const curIsTask = node.firstChild?.attrs?.checked !== null && node.firstChild?.attrs?.checked !== undefined;
+          if ((curIndent !== prevIndent && curIndent <= 0) || (prevIsTask !== curIsTask && curIndent <= 0)) {
+            result += '<!-- onrivi:list-boundary -->\n\n';
+          }
+        }
+
         // Blank lines alone cannot encode an empty paragraph adjacent to a list:
         // Markdown merges lists on the next parse. A standard empty HTML paragraph preserves the editable exit position through save/reload.
         const isEmptyPara = node.type.name === 'paragraph' && node.content.size === 0;
