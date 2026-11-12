@@ -2,6 +2,8 @@
 // 📊 [OMD-CORE-Viewer-Pipeline] frontend/src/components/viewer/markdownViewerPipeline.ts
 // 🎯 @KICK  : 마크다운 뷰어(MarkdownViewer)의 경로 보안 가드(isPathInsideWorkspace), 마크다운 원문 전처리(preprocessMarkdownContent), 줄 번호/개행 Rehype 플러그인 및 전용 CSS 스타일 시트
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 작업장 외부 경로 순회 차단, CommonMark 중첩 코드블록/인용구/위키링크 무결성 보존
+// 🚨 @PATCH : 2026-11-12 — [코드블록 자동 줄바꿈(white-space: pre-wrap) 적용]:
+//             1) .onrivi-content-root pre 및 pre code에 white-space: pre-wrap, word-break: break-all, overflow-wrap: anywhere를 적용하여 긴 문장이 가로 스크롤 없이 자동 줄바꿈되도록 개선
 // 🚨 @PATCH : 2026-11-12 — [번호 목록 직후 동급 글머리 기호의 하위 불릿(circle) 오변환 결함 해결]:
 //             1) .onrivi-content-root에서 형제 결합자(ol + ul)를 제거하여, 번호 목록 뒤에 이어지는 동일 레벨(동급) 글머리 목록이 2단계 하위 불릿(circle)으로 오변환되지 않고 정상 1단계(disc)로 렌더링되도록 수정
 // 🚨 @PATCH : 2026-11-11 — [글머리 기호 상위 리스트 인식 기반 상대적 레벨(circle/square) 스타일 적용]:
@@ -961,9 +963,9 @@ export const MARKDOWN_VIEWER_STYLES = `
   }
   .onrivi-content-root pre,
   .onrivi-content-root pre code {
-    white-space: pre !important;
-    word-break: normal !important;
-    overflow-wrap: normal !important;
+    white-space: pre-wrap !important;
+    word-break: break-all !important;
+    overflow-wrap: anywhere !important;
   }
   .onrivi-content-root code:not(pre code),
   .onrivi-content-root p code,

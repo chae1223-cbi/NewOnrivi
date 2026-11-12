@@ -2,6 +2,7 @@
 // 📊 [OMD-CORE-CodeBlock-0001] CodeBlock.tsx ➔ 마크다운 코드블록 컴포넌트
 // 🎯 @KICK  : 코드블록을 언어명 헤더 + 복사 버튼 + 개별 행(.onrivi-line) 1:1 라인 매핑 및 모노스페이스 렌더링
 // 🛡️ @GUARD : navigator.clipboard.writeText API 존재 여부, 빈 행 \u200B 보존, AST/lineMap 기반 정밀 줄 번호 부여
+// 🚨 @PATCH : 2026-11-12 — [코드블록 자동 줄바꿈(white-space: pre-wrap) 적용]: 미리보기 뷰어에서도 코드블록 내 긴 문장이 가로 스크롤 없이 자동 줄바꿈되도록 적용
 // 🚨 @PATCH : 2026-11-07 — [코드블록 순수 문구 복사 및 형태 복사 이원화]: 미리보기 뷰어 헤더에 '복사'(순수 텍스트)와 '형태 복사'(마크다운 백틱 펜스 형태 포함) 버튼 분리 제공
 // 🚨 @PATCH : 2026-11-04 — [MarkdownViewer 모듈화 분리]: CodeBlock 및 코드블록 정규화 유틸 독립 분리
 // 🔗 @CALLS : navigator.clipboard.writeText, splitChildrenIntoLines
@@ -305,9 +306,9 @@ export default function CodeBlock({ lang, title, rawInfo, code, className, node,
         </div>
       </div>
       
-      <div className="overflow-x-auto w-full custom-scrollbar">
-        <pre className="m-0 p-4 font-mono text-sm leading-[1.35] bg-transparent w-max min-w-full text-zinc-800 dark:text-white">
-          <code className={`hljs ${className || ''}`} style={{ whiteSpace: 'pre' }} {...props}>
+      <div className="w-full custom-scrollbar">
+        <pre className="m-0 p-4 font-mono text-sm leading-[1.35] bg-transparent w-full max-w-full text-zinc-800 dark:text-white whitespace-pre-wrap break-all">
+          <code className={`hljs ${className || ''}`} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', overflowWrap: 'anywhere' }} {...props}>
             {splitLines.length > 0 ? (
               splitLines.map((lineItems, idx) => {
                 const astStartLine = node?.position?.start?.line;
@@ -325,7 +326,7 @@ export default function CodeBlock({ lang, title, rawInfo, code, className, node,
                     key={idx}
                     data-line={lineNum}
                     className="onrivi-line block w-full min-h-[1.35em] leading-[1.35]"
-                    style={{ whiteSpace: 'pre' }}
+                    style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-all', overflowWrap: 'anywhere' }}
                   >
                     {lineItems.length > 0 ? lineItems : '\u200B'}
                   </span>

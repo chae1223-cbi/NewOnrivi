@@ -5,6 +5,7 @@
  *   - 활성 서식 프로필(CssProfile) 기반 동적 CSS(타이포그래피, 코드블록, 표, 체크박스, 구분선, 다크모드 재정의 등) 생성 엔진
  *   - @layer 캐스케이드 격리 및 그림책(Story Book) 프로필 연동
  * 🚨 @PATCH :
+ *   - 2026-11-12 : 코드블록 자동 줄바꿈(white-space: pre-wrap) 적용으로 가로 스크롤 없이 컨테이너 너비에 맞게 텍스트 자동 줄바꿈
  *   - 2026-11-10 : 중첩 서브리스트(li ul, li ol) 상단 여백(margin-top: 0.25em)을 0으로 통일하여 제한사용자(MarkdownViewer)와 전체사용자(VisualDocumentEditor) 간의 다중 리스트 간격을 100% 일치
  *   - 2026-11-10 : ProseMirror 센티널 이미지(img.ProseMirror-separator) 스타일 격리 및 일반 img 규칙 제외로 각주 삽입 후 행간 86px 폭발 및 문자 입력 시 축소 결함 완벽 해결
  *   - 2026-11-10 : 에디터 표면 빈 문단(p:empty) margin 0 및 1행 높이(1.75em) 보장으로 리스트 탈출 후 엔터 시 거대 여백(84px) 폭발 방지
@@ -1176,19 +1177,20 @@ blockquote li p {
   display: block !important;
   max-width: 100% !important;
   box-sizing: border-box !important;
-  overflow-x: auto !important;
-  white-space: pre !important;
-  overflow-wrap: normal !important;
-  word-break: normal !important;
+  overflow-x: hidden !important;
+  white-space: pre-wrap !important;
+  overflow-wrap: anywhere !important;
+  word-break: break-all !important;
 }
 .custom-preview-container .visual-document-surface .visual-code-block pre code {
   display: block !important;
-  width: max-content !important;
-  min-width: 100% !important;
-  white-space: pre !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  white-space: pre-wrap !important;
   overflow: visible !important;
-  overflow-wrap: normal !important;
-  word-break: normal !important;
+  overflow-wrap: anywhere !important;
+  word-break: break-all !important;
 }
 /* Separate top-level lists retain the same gap as a following paragraph. */
 .custom-preview-container .visual-document-surface > ul + ul,

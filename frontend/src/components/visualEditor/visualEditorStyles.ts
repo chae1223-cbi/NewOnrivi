@@ -2,6 +2,9 @@
 // 🎨 [OMD-CORE-VisualEditorStyles-0001] visualEditorStyles.ts ➔ 시각 에디터 전용 격리 CSS 스타일
 // 🎯 @KICK  : 시각 에디터 본문(.visual-document-surface), 제목 H1~H6 시각화 뱃지, 표 조판, 각주, 코드블록, 머메이드 서랍 등 위지윅 스타일 격리
 // 🛡️ @GUARD : Rule 6(Content Document Scope) 준수 - .visual-document-surface 및 컴포넌트 하위로만 스코핑
+// 🚨 @PATCH : 2026-11-12 — [코드블록 자동 줄바꿈(white-space: pre-wrap) 적용]:
+//             1) .visual-code-block pre 및 pre code에 white-space: pre-wrap, word-break: break-all, overflow-wrap: anywhere를 적용하여 긴 문장이 가로 스크롤 없이 에디터 너비에 맞추어 자동 줄바꿈되도록 개선
+//             2) code의 width: max-content를 100%로 변경하고 불필요한 가로 스크롤바(overflow-x) 제거
 // 🚨 @PATCH : 2026-11-10 — [ProseMirror 센티널 이미지(img.ProseMirror-separator) 스타일 제로 격리]:
 //             1) 인라인 각주(visual_footnote_ref) 등 애텀 노드 뒤에 삽입되는 invisible sentinel 이미지(img.ProseMirror-separator)를 0x0 투명 인라인으로 완전 격리하여 서식 프로필의 img 스타일(width 100%, margin 20px) 오염으로 인한 86px 거대 간격 폭발 원천 차단
 // 🚨 @PATCH : 2026-11-10 — [에디터 표면 빈 문단(p:empty) margin 0 및 1행 높이(1.75em) 보장]:
@@ -169,8 +172,8 @@ export const VISUAL_EDITOR_STYLES = `
   .visual-document-surface pre { background:#f4f4f5; padding:12px; white-space:pre-wrap; }
   .visual-document-surface .visual-code-block { margin-top:24px!important; margin-bottom:20px!important; min-width:0; max-width:100%; box-sizing:border-box; }
   .visual-document-surface .visual-code-editor-panel { min-width:0; max-width:100%; }
-  .visual-document-surface .visual-code-block pre { display:block!important; max-width:100%!important; box-sizing:border-box!important; overflow-x:auto!important; white-space:pre!important; overflow-wrap:normal!important; word-break:normal!important; user-select:text!important; -webkit-user-select:text!important; }
-  .visual-document-surface .visual-code-block pre code { display:block!important; width:max-content!important; min-width:100%; white-space:pre!important; overflow:visible!important; overflow-wrap:normal!important; word-break:normal!important; user-select:text!important; -webkit-user-select:text!important; }
+  .visual-document-surface .visual-code-block pre { display:block!important; max-width:100%!important; box-sizing:border-box!important; overflow-x:hidden!important; white-space:pre-wrap!important; overflow-wrap:anywhere!important; word-break:break-all!important; user-select:text!important; -webkit-user-select:text!important; }
+  .visual-document-surface .visual-code-block pre code { display:block!important; width:100%!important; max-width:100%!important; min-width:0!important; white-space:pre-wrap!important; overflow:visible!important; overflow-wrap:anywhere!important; word-break:break-all!important; user-select:text!important; -webkit-user-select:text!important; }
   .visual-code-editor-panel > summary { width:max-content; margin:8px 12px; cursor:pointer; }
   .visual-code-editor-panel > summary[hidden] { display:none!important; }
   .visual-code-language button[aria-label="코드 내용 복사"] { margin-left:auto; }
@@ -187,8 +190,8 @@ export const VISUAL_EDITOR_STYLES = `
   .visual-document-surface .visual-code-block.ProseMirror-selectednode .visual-code-language .onrivi-media-control { opacity:1; pointer-events:auto; }
   .visual-document-surface code { background:#f4f4f5; font-family:monospace; }
   .visual-document-surface .visual-code-block { background:#1e293b; color:#e2e8f0; border:1px solid #dbe2ea; border-radius:10px; overflow:hidden; box-shadow:0 2px 8px rgba(15,23,42,.04); }
-  .custom-preview-container .visual-document-surface .visual-code-block pre, .visual-document-surface .visual-code-block pre { background:transparent!important; color:inherit; margin:0!important; padding:18px 20px!important; white-space:pre; overflow-x:auto; line-height:1.65!important; }
-  .custom-preview-container .visual-document-surface .visual-code-block code, .visual-document-surface .visual-code-block code { background:transparent!important; color:inherit; opacity:1; white-space:inherit; padding:0!important; font-family:"D2Coding","Cascadia Code",Consolas,monospace!important; line-height:inherit!important; letter-spacing:0!important; }
+  .custom-preview-container .visual-document-surface .visual-code-block pre, .visual-document-surface .visual-code-block pre { background:transparent!important; color:inherit; margin:0!important; padding:18px 20px!important; white-space:pre-wrap!important; overflow-x:hidden!important; overflow-wrap:anywhere!important; word-break:break-all!important; line-height:1.65!important; }
+  .custom-preview-container .visual-document-surface .visual-code-block code, .visual-document-surface .visual-code-block code { background:transparent!important; color:inherit; opacity:1; width:100%!important; max-width:100%!important; min-width:0!important; white-space:pre-wrap!important; overflow-wrap:anywhere!important; word-break:break-all!important; padding:0!important; font-family:"D2Coding","Cascadia Code",Consolas,monospace!important; line-height:inherit!important; letter-spacing:0!important; }
   .visual-image-block { position:relative; margin:16px 0; }
   .visual-media-controls { position:absolute; right:12px; top:12px; display:flex; gap:6px; z-index:20; opacity:0; pointer-events:none; transition:opacity .15s ease-in-out, transform .15s ease-in-out; }
   .visual-image-block:has([data-caption-position="top"]) .visual-media-controls,
