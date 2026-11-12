@@ -1,5 +1,6 @@
 // ====================================================================
 // 📊 [OMD-EDIT-SettingsModal-0006 ✅ FIXED] SettingsModal.tsx ➔ SettingsModal
+// 🚨 @PATCH : 2026-11-12 — [AI 키 백업 제외] 백업 키 포함 선택지를 제거하고 복원 시 키가 이전되지 않음을 안내
 // 🚨 @PATCH : **2026-11-10** — [환경설정 암호화 백업/원복 팝업 클릭 버블링 방어 및 autoFocus 보강]:
 //             1) 부모 모달 및 백업/원복 오버레이에 `e.target === e.currentTarget` 엄격 가드 적용하여 입력창 클릭 또는 드래그 시 모달이 닫히는 현상 원천 차단
 //             2) 백업 다이얼로그 비밀번호 입력창에 autoFocus 및 Enter 키 바인딩 추가하여 클릭 없이도 즉시 커서 입력 가능하도록 개선
@@ -264,7 +265,6 @@ export default function SettingsModal({
   const [isBackupDialogOpen, setIsBackupDialogOpen] = useState(false);
   const [backupPassword, setBackupPassword] = useState('');
   const [backupPasswordConfirm, setBackupPasswordConfirm] = useState('');
-  const [includeApiKeyInBackup, setIncludeApiKeyInBackup] = useState(true);
   const [backupError, setBackupError] = useState('');
   const [isExporting, setIsExporting] = useState(false);
 
@@ -301,7 +301,7 @@ export default function SettingsModal({
         if (cached) profiles = JSON.parse(cached);
       } catch {}
 
-      const encryptedContent = await exportEncryptedSettings(pw, includeApiKeyInBackup, profiles);
+      const encryptedContent = await exportEncryptedSettings(pw, false, profiles);
       downloadBackupFile(encryptedContent);
       showToast('환경설정이 암호화되어 안전하게 백업 파일로 다운로드되었습니다.', 'success');
       setIsBackupDialogOpen(false);
@@ -1322,7 +1322,7 @@ export default function SettingsModal({
                         </span>
                       </div>
                       <div className="text-[12px] text-on-surface-variant mt-0.5 leading-relaxed">
-                        단축키, 슬래시 명령어, 서식, 테마, 폰트 및 AI 설정을 비밀번호로 안전하게 암호화하여 파일로 백업하고, 다른 브라우저나 기기에서 암호 입력 후 즉시 동일하게 원복합니다.
+                         단축키, 슬래시 명령어, 서식, 테마, 폰트 및 AI 모델 설정을 암호화하여 백업합니다. AI API 키는 백업·복원에서 제외되며 사용자가 직접 입력해야 합니다.
                       </div>
                     </div>
                   </div>
@@ -2051,19 +2051,6 @@ export default function SettingsModal({
                   className="w-full px-3.5 py-2.5 rounded-xl border border-outline-variant/40 bg-surface-container-low dark:bg-zinc-800 text-[13px] font-semibold text-on-surface outline-none focus:border-blue-600 dark:focus:border-blue-400"
                 />
               </div>
-
-              {/* API 키 포함 체크박스 */}
-              <label className="flex items-center gap-2 pt-1 cursor-pointer select-none">
-                <input
-                  type="checkbox"
-                  checked={includeApiKeyInBackup}
-                  onChange={(e) => setIncludeApiKeyInBackup(e.target.checked)}
-                  className="w-4 h-4 rounded text-blue-600 accent-blue-600 cursor-pointer"
-                />
-                <span className="text-[12px] font-semibold text-on-surface">
-                  Gemini AI API 키도 함께 암호화하여 백업 (권장)
-                </span>
-              </label>
 
               {backupError && (
                 <div className="p-2.5 rounded-lg bg-red-500/10 text-red-600 dark:text-red-400 text-[12px] font-bold flex items-center gap-1.5">

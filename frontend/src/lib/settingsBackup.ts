@@ -2,6 +2,7 @@
 // 📊 [OMD-LIB-settingsBackup-0001] frontend/src/lib/settingsBackup.ts
 // 🎯 @KICK  : 온리비 어서 환경설정 전체 암호화(AES-256) 백업 및 암호 검증 복원 라이브러리
 // 🛡️ @GUARD : Rule 1(표준 주석), Rule 2(대문자 코드값), Rule 7(무결성 보장), 비밀번호 불일치 시 원자적 복원 차단
+// 🚨 @PATCH : 2026-11-12 — [AI 키 백업 제외] 신규 백업에서 키를 수집하지 않고 기존 백업 복원에서도 키 필드를 무시하여 로컬 키를 제거
 // 🚨 @PATCH : 2026-11-10 — [환경설정 AES-256 암호화 백업 및 암호 검증 복원 신설]:
 //             1) exportEncryptedSettings: 비밀번호 기반 AES-256 암호화로 단축키, 서식, 테마, 폰트, API 키(선택)를 안전 패키징
 //             2) importEncryptedSettings: 백업 파일의 암호 해독 검증 후 불일치 시 복원 원천 차단 및 통과 시 localStorage/프로필 원자적 복원
@@ -56,11 +57,39 @@ const EXCLUDED_STORAGE_KEYS = new Set([
   'onrivi_tabs', // 열려있던 탭 상태는 브라우저 간 복원 시 혼선 방지를 위해 제외 가능
 ]);
 
+const AI_SECRET_STORAGE_KEYS = new Set([
+  'onrivi_gemini_api_key', 'geminiApiKey', 'onrivi_ai_key_google',
+  'onrivi_google_api_key', 'onrivi_ai_key_openai', 'onrivi_openai_api_key',
+  'openai_api_key', 'openaiApiKey', 'onrivi_ai_key_anthropic',
+  'onrivi_anthropic_api_key', 'anthropic_api_key', 'anthropicApiKey',
+]);
+
+function isAiSecretStorageKey(key: string): boolean {
+  return AI_SECRET_STORAGE_KEYS.has(key) || /(?:^|[_:])(?:api[_-]?key|secret|credential)(?:$|[_:])/i.test(key);
+}
+
+function withoutAiSecrets(value: string): string {
+  try {
+    const parsed = JSON.parse(value);
+    if (!parsed || typeof parsed !== 'object') return value;
+    const sanitize = (item: any): any => {
+      if (Array.isArray(item)) return item.map(sanitize);
+      if (!item || typeof item !== 'object') return item;
+      return Object.fromEntries(Object.entries(item)
+        .filter(([key]) => !isAiSecretStorageKey(key))
+        .map(([key, nested]) => [key, sanitize(nested)]));
+    };
+    return JSON.stringify(sanitize(parsed));
+  } catch {
+    return value;
+  }
+}
+
 /**
  * 환경설정 전체를 비밀번호로 AES-256 암호화하여 백업 파일 문자열로 생성합니다.
  *
  * @param {string} password - 사용자 암호화 비밀번호 (최소 1자 이상)
- * @param {boolean} includeApiKey - Gemini API 키 포함 여부 (기본: false)
+ * @param {boolean} includeApiKey - 이전 호출자와의 호환용이며 AI 키는 항상 제외합니다.
  * @param {any[]} [userCssProfiles] - 사용자 정의 CSS 서식 프로필 목록
  * @returns {Promise<string>} 암호화된 백업 JSON 문자열
  */
@@ -69,6 +98,7 @@ export async function exportEncryptedSettings(
   includeApiKey: boolean = false,
   userCssProfiles?: any[]
 ): Promise<string> {
+  void includeApiKey;
   const cleanPassword = (password || '').trim();
   if (!cleanPassword) {
     throw new Error('PASSWORD_REQUIRED: 백업 암호를 입력해 주세요.');
@@ -78,12 +108,11 @@ export async function exportEncryptedSettings(
 
   // 1. PROTECTED_PREFERENCE_KEYS 및 로컬스토리지 주요 설정 수집
   for (const key of PROTECTED_PREFERENCE_KEYS) {
-    if (EXCLUDED_STORAGE_KEYS.has(key)) continue;
-    if (key === 'onrivi_gemini_api_key' && !includeApiKey) continue;
+    if (EXCLUDED_STORAGE_KEYS.has(key) || isAiSecretStorageKey(key)) continue;
 
     const val = localStorage.getItem(key);
     if (val !== null && val !== undefined) {
-      storageItems[key] = val;
+      storageItems[key] = withoutAiSecrets(val);
     }
   }
 
@@ -100,30 +129,25 @@ export async function exportEncryptedSettings(
     'onrivi_cached_drive_profiles'
   ];
   for (const key of extraKeys) {
-    if (EXCLUDED_STORAGE_KEYS.has(key)) continue;
+    if (EXCLUDED_STORAGE_KEYS.has(key) || isAiSecretStorageKey(key)) continue;
     const val = localStorage.getItem(key);
     if (val !== null && val !== undefined) {
-      storageItems[key] = val;
+      storageItems[key] = withoutAiSecrets(val);
     }
   }
 
   // 3. AI API 키 및 모델명 수집 (secureStorage 및 localStorage)
-  let apiKey = '';
   let modelName = '';
-  if (includeApiKey) {
-    apiKey = (loadSecureData<string>('onrivi_gemini_api_key') || localStorage.getItem('onrivi_gemini_api_key') || '').trim();
-  }
   modelName = (loadSecureData<string>('onrivi_ai_model_name') || localStorage.getItem('onrivi_ai_model_name') || '').trim();
 
   // 4. 암호화 페이로드 객체 구성
   const payload: OnriviSettingsBackupPayload = {
     version: BACKUP_SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
-    hasApiKey: Boolean(apiKey),
+    hasApiKey: false,
     storageItems,
     userCssProfiles: Array.isArray(userCssProfiles) ? userCssProfiles : undefined,
     aiSettings: {
-      geminiApiKey: apiKey || undefined,
       aiModelName: modelName || undefined,
     }
   };
@@ -140,7 +164,7 @@ export async function exportEncryptedSettings(
     magic: BACKUP_MAGIC_HEADER,
     version: BACKUP_SCHEMA_VERSION,
     exportedAt: payload.exportedAt,
-    hasApiKey: Boolean(apiKey),
+    hasApiKey: false,
     checksum,
     payload: ciphertext
   };
@@ -208,17 +232,15 @@ export async function importEncryptedSettings(
   // 4. 원자적 설정 복원 적용
   let restoredCount = 0;
   for (const [key, val] of Object.entries(payload.storageItems)) {
-    if (val !== null && val !== undefined) {
-      localStorage.setItem(key, val);
+    if (val !== null && val !== undefined && !isAiSecretStorageKey(key)) {
+      localStorage.setItem(key, withoutAiSecrets(val));
       restoredCount++;
     }
   }
 
-  // 5. AI API 키 및 모델명 복원
-  if (payload.aiSettings?.geminiApiKey) {
-    const key = payload.aiSettings.geminiApiKey.trim();
-    saveSecureData('onrivi_gemini_api_key', key);
-    localStorage.setItem('onrivi_gemini_api_key', key);
+  // 5. 기존 백업에 포함된 API 키도 복원하지 않고 로컬의 이전 키를 제거합니다.
+  for (const key of AI_SECRET_STORAGE_KEYS) {
+    localStorage.removeItem(key);
   }
   if (payload.aiSettings?.aiModelName) {
     const model = payload.aiSettings.aiModelName.trim();
@@ -238,14 +260,14 @@ export async function importEncryptedSettings(
   // 7. 복원 완료 브로드캐스트 이벤트 발생
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('onrivi:settings_restored', {
-      detail: { restoredCount, hasApiKey: payload.hasApiKey, profilesCount }
+      detail: { restoredCount, hasApiKey: false, profilesCount }
     }));
   }
 
   return {
     success: true,
     restoredCount,
-    hasApiKey: payload.hasApiKey,
+    hasApiKey: false,
     profilesCount
   };
 }
