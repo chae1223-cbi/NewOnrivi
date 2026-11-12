@@ -3,6 +3,7 @@
  * 프로그램 ID : oaar-pdf-import-tables
  * 🚨 @PATCH : **2026-11-12** — [PDF 중복 표 제거 및 HTML 변환]: 큰 표에 포함된 셀별 중복 블록을 제거하고 복합 열 표를 HTML로 출력해 원래 열 배치를 유지
  * 🚨 @PATCH : **2026-11-12** — [번호 안내 상자 HTML 표 복원]: 제목 아래 연속된 ①·② 안내 항목을 독립 목록 대신 번호 열과 내용 열을 가진 HTML 표로 구성
+ * 🚨 @PATCH : **2026-11-12** — [제목·내용 1열 2행 마크다운 표]: 안내·제외대상 상자의 제목과 번호 항목들을 한 열의 머리행·내용행으로 직렬화
  */
 import { pdfTextBlocks, deduplicatePdfRuns, type PdfImportBlock } from './pdfImportLayout';
 
@@ -179,15 +180,34 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
   const outside=runs.filter(r=>!roots.some(g=>contains(r,g))&&!distinctRecovered.some(g=>contains(r,g.box))&&!quotes.some(b=>contains(r,b)));
   const textBlocks=pdfTextBlocks(outside,codeRegions,true,pageBodySize);
   for(let index=0;index<textBlocks.length-2;index++) {
-    const title=textBlocks[index], first=textBlocks[index+1], second=textBlocks[index+2];
-    const firstItem=first.markdown.match(/^\s*- ①\s+([\s\S]+)/);
-    const secondItem=second.markdown.match(/^\s*- ②\s+([\s\S]+)/);
-    if(!/(?:안내사항|유의사항|참고사항)$/.test(title.markdown.trim()) ||
-      !firstItem || !secondItem || title.y-first.y>30 || first.y-second.y>80) continue;
-    const header=escape(title.markdown.trim());
-    const rows=[['①',firstItem[1]],['②',secondItem[1]]].map(([number,body])=>
-      `<tr><td>${number}</td><td>${escape(body.trim())}</td></tr>`).join('');
-    textBlocks.splice(index,3,{y:title.y,markdown:`<table><thead><tr><th colspan="2">${header}</th></tr></thead><tbody>${rows}</tbody></table>`});
+    const title=textBlocks[index];
+    const titledNotice=/(?:안내사항|유의사항|참고사항)$/.test(title.markdown.trim());
+    const titledExclusions=/^신청 제외 대상\s*\(/.test(title.markdown.trim());
+    if(!titledNotice && !titledExclusions) continue;
+    const entries:string[]=[];
+    let cursor=index+1;
+    const marks='①②③④⑤⑥⑦⑧⑨';
+    while(cursor<textBlocks.length) {
+      const block=textBlocks[cursor];
+      const previous=textBlocks[cursor-1];
+      if((cursor===index+1 && title.y-block.y>30) || previous.y-block.y>80) break;
+      if(titledNotice) {
+        const item=block.markdown.match(/^\s*- ([①②③④⑤⑥⑦⑧⑨])\s+([\s\S]+)/);
+        if(!item || item[1]!==marks[entries.length]) break;
+        entries.push(`${item[1]} ${item[2].trim()}`);
+      } else {
+        const item=block.markdown.match(/^(\d+)\.\s+([\s\S]+)/);
+        if(item && Number(item[1])===entries.length+1) entries.push(`${item[1]}. ${item[2].trim()}`);
+        else if(entries.length && !/^(?:#{1,6}\s|\s*- |<table|\|)/.test(block.markdown) && previous.y-block.y<30)
+          entries[entries.length-1]+=` ${block.markdown.trim()}`;
+        else break;
+      }
+      cursor++;
+    }
+    if(entries.length<2) continue;
+    const cell=entries.map(entry=>escape(entry).replace(/\|/g,'\\|')).join('<br>');
+    const header=escape(title.markdown.trim()).replace(/\|/g,'\\|');
+    textBlocks.splice(index,cursor-index,{y:title.y,markdown:`| ${header} |\n| --- |\n| ${cell} |`});
   }
   return [...textBlocks,...roots.map(g=>({y:g.y+g.height,markdown:table(g)})),
     ...distinctRecovered.filter(g=>!quotes.some(b=>inside(g.box,b))).map(g=>({y:g.box.y+g.box.height,markdown:g.markdown})),

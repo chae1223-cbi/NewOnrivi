@@ -2,6 +2,8 @@
 // 📊 [OMD-CORE-VisualEditor-ProseMirrorHandlers] frontend/src/components/visualEditor/visualEditorProseMirrorHandlers.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 ProseMirror Keymap, 키보드/텍스트 입력, 스마트 붙여넣기(handlePaste), 드롭(handleDrop), 마우스 클릭/링크 이동(handleClick) 및 DOM 이벤트 핸들러 팩토리
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 클립보드 이미지/HTML 붙여넣기 정제, 5대 정밀 진단 로깅(logError/logWarn) 준수
+// 🚨 @PATCH : 2026-11-12 — [문단 맨 앞(parentOffset === 0) Enter 시 Shift+Enter 동일 문단 분할(split) 실행]:
+//             1) 문단 맨 시작($from.parentOffset === 0)에서 Enter 입력 시 무반응 방어를 해제하고, Shift+Enter와 동일하게 tr.split($from.pos)을 실행하여 현재 행 위에 새 빈 문단을 분할 생성
 // 🚨 @PATCH : 2026-11-11 — [리스트 앞 빈 행에서 Delete 시 빈 행 즉시 삭제 및 아래 리스트 당김 보장]:
 //             1) Delete 키맵에서 deleteEmptyParagraphBeforeList를 protectQuoteBoundary보다 우선 배치하여 빈 행에서 Delete 시 빈 문단 즉시 삭제 및 아래 리스트 위로 연결
 // 🚨 @PATCH : 2026-11-11 — [인용문 내부 문단 Tab 들여쓰기 & Shift+Tab 내어쓰기 연동]:
@@ -601,8 +603,10 @@ export function createVisualEditorHandlers({
           if (nodeType === visualSchema.nodes.blockquote || nodeType.name === 'blockquote') insideBlockquote = true;
         }
 
-        // 🌟 [요구사항 1: 문단 시작 Enter 무반응 방어]
-        // 문단 맨 시작(parentOffset === 0)에서 Enter 입력 시 문단이 밀리지 않고 커서를 제자리에 유지
+        // 🌟 [문단 시작 Enter 입력 시 Shift+Enter와 동일한 문단 분할(split) 실행]:
+        // 문단 맨 시작(parentOffset === 0)에서 Enter 입력 시 무반응으로 삼키지 않고,
+        // Shift+Enter와 동일하게 tr.split($from.pos)을 실행하여 현재 문단 위에 새 빈 문단을 분할 생성
+        // (제목인 경우 headingEnter를 우선 실행하여 상단에 빈 본문 문단 생성)
         // 단, 리스트 내부(!insideListItem)나 표(!tableContext), 코드블록은 제외
         if (
           !event.shiftKey &&
@@ -618,7 +622,17 @@ export function createVisualEditorHandlers({
           $from.parent.content.size > 0 &&
           !tableContext(currentView.state)
         ) {
+          if ($from.parent.type.name === 'heading') {
+            if (headingEnter(currentView.state, currentView.dispatch, currentView)) {
+              event.preventDefault();
+              caretRef.current?.schedule();
+              return true;
+            }
+          }
           event.preventDefault();
+          let tr = currentView.state.tr.split($from.pos);
+          currentView.dispatch(tr.scrollIntoView());
+          caretRef.current?.schedule();
           return true;
         }
 

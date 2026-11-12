@@ -6,6 +6,8 @@
  * 🚨 @PATCH : **2026-11-12** — [PDF 겹친 글자 및 목록 단계 복원]: 같은 위치의 중복 글자층을 제거하고 위첨자 기호를 본문 줄에 합치며 절 제목·하위 목록의 단계를 명시적으로 정리
  * 🚨 @PATCH : **2026-11-12** — [PDF 하위 각주 및 표 블록 경계 복원]: 각주를 앞 항목의 하위 목록에 넣고 목록 뒤 표 앞뒤에 빈 줄을 두어 마크다운 표 렌더링 복구
  * 🚨 @PATCH : **2026-11-12** — [위첨자 번호 본문 위치 복원]: 본문보다 위에 그려진 작은 ①·②를 독립 목록으로 만들지 않고 해당 문장 줄에 합침
+ * 🚨 @PATCH : **2026-11-12** — [겹친 숫자 누락 글자층 제거]: 같은 위치의 '제 조'처럼 숫자가 빠진 중복 글자층을 완전한 표제에서 분리하지 않도록 정리
+ * 🚨 @PATCH : **2026-11-12** — [PDF 박스 안내문 중복 제거]: ▶ 안내문의 전체 텍스트층을 우선하고 겹친 조각층에서 시작 기호와 누락된 끝 글자만 결합
  */
 import { extractPdfPageText } from './pdfImportText';
 
@@ -25,6 +27,9 @@ export function deduplicatePdfRuns(items: readonly unknown[]): Run[] {
     const normalizedOther=other.str.replace(/[\s,.:()\[\]{}]/g,'');
     if(overlap>0.85 && normalizedRun.length>=4 && normalizedOther.length>normalizedRun.length &&
       normalizedOther.includes(normalizedRun)) return true;
+    const withoutDigits=(value:string)=>value.replace(/[\s\d,.:()\[\]{}]/g,'');
+    if(overlap>0.85 && run.str.length>=3 && other.str.length>run.str.length &&
+      withoutDigits(other.str).includes(withoutDigits(run.str)) && withoutDigits(run.str).length>=2) return true;
     const offset=other.str.indexOf(run.str);
     if(offset<0 || other.str.length<=run.str.length) return false;
     if(overlap>0.85) return true;
@@ -86,6 +91,43 @@ export function pdfTextBlocks(items: readonly unknown[], codeRegions: Box[] = []
   }
   for (const l of lines) { l.runs.sort((a,b) => a.transform[4] - b.transform[4]); l.text = extractPdfPageText(l.runs.map(r => ({ ...r, hasEOL: false }))); }
   lines.sort((a,b) => b.y - a.y);
+  for(let index=0;index<lines.length;index++) {
+    const line=lines[index];
+    const bullet=line.runs.find(run=>run.str.startsWith('▶'));
+    const preceding=lines[index-1];
+    const followsBullet=preceding?.runs.some(run=>run.str.startsWith('▶')) &&
+      preceding.y-line.y<line.h*1.65;
+    if(!bullet && !followsBullet) continue;
+    const main=line.runs.filter(run=>run!==bullet && run.str.length>5)
+      .sort((a,b)=>b.width-a.width)[0];
+    if(!main) continue;
+    let prefix='';
+    if(bullet) {
+      let overlap=0;
+      for(let length=Math.min(bullet.str.length,main.str.length);length>=3;length--)
+        if(bullet.str.endsWith(main.str.slice(0,length))) { overlap=length; break; }
+      prefix=overlap ? bullet.str.slice(0,-overlap) : '▶ ';
+      const punctuation=line.runs.filter(run=>run!==bullet && run!==main && /^[‧·•]$/.test(run.str) &&
+        run.transform[4]>bullet.transform[4] && run.transform[4]<main.transform[4]+3)
+        .map(run=>run.str).join('');
+      if(punctuation) prefix=prefix.trimEnd()+punctuation;
+    }
+    let result=prefix+main.str;
+    let end=main.transform[4]+main.width;
+    for(const run of line.runs.sort((a,b)=>a.transform[4]-b.transform[4])) {
+      if(run===bullet || run===main || /^[‧·•]$/.test(run.str)) continue;
+      const right=run.transform[4]+run.width;
+      if(run.transform[4]<end-2 && right<=end+2) continue;
+      let overlap=0;
+      if(run.transform[4]<end-2)
+        for(let length=Math.min(result.length,run.str.length);length>=3;length--)
+          if(result.endsWith(run.str.slice(0,length))) { overlap=length; break; }
+      if(overlap) result+=run.str.slice(overlap);
+      else result+=(run.transform[4]>end+2 ? ' ' : '')+run.str;
+      end=Math.max(end,right);
+    }
+    line.text=result.replace(/\s+/g,' ').trim();
+  }
   // Printed folios are separate from the document's numbered clauses.
   for (let i=lines.length-1;i>=0;i--) {
     if (/^[-–—]\s*\d+\s*[-–—]$/.test(lines[i].text.trim()) && (i===0 || i===lines.length-1)) lines.splice(i,1);
