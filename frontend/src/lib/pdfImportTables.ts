@@ -1,3 +1,8 @@
+/**
+ * 프로그램명 : OnriviAuthor
+ * 프로그램 ID : oaar-pdf-import-tables
+ * 🚨 @PATCH : **2026-11-12** — [PDF 중복 표 제거 및 HTML 변환]: 큰 표에 포함된 셀별 중복 블록을 제거하고 복합 열 표를 HTML로 출력해 원래 열 배치를 유지
+ */
 import { pdfTextBlocks, deduplicatePdfRuns, type PdfImportBlock } from './pdfImportLayout';
 
 type Rect = { x: number; y: number; width: number; height: number };
@@ -129,11 +134,15 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
       }
       mdRows.push(md);htmlRows.push('<tr>'+html.join('')+'</tr>');
     }
-    const markdown=merged ? '<table><tbody>'+htmlRows.join('')+'</tbody></table>' :
+    const markdown=merged || xs.length>4 ? '<table><tbody>'+htmlRows.join('')+'</tbody></table>' :
       ['| '+mdRows[0].join(' | ')+' |','| '+mdRows[0].map(()=>'---').join(' | ')+' |',...mdRows.slice(1).map(r=>'| '+r.join(' | ')+' |')].join('\n');
     recovered.push({box,markdown});
   }
-  roots=roots.filter(g=>!recovered.some(r=>inside(g,r.box)));
+  const distinctRecovered=recovered.filter((candidate,index)=>
+    !roots.some(grid=>inside(candidate.box,grid)) &&
+    !recovered.some((other,otherIndex)=>otherIndex!==index &&
+      other.box.width*other.box.height>candidate.box.width*candidate.box.height+2 && inside(candidate.box,other.box)));
+  roots=roots.filter(g=>!distinctRecovered.some(r=>inside(g,r.box)));
   // Large shaded prose panels are editable Markdown quotations. Tables and
   // nested tables keep their existing representation rather than becoming quotes.
   const quotes=filledBoxes.filter((box,i)=>runs.filter(r=>contains(r,box)).reduce((n,r)=>n+r.str.length,0)>100 &&
@@ -141,7 +150,7 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
   function table(grid: Grid, forceHtml = false): string {
     const rows: string[]=[];
     const markdownRows: string[][]=[];
-    const useHtml=forceHtml || grids.some(g=>g!==grid && inside(g,grid));
+    const useHtml=forceHtml || grid.xs.length>4 || grids.some(g=>g!==grid && inside(g,grid));
     for(let row=grid.ys.length-2;row>=0;row--) {
       const cells: string[]=[];
       const markdownCells: string[]=[];
@@ -166,9 +175,9 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
     ].join('\n');
     return '<table><tbody>'+rows.join('')+'</tbody></table>';
   }
-  const outside=runs.filter(r=>!roots.some(g=>contains(r,g))&&!recovered.some(g=>contains(r,g.box))&&!quotes.some(b=>contains(r,b)));
+  const outside=runs.filter(r=>!roots.some(g=>contains(r,g))&&!distinctRecovered.some(g=>contains(r,g.box))&&!quotes.some(b=>contains(r,b)));
   return [...pdfTextBlocks(outside,codeRegions,true,pageBodySize),...roots.map(g=>({y:g.y+g.height,markdown:table(g)})),
-    ...recovered.filter(g=>!quotes.some(b=>inside(g.box,b))).map(g=>({y:g.box.y+g.box.height,markdown:g.markdown})),
+    ...distinctRecovered.filter(g=>!quotes.some(b=>inside(g.box,b))).map(g=>({y:g.box.y+g.box.height,markdown:g.markdown})),
     ...quotes.map(box=>({y:box.y+box.height,markdown:pdfTextBlocks(runs.filter(r=>contains(r,box)),[],false,pageBodySize)
       .map(b=>'> '+b.markdown.replace(/^#{1,6}\s+/,'')).join('\n')}))];
 }

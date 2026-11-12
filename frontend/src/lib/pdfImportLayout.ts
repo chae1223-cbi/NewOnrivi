@@ -3,6 +3,7 @@
  * 프로그램 ID : oaar-pdf-import-layout
  * 🚨 @PATCH : **2026-11-07** — [PDF 이미지 블록 독립 문단 분리]:
  *             1) serializePdfBlocks에서 이미지 블록(![...](...)) 또는 직전 블록이 이미지인 경우 반드시 개행 2개(\n\n)를 부여하여 앞뒤 일반 텍스트나 연속된 이미지와 문단이 뭉쳐 깨지는 현상 원천 차단
+ * 🚨 @PATCH : **2026-11-12** — [PDF 겹친 글자 및 목록 단계 복원]: 같은 위치의 중복 글자층을 제거하고 위첨자 기호를 본문 줄에 합치며 절 제목·하위 목록의 단계를 명시적으로 정리
  */
 import { extractPdfPageText } from './pdfImportText';
 
@@ -14,9 +15,13 @@ export function deduplicatePdfRuns(items: readonly unknown[]): Run[] {
   const runs=(items as Run[]).filter(r=>typeof r.str==='string'&&r.str.trim()&&r.transform);
   return runs.filter((run,index)=>!runs.some((other,j)=>{
     if(j===index || Math.abs(run.transform[5]-other.transform[5])>2.5) return false;
-    if(run.str===other.str) return j<index && Math.abs(run.transform[4]-other.transform[4])<2.5 && Math.abs(run.width-other.width)<3;
+    const left=Math.max(run.transform[4],other.transform[4]);
+    const right=Math.min(run.transform[4]+run.width,other.transform[4]+other.width);
+    const overlap=Math.max(0,right-left)/Math.max(1,run.width);
+    if(run.str===other.str) return j<index && overlap>0.9;
     const offset=other.str.indexOf(run.str);
     if(offset<0 || other.str.length<=run.str.length) return false;
+    if(overlap>0.85) return true;
     const expected=other.transform[4]+other.width*offset/other.str.length;
     return Math.abs(run.transform[4]-expected)<3 && run.transform[4]+run.width<=other.transform[4]+other.width+3;
   }));
@@ -63,6 +68,13 @@ export function pdfTextBlocks(items: readonly unknown[], codeRegions: Box[] = []
     if (!line) { line = { y: r.transform[5], runs: [], text: '', h: 0, x: Infinity, end: 0 }; lines.push(line); }
     line.runs.push(r); line.h = Math.max(line.h, r.height); line.x = Math.min(line.x, r.transform[4]);
     line.end = Math.max(line.end, r.transform[4] + r.width);
+  }
+  for (let i=lines.length-1;i>=0;i--) {
+    const line=lines[i];
+    if(line.runs.length!==1 || line.h>10 || !/^[’'*†‡]$/.test(line.runs[0].str)) continue;
+    const parent=lines.find(other=>other!==line && other.h>line.h*1.3 &&
+      Math.abs(other.y-line.y)<other.h*0.6 && line.x>=other.x-2 && line.x<other.end+2);
+    if(parent) { parent.runs.push(...line.runs); lines.splice(i,1); }
   }
   for (const l of lines) { l.runs.sort((a,b) => a.transform[4] - b.transform[4]); l.text = extractPdfPageText(l.runs.map(r => ({ ...r, hasEOL: false }))); }
   lines.sort((a,b) => b.y - a.y);
@@ -135,18 +147,32 @@ export function pdfTextBlocks(items: readonly unknown[], codeRegions: Box[] = []
         }
       }
     }
-    if (line.h > Math.max(14,bodySize*1.2) && !/^(?:\(.+\)$|[□☐ㅇ*※]|예\))/.test(line.text)) {
+    if (inferTables && /^\d+\s+[^\d\s]/.test(line.text)) {
+      blocks.push({y:line.y,markdown:`## ${line.text}`}); continue;
+    }
+    const precedingList=/^\s*- /.test(blocks.at(-1)?.markdown || '') && i>0 &&
+      lines[i-1].y-line.y<bodySize*2.8;
+    if (!precedingList && line.h > Math.max(14,bodySize*1.2) && !/^(?:\(.+\)$|[□☐ㅇ*※◦①②③④⑤⑥⑦⑧⑨]|제\d+조|예\))/.test(line.text)) {
       blocks.push({y:line.y,markdown:`${line.h>=17?'##':'###'} ${line.text}`}); continue;
     }
     const prev=lines[i-1]; const last=blocks.at(-1);
     const isNew = /^(?:예\)|[□☐ㅇ※■☞]|\*\s|\d+[.)]\s|[•●▪]\s|[QA]\d+[.:]|[📌💡👉]|(?:호기심 자극형|정보 전달형|찬반 논쟁 유발형):)/.test(line.text);
+    const listContinuation=last && prev && /^\s*- /.test(last.markdown) &&
+      Math.abs(line.x-prev.x-22)<12;
     if (last && prev && !isNew && !/^#{1,6} |^\|/.test(last.markdown) && Math.abs(prev.h-line.h)<1 &&
-      prev.y-line.y < bodySize*2.05 && Math.abs(prev.x-line.x)<4 && prev.end>rightEdge-bodySize*2) {
+      prev.y-line.y < bodySize*(listContinuation ? 2.8 : 2.05) &&
+      ((Math.abs(prev.x-line.x)<4 && prev.end>rightEdge-bodySize*2) || listContinuation)) {
       // An actual trailing space in the PDF run distinguishes a word boundary
       // from a Korean word that was split across physical lines.
-      const separator=wrapSeparator(prev.text,line.text,rightEdge-prev.end,bodySize);
+      const separator=listContinuation && /^[가-힣‘「]/.test(line.text) ? ' ' :
+        wrapSeparator(prev.text,line.text,rightEdge-prev.end,bodySize);
       last.markdown += separator + line.text;
-    } else blocks.push({y:line.y,markdown:line.text.replace(/^[•●▪]\s*/, '- ')});
+    } else blocks.push({y:line.y,markdown:inferTables ? line.text
+      .replace(/^\s*[□☐■]\s*/, '- ')
+      .replace(/^\s*◦\s*/, '  - ')
+      .replace(/^([①②③④⑤⑥⑦⑧⑨])\s*/, '  - $1 ')
+      .replace(/^(\*{1,2})(?=\s)/, match=>match.split('').map(()=>'\\*').join(''))
+      .replace(/^[•●▪]\s*/, '- ') : line.text.replace(/^[•●▪]\s*/, '- ')});
   }
   for (const block of blocks) {
     if (!block.markdown.startsWith('```')) block.markdown=block.markdown.replace(/\*\*([^*\n]+)\*\*/g,(_,value:string)=>'<strong>'+value.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</strong>');
