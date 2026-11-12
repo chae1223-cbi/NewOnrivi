@@ -2,6 +2,9 @@
 // ⚙️ [OMD-CORE-VisualDocCommands-0001] visualDocumentCommands.ts ➔ 시각 에디터 전용 ProseMirror 커맨드 및 정규화 플러그인
 // 🎯 @KICK  : 제목/코드블록/인용구/리스트/구분선/미디어 등 블록 조작 커맨드 및 리스트 정규화 트랜잭션 플러그인 제공
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 VisualDocumentEditor 대형 컴포넌트 모듈화 표준 준수
+// 🚨 @PATCH : 2026-11-12 — [선택 영역 Tab 시 문단 텍스트 공백 삽입 차단 및 안전 들여쓰기 보장]:
+//             1) safeListIndent에서 리스트 미선택 시 indentDocument 호출을 차단하고 independentIndentListItem 위임 또는 안전 정지 처리
+//             2) indentDocument에서 범위 선택(!empty) 상태일 때 Tab(!backward)으로 문단 본문에 공백 문자를 임의 삽입하여 줄바꿈이 깨지던 결함 원천 차단 (Shift+Tab 시에는 기존 선행 공백 안전 소거)
 // 🚨 @PATCH : 2026-11-12 — [리스트 1번째 항목 전체 이동 방어 및 단일/선택 행 안전 들여쓰기 위임]: safeListIndent에서 첫 항목(itemIndexInList === 0) 시 전체 목록 이동(indentWholeList)을 원천 차단하고 independentIndentListItem으로 위임하여 선행 리스트 편입 또는 안전 정지 처리
 // 🚨 @PATCH : 2026-11-11 — [인용문 탈출 시 말단 빈 행/빈 문단 자동 정제]: exitQuote 실행 시 인용문 끝에 남아있는 빈 문단 및 trailing hard_break를 완전 소탕하여 인용문 내부에 빈 행이 남지 않도록 개선
 // 🚨 @PATCH : 2026-11-10 — [문단 끝 행 및 각 행 우측 빈 공간 클릭 시 마지막 문자 뒤 정확한 포커스 안착]: 라인별 바운딩 박스 그룹화 및 끝 행 우측 여백 클릭 감지 강화로 글자 외 빈 공간 클릭 시 해당 행의 마지막 문자 바로 다음 위치로 즉시 포커스 이동 보장
@@ -654,7 +657,8 @@ export const safeListIndent: Command = (state, dispatch, currentView) => {
     independentIndentListItem(state, dispatch, currentView);
     return true; // 리스트 내부에서는 추가적인 indentDocument로 구조가 깨지지 않도록 방어
   }
-  return indentDocument()(state, dispatch, currentView);
+  if (independentIndentListItem(state, dispatch, currentView)) return true;
+  return false;
 };
 
 export const indentDocument = (backward = false): Command => (state, dispatch, currentView) => {
@@ -697,19 +701,21 @@ export const indentDocument = (backward = false): Command => (state, dispatch, c
   const configured = currentView ? Number.parseInt(currentView.dom.dataset.editorTabSize || getComputedStyle(currentView.dom).tabSize, 10) : 2;
   const size = Number.isFinite(configured) ? Math.max(1, Math.min(16, configured)) : 2;
   if (!state.selection.empty) {
+    if (!backward) return false;
     const edits: { pos: number; remove: number }[] = [];
     state.doc.nodesBetween(from, to, (node, pos) => {
       if (!node.isTextblock) return;
       if (node.type !== visualSchema.nodes.paragraph || pos + 1 >= to) return false;
       const leading = node.textContent.match(new RegExp('^[ \\t\\u00a0]{1,' + size + '}'))?.[0];
-      edits.push({ pos: pos + 1, remove: backward ? (leading?.length || 0) : 0 });
+      if (leading?.length) {
+        edits.push({ pos: pos + 1, remove: leading.length });
+      }
       return false;
     });
     if (dispatch && edits.length) {
       const tr = state.tr;
       for (const edit of edits.reverse()) {
-        if (backward) { if (edit.remove) tr.delete(edit.pos, edit.pos + edit.remove); }
-        else tr.insertText(' '.repeat(size), edit.pos);
+        tr.delete(edit.pos, edit.pos + edit.remove);
       }
       dispatch(tr.scrollIntoView());
     }
