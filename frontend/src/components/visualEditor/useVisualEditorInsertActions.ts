@@ -1,6 +1,9 @@
 // ====================================================================
 // 📊 [OMD-HOOK-VisualEditorInsertActions] frontend/src/components/visualEditor/useVisualEditorInsertActions.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 서식/블록 명령, 이미지/미디어/각주/서명/참고문헌/수식/문서링크/날짜 삽입 액션 및 외부 commandRef 브릿지 훅
+// 🚨 @PATCH : 2026-11-12 — [인용문 취소(토글 해제) 시 리스트 분리 및 변형 결함 완전 해결]:
+//             1) setQuote 실행 시 인용문 내부에서 동일 인용구 명령 호출 시 불필요한 중첩 감싸기로 오분기(break)하지 않고 인용문 껍데기(blockquote)를 안전하게 언랩(replaceWith content)하여 원본 리스트/문단 구조를 100% 무손실 복원
+//             2) NodeSelection 및 다중 선택 상태에서도 ProseMirror selection 매핑을 통해 인용문 해제 후 커서 및 선택 영역을 안정적으로 보존
 // 🚨 @PATCH : 2026-11-11 — [각주 삽입 후 커서 다음 칼럼 전진 및 본문 포커스 유지]: 각주 삽입 후 하단 각주 정의로 포커스/스크롤 이동을 제거하고 본문 각주 직후(다음 칼럼)로 커서 안착 및 visualCaret 본문 기준선 동기화
 // 🚨 @PATCH : 2026-11-11 — [각주 브릿지 및 슬래시 명령 실행 포커스 안정화]: bridge에 FOOTNOTE/FN 명령 직접 분기 추가 및 nativeCommands.footnote/fn에 removeSlash=true 연동하여 단축키/슬래시/플로팅툴바 각주 생성 통일
 // 🚨 @PATCH : 2026-11-10 — [슬래시 명령어 글자 중간 실행 시 잔여 텍스트 삭제 및 전체 단어 검색 보장]: 커서 뒤의 단어 끝까지 slashRange.to에 포함하여 명령어 실행 시 뒤쪽 글자가 남지 않도록 완벽 제거
@@ -32,7 +35,7 @@
 
 import { useEffect } from 'react';
 import type React from 'react';
-import { Selection, TextSelection, type Command } from 'prosemirror-state';
+import { Selection, TextSelection, NodeSelection, type Command } from 'prosemirror-state';
 import { Fragment, type Node as DocumentNode } from 'prosemirror-model';
 import type { EditorView } from 'prosemirror-view';
 import { lift, setBlockType, toggleMark, wrapIn } from 'prosemirror-commands';
@@ -211,35 +214,59 @@ export function useVisualEditorInsertActions({
     (state, dispatch, view) => {
       const position = state.selection.$from;
       const { $from, $to } = state.selection;
+      const targetAlert = alertType || null;
 
-      // 1. 이미 인용문 내부에 위치한 경우
+      // 0. NodeSelection으로 인용문 노드 자체가 선택된 경우
+      if (state.selection instanceof NodeSelection && state.selection.node.type === visualSchema.nodes.blockquote) {
+        const quoteNode = state.selection.node;
+        const existingAlert = quoteNode.attrs.alertType || null;
+        if (existingAlert === targetAlert) {
+          if (dispatch) {
+            const content = quoteNode.content.childCount > 0 ? quoteNode.content : visualSchema.nodes.paragraph.create();
+            const tr = state.tr.replaceWith(state.selection.from, state.selection.to, content);
+            dispatch(closeHistory(tr).scrollIntoView());
+          }
+          return true;
+        }
+        if (dispatch) {
+          let tr = state.tr.setNodeMarkup(state.selection.from, undefined, { alertType: targetAlert });
+          dispatch(tr.scrollIntoView());
+        }
+        return true;
+      }
+
+      // 1. 이미 인용문 내부에 위치한 경우 (동일 인용구 재선택 시 인용문 취소/Unwrap, 상이한 타입 시 Alert 변환)
       for (let depth = position.depth; depth > 0; depth--) {
         if (position.node(depth).type === visualSchema.nodes.blockquote) {
-          const existingAlert = position.node(depth).attrs.alertType || null;
-          // 기본 인용문은 이미 인용문 안에서 다시 실행하면 해제하지 않고 한 단계 더 중첩한다(최대 6단계).
-          // 해제는 인용문 첫 줄 맨 앞에서 Backspace(한 단계씩) 또는 태그 취소로 수행한다.
-          if (!alertType && existingAlert === null) {
-            let quoteDepth = 0;
-            for (let d = position.depth; d > 0; d--) {
-              if (position.node(d).type === visualSchema.nodes.blockquote) quoteDepth++;
-            }
-            if (quoteDepth >= 6) return false;
-            // 중첩 인용문 계속 진행 (아래의 리스트 분기 또는 wrapIn으로 안전 진입)
-            break;
-          }
-          if (existingAlert === (alertType || null)) {
-            const quoteRange = $from.blockRange($to, node => node.type === visualSchema.nodes.blockquote);
-            if (quoteRange) {
-              const target = liftTarget(quoteRange);
-              if (target !== null && dispatch) {
-                dispatch(closeHistory(state.tr.lift(quoteRange, target)).scrollIntoView());
-                return true;
+          const quoteNode = position.node(depth);
+          const existingAlert = quoteNode.attrs.alertType || null;
+
+          // 동일한 인용문 타입(일반 인용문 ↔ 일반 인용문, 또는 NOTE ↔ NOTE 등)을 다시 누르면 인용문 취소(Unwrap)
+          if (existingAlert === targetAlert) {
+            if (dispatch) {
+              const quoteStart = position.before(depth);
+              const quoteEnd = position.after(depth);
+              const content = quoteNode.content.childCount > 0 ? quoteNode.content : visualSchema.nodes.paragraph.create();
+              let tr = state.tr.replaceWith(quoteStart, quoteEnd, content);
+
+              const mappedAnchor = tr.mapping.map(state.selection.anchor);
+              const mappedHead = tr.mapping.map(state.selection.head);
+              try {
+                tr = tr.setSelection(TextSelection.between(tr.doc.resolve(mappedAnchor), tr.doc.resolve(mappedHead)));
+              } catch (_) {
+                try {
+                  tr = tr.setSelection(Selection.near(tr.doc.resolve(mappedAnchor)));
+                } catch (_) {}
               }
+
+              dispatch(closeHistory(tr).scrollIntoView());
             }
-            return lift(state, dispatch, view);
+            return true;
           }
+
+          // 다른 alertType(예: 일반 인용문 -> NOTE, 또는 NOTE -> TIP 등)으로 변경하는 경우
           if (dispatch) {
-            let tr = state.tr.setNodeMarkup(position.before(depth), undefined, { alertType });
+            let tr = state.tr.setNodeMarkup(position.before(depth), undefined, { alertType: targetAlert });
             const afterPos = position.after(depth);
             if (afterPos === tr.doc.content.size || tr.doc.nodeAt(afterPos)?.type !== visualSchema.nodes.paragraph) {
               const savedFrom = tr.selection.from;
