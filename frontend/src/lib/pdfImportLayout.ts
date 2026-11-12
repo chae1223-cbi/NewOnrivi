@@ -5,6 +5,7 @@
  *             1) serializePdfBlocks에서 이미지 블록(![...](...)) 또는 직전 블록이 이미지인 경우 반드시 개행 2개(\n\n)를 부여하여 앞뒤 일반 텍스트나 연속된 이미지와 문단이 뭉쳐 깨지는 현상 원천 차단
  * 🚨 @PATCH : **2026-11-12** — [PDF 겹친 글자 및 목록 단계 복원]: 같은 위치의 중복 글자층을 제거하고 위첨자 기호를 본문 줄에 합치며 절 제목·하위 목록의 단계를 명시적으로 정리
  * 🚨 @PATCH : **2026-11-12** — [PDF 하위 각주 및 표 블록 경계 복원]: 각주를 앞 항목의 하위 목록에 넣고 목록 뒤 표 앞뒤에 빈 줄을 두어 마크다운 표 렌더링 복구
+ * 🚨 @PATCH : **2026-11-12** — [위첨자 번호 본문 위치 복원]: 본문보다 위에 그려진 작은 ①·②를 독립 목록으로 만들지 않고 해당 문장 줄에 합침
  */
 import { extractPdfPageText } from './pdfImportText';
 
@@ -78,7 +79,7 @@ export function pdfTextBlocks(items: readonly unknown[], codeRegions: Box[] = []
   }
   for (let i=lines.length-1;i>=0;i--) {
     const line=lines[i];
-    if(line.runs.length!==1 || line.h>10 || !/^[’'*†‡]$/.test(line.runs[0].str)) continue;
+    if(line.h>10 || !line.runs.every(run=>/^[’'*†‡①②③④⑤⑥⑦⑧⑨\s]+$/.test(run.str))) continue;
     const parent=lines.find(other=>other!==line && other.h>line.h*1.3 &&
       Math.abs(other.y-line.y)<other.h*0.6 && line.x>=other.x-2 && line.x<other.end+2);
     if(parent) { parent.runs.push(...line.runs); lines.splice(i,1); }

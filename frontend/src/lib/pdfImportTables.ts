@@ -2,6 +2,7 @@
  * 프로그램명 : OnriviAuthor
  * 프로그램 ID : oaar-pdf-import-tables
  * 🚨 @PATCH : **2026-11-12** — [PDF 중복 표 제거 및 HTML 변환]: 큰 표에 포함된 셀별 중복 블록을 제거하고 복합 열 표를 HTML로 출력해 원래 열 배치를 유지
+ * 🚨 @PATCH : **2026-11-12** — [번호 안내 상자 HTML 표 복원]: 제목 아래 연속된 ①·② 안내 항목을 독립 목록 대신 번호 열과 내용 열을 가진 HTML 표로 구성
  */
 import { pdfTextBlocks, deduplicatePdfRuns, type PdfImportBlock } from './pdfImportLayout';
 
@@ -176,7 +177,19 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
     return '<table><tbody>'+rows.join('')+'</tbody></table>';
   }
   const outside=runs.filter(r=>!roots.some(g=>contains(r,g))&&!distinctRecovered.some(g=>contains(r,g.box))&&!quotes.some(b=>contains(r,b)));
-  return [...pdfTextBlocks(outside,codeRegions,true,pageBodySize),...roots.map(g=>({y:g.y+g.height,markdown:table(g)})),
+  const textBlocks=pdfTextBlocks(outside,codeRegions,true,pageBodySize);
+  for(let index=0;index<textBlocks.length-2;index++) {
+    const title=textBlocks[index], first=textBlocks[index+1], second=textBlocks[index+2];
+    const firstItem=first.markdown.match(/^\s*- ①\s+([\s\S]+)/);
+    const secondItem=second.markdown.match(/^\s*- ②\s+([\s\S]+)/);
+    if(!/(?:안내사항|유의사항|참고사항)$/.test(title.markdown.trim()) ||
+      !firstItem || !secondItem || title.y-first.y>30 || first.y-second.y>80) continue;
+    const header=escape(title.markdown.trim());
+    const rows=[['①',firstItem[1]],['②',secondItem[1]]].map(([number,body])=>
+      `<tr><td>${number}</td><td>${escape(body.trim())}</td></tr>`).join('');
+    textBlocks.splice(index,3,{y:title.y,markdown:`<table><thead><tr><th colspan="2">${header}</th></tr></thead><tbody>${rows}</tbody></table>`});
+  }
+  return [...textBlocks,...roots.map(g=>({y:g.y+g.height,markdown:table(g)})),
     ...distinctRecovered.filter(g=>!quotes.some(b=>inside(g.box,b))).map(g=>({y:g.box.y+g.box.height,markdown:g.markdown})),
     ...quotes.map(box=>({y:box.y+box.height,markdown:pdfTextBlocks(runs.filter(r=>contains(r,box)),[],false,pageBodySize)
       .map(b=>'> '+b.markdown.replace(/^#{1,6}\s+/,'')).join('\n')}))];
