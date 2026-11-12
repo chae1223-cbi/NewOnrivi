@@ -1,6 +1,8 @@
 /**
  * 프로그램명 : OnriviAuthor 
  * 파일명 : visualListCommands.ts
+ * 🚨 @PATCH : **2026-11-12** — [목록 서식 변환 시 들여쓰기 위치(indentPx) 보존 및 내어쓰기 오동작 방어]:
+ *             1) selectedList에서 기존 목록의 서식을 체크리스트, 번호 목록, 글머리 목록 등으로 상호 변환할 때 기존 목록의 들여쓰기(parent.attrs.indentPx)를 신규 목록 노드에 온전히 계승하여, 변환 시 목록이 좌측으로 튀어나가지 않고 자기자리에서 안정적으로 변환되도록 보장
  * 🚨 @PATCH : **2026-11-11** — [글머리 기호 적용 시 상위 번호 목록 감지 기반 상대적 하위 레벨 자동 중첩]:
  *             1) selectedList('bullet') 실행 시 직전에 상위 번호 목록(ordered_list)이 존재하는 경우, 독립된 1단계 목록으로 분리되지 않고 상위 목록의 하위 레벨(2단계 상대적 목록)로 자동 편입(auto-nest)되도록 개선
  * 🚨 @PATCH : **2026-11-11** — [문장간격(hard_break) 포함 단일 문단에서 커서 위치 라인만 개별 리스트 변환 지원]:
@@ -1048,7 +1050,7 @@ export function selectedList(kind:'bullet'|'ordered'|'check'|'clear'):Command {
           tight: true,
           order: 1,
           bullet: '-',
-          indentPx: null
+          indentPx: singlePara.attrs.indentPx ?? null
         }, listLines.map(line => nodes.list_item.create({
           checked: kind === 'check' ? false : null
         }, nodes.paragraph.create(null, line))));
@@ -1088,6 +1090,7 @@ export function selectedList(kind:'bullet'|'ordered'|'check'|'clear'):Command {
     // them as redundant ordinals when explicitly choosing a numbered list.
     const lines=selected.flatMap(inlineLines).map(line=>kind==='ordered'?withoutTypedMarker(line):line);
     if(!lines.length)return false;
+    const existingListIndent = listRange ? (parent.attrs.indentPx ?? null) : null;
     const singleIndentedPara = !listRange && selected.length === 1 && selected[0].type === nodes.paragraph ? (selected[0].attrs.indentPx ?? 0) : 0;
     const prevNodeBeforeFrom = !listRange && range.start > 0 ? state.doc.resolve(range.start).nodeBefore : null;
     const shouldAutoNestAfterConvert = Boolean(
@@ -1110,7 +1113,9 @@ export function selectedList(kind:'bullet'|'ordered'|'check'|'clear'):Command {
       tight: true,
       order: 1,
       bullet: '-',
-      indentPx: (!shouldAutoNestAfterConvert && singleIndentedPara > 0) ? singleIndentedPara : null
+      indentPx: existingListIndent !== null
+        ? existingListIndent
+        : ((!shouldAutoNestAfterConvert && singleIndentedPara > 0) ? singleIndentedPara : null)
     }, lines.map(line => nodes.list_item.create({
       checked: kind === 'check' ? false : null
     }, nodes.paragraph.create(null, line))))];
