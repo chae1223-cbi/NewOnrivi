@@ -4,6 +4,7 @@
  * 🚨 @PATCH : **2026-11-07** — [PDF 이미지 블록 독립 문단 분리]:
  *             1) serializePdfBlocks에서 이미지 블록(![...](...)) 또는 직전 블록이 이미지인 경우 반드시 개행 2개(\n\n)를 부여하여 앞뒤 일반 텍스트나 연속된 이미지와 문단이 뭉쳐 깨지는 현상 원천 차단
  * 🚨 @PATCH : **2026-11-12** — [PDF 겹친 글자 및 목록 단계 복원]: 같은 위치의 중복 글자층을 제거하고 위첨자 기호를 본문 줄에 합치며 절 제목·하위 목록의 단계를 명시적으로 정리
+ * 🚨 @PATCH : **2026-11-12** — [PDF 하위 각주 및 표 블록 경계 복원]: 각주를 앞 항목의 하위 목록에 넣고 목록 뒤 표 앞뒤에 빈 줄을 두어 마크다운 표 렌더링 복구
  */
 import { extractPdfPageText } from './pdfImportText';
 
@@ -45,14 +46,16 @@ function wrapSeparator(previous: string, next: string, remaining: number, fontSi
 export function serializePdfBlocks(blocks: PdfImportBlock[], compact = false): string {
   return blocks.map((block, index) => {
     const isImage = /^\s*!\[/.test(block.markdown);
+    const isTable = /^(?:\|[^\n]+\n\|\s*:?-{3}|<table(?:\s|>))/i.test(block.markdown);
     const prevBlock = blocks[index - 1];
     const prevIsImage = prevBlock && /^\s*!\[/.test(prevBlock.markdown);
+    const prevIsTable = prevBlock && /^(?:\|[^\n]+\n\|\s*:?-{3}|<table(?:\s|>))/i.test(prevBlock.markdown);
     const current = block.markdown.match(/^(\d+)\. /);
     const previous = prevBlock?.markdown.match(/^(\d+)\. /);
 
     // 🛡️ 이미지는 앞뒤로 반드시 빈 줄(\n\n)을 보장하여 일반 텍스트 문단 또는 연속 이미지와 뭉치지 않고 독립 블록으로 분리
     let separator = '\n\n';
-    if (isImage || prevIsImage) {
+    if (isImage || prevIsImage || isTable || prevIsTable) {
       separator = '\n\n';
     } else if (compact || (current && previous && Number(current[1]) === Number(previous[1]) + 1)) {
       separator = '\n';
@@ -171,12 +174,18 @@ export function pdfTextBlocks(items: readonly unknown[], codeRegions: Box[] = []
       const separator=listContinuation && /^[가-힣‘「]/.test(line.text) ? ' ' :
         wrapSeparator(prev.text,line.text,rightEdge-prev.end,bodySize);
       last.markdown += separator + line.text;
-    } else blocks.push({y:line.y,markdown:inferTables ? line.text
-      .replace(/^\s*[□☐■]\s*/, '- ')
-      .replace(/^\s*◦\s*/, '  - ')
-      .replace(/^([①②③④⑤⑥⑦⑧⑨])\s*/, '  - $1 ')
-      .replace(/^(\*{1,2})(?=\s)/, match=>match.split('').map(()=>'\\*').join(''))
-      .replace(/^[•●▪]\s*/, '- ') : line.text.replace(/^[•●▪]\s*/, '- ')});
+    } else {
+      const note = /^\*{1,2}\s+/.test(line.text);
+      const priorList = blocks.at(-1)?.markdown.match(/^(\s*)- /);
+      const noteText = note && inferTables && priorList
+        ? `${priorList[1]}  - ${line.text.replace(/^\*{1,2}\s+/, '')}` : null;
+      blocks.push({y:line.y,markdown:noteText ?? (inferTables ? line.text
+        .replace(/^\s*[□☐■]\s*/, '- ')
+        .replace(/^\s*◦\s*/, '  - ')
+        .replace(/^([①②③④⑤⑥⑦⑧⑨])\s*/, '  - $1 ')
+        .replace(/^(\*{1,2})(?=\s)/, match=>match.split('').map(()=>'\\*').join(''))
+        .replace(/^[•●▪]\s*/, '- ') : line.text.replace(/^[•●▪]\s*/, '- '))});
+    }
   }
   for (const block of blocks) {
     if (!block.markdown.startsWith('```')) block.markdown=block.markdown.replace(/\*\*([^*\n]+)\*\*/g,(_,value:string)=>'<strong>'+value.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</strong>');
