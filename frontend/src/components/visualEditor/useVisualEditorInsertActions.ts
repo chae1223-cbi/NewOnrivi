@@ -1,6 +1,9 @@
 // ====================================================================
 // 📊 [OMD-HOOK-VisualEditorInsertActions] frontend/src/components/visualEditor/useVisualEditorInsertActions.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 서식/블록 명령, 이미지/미디어/각주/서명/참고문헌/수식/문서링크/날짜 삽입 액션 및 외부 commandRef 브릿지 훅
+// 🚨 @PATCH : 2026-11-12 — [다중 리스트 및 교차 블록 인용문 일괄 적용·해제 완비]:
+//             1) setQuote 실행 시 선택 영역이 여러 리스트(글머리, 체크, 번호 등)나 서로 다른 레벨에 걸쳐 있을 때 첫 행만 적용되던 결함을 해결하고, 선택된 모든 교차 블록을 단 하나의 blockquote로 일괄 감싸기 적용
+//             2) 인용문 내부에서는 동일 타입 재선택 시 인용문 껍데기(blockquote)를 안전하게 언랩(Unwrap)하여 원본 다중 리스트/문단 구조를 100% 무손실 복원
 // 🚨 @PATCH : 2026-11-12 — [인용문 취소(토글 해제) 시 리스트 분리 및 변형 결함 완전 해결]:
 //             1) setQuote 실행 시 인용문 내부에서 동일 인용구 명령 호출 시 불필요한 중첩 감싸기로 오분기(break)하지 않고 인용문 껍데기(blockquote)를 안전하게 언랩(replaceWith content)하여 원본 리스트/문단 구조를 100% 무손실 복원
 //             2) NodeSelection 및 다중 선택 상태에서도 ProseMirror selection 매핑을 통해 인용문 해제 후 커서 및 선택 영역을 안정적으로 보존
@@ -213,7 +216,7 @@ export function useVisualEditorInsertActions({
     (alertType: string | null): Command =>
     (state, dispatch, view) => {
       const position = state.selection.$from;
-      const { $from, $to } = state.selection;
+      const { $from, $to, from, to } = state.selection;
       const targetAlert = alertType || null;
 
       // 0. NodeSelection으로 인용문 노드 자체가 선택된 경우
@@ -280,7 +283,139 @@ export function useVisualEditorInsertActions({
         }
       }
 
-      // 2. 리스트(bullet_list / ordered_list) 내부 항목 인용문 감싸기
+      // 2. 선택 영역이 걸쳐 있는 doc 레벨 블록 탐색
+      const isList = (node?: DocumentNode | null) => node && ['bullet_list', 'ordered_list'].includes(node.type.name);
+      const doc = state.doc;
+      let fromIndex = -1;
+      let toIndex = -1;
+      let fromBlockStart = 0;
+      let toBlockEnd = 0;
+
+      let currentPos = 0;
+      for (let i = 0; i < doc.childCount; i++) {
+        const child = doc.child(i);
+        const childStart = currentPos;
+        const childEnd = childStart + child.nodeSize;
+
+        if (childStart <= from && from <= childEnd) {
+          if (fromIndex === -1) {
+            fromIndex = i;
+            fromBlockStart = childStart;
+          }
+        }
+        if (childStart <= to && to <= childEnd) {
+          toIndex = i;
+          toBlockEnd = childEnd;
+        }
+
+        currentPos = childEnd;
+      }
+
+      if (fromIndex === -1) fromIndex = 0;
+      if (toIndex === -1) toIndex = doc.childCount - 1;
+      if (toBlockEnd === 0) toBlockEnd = doc.content.size;
+
+      // 2-A. 다중 블록에 걸쳐 선택된 경우 (다중 리스트, 체크리스트, 번호목록 등 교차 선택 시 전체 일괄 감싸기)
+      if (fromIndex < toIndex) {
+        if (!dispatch) return true;
+
+        const replacements: DocumentNode[] = [];
+        const selectedBlocks: DocumentNode[] = [];
+
+        // 1) 첫 번째 블록 (fromIndex)
+        const firstBlock = doc.child(fromIndex);
+        if (isList(firstBlock)) {
+          let itemIndex = 0;
+          let offset = fromBlockStart + 1;
+          for (let i = 0; i < firstBlock.childCount; i++) {
+            const item = firstBlock.child(i);
+            if (offset + item.nodeSize > from) {
+              itemIndex = i;
+              break;
+            }
+            offset += item.nodeSize;
+          }
+          if (itemIndex > 0) {
+            const beforeItems = Array.from({ length: itemIndex }, (_, i) => firstBlock.child(i));
+            replacements.push(firstBlock.type.create(firstBlock.attrs, Fragment.fromArray(beforeItems)));
+          }
+          const selectedItems = Array.from({ length: firstBlock.childCount - itemIndex }, (_, i) => firstBlock.child(i + itemIndex));
+          const isOrdered = firstBlock.type === visualSchema.nodes.ordered_list;
+          selectedBlocks.push(firstBlock.type.create({
+            ...firstBlock.attrs,
+            ...(isOrdered ? { order: (firstBlock.attrs.order || 1) + itemIndex } : {})
+          }, Fragment.fromArray(selectedItems)));
+        } else {
+          selectedBlocks.push(firstBlock);
+        }
+
+        // 2) 중간 블록들 (fromIndex + 1 ~ toIndex - 1)
+        for (let i = fromIndex + 1; i < toIndex; i++) {
+          selectedBlocks.push(doc.child(i));
+        }
+
+        // 3) 마지막 블록 (toIndex)
+        const lastBlock = doc.child(toIndex);
+        let afterBlock: DocumentNode | null = null;
+        if (isList(lastBlock)) {
+          let itemEndIndex = lastBlock.childCount;
+          let offset = toBlockEnd - lastBlock.nodeSize + 1;
+          for (let i = 0; i < lastBlock.childCount; i++) {
+            const item = lastBlock.child(i);
+            if (offset + item.nodeSize >= to) {
+              itemEndIndex = i + 1;
+              break;
+            }
+            offset += item.nodeSize;
+          }
+          const selectedItems = Array.from({ length: itemEndIndex }, (_, i) => lastBlock.child(i));
+          selectedBlocks.push(lastBlock.type.create(lastBlock.attrs, Fragment.fromArray(selectedItems)));
+          if (itemEndIndex < lastBlock.childCount) {
+            const afterItems = Array.from({ length: lastBlock.childCount - itemEndIndex }, (_, i) => lastBlock.child(i + itemEndIndex));
+            const isOrdered = lastBlock.type === visualSchema.nodes.ordered_list;
+            afterBlock = lastBlock.type.create({
+              ...lastBlock.attrs,
+              ...(isOrdered ? { order: (lastBlock.attrs.order || 1) + itemEndIndex } : {})
+            }, Fragment.fromArray(afterItems));
+          }
+        } else {
+          selectedBlocks.push(lastBlock);
+        }
+
+        // 선택된 모든 교차 블록을 단 하나의 blockquote로 일괄 감싸기!
+        const blockquoteNode = visualSchema.nodes.blockquote.create(
+          { alertType: targetAlert },
+          Fragment.fromArray(selectedBlocks)
+        );
+        replacements.push(blockquoteNode);
+        if (afterBlock) {
+          replacements.push(afterBlock);
+        }
+
+        let tr = state.tr.replaceWith(fromBlockStart, toBlockEnd, replacements);
+
+        let quotePos = -1;
+        tr.doc.descendants((node, pos) => {
+          if (node === blockquoteNode) {
+            quotePos = pos;
+            return false;
+          }
+        });
+        if (quotePos >= 0) {
+          const selStart = Math.min(tr.doc.content.size - 1, quotePos + 2);
+          const selEnd = Math.min(tr.doc.content.size - 1, quotePos + blockquoteNode.nodeSize - 2);
+          try {
+            tr = tr.setSelection(TextSelection.between(tr.doc.resolve(selStart), tr.doc.resolve(selEnd)));
+          } catch (_) {
+            tr = tr.setSelection(Selection.near(tr.doc.resolve(selStart)));
+          }
+        }
+
+        dispatch(closeHistory(tr).scrollIntoView());
+        return true;
+      }
+
+      // 2-B. 단일 리스트(bullet_list / ordered_list) 내부 항목 인용문 감싸기
       let listDepth = 0;
       for (let d = $from.depth; d > 0; d--) {
         const name = $from.node(d).type.name;
