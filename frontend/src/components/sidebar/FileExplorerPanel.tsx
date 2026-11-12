@@ -3,6 +3,9 @@
  * 🏷️ 파일명 : FileExplorerPanel.tsx
  * 🎭 역할(Role) : Core (핵심 도메인 뷰 — 좌측 사이드바 파일 탐색기 패널)
  * 🎯 주요기능 : 워크스페이스 폴더 트리 탐색, 루트 파일/폴더 생성, 지연 로딩 및 하위 훅/컨텍스트 메뉴 위임
+ * 🚨 @PATCH : 2026-11-12 — [구글 드라이브 탐색기 새로고침 최적화]:
+ *             1) triggerRefreshRoot 시 구글 드라이브 단기 캐시(clearDriveChildrenCache) 소거 및 강제 갱신 연동
+ *             2) 사이드바 활성화 시 자동 리프레시를 비강제(false)로 전환하여 불필요한 중복 스캔 제거
  * 🚨 @PATCH : 2026-11-04 — [1순위 모듈화 분리 및 누락 임포트 복원]:
  *             1) 2,945줄이던 단일 패널에서 클립보드·되돌리기·루트 드래그앤드롭을 `useExplorerUndoClipboard.ts`로, 외부 문서 가져오기를 `useDocumentImporter.ts`로, 루트 컨텍스트 메뉴 및 가져오기 오버레이를 `ExplorerRootContextMenu.tsx`로 분리
  *             2) `knowledgeClient` 명시적 임포트를 복원하고 1·2단계 표준 주석 및 `logError`/`logWarn` 진단 규격 적용
@@ -419,9 +422,15 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
 
   const triggerRefreshRoot = useCallback(async () => {
     setContextMenu(null);
-    await refreshFileList();
-    window.dispatchEvent(new CustomEvent('file:refresh-all-directories'));
-  }, [refreshFileList]);
+    if (rootFolder?.type === 'GDRIVE') {
+      try {
+        const { clearDriveChildrenCache } = await import('@/lib/gdrive/googleDriveClient');
+        clearDriveChildrenCache();
+      } catch {}
+    }
+    await refreshFileList(true);
+    window.dispatchEvent(new CustomEvent('file:refresh-all-directories', { detail: { force: true } }));
+  }, [refreshFileList, rootFolder?.type]);
 
   const triggerImportRoot = useCallback(() => {
     setContextMenu(null);
@@ -626,7 +635,7 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
       rootFolder.name
     );
     if (isConnected && typeof refreshFileList === 'function') {
-      refreshFileList(true);
+      refreshFileList(false);
     }
   }, [isActive, rootFolder, refreshFileList]);
 

@@ -2,6 +2,9 @@
 // 📊 [OMD-LIB-googleDriveClient-0001] src/lib/gdrive/googleDriveClient.ts
 // 🎯 @KICK  : 누구나 쉽게 사용하는 구글 드라이브 무설정(Zero-Config) 자동 연동 및 클라우드 작업장 클라이언트 모듈
 // 🛡️ @GUARD : Rule 1, Rule 2(대문자 코드값 GDRIVE), 최소 권한 원칙(drive.file 스코프 한정)
+// 🚨 @PATCH : 2026-11-12 — [구글 드라이브 탐색기 리프레시 가속화 및 단기 디렉터리 메모리 캐시 도입]:
+//             1) listDriveChildren / fetchDriveFileNodes에 10초 단기 메모리 캐시(driveChildrenCache)를 신설하여 다중 폴더 전역 새로고침 시 중복 API 호출 원천 방어
+//             2) 파일/폴더 생성(create), 이름 변경(rename), 삭제(trash), 이동(move) 및 수동 새로고침 시 clearDriveChildrenCache를 연동하여 캐시 일관성 보장
 // 🚨 @PATCH : 2026-11-08 — [구글 드라이브 401 즉시 무음 재시도 및 죽은 Blob URL 방출(evictDriveMediaBlob) 도입]:
 //             1) readDriveFileContent 및 getDriveMediaImageBlobUrl에서 401 Unauthorized 감지 시 refreshDriveTokenSilently로 즉시 갱신 후 1회 투명 재시도하여 서지/이미지 로드 실패 차단
 //             2) evictDriveMediaBlob을 신설하여 만료/무효화된 blob:app:// URL이 driveImageBlobCache에 남아 ERR_FILE_NOT_FOUND를 무한 유발하는 현상 완벽 방어
@@ -979,6 +982,7 @@ export async function createDriveFolder(token?: string, folderName?: string, par
   }
 
   const data = await res.json();
+  clearDriveChildrenCache(parentFolderId);
   return data.id;
 }
 
@@ -1061,6 +1065,7 @@ export async function createDriveTextFile(
   }
 
   const data = await res.json();
+  clearDriveChildrenCache(parentFolderId);
   return { id: data.id, name: data.name };
 }
 
@@ -1378,12 +1383,46 @@ export async function selectGoogleDriveWorkspace(token: string): Promise<{ id: s
   return { id: folder.id, name: folder.name };
 }
 
+interface DriveChildrenCacheEntry {
+  timestamp: number;
+  items: GoogleDriveFileItem[];
+}
+const driveChildrenCache = new Map<string, DriveChildrenCacheEntry>();
+const DRIVE_CHILDREN_CACHE_TTL_MS = 10000; // 10초 단기 캐시 (탐색기 전역 새로고침 시 중복 호출 방어)
+
+/**
+ * ⚡ 구글 드라이브 디렉터리 캐시 소거 (신규 파일 생성, 이름 변경, 삭제, 이동 시 또는 사용자가 명시적으로 새로고침 시)
+ */
+export function clearDriveChildrenCache(folderId?: string): void {
+  if (folderId) {
+    for (const key of driveChildrenCache.keys()) {
+      if (key.startsWith(`${folderId}::`)) driveChildrenCache.delete(key);
+    }
+  } else {
+    driveChildrenCache.clear();
+  }
+}
+
 /**
  * 특정 폴더 하위의 파일 및 폴더 목록 조회 (마크다운 및 폴더 우선)
  */
-export async function listDriveChildren(token?: string, parentFolderId?: string, searchName?: string): Promise<GoogleDriveFileItem[]> {
+export async function listDriveChildren(
+  token?: string,
+  parentFolderId?: string,
+  searchName?: string,
+  force = false
+): Promise<GoogleDriveFileItem[]> {
   const authToken = await ensureValidDriveToken(token);
   if (!parentFolderId) return [];
+
+  const cacheKey = `${parentFolderId}::${searchName?.trim() || ''}`;
+  if (!force) {
+    const cached = driveChildrenCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < DRIVE_CHILDREN_CACHE_TTL_MS) {
+      return cached.items;
+    }
+  }
+
   const escape = (value: string) => value.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
   const query = searchName?.trim()
     ? `trashed = false and name contains '${escape(searchName.trim())}'`
@@ -1409,7 +1448,7 @@ export async function listDriveChildren(token?: string, parentFolderId?: string,
     pageToken = data.nextPageToken;
   } while (pageToken);
 
-  return rawList.map((f) => ({
+  const items = rawList.map((f) => ({
     id: f.id,
     name: f.name,
     mimeType: f.mimeType,
@@ -1417,6 +1456,9 @@ export async function listDriveChildren(token?: string, parentFolderId?: string,
     modifiedTime: f.modifiedTime,
     size: f.size ? parseInt(f.size, 10) : undefined,
   }));
+
+  driveChildrenCache.set(cacheKey, { timestamp: Date.now(), items });
+  return items;
 }
 
 /**
@@ -1542,6 +1584,7 @@ export async function createDriveMarkdownFile(
   }
 
   const data = await res.json();
+  clearDriveChildrenCache(parentFolderId);
   return { id: data.id, name: data.name };
 }
 
@@ -1731,6 +1774,7 @@ export async function trashDriveItem(token?: string, fileId?: string): Promise<b
     body: JSON.stringify({ trashed: true }),
   });
   if (!res.ok) throw await parseDriveError(res, '휴지통으로 이동', authToken);
+  clearDriveChildrenCache();
   return true;
 }
 
@@ -1749,16 +1793,19 @@ export async function renameDriveItem(token?: string, fileId?: string, newName?:
     },
     body: JSON.stringify({ name: newName }),
   });
+  if (res.ok) {
+    clearDriveChildrenCache();
+  }
   return res.ok;
 }
 
 /**
  * 🌟 구글 드라이브 폴더의 자식 목록을 온리비 FileNode 규격으로 변환하여 반환
  */
-export async function fetchDriveFileNodes(token?: string, parentFolderId?: string, parentPath: string = ''): Promise<any[]> {
+export async function fetchDriveFileNodes(token?: string, parentFolderId?: string, parentPath: string = '', force = false): Promise<any[]> {
   const authToken = await ensureValidDriveToken(token);
   if (!parentFolderId) return [];
-  const items = await listDriveChildren(authToken, parentFolderId);
+  const items = await listDriveChildren(authToken, parentFolderId, undefined, force);
   const nodes: any[] = [];
 
   for (const item of items) {
@@ -1839,6 +1886,7 @@ export async function moveDriveItem(
     }
   );
   if (!res.ok) throw await parseDriveError(res, '파일/폴더 이동', authToken);
+  clearDriveChildrenCache();
   return true;
 }
 
@@ -1872,6 +1920,7 @@ export async function copyDriveFile(
   );
   if (!res.ok) throw await parseDriveError(res, '파일 복사', authToken);
   const data = await res.json();
+  clearDriveChildrenCache(newParentId);
   return data.id;
 }
 

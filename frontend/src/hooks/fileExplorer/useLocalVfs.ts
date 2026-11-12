@@ -2,6 +2,8 @@
 // 📊 [OMD-HOOK-useLocalVfs-0001] frontend/src/hooks/fileExplorer/useLocalVfs.ts
 // 🎯 @KICK  : 로컬 폴더/브라우저 FSA/VFS/웹드라이브 파일 트리 스캔(refreshFileList), 워크스페이스 선택(selectRootFolder), 물리적 파일 저장(saveFile)
 // 🛡️ @GUARD : 지식 보관함 자동 재색인(triggerKnowledgeAutoSyncOnSave), 디바운스 새로고침, Electron 네이티브 API 및 브라우저 FSA 3중 호환
+// 🚨 @PATCH : 2026-11-12 — [구글 드라이브 파일 목록 갱신 시 force 플래그 연동]:
+//             1) refreshFileList(force)의 force 플래그를 fetchDriveFileNodes에 전달하여 단기 캐시 무효화 및 신속 갱신 지원
 // 🚨 @PATCH : 2026-11-10 — [로컬 작업장 연결 시 로컬 리소스 폴더 지정 강제 유도]:
 //             1) 로컬/브라우저 작업장(내 PC 폴더) 연결 시 로컬 리소스 폴더(settings/media/profiles)가 미지정이면 onrivi:require_local_resource_folder 이벤트를 발송하여 필수 지정 유도
 //             2) 웹드라이브(Google Drive)는 일체 간섭 없이 기존 동작 100% 현행 유지
@@ -146,7 +148,7 @@ export function useLocalVfs({
         const targetFolderId = wsInfo?.workspaceFolderId || rootFolderRef.current?.driveFolderId;
         if (targetFolderId) {
           try {
-            const driveNodes = await fetchDriveFileNodes(token, targetFolderId);
+            const driveNodes = await fetchDriveFileNodes(token, targetFolderId, '', force);
             setFileList(driveNodes);
             setIsDriveAuthExpired(false);
             setIsDriveConnected(true);

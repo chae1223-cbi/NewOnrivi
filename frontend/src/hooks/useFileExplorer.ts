@@ -2,6 +2,9 @@
 // 📊 [OMD-HOOK-useFileExplorer-0001] frontend/src/hooks/useFileExplorer.ts
 // 🎯 @KICK  : useDriveSync, useLocalVfs, useDocumentOpener 서브 훅들을 조율하고 일관된 단일 I/O 인터페이스 제공
 // 🛡️ @GUARD : Rule 3(역할 기반 분리)에 따라 2,590줄의 거대 훅을 3대 도메인 서브 훅으로 전면 모듈화 분리하고 기존 API 계약 100% 보존
+// 🚨 @PATCH : 2026-11-12 — [구글 드라이브 창 포커스 시 불필요한 원격 스캔 차단 및 새로고침 디바운스 최적화]:
+//             1) rootFolder.type === 'GDRIVE'인 경우 단순 브라우저 창 focus/visibilitychange 이벤트 시 원격 드라이브 API 호출을 배제하여 렉 현상 차단
+//             2) handleGlobalRefresh 디바운스를 150ms로 안정화하여 중복 다중 호출 방어
 // 🚨 @PATCH : 2026-11-07 — [외부 파일/폴더 변경 자동 반영]: workspace-changed 수신 시 refreshFileList(true) 강제 스캔으로 진행 중 스캔 락에 의해 변경이 누락되던 문제 해결
 // 🚨 @PATCH : 2026-11-04 — [주석 표준화]: onrivi-source-comments 2단계 표준 양식(파일 헤더 및 내부 함수 JSDoc 구분선) 전면 반영
 // 🚨 @PATCH : 2026-11-04 — [에디터 실행 시 로컬/클라우드 탐색기 자동 리프레시 복원]: rootFolder 연결/복원 시 refreshFileList(true) 즉시 호출, 작업장 절대경로(onrivi_workspace_path) 자동 보강 및 사이드바 자동 표시 연동
@@ -280,12 +283,13 @@ export const useFileExplorer = ({
       if (focusTimer) clearTimeout(focusTimer);
       focusTimer = setTimeout(() => {
         refreshFileList(isForce);
-      }, 50);
+      }, 150);
     };
     window.addEventListener('file:refresh-all-directories', handleGlobalRefresh);
 
     const handleFocusRefresh = () => {
-      if (rootFolder) {
+      // ☁️ 구글 드라이브 작업장은 단순 창 포커스 시 매번 원격 API를 호출하지 않도록 제외
+      if (rootFolder && rootFolder.type !== 'GDRIVE') {
         if (focusTimer) clearTimeout(focusTimer);
         focusTimer = setTimeout(() => {
           refreshFileList();

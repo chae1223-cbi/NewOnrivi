@@ -2,6 +2,8 @@
 // 📊 [OMD-HOOK-useEditorLicense] frontend/src/hooks/editor/useEditorLicense.ts
 // 🎯 @KICK  : 에디터 라이선스 검증, 다중 기기 세션 감시(Heartbeat/Takeover), 게스트 체험 타이머, 활성화 수신 관리 훅
 // 🛡️ @GUARD : 비인증 진입 시 자동 게스트 모드 전환 및 세션 탈취 시 즉각적인 읽기 전용/미리보기 제어
+// 🚨 @PATCH : 2026-11-12 — [웹 SaaS 로그인 직후 0ms 초고속 활성화 (Web Fast Activation)]:
+//             1) 로그인 직후 적재된 onrivi_license_status 보안 캐시(최근 30초 유효) 감지 시 중복 /api/subscription/get 및 activate 호출을 건너뛰고 0ms 즉시 활성화
 // 🚨 @PATCH : 2026-11-05 — [데스크톱 로컬 우선 라이선스 즉시 활성화 및 검증 타임아웃 단축]:
 //             1) 로컬 정품 라이선스 캐시 존재 시 0ms 즉시 활성화로 UI 락(멈춤/깜빡임) 원천 방어
 //             2) 데스크톱 온라인 검증 타임아웃 10초에서 2.5초로 대폭 단축하여 네트워크 지연 시 멈춤 체감 제거
@@ -510,6 +512,34 @@ export function useEditorLicense({
 
         let license: any = null;
         if (currentAuthUser?.id) {
+          // 🚀 [Web Fast Activation]: 방금 로그인(최근 30초 이내) 시 사전 적재된 유효 보안 캐시가 있으면 중복 네트워크 조회 없이 즉시 0ms 활성화!
+          const cachedStatus = loadSecureData<any>('onrivi_license_status');
+          if (
+            !isDesktop &&
+            cachedStatus &&
+            cachedStatus.isActivated &&
+            !cachedStatus.isExpired &&
+            (cachedStatus.userId === currentAuthUser.email || cachedStatus.userId === currentAuthUser.id) &&
+            Date.now() - (cachedStatus.lastVerifiedAt || 0) < 30000
+          ) {
+            console.log('[loadAndVerifyLicense] 🚀 Web Fast Activation: 로그인 직후 캐시 즉시 활성화');
+            setLicenseStatus({
+              isActivated: true,
+              isExpired: false,
+              remainingDays: cachedStatus.remainingDays ?? 14,
+              userId: cachedStatus.userId,
+              isRestricted: false,
+              isConcurrentLimited: false,
+              hasEditorSubscription: true,
+              licenseKey: cachedStatus.licenseKey || savedKey,
+              paymentNo: cachedStatus.paymentNo || savedPaymentNo,
+              planName: cachedStatus.planName || '프리미엄 요금제',
+              nextPaymentDate: cachedStatus.nextPaymentDate || ''
+            });
+            setIsLicenseChecking(false);
+            return;
+          }
+
           try {
             const subRes = await fetch(getApiUrl('/api/subscription/get'), {
               method: 'POST',
