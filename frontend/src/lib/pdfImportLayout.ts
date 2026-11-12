@@ -19,6 +19,10 @@ export function deduplicatePdfRuns(items: readonly unknown[]): Run[] {
     const right=Math.min(run.transform[4]+run.width,other.transform[4]+other.width);
     const overlap=Math.max(0,right-left)/Math.max(1,run.width);
     if(run.str===other.str) return j<index && overlap>0.9;
+    const normalizedRun=run.str.replace(/[\s,.:()\[\]{}]/g,'');
+    const normalizedOther=other.str.replace(/[\s,.:()\[\]{}]/g,'');
+    if(overlap>0.85 && normalizedRun.length>=4 && normalizedOther.length>normalizedRun.length &&
+      normalizedOther.includes(normalizedRun)) return true;
     const offset=other.str.indexOf(run.str);
     if(offset<0 || other.str.length<=run.str.length) return false;
     if(overlap>0.85) return true;
