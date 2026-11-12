@@ -2,6 +2,9 @@
 // 🎨 [OMD-CORE-VisualEditorStyles-0001] visualEditorStyles.ts ➔ 시각 에디터 전용 격리 CSS 스타일
 // 🎯 @KICK  : 시각 에디터 본문(.visual-document-surface), 제목 H1~H6 시각화 뱃지, 표 조판, 각주, 코드블록, 머메이드 서랍 등 위지윅 스타일 격리
 // 🛡️ @GUARD : Rule 6(Content Document Scope) 준수 - .visual-document-surface 및 컴포넌트 하위로만 스코핑
+// 🚨 @PATCH : 2026-11-12 — [코드블록 상단 "CODE" 라벨 제거 및 언어 텍스트박스 배경 투명·상시 표시]:
+//             1) "CODE" 라벨 제거 후 언어 입력 input을 상시 표시(opacity: 1)로 전환하여 평소에도 지정된 언어명이 보이도록 개선
+//             2) input 배경을 transparent로 설정하여 헤더 배경색과 동일하게 일치시키고 보더를 투명화하여 깔끔한 언어 라벨 형태로 렌더링
 // 🚨 @PATCH : 2026-11-12 — [코드블록 자동 줄바꿈(white-space: pre-wrap) 적용]:
 //             1) .visual-code-block pre 및 pre code에 white-space: pre-wrap, word-break: break-all, overflow-wrap: anywhere를 적용하여 긴 문장이 가로 스크롤 없이 에디터 너비에 맞추어 자동 줄바꿈되도록 개선
 //             2) code의 width: max-content를 100%로 변경하고 불필요한 가로 스크롤바(overflow-x) 제거
@@ -176,17 +179,21 @@ export const VISUAL_EDITOR_STYLES = `
   .visual-document-surface .visual-code-block pre code { display:block!important; width:100%!important; max-width:100%!important; min-width:0!important; white-space:pre-wrap!important; overflow:visible!important; overflow-wrap:anywhere!important; word-break:break-all!important; user-select:text!important; -webkit-user-select:text!important; }
   .visual-code-editor-panel > summary { width:max-content; margin:8px 12px; cursor:pointer; }
   .visual-code-editor-panel > summary[hidden] { display:none!important; }
-  .visual-code-language button[aria-label="코드 내용 복사"] { margin-left:auto; }
+  .visual-code-language button:first-of-type,
+  .visual-code-language button[aria-label="코드 내용 복사"],
+  .visual-code-language button[aria-label="코드 순수 문구 복사"] { margin-left:auto; }
   .visual-code-language button[hidden] { display:none!important; }
   .visual-document-surface .visual-code-language { display:flex!important; gap:8px; align-items:center; padding:6px 14px!important; margin:0!important; background:#eef2f7!important; border-bottom:1px solid #dbe2ea; font-family:system-ui,sans-serif!important; font-size:11px!important; line-height:1.4!important; font-weight:700; letter-spacing:.06em; color:#475569!important; }
-  .visual-document-surface .visual-code-language input { background:#fff!important; color:#334155!important; border:1px solid #cbd5e1; border-radius:6px; padding:3px 8px!important; width:120px!important; max-width:60%; height:26px; box-sizing:border-box; font-family:system-ui,sans-serif!important; font-size:11px!important; line-height:16px!important; letter-spacing:0; opacity:0; pointer-events:none; transition:opacity .15s ease-in-out; }
-  .visual-code-language input:focus { outline:2px solid #93c5fd; outline-offset:2px; }
+  .dark .visual-document-surface .visual-code-language { background:#0f172a!important; border-bottom:1px solid #334155!important; color:#94a3b8!important; }
+  .visual-document-surface .visual-code-language input { background:transparent!important; color:#334155!important; border:1px solid transparent; border-radius:4px; padding:2px 6px!important; width:120px!important; max-width:60%; height:24px; box-sizing:border-box; font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace!important; font-size:11.5px!important; font-weight:700!important; line-height:16px!important; letter-spacing:0.02em; opacity:1!important; pointer-events:auto!important; transition:border-color .15s ease-in-out, background-color .15s ease-in-out; }
+  .visual-document-surface .visual-code-language input:hover { border-color:#cbd5e1; background:rgba(255,255,255,0.4)!important; }
+  .visual-document-surface .visual-code-language input:focus { border-color:#93c5fd; background:#fff!important; outline:2px solid #93c5fd; outline-offset:1px; }
+  .dark .visual-document-surface .visual-code-language input { color:#e2e8f0!important; }
+  .dark .visual-document-surface .visual-code-language input:hover { border-color:#475569; background:rgba(255,255,255,0.06)!important; }
+  .dark .visual-document-surface .visual-code-language input:focus { border-color:#60a5fa; background:#1e293b!important; outline:2px solid #60a5fa; }
   .visual-document-surface .visual-code-language .onrivi-media-control { opacity:0; pointer-events:none; transition:opacity .15s ease-in-out; }
-  .visual-document-surface .visual-code-block:hover .visual-code-language input,
   .visual-document-surface .visual-code-block:hover .visual-code-language .onrivi-media-control,
-  .visual-document-surface .visual-code-block:focus-within .visual-code-language input,
   .visual-document-surface .visual-code-block:focus-within .visual-code-language .onrivi-media-control,
-  .visual-document-surface .visual-code-block.ProseMirror-selectednode .visual-code-language input,
   .visual-document-surface .visual-code-block.ProseMirror-selectednode .visual-code-language .onrivi-media-control { opacity:1; pointer-events:auto; }
   .visual-document-surface code { background:#f4f4f5; font-family:monospace; }
   .visual-document-surface .visual-code-block { background:#1e293b; color:#e2e8f0; border:1px solid #dbe2ea; border-radius:10px; overflow:hidden; box-shadow:0 2px 8px rgba(15,23,42,.04); }

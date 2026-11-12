@@ -2,6 +2,7 @@
 // 🧩 [OMD-CORE-VisualNodeViews-0001] createVisualNodeViews.ts ➔ 시각 에디터 ProseMirror NodeViews 팩토리
 // 🎯 @KICK  : table, visual_math, visual_inline_math, list_item, code_block, visual_footnote_ref, visual_footnote_def, visual_checkbox, source_block, mediaNodeView 10대 위지윅 NodeView 인스턴스화
 // 🛡️ @GUARD : Rule 3(역할 기반 분리: Core View) 준수 - DOM 렌더링 및 인터랙션 격리
+// 🚨 @PATCH : 2026-11-12 — [코드블록 상단 "CODE" 라벨 제거 및 언어 입력창 상시 노출]: header.textContent = 'CODE ' 라벨을 제거하고, 코드블록 언어 입력창(input)으로 직접 언어를 표시하도록 개선
 // 🚨 @PATCH : 2026-11-11 — [각주 참조(visual_footnote_ref) 선택 방어 및 커서 포커스 격리]: select-all을 select-none으로 전환하여 각주 인접 커서 위치 시 브라우저 네이티브 뱃지 텍스트 선택 방지
 // 🚨 @PATCH : 2026-11-11 — [각주 정의-본문 참조 양방향 점프 및 커서 복원 연동]: 각주 정의(visual_footnote_def)의 뱃지 클릭·복귀 버튼(↩)·엔터 입력 시 본문 각주 참조(visual_footnote_ref)로 부드럽게 스크롤 및 펄스 하이라이트 후 커서를 참조 직후로 이동하고 에디터 포커스 복원
 // 🚨 @PATCH : 2026-11-10 — [각주 참조(visual_footnote_ref) 위첨자 인라인 스타일 안정화]:
@@ -428,10 +429,9 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
       const header = document.createElement('div');
       header.contentEditable = 'false';
       header.className = 'visual-code-language no-print';
-      header.textContent = 'CODE ';
       const input = document.createElement('input');
       input.setAttribute('aria-label', '코드 블록 언어');
-      input.placeholder = 'text, javascript, python, mermaid';
+      input.placeholder = 'text';
       input.value = node.attrs.params || '';
       input.disabled = !currentView.editable;
       const commitParams = () => {
