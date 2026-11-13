@@ -2,8 +2,8 @@
  * 프로그램명 : OnriviAuthor 
  * 버전 정보 : 1.0.1
  * 프로그램 ID : oaar-visual-codec
- * 🚨 @PATCH : **2026-11-13** — [문단(paragraph) 독립 들여쓰기(indentPx) 스키마·직렬화·파싱 지원]:
- *             1) visualSchema의 paragraph 노드에 indentPx(기본 null) 속성 및 data-onrivi-para-indent / margin-left 스타일을 추가하여 행 시작 Tab/Shift+Tab 시 문단 단위 들여쓰기·내어쓰기 지원
+ * 🚨 @PATCH : **2026-11-13** — [문단(paragraph) 첫 줄 들여쓰기(text-indent / indentPx) 스키마·직렬화·파싱 지원]:
+ *             1) visualSchema의 paragraph 노드에 indentPx(기본 null) 속성 및 data-onrivi-para-indent / text-indent 스타일을 추가하여 행 시작 Tab/Shift+Tab 시 문단 전체가 아닌 첫 줄 시작 간격(문단 시작 들여쓰기) 적용·해제 지원
  *             2) visualSerializer.nodes.paragraph에서 indentPx > 0(list_item 내부 제외)일 때 <!-- onrivi:para-indent=N --> 주석을 직렬화하고, visualTokenizer/parseVisualMarkdown에서 최상위 및 인용문(blockquote) 내부 문단까지 100% 무손실 복원
  * 🚨 @PATCH : **2026-11-12** — [인접 리스트 마크다운 자동 병합 방지 및 list-boundary 경계 보존]:
  *             1) [인접 리스트 경계 마커 직렬화]: doc.forEach 직렬화 시 들여쓰기(indentPx)나 체크박스 서식이 다른 인접 리스트 사이에 <!-- onrivi:list-boundary --> 마커를 자동 삽입하여, 문서 재오픈 시 마크다운 파서가 두 리스트를 하나로 합쳐 후속 리스트가 하위 레벨(◦)로 빨려들어가는 왜곡 현상 원천 차단
@@ -152,7 +152,7 @@ export const visualSchema = new Schema({
       'p',
       {
         'data-onrivi-para-indent': node.attrs.indentPx ?? undefined,
-        style: node.attrs.indentPx ? `margin-left:${node.attrs.indentPx}px!important;` : undefined,
+        style: node.attrs.indentPx ? `text-indent:${node.attrs.indentPx}px!important;` : undefined,
       },
       0,
     ],
