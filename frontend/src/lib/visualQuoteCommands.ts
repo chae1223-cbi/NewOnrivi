@@ -1,6 +1,7 @@
 // ====================================================================
 // 📊 [OMD-LIB-VisualQuoteCommands] frontend/src/lib/visualQuoteCommands.ts
 // 🎯 @KICK  : 시각 에디터 인용문 들여쓰기·목록 분리·경계 보호·단계 해제 커맨드
+// 🚨 @PATCH : 2026-11-13 — [인용문 Shift+Tab 최좌측(indentPx <= 0) 도달 시 false 반환]: 인용문 들여쓰기가 0 이하일 때 outdentBlockquote가 false를 반환하여 후속 indentDocument(true)가 잔여 선행 공백을 정상 정리할 수 있도록 개선
 // 🚨 @PATCH : 2026-11-11 — [빈 문단 Delete 시 protectQuoteBoundary 가로채기 방어]: protectQuoteBoundary에서 빈 문단(isBlank)인 경우 보호 가드를 통과시켜 deleteEmptyParagraphBeforeList가 빈 행을 정상 삭제하도록 개선
 // 🚨 @PATCH : 2026-11-07 — [중첩 인용문 단계 해제]: liftQuoteAtStart 신설 — 인용문 첫 문단 맨 앞 Backspace 시 인용 단계를 한 단계씩 해제
 // ====================================================================
@@ -102,9 +103,10 @@ export function quoteIndent(backward=false):Command{
     const {$from}=state.selection;let depth=0;
     for(let d=1;d<$from.depth;d++)if($from.node(d).type===visualSchema.nodes.blockquote){depth=d;break;}
     if(!depth)return false;
+    const node=$from.node(depth),dom=view?.nodeDOM($from.before(depth)) as HTMLElement|undefined;
+    const current=node.attrs.indentPx ?? (dom?Number.parseFloat(getComputedStyle(dom).marginLeft)||0:0);
+    if(backward && current<=0)return false;
     if(dispatch){
-      const node=$from.node(depth),dom=view?.nodeDOM($from.before(depth)) as HTMLElement|undefined;
-      const current=node.attrs.indentPx ?? (dom?Number.parseFloat(getComputedStyle(dom).marginLeft)||0:0);
       const indentPx=bounded(current+(backward?-1:1)*quoteStep(view));
       dispatch(closeHistory(state.tr.setNodeMarkup($from.before(depth),undefined,{...node.attrs,indentPx})).scrollIntoView());
     }

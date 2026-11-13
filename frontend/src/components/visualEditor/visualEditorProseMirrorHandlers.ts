@@ -2,6 +2,7 @@
 // 📊 [OMD-CORE-VisualEditor-ProseMirrorHandlers] frontend/src/components/visualEditor/visualEditorProseMirrorHandlers.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 ProseMirror Keymap, 키보드/텍스트 입력, 스마트 붙여넣기(handlePaste), 드롭(handleDrop), 마우스 클릭/링크 이동(handleClick) 및 DOM 이벤트 핸들러 팩토리
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 클립보드 이미지/HTML 붙여넣기 정제, 5대 정밀 진단 로깅(logError/logWarn) 준수
+// 🚨 @PATCH : 2026-11-13 — [인용문 최좌측 Shift+Tab 시 잔여 선행 공백 청소 폴백 연동]: outdentBlockquote가 false(indentPx <= 0)를 반환할 때 indentDocument(true)로 폴백하여 기존에 잘못 삽입된 선행 공백을 정상 제거
 // 🚨 @PATCH : 2026-11-12 — [인용문 Tab 시 텍스트 공백 삽입 차단 및 인용문 컨테이너 안전 들여쓰기]:
 //             1) 인용문 내부에서 Tab/Shift+Tab 시 텍스트에 공백을 주입하던 indentDocument를 제거하고, outdentBlockquote/indentBlockquote를 호출하여 인용문 컨테이너 전체를 28px 단위로 안전하게 들여쓰기/내어쓰기하도록 수정
 // 🚨 @PATCH : 2026-11-12 — [문단 맨 앞(parentOffset === 0) Enter 시 Shift+Enter 동일 문단 분할(split) 실행]:
@@ -1160,7 +1161,10 @@ export function createVisualEditorHandlers({
         ) {
           event.preventDefault();
           const cmd = event.shiftKey ? outdentBlockquote : indentBlockquote;
-          const handled = cmd(currentView.state, currentView.dispatch, currentView);
+          let handled = cmd(currentView.state, currentView.dispatch, currentView);
+          if (!handled && event.shiftKey) {
+            handled = indentDocument(true)(currentView.state, currentView.dispatch, currentView);
+          }
           caretRef.current?.schedule();
           return handled;
         }
