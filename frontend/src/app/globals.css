@@ -18,6 +18,7 @@
 }
 
 /* ===================================================================
+ * 🚨 @PATCH : 2026-11-13 — [전역 블록 액션 버튼(.onrivi-media-control) 24x24px 소형 아이콘 배지 규격화]: 패딩·크기를 24x24px 소형 아이콘 버튼 규격으로 축소하여 표·이미지·코드블록 내 본문 가림 해소
  * 🚨 @PATCH : **2026-11-08** — [인용문 내부 문단 간격(p + p: 0.85em) 및 첫 문단 상단 여백 소거]: Shift+Enter 문단 개행 가독성 정상화
  * 🚨 @PATCH : **2026-10-26** — [확장 리스트(Loose List) 내부 p 및 .onrivi-line 인라인 일원화]:
  *             li 내부 p 및 span.onrivi-line에 display: inline !important 및 width: auto를 지정하여 Loose List에서도 Tight List(쇼케이스)와 100% 동일하게 불릿/숫자 마커와 글자 간격이 밀착되도록 결함 해결
@@ -2495,14 +2496,16 @@ input::-ms-clear {
 
 /* Media actions share one high-contrast style, independent of document themes. */
 .onrivi-media-control {
-  display:inline-flex; align-items:center; justify-content:center; gap:5px;
-  background:rgba(38,38,38,.92)!important; color:#fff!important;
-  border:1px solid rgba(255,255,255,.22)!important; border-radius:6px!important;
-  padding:4px 9px!important; font-size:12.5px!important; line-height:18px!important;
+  display:inline-flex; align-items:center; justify-content:center; gap:3px;
+  background:rgba(30,41,59,.78)!important; color:#fff!important;
+  border:1px solid rgba(255,255,255,.2)!important; border-radius:5px!important;
+  padding:4px!important; min-width:24px; min-height:24px;
+  font-size:11px!important; line-height:1!important;
   font-weight:600!important; font-family:inherit; white-space:nowrap;
-  box-shadow:0 2px 8px rgba(0,0,0,.18); cursor:pointer;
+  box-shadow:0 1px 4px rgba(0,0,0,.16); backdrop-filter:blur(4px); cursor:pointer;
+  transition:background-color .15s ease, opacity .15s ease;
 }
-.onrivi-media-control:hover { background:#171717!important; }
+.onrivi-media-control:hover { background:rgba(15,23,42,.95)!important; }
 .onrivi-media-control:focus-visible { outline:2px solid #60a5fa; outline-offset:2px; }
 @media (hover:none) { .onrivi-media-actions-frame > [data-editor-controls] { opacity:1!important; } }
 @media print { .onrivi-media-control { display:none!important; } }

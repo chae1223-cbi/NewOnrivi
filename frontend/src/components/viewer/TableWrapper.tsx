@@ -2,6 +2,7 @@
 // 📊 [OMD-CORE-TableWrapper-0001] TableWrapper.tsx ➔ 마크다운 표 래퍼 컴포넌트
 // 🎯 @KICK  : 마크다운 렌더링 내의 표(table) 태그를 수신하여 가로 스크롤 레이아웃으로 감싸고, 마우스 오버 시 스프레드시트 호환 규격(HTML + TSV) 복사 버튼 제공
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 MarkdownViewer 대형 소스 모듈화 표준 준수
+// 🚨 @PATCH : 2026-11-13 — [표 복사 액션 버튼 소형 아이콘화]: 텍스트('복사'/'복사 완료')를 제거하고 13x13 아이콘 전용 버튼으로 축소하여 우측 상단 셀 텍스트 가림 방지
 // 🚨 @PATCH : 2026-11-10 — [표 복사 액션 버튼 호버 및 커서/포커스 진입 시 활성화 연동]: group-focus-within 및 focus 지원 추가
 // 🚨 @PATCH : 2026-11-04 — [MarkdownViewer 모듈화 분리]: TableWrapper 컴포넌트 독립 분리
 // 🔗 @CALLS : ClipboardItem, navigator.clipboard.write
@@ -82,20 +83,15 @@ export default function TableWrapper({ children, widths, ...restProps }: TableWr
       {/* 마우스 호버 시 우측 상단에 노출되는 미려한 시트/표형식 복사 단추 */}
       <button
         onClick={handleCopy}
-        className="onrivi-media-control copy-button-hook absolute top-1 right-1 px-2 py-1 bg-black/60 dark:bg-white/20 text-white rounded opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 transition-opacity text-[11px] flex items-center gap-1 z-10 hover:bg-black/80 font-medium no-print cursor-pointer"
-        title="복사"
+        className="onrivi-media-control copy-button-hook absolute top-1 right-1 bg-black/60 dark:bg-white/20 text-white rounded opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 transition-opacity flex items-center justify-center z-10 hover:bg-black/80 no-print cursor-pointer"
+        title={copied ? '복사 완료' : '표 복사'}
+        aria-label="표 복사"
         style={{ userSelect: 'none' }}
       >
         {copied ? (
-          <>
-            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-            <span style={{ color: '#4ade80' }}>복사 완료</span>
-          </>
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
         ) : (
-          <>
-            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-            <span>복사</span>
-          </>
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
         )}
       </button>
       {children}

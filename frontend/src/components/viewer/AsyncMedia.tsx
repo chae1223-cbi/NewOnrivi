@@ -2,6 +2,7 @@
 // 📊 [OMD-CORE-AsyncMedia-0001] AsyncMedia.tsx ➔ 비동기 미디어(이미지·비디오) 뷰어 컴포넌트
 // 🎯 @KICK  : 미디어 리졸버(resolveMediaUrl)와 연동하여 이미지/비디오를 시각 렌더링하고 복사 컨트롤 제공
 // 🛡️ @GUARD : Rule 3(역할 기반 분리: Core Presentation) 준수 - I/O 복잡도를 mediaResolver로 위임하여 렌더링에만 집중
+// 🚨 @PATCH : 2026-11-13 — [비동기 이미지 복사 액션 버튼 소형 아이콘화]: 텍스트('복사'/'복사 완료')를 제거하고 13x13 아이콘 전용 버튼으로 축소
 // 🚨 @PATCH : 2026-11-11 — [Drive 이미지 복사]: 표시된 Blob과 원본 driveId 쿼리를 함께 전달해 비트맵 복사 대상을 유지한다.
 // 🚨 @PATCH : 2026-11-08 — [AsyncImage 로드 실패 시 데스크톱 네이티브 프로토콜(media-local://) 자가 치유 폴백 및 api 전달 보강]:
 //             1) api가 props로 전달되지 않은 경우에도 typeof window.electronAPI를 기본 주입하여 데스크톱 환경 누락 방어
@@ -195,20 +196,15 @@ export const AsyncImage = ({
       {showCopyControl && (
         <button
           onClick={handleCopy}
-          className="onrivi-media-control copy-button-hook absolute top-2 right-2 px-2.5 py-1.5 bg-black/60 dark:bg-white/20 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity text-xs flex items-center gap-1.5 z-10 hover:bg-black/80 font-medium no-print"
-          title="복사"
+          className="onrivi-media-control copy-button-hook absolute top-1.5 right-1.5 bg-black/60 dark:bg-white/20 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-10 hover:bg-black/80 no-print"
+          title={copied ? '복사 완료' : '이미지 복사'}
+          aria-label="이미지 복사"
           style={{ userSelect: 'none' }}
         >
           {copied ? (
-            <>
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-              <span style={{ color: '#4ade80' }}>복사 완료</span>
-            </>
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
           ) : (
-            <>
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-              <span>복사</span>
-            </>
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
           )}
         </button>
       )}

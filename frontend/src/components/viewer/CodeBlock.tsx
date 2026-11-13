@@ -2,6 +2,7 @@
 // 📊 [OMD-CORE-CodeBlock-0001] CodeBlock.tsx ➔ 마크다운 코드블록 컴포넌트
 // 🎯 @KICK  : 코드블록을 언어명 헤더 + 복사 버튼 + 개별 행(.onrivi-line) 1:1 라인 매핑 및 모노스페이스 렌더링
 // 🛡️ @GUARD : navigator.clipboard.writeText API 존재 여부, 빈 행 \u200B 보존, AST/lineMap 기반 정밀 줄 번호 부여
+// 🚨 @PATCH : 2026-11-13 — [코드블록 헤더 복사/형태 복사 액션 버튼 소형 아이콘화]: 버튼 내 텍스트 라벨을 제거하고 13x13 아이콘과 툴팁으로 소형화
 // 🚨 @PATCH : 2026-11-12 — [코드블록 자동 줄바꿈(white-space: pre-wrap) 적용]: 미리보기 뷰어에서도 코드블록 내 긴 문장이 가로 스크롤 없이 자동 줄바꿈되도록 적용
 // 🚨 @PATCH : 2026-11-07 — [코드블록 순수 문구 복사 및 형태 복사 이원화]: 미리보기 뷰어 헤더에 '복사'(순수 텍스트)와 '형태 복사'(마크다운 백틱 펜스 형태 포함) 버튼 분리 제공
 // 🚨 @PATCH : 2026-11-04 — [MarkdownViewer 모듈화 분리]: CodeBlock 및 코드블록 정규화 유틸 독립 분리
@@ -266,41 +267,31 @@ export default function CodeBlock({ lang, title, rawInfo, code, className, node,
         <span className="codeblock-header-text text-xs font-bold text-zinc-700 dark:text-zinc-300 break-words min-w-0">
           {title || lang || '코드'}
         </span>
-        <div className="flex items-center gap-1.5 shrink-0 z-10 no-print">
+        <div className="flex items-center gap-1 shrink-0 z-10 no-print">
           <button
             onClick={handleCopyText}
-            className="onrivi-media-control copy-button-hook shrink-0 px-2.5 py-1 bg-black/20 dark:bg-white/10 hover:bg-black/40 dark:hover:bg-white/20 text-slate-100 rounded opacity-90 hover:opacity-100 transition-opacity text-xs flex items-center gap-1.5 font-medium cursor-pointer"
-            title="코드 순수 문구만 복사"
+            className="onrivi-media-control copy-button-hook shrink-0 bg-black/20 dark:bg-white/10 hover:bg-black/40 dark:hover:bg-white/20 text-slate-100 rounded opacity-90 hover:opacity-100 transition-opacity cursor-pointer"
+            title={copied ? '복사 완료' : '코드 순수 문구만 복사'}
+            aria-label="코드 순수 문구 복사"
             style={{ userSelect: 'none' }}
           >
             {copied ? (
-              <>
-                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                <span style={{ color: '#4ade80' }}>복사 완료</span>
-              </>
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
             ) : (
-              <>
-                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                <span>복사</span>
-              </>
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
             )}
           </button>
           <button
             onClick={handleCopyFenced}
-            className="onrivi-media-control copy-fenced-button-hook shrink-0 px-2.5 py-1 bg-black/20 dark:bg-white/10 hover:bg-black/40 dark:hover:bg-white/20 text-slate-100 rounded opacity-90 hover:opacity-100 transition-opacity text-xs flex items-center gap-1.5 font-medium cursor-pointer"
-            title="코드블록 마크다운 형태(```) 포함 복사"
+            className="onrivi-media-control copy-fenced-button-hook shrink-0 bg-black/20 dark:bg-white/10 hover:bg-black/40 dark:hover:bg-white/20 text-slate-100 rounded opacity-90 hover:opacity-100 transition-opacity cursor-pointer"
+            title={copiedFenced ? '형태 복사됨' : '코드블록 마크다운 형태(```) 포함 복사'}
+            aria-label="마크다운 코드블록 형태 복사"
             style={{ userSelect: 'none' }}
           >
             {copiedFenced ? (
-              <>
-                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                <span style={{ color: '#4ade80' }}>형태 복사됨</span>
-              </>
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
             ) : (
-              <>
-                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
-                <span>형태 복사</span>
-              </>
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
             )}
           </button>
         </div>

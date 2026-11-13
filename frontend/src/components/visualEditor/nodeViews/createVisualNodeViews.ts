@@ -2,6 +2,7 @@
 // 🧩 [OMD-CORE-VisualNodeViews-0001] createVisualNodeViews.ts ➔ 시각 에디터 ProseMirror NodeViews 팩토리
 // 🎯 @KICK  : table, visual_math, visual_inline_math, list_item, code_block, visual_footnote_ref, visual_footnote_def, visual_checkbox, source_block, mediaNodeView 10대 위지윅 NodeView 인스턴스화
 // 🛡️ @GUARD : Rule 3(역할 기반 분리: Core View) 준수 - DOM 렌더링 및 인터랙션 격리
+// 🚨 @PATCH : 2026-11-13 — [시각 에디터 전 블록 액션 버튼(미디어/표/코드블록/머메이드/서명) 소형 아이콘화]: 모든 블록 컨트롤 버튼의 텍스트를 제거하고 13x13 SVG 아이콘과 툴팁(title/aria-label)으로 일원화하여 컨텐츠 가림 해소
 // 🚨 @PATCH : 2026-11-12 — [코드블록 상단 "CODE" 라벨 제거 및 언어 입력창 상시 노출]: header.textContent = 'CODE ' 라벨을 제거하고, 코드블록 언어 입력창(input)으로 직접 언어를 표시하도록 개선
 // 🚨 @PATCH : 2026-11-11 — [각주 참조(visual_footnote_ref) 선택 방어 및 커서 포커스 격리]: select-all을 select-none으로 전환하여 각주 인접 커서 위치 시 브라우저 네이티브 뱃지 텍스트 선택 방지
 // 🚨 @PATCH : 2026-11-11 — [각주 정의-본문 참조 양방향 점프 및 커서 복원 연동]: 각주 정의(visual_footnote_def)의 뱃지 클릭·복귀 버튼(↩)·엔터 입력 시 본문 각주 참조(visual_footnote_ref)로 부드럽게 스크롤 및 펄스 하이라이트 후 커서를 참조 직후로 이동하고 에디터 포커스 복원
@@ -53,6 +54,14 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
     setNotice,
   } = options;
 
+  const ICON_EDIT = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>';
+  const ICON_COPY = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  const ICON_COPY_FENCED = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>';
+  const ICON_CHECK = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+  const ICON_TRASH = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+  const ICON_ALIGN_LEFT = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="17" y1="10" x2="3" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="17" y1="18" x2="3" y2="18"/></svg>';
+  const ICON_ALIGN_RIGHT = '<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="21" y1="10" x2="7" y2="10"/><line x1="21" y1="6" x2="3" y2="6"/><line x1="21" y1="14" x2="3" y2="14"/><line x1="21" y1="18" x2="7" y2="18"/></svg>';
+
   // 🖼️ 이미지 및 비디오/지도 미디어 노드뷰
   const mediaNodeView: NonNullable<EditorProps['nodeViews']>[string] = (node, _view, getPos) => {
     const dom = document.createElement('figure');
@@ -60,9 +69,11 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
     dom.className = 'visual-image-block visual-media-block';
     const picture = document.createElement('div'), button = document.createElement('button');
     button.type = 'button';
-    button.textContent = '편집';
+    button.innerHTML = ICON_EDIT;
     button.className = 'visual-image-edit onrivi-media-control';
-    button.setAttribute('aria-label', (node.type.name === 'visual_image' ? '이미지' : node.attrs.kind === 'map' ? '지도' : '동영상') + ' 편집');
+    const editLabel = (node.type.name === 'visual_image' ? '이미지' : node.attrs.kind === 'map' ? '지도' : '동영상') + ' 편집';
+    button.title = editLabel;
+    button.setAttribute('aria-label', editLabel);
     button.addEventListener('mousedown', event => event.preventDefault());
     button.addEventListener('click', event => {
       event.preventDefault();
@@ -77,7 +88,7 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
     const isImage = node.type.name === 'visual_image';
     const copy = document.createElement('button');
     copy.type = 'button';
-    copy.textContent = '복사';
+    copy.innerHTML = ICON_COPY;
     copy.className = 'visual-media-copy onrivi-media-control';
     copy.setAttribute('aria-label', isImage ? '이미지 복사' : '미디어 참조 복사');
     copy.title = isImage ? '이미지 복사' : '다른 문서에 붙여넣을 수 있는 미디어 참조 복사';
@@ -474,7 +485,7 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
       header.append(input);
       const copy = document.createElement('button');
       copy.type = 'button';
-      copy.textContent = '복사';
+      copy.innerHTML = ICON_COPY;
       copy.setAttribute('aria-label', '코드 순수 문구 복사');
       copy.title = '코드 순수 문구만 복사';
       copy.className = 'onrivi-media-control no-print';
@@ -488,17 +499,18 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
           const api = (window as any).electronAPI;
           if (api?.copyTextToClipboard) await api.copyTextToClipboard(codeContent);
           else await navigator.clipboard.writeText(codeContent);
-          copy.textContent = '복사됨';
+          copy.innerHTML = ICON_CHECK;
+          copy.title = '복사됨';
         } catch {
-          copy.textContent = '복사 실패';
+          setNotice('클립보드 복사에 실패했습니다.');
         }
-        if (dom.isConnected) copyTimer = setTimeout(() => { copy.textContent = '복사'; }, 1800);
+        if (dom.isConnected) copyTimer = setTimeout(() => { copy.innerHTML = ICON_COPY; copy.title = '코드 순수 문구만 복사'; }, 1800);
       });
       header.append(copy);
 
       const copyFenced = document.createElement('button');
       copyFenced.type = 'button';
-      copyFenced.textContent = '형태 복사';
+      copyFenced.innerHTML = ICON_COPY_FENCED;
       copyFenced.setAttribute('aria-label', '마크다운 코드블록 형태 복사');
       copyFenced.title = '코드블록 마크다운 형태(```) 포함 복사';
       copyFenced.className = 'onrivi-media-control no-print';
@@ -514,19 +526,20 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
           const api = (window as any).electronAPI;
           if (api?.copyTextToClipboard) await api.copyTextToClipboard(markdownFenced);
           else await navigator.clipboard.writeText(markdownFenced);
-          copyFenced.textContent = '복사됨';
+          copyFenced.innerHTML = ICON_CHECK;
+          copyFenced.title = '복사됨';
         } catch {
-          copyFenced.textContent = '복사 실패';
+          setNotice('클립보드 복사에 실패했습니다.');
         }
-        if (dom.isConnected) copyFencedTimer = setTimeout(() => { copyFenced.textContent = '형태 복사'; }, 1800);
+        if (dom.isConnected) copyFencedTimer = setTimeout(() => { copyFenced.innerHTML = ICON_COPY_FENCED; copyFenced.title = '코드블록 마크다운 형태(```) 포함 복사'; }, 1800);
       });
       header.append(copyFenced);
       const deleteBtn = document.createElement('button');
       deleteBtn.type = 'button';
-      deleteBtn.textContent = '삭제';
+      deleteBtn.innerHTML = ICON_TRASH;
       deleteBtn.setAttribute('aria-label', '코드 블록 삭제');
       deleteBtn.title = '코드 블록 삭제 (Backspace)';
-      deleteBtn.className = 'onrivi-media-control no-print text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 text-[11px] font-medium transition-colors cursor-pointer';
+      deleteBtn.className = 'onrivi-media-control no-print text-red-400 hover:text-red-300 cursor-pointer';
       deleteBtn.contentEditable = 'false';
       deleteBtn.addEventListener('mousedown', event => event.preventDefault());
       deleteBtn.addEventListener('click', (event) => {
@@ -582,8 +595,10 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
       summary.className = 'onrivi-media-control no-print text-[11px] opacity-70 hover:opacity-100';
       const done = document.createElement('button');
       done.type = 'button';
-      done.textContent = '편집 완료';
-      done.className = 'onrivi-media-control no-print text-[11px]';
+      done.innerHTML = ICON_CHECK;
+      done.title = '편집 완료';
+      done.setAttribute('aria-label', '편집 완료');
+      done.className = 'onrivi-media-control no-print';
       done.contentEditable = 'false';
       done.addEventListener('mousedown', event => event.preventDefault());
       done.addEventListener('click', () => { panel.open = false; });
@@ -993,9 +1008,10 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
             if (controls && !controls.querySelector('.mermaid-header-edit-btn')) {
               const editBtn = document.createElement('button');
               editBtn.type = 'button';
-              editBtn.className = 'onrivi-media-control mermaid-header-edit-btn text-blue-600 dark:text-blue-400 font-medium hover:bg-blue-50 dark:hover:bg-blue-950/50';
+              editBtn.className = 'onrivi-media-control mermaid-header-edit-btn';
               editBtn.title = '다이어그램 코드 편집기 펼치기 / 접기';
-              editBtn.textContent = '✏️ 코드 편집';
+              editBtn.setAttribute('aria-label', '코드 편집');
+              editBtn.innerHTML = ICON_EDIT;
               editBtn.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -1012,9 +1028,10 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
             if (controls && !controls.querySelector('.mermaid-header-delete-btn')) {
               const deleteBtn = document.createElement('button');
               deleteBtn.type = 'button';
-              deleteBtn.className = 'onrivi-media-control mermaid-header-delete-btn text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/50 font-medium cursor-pointer';
+              deleteBtn.className = 'onrivi-media-control mermaid-header-delete-btn text-red-400 hover:text-red-300 cursor-pointer';
               deleteBtn.title = '다이어그램 블록 삭제';
-              deleteBtn.textContent = '🗑️ 삭제';
+              deleteBtn.setAttribute('aria-label', '다이어그램 블록 삭제');
+              deleteBtn.innerHTML = ICON_TRASH;
               deleteBtn.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -1036,9 +1053,10 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
             if (wrapper && !wrapper.querySelector('.table-header-edit-btn')) {
               const editBtn = document.createElement('button');
               editBtn.type = 'button';
-              editBtn.className = 'onrivi-media-control table-header-edit-btn absolute top-1 right-16 px-2 py-1 bg-black/60 dark:bg-white/20 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity text-[11px] flex items-center gap-1 z-10 hover:bg-black/80 font-medium no-print cursor-pointer';
+              editBtn.className = 'onrivi-media-control table-header-edit-btn absolute top-1 right-8 bg-black/60 dark:bg-white/20 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-10 hover:bg-black/80 no-print cursor-pointer';
               editBtn.title = 'HTML 표 코드 편집기 펼치기 / 접기';
-              editBtn.textContent = '✏️ HTML 편집';
+              editBtn.setAttribute('aria-label', 'HTML 표 편집');
+              editBtn.innerHTML = ICON_EDIT;
               editBtn.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -1059,19 +1077,20 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
         setTimeout(syncHeaderButton, 60);
       } else if (isSignature) {
         const controls = document.createElement('div');
-        controls.className = 'visual-media-controls visual-signature-controls no-print flex items-center gap-1.5 bg-white/95 dark:bg-zinc-800/95 shadow-md border border-slate-200/80 dark:border-zinc-700/80 rounded-xl p-1 z-25';
+        controls.className = 'visual-media-controls visual-signature-controls no-print flex items-center gap-1 bg-white/95 dark:bg-zinc-800/95 shadow-md border border-slate-200/80 dark:border-zinc-700/80 rounded-lg p-0.5 z-25';
 
         const currentAlign = /align=["']right["']/i.test(node.attrs.source) ? 'right' : 'left';
 
         // ⬅️ 좌측 정렬 버튼
         const leftBtn = document.createElement('button');
         leftBtn.type = 'button';
-        leftBtn.className = `onrivi-media-control text-xs px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+        leftBtn.className = `onrivi-media-control transition-all cursor-pointer ${
           currentAlign === 'left'
-            ? 'bg-blue-600 text-white shadow-xs'
-            : 'text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700'
+            ? 'ring-2 ring-blue-500'
+            : ''
         }`;
-        leftBtn.textContent = '⬅️ 왼쪽';
+        leftBtn.innerHTML = ICON_ALIGN_LEFT;
+        leftBtn.setAttribute('aria-label', '왼쪽 정렬');
         leftBtn.title = '서명을 왼쪽 정렬로 변경';
         leftBtn.addEventListener('click', (e) => {
           e.preventDefault();
@@ -1086,12 +1105,13 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
         // ➡️ 우측 정렬 버튼
         const rightBtn = document.createElement('button');
         rightBtn.type = 'button';
-        rightBtn.className = `onrivi-media-control text-xs px-2.5 py-1 rounded-lg font-bold transition-all cursor-pointer ${
+        rightBtn.className = `onrivi-media-control transition-all cursor-pointer ${
           currentAlign === 'right'
-            ? 'bg-blue-600 text-white shadow-xs'
-            : 'text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-700'
+            ? 'ring-2 ring-blue-500'
+            : ''
         }`;
-        rightBtn.textContent = '➡️ 오른쪽';
+        rightBtn.innerHTML = ICON_ALIGN_RIGHT;
+        rightBtn.setAttribute('aria-label', '오른쪽 정렬');
         rightBtn.title = '서명을 오른쪽 정렬로 변경';
         rightBtn.addEventListener('click', (e) => {
           e.preventDefault();
@@ -1106,8 +1126,9 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
         // ✏️ 서명 수정 버튼
         const editBtn = document.createElement('button');
         editBtn.type = 'button';
-        editBtn.className = 'onrivi-media-control text-xs px-2.5 py-1 rounded-lg font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors cursor-pointer';
-        editBtn.textContent = '✏️ 서명 수정';
+        editBtn.className = 'onrivi-media-control transition-colors cursor-pointer';
+        editBtn.innerHTML = ICON_EDIT;
+        editBtn.setAttribute('aria-label', '서명 수정');
         editBtn.title = '서명 문구 및 상세 설정 수정';
         editBtn.addEventListener('click', (e) => {
           e.preventDefault();
@@ -1125,8 +1146,9 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
         // 🗑️ 삭제 버튼
         const deleteBtn = document.createElement('button');
         deleteBtn.type = 'button';
-        deleteBtn.className = 'onrivi-media-control text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 text-xs px-2 py-1 rounded-lg font-medium cursor-pointer';
-        deleteBtn.textContent = '🗑️ 삭제';
+        deleteBtn.className = 'onrivi-media-control text-red-400 hover:text-red-300 cursor-pointer';
+        deleteBtn.innerHTML = ICON_TRASH;
+        deleteBtn.setAttribute('aria-label', '삭제');
         deleteBtn.title = '서명 블록 삭제';
         deleteBtn.addEventListener('click', (e) => {
           e.preventDefault();
@@ -1150,8 +1172,9 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
         controls.className = 'visual-media-controls no-print';
         const deleteBtn = document.createElement('button');
         deleteBtn.type = 'button';
-        deleteBtn.className = 'onrivi-media-control text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 text-xs font-medium cursor-pointer';
-        deleteBtn.textContent = '삭제';
+        deleteBtn.className = 'onrivi-media-control text-red-400 hover:text-red-300 cursor-pointer';
+        deleteBtn.innerHTML = ICON_TRASH;
+        deleteBtn.setAttribute('aria-label', '삭제');
         deleteBtn.title = '블록 삭제';
         deleteBtn.addEventListener('click', (e) => {
           e.preventDefault();

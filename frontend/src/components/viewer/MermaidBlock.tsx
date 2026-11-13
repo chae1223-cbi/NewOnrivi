@@ -2,6 +2,7 @@
 // 📊 [OMD-CORE-MermaidBlock-0001] MermaidBlock.tsx ➔ Mermaid 차트 SVG 다이어그램 렌더러
 // 🎯 @KICK  : Mermaid 차트 원본 텍스트를 SVG 다이어그램 이미지로 실시간 변환 렌더링하고, 이미지 저장(PNG)/복사(클립보드) 및 새 창 확대 뷰어 제공
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 MarkdownViewer 대형 소스 모듈화 표준 준수
+// 🚨 @PATCH : 2026-11-13 — [머메이드 다이어그램 헤더 액션 버튼 소형 아이콘화]: 코드 복사·새 창 확대·이미지 복사·저장 버튼을 13x13 SVG 아이콘 전용 버튼으로 일원화
 // 🚨 @PATCH : 2026-11-04 — [MarkdownViewer 모듈화 분리]: MermaidBlock 컴포넌트 독립 분리
 // 🔗 @CALLS : useToast, loadMermaidScript
 // ====================================================================
@@ -471,13 +472,18 @@ const MermaidBlock = React.memo(function MermaidBlock({ code, dataLine }: Mermai
         <span className="text-xs font-semibold text-zinc-500 break-words min-w-0 flex items-center gap-1.5">
           📊 다이어그램 (Mermaid)
         </span>
-        <div className="no-print flex flex-wrap items-center gap-1.5 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto transition-opacity duration-150" data-editor-controls>
+        <div className="no-print flex flex-wrap items-center gap-1 opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto transition-opacity duration-150" data-editor-controls>
           <button
             onClick={handleCopyCode}
             className="onrivi-media-control"
-            title="마크다운 소스 복사"
+            title={copied ? '코드 복사됨' : '마크다운 소스 복사'}
+            aria-label="코드 복사"
           >
-            {copied ? '✓ 코드 복사됨' : '코드 복사'}
+            {copied ? (
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" /></svg>
+            )}
           </button>
           {!error && !loading && (
             <>
@@ -485,22 +491,29 @@ const MermaidBlock = React.memo(function MermaidBlock({ code, dataLine }: Mermai
                 onClick={openInNewWindow}
                 className="onrivi-media-control"
                 title="다이어그램을 새 웹브라우저 창으로 크게 보기"
+                aria-label="새 창으로 확대"
               >
-                🔍 새 창으로 확대
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
               </button>
               <button
                 onClick={handleCopyImage}
                 className="onrivi-media-control"
-                title="차트 이미지를 클립보드에 복사해 워드나 한글에 바로 붙여넣기"
+                title={imageCopied ? '이미지 복사됨' : '차트 이미지를 클립보드에 복사해 워드나 한글에 바로 붙여넣기'}
+                aria-label="이미지 복사"
               >
-                {imageCopied ? '✓ 이미지 복사됨' : '이미지 복사'}
+                {imageCopied ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                )}
               </button>
               <button
                 onClick={handleSaveImage}
                 className="onrivi-media-control"
                 title="차트를 PNG 파일로 저장"
+                aria-label="저장"
               >
-                💾 저장
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
               </button>
             </>
           )}

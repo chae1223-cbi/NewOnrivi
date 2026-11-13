@@ -1,5 +1,6 @@
 // ====================================================================
 // 📊 [OMD-COMP-PicturebookPreview-0001] PicturebookPreview.tsx
+// 🚨 @PATCH : 2026-11-13 — [그림책 이미지 복사·편집 오버레이 버튼 소형 아이콘화]: 장면 이미지 우측 상단 복사·편집 버튼을 13x13 SVG 아이콘 전용 버튼으로 축소
 // 🚨 @PATCH : **2026-10-17** — [그림책 장면 문서보기 에디터 참조문헌 관리(ADD_REFERENCE) 연동]: VisualDocumentEditor에 onReferenceSettings 콜백을 연결하여 장면 편집 중에도 참조 파일 관리 모달(ReferenceManagerModal) 실행 지원
 // 🚨 @PATCH : **2026-10-16** — [그림책 본문편집/편집완료 시인성 직관화 및 장면 에디터 변환 시 화면 흔들림(CLS/Scroll Jump/타이포그래피 쉬프트) 원천 제거]:
 //             1) 본문편집/편집완료 버튼 시인성 개선: 뷰 모드(코발트 블루 ✏️ 본문 편집)와 편집 모드(에메랄드 그린 ✓ 편집 완료 + [편집 중] 펄스 뱃지)의 시각적 분리 및 본문 포커스 인셋 프레임 적용
@@ -205,7 +206,7 @@ export default function PicturebookPreview({ content, profile, fingerprint, rend
       .picturebook-root .book-page { box-sizing:border-box; position:relative; flex:none; overflow:hidden; margin:0 auto 24px; outline:1px solid #cbd5e1; box-shadow:0 4px 16px rgba(15,23,42,.12); }
       .picturebook-root .book-image { min-width:0; min-height:0; overflow:hidden; }
       .picturebook-root .book-image [data-export-state="loading"] { display:block!important; width:100%!important; height:100%!important; margin:0!important; border-radius:0!important; animation:none!important; }
-      .picturebook-root .book-image-controls { position:absolute; top:12px; right:12px; z-index:5; display:flex; align-items:center; gap:6px; opacity:0; pointer-events:none; transition:opacity .15s ease; }
+      .picturebook-root .book-image-controls { position:absolute; top:6px; right:6px; z-index:5; display:flex; align-items:center; gap:4px; opacity:0; pointer-events:none; transition:opacity .15s ease; }
       .picturebook-root .book-image:hover > .book-image-controls, .picturebook-root .book-image:focus-within > .book-image-controls { opacity:1; pointer-events:auto; }
       @media (hover:none) { .picturebook-root .book-image > .book-image-controls { opacity:1; pointer-events:auto; } }
       .picturebook-root .book-image-controls .book-image-edit, .picturebook-root .book-image-controls .book-image-copy { position:static!important; opacity:1!important; pointer-events:auto!important; top:auto!important; right:auto!important; }
@@ -428,11 +429,11 @@ export default function PicturebookPreview({ content, profile, fingerprint, rend
               {renderMarkdown(scene.image)}
               {(scene.image || onImageEdit) && (
                 <div className="book-image-controls book-screen-only no-print">
-                  {scene.image && <button type="button" className="onrivi-media-control book-image-edit book-image-copy" title="이미지 복사"
-                    aria-label={`${i + 1}페이지 사진 복사`} onClick={event => { event.stopPropagation(); void copyImageToClipboard(scene.image, event.currentTarget.closest('.book-image')?.querySelector('img')).then((ok) => { if (ok) { setCopiedScene(i); setCopyError(''); } else { setCopyError('이미지 복사에 실패했습니다.'); } }).catch(() => setCopyError('클립보드 복사에 실패했습니다.')); }}>{copiedScene === i ? '복사됨' : '복사'}</button>}
-                  {onImageEdit && <button type="button" className="onrivi-media-control book-image-edit"
+                  {scene.image && <button type="button" className="onrivi-media-control book-image-edit book-image-copy" title={copiedScene === i ? '복사됨' : '이미지 복사'}
+                    aria-label={`${i + 1}페이지 사진 복사`} onClick={event => { event.stopPropagation(); void copyImageToClipboard(scene.image, event.currentTarget.closest('.book-image')?.querySelector('img')).then((ok) => { if (ok) { setCopiedScene(i); setCopyError(''); } else { setCopyError('이미지 복사에 실패했습니다.'); } }).catch(() => setCopyError('클립보드 복사에 실패했습니다.')); }}>{copiedScene === i ? <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg> : <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>}</button>}
+                  {onImageEdit && <button type="button" className="onrivi-media-control book-image-edit" title="사진 편집"
                     aria-label={`${scene.cover ? '표지' : `${i + 1}페이지`} 사진 편집`}
-                    onClick={event => { event.stopPropagation(); onImageEdit(i); }}>편집</button>}
+                    onClick={event => { event.stopPropagation(); onImageEdit(i); }}><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" /></svg></button>}
                 </div>
               )}
             </div>

@@ -2,6 +2,7 @@
 // 🎨 [OMD-CORE-VisualEditorStyles-0001] visualEditorStyles.ts ➔ 시각 에디터 전용 격리 CSS 스타일
 // 🎯 @KICK  : 시각 에디터 본문(.visual-document-surface), 제목 H1~H6 시각화 뱃지, 표 조판, 각주, 코드블록, 머메이드 서랍 등 위지윅 스타일 격리
 // 🛡️ @GUARD : Rule 6(Content Document Scope) 준수 - .visual-document-surface 및 컴포넌트 하위로만 스코핑
+// 🚨 @PATCH : 2026-11-13 — [미디어 및 서명 플로팅 컨트롤 여백·간격 소형화]: 아이콘 전용 액션 버튼 규격에 맞춰 우측 상단 오프셋(6px) 및 버튼 간격(4px) 최적화
 // 🚨 @PATCH : 2026-11-12 — [코드블록 상단 "CODE" 라벨 제거 및 언어 텍스트박스 배경 투명·상시 표시]:
 //             1) "CODE" 라벨 제거 후 언어 입력 input을 상시 표시(opacity: 1)로 전환하여 평소에도 지정된 언어명이 보이도록 개선
 //             2) input 배경을 transparent로 설정하여 헤더 배경색과 동일하게 일치시키고 보더를 투명화하여 깔끔한 언어 라벨 형태로 렌더링
@@ -200,7 +201,7 @@ export const VISUAL_EDITOR_STYLES = `
   .custom-preview-container .visual-document-surface .visual-code-block pre, .visual-document-surface .visual-code-block pre { background:transparent!important; color:inherit; margin:0!important; padding:18px 20px!important; white-space:pre-wrap!important; overflow-x:hidden!important; overflow-wrap:anywhere!important; word-break:break-all!important; line-height:1.65!important; }
   .custom-preview-container .visual-document-surface .visual-code-block code, .visual-document-surface .visual-code-block code { background:transparent!important; color:inherit; opacity:1; width:100%!important; max-width:100%!important; min-width:0!important; white-space:pre-wrap!important; overflow-wrap:anywhere!important; word-break:break-all!important; padding:0!important; font-family:"D2Coding","Cascadia Code",Consolas,monospace!important; line-height:inherit!important; letter-spacing:0!important; }
   .visual-image-block { position:relative; margin:16px 0; }
-  .visual-media-controls { position:absolute; right:12px; top:12px; display:flex; gap:6px; z-index:20; opacity:0; pointer-events:none; transition:opacity .15s ease-in-out, transform .15s ease-in-out; }
+  .visual-media-controls { position:absolute; right:6px; top:6px; display:flex; gap:4px; z-index:20; opacity:0; pointer-events:none; transition:opacity .15s ease-in-out, transform .15s ease-in-out; }
   .visual-image-block:has([data-caption-position="top"]) .visual-media-controls,
   .visual-image-block:has(figcaption[data-position="top"]) .visual-media-controls { top:34px; }
   .visual-image-block:hover .visual-media-controls,
@@ -211,7 +212,7 @@ export const VISUAL_EDITOR_STYLES = `
   .visual-document-surface[contenteditable="false"] .visual-image-edit { display:none; }
   @media print { .visual-media-controls { display:none; } }
   .visual-signature-container { position:relative; padding-top:48px!important; padding-bottom:14px!important; padding-left:18px!important; padding-right:18px!important; }
-  .visual-signature-container .visual-signature-controls { position:absolute; top:8px; right:12px; display:flex; align-items:center; gap:6px; z-index:25; opacity:0; pointer-events:none; transition:opacity .15s ease-in-out, transform .15s ease-in-out; transform:translateY(-2px); }
+  .visual-signature-container .visual-signature-controls { position:absolute; top:6px; right:8px; display:flex; align-items:center; gap:4px; z-index:25; opacity:0; pointer-events:none; transition:opacity .15s ease-in-out, transform .15s ease-in-out; transform:translateY(-2px); }
   .visual-signature-container:hover .visual-signature-controls,
   .visual-signature-container:focus-within .visual-signature-controls,
   .visual-signature-container.ProseMirror-selectednode .visual-signature-controls { opacity:1; pointer-events:auto; transform:translateY(0); }

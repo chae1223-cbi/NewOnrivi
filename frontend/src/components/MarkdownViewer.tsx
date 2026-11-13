@@ -2,6 +2,7 @@
 // 🏷️ 파일명 : MarkdownViewer.tsx
 // 🎭 역할(Role) : Core (마크다운 미리보기 코어 렌더러)
 // 🎯 주요기능 : ReactMarkdown 기반 마크다운 AST 변환, 그림책(Picturebook) 레이아웃 분기 및 뷰어 서브모듈 오케스트레이션
+// 🚨 @PATCH : 2026-11-13 — [미리보기 미디어(이미지·비디오·지도) 편집/복사 액션 버튼 소형 아이콘화]: attachMediaActions의 텍스트 버튼을 13x13 SVG 아이콘 전용 버튼으로 전환
 // 🚨 @PATCH : 2026-11-04 — [Rule 3 코어 엔진 1순위: MarkdownViewer 2단계 모듈화 분리]:
 //             1) 경로 보안 가드(isPathInsideWorkspace), 마크다운 원문 전처리(preprocessMarkdownContent), 줄 번호/개행 Rehype 플러그인 및 전용 CSS 시트를 markdownViewerPipeline.ts로 분리
 //             2) 1,200줄의 ReactMarkdown 커스텀 엘리먼트 렌더러 맵을 MarkdownCustomRenderers.tsx로 전면 분리 (2,528줄 ➔ 245줄, -90% 슬림화)
@@ -153,25 +154,28 @@ function MarkdownViewer({
         <div className="relative group onrivi-media-actions-frame" style={{ maxWidth: '100%' }}>
           {child}
           <div
-            className="absolute top-2 right-2 z-20 flex gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 no-print"
+            className="absolute top-1.5 right-1.5 z-20 flex gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 no-print"
             data-editor-controls
             contentEditable={false}
           >
             <button
               type="button"
               className="onrivi-media-control"
+              title={kind === 'image' ? '이미지 편집' : kind === 'map' ? '지도 편집' : '동영상 편집'}
+              aria-label="편집"
               onMouseDown={e => e.preventDefault()}
               onClick={e => {
                 e.stopPropagation();
                 dynamicPropsRef.current.onMediaEdit?.(kind, path, line);
               }}
             >
-              편집
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" /></svg>
             </button>
             <button
               type="button"
               className="onrivi-media-control"
               title={kind === 'image' ? '이미지 복사' : '미디어 참조 복사'}
+              aria-label="복사"
               onMouseDown={e => e.preventDefault()}
               onClick={e => {
                 e.stopPropagation();
@@ -217,7 +221,7 @@ function MarkdownViewer({
                 }
               }}
             >
-              복사
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
             </button>
           </div>
         </div>
