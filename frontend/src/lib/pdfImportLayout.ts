@@ -8,6 +8,7 @@
  * 🚨 @PATCH : **2026-11-12** — [위첨자 번호 본문 위치 복원]: 본문보다 위에 그려진 작은 ①·②를 독립 목록으로 만들지 않고 해당 문장 줄에 합침
  * 🚨 @PATCH : **2026-11-12** — [겹친 숫자 누락 글자층 제거]: 같은 위치의 '제 조'처럼 숫자가 빠진 중복 글자층을 완전한 표제에서 분리하지 않도록 정리
  * 🚨 @PATCH : **2026-11-12** — [PDF 박스 안내문 중복 제거]: ▶ 안내문의 전체 텍스트층을 우선하고 겹친 조각층에서 시작 기호와 누락된 끝 글자만 결합
+ * 🚨 @PATCH : 2026-11-13 — [납작한 가로형 표 아이콘 이미지 박스 추출 허용]: pdfImageBoxes에서 가로폭이 넓은 아이콘(width > 40 && height > 12)도 누락 없이 추출되도록 조건 확장
  * 🚨 @PATCH : 2026-11-13 — [행 끝 위첨자([국정과제24] 등) 인라인 병합 및 고아 목록 들여쓰기 레벨 정규화]:
  *             1) 제목/문장 우측 끝에 붙은 위첨자(other.end + other.h*2 이내, other.h >= line.h*1.2)도 본문 줄 끝에 인라인 병합되도록 허용 범위 확장
  *             2) 상위(- ) 없이 중간 들여쓰기(  - /     - )로 시작하는 고아 목록의 최소 들여쓰기를 0(- ) 기준으로 정규화하여 레벨별 글머리 기호(• → ◦ → ▪) 일관성 보장
@@ -370,7 +371,7 @@ export function pdfImageBoxes(fnArray: number[], argsArray: unknown[][], ops: Re
     } else if(op===ops.paintImageXObject||op===ops.paintInlineImageXObject) {
       const xs=[m[4],m[0]+m[4],m[2]+m[4],m[0]+m[2]+m[4]], ys=[m[5],m[1]+m[5],m[3]+m[5],m[1]+m[3]+m[5]];
       const box={x:Math.min(...xs),y:Math.min(...ys),width:Math.max(...xs)-Math.min(...xs),height:Math.max(...ys)-Math.min(...ys)};
-      if(box.width>24&&box.height>24&&!boxes.some(b=>Math.abs(b.x-box.x)<2&&Math.abs(b.y-box.y)<2&&Math.abs(b.width-box.width)<2)) boxes.push(box);
+      if(((box.width>24&&box.height>24)||(box.width>40&&box.height>12))&&!boxes.some(b=>Math.abs(b.x-box.x)<2&&Math.abs(b.y-box.y)<2&&Math.abs(b.width-box.width)<2)) boxes.push(box);
     }
   }
   return boxes.filter((b,i)=>!boxes.some((outer,j)=>j!==i && outer.width>=b.width && outer.height>=b.height &&

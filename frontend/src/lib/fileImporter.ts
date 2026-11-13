@@ -1,4 +1,5 @@
 // ====================================================================
+// 🚨 @PATCH : 2026-11-13 — [PDF 표 내부·상단 이미지 단일 HTML <table> 통합]: 페이지 내 이미지 박스를 먼저 크롭하여 pdfRuledTableBlocks에 전달하고, 표 셀로 편입된 이미지(used)는 개별 이미지 블록 중복 생성에서 제외
 // 🚨 @PATCH : 2026-11-13 — [PDF 글꼴 서식 복원] 내장 글꼴 이름을 페이지 변환기에 전달해 강조와 기울임을 원문 위치에 적용
 // 🚨 @PATCH : **2026-11-07** — [PDF 페이지 간 마크다운 개행 분리]: 페이지 경계에서 serializePdfBlocks 반환값 뒤에 \n\n을 부여하여 다음 페이지 요소와 문단 병합 방지
 // 🚨 @PATCH : **2026-11-07** — [PDF 이미지 마크다운 URL 꺽쇠 제거]: PDF 추출 이미지 마크다운 생성 시 URL을 감싸던 꺽쇠(<...>)를 제거하여 driveId 파라미터 끝 꺽쇠 오파싱 및 404 차단
@@ -23,7 +24,7 @@ import { extractPdfPageText } from './pdfImportText';
 import { readDocxImageSizes } from './docxImageSizes';
 import { prepareDocxLockedCanvasImages } from './docxLockedCanvasImages';
 import { pdfImageBoxes, serializePdfBlocks } from './pdfImportLayout';
-import { pdfRuledTableBlocks } from './pdfImportTables';
+import { pdfRuledTableBlocks, type PdfEmbeddedImage } from './pdfImportTables';
 import { readHwpCompression, decodeHwpBody, decodeHwpParagraph, isRawHwpImage } from './hwpStreams';
 import { importHwpx } from './hwpxImporter';
 import { importDoc } from './docImporter';
@@ -221,8 +222,32 @@ async function importPdf(
           item.transform[5]>=box.y && item.transform[5]<box.y+box.height);
         return overlapping.reduce((count, item: any) => count+item.str.length,0)<40;
       });
+      const embeddedImages: PdfEmbeddedImage[] = [];
+      if (boxes.length && typeof document !== 'undefined') {
+        const viewport = page.getViewport({ scale: 2 });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error(`PDF ${i}페이지의 이미지를 추출하지 못했습니다.`);
+        await page.render({ canvasContext: context, viewport, canvas } as any).promise;
+        for (const [index, box] of Array.from(boxes.entries())) {
+          const [x1,y1] = viewport.convertToViewportPoint(box.x,box.y);
+          const [x2,y2] = viewport.convertToViewportPoint(box.x+box.width,box.y+box.height);
+          const left=Math.max(0,Math.min(x1,x2)), top=Math.max(0,Math.min(y1,y2));
+          const width=Math.min(canvas.width-left,Math.abs(x2-x1)), height=Math.min(canvas.height-top,Math.abs(y2-y1));
+          if (width<=0 || height<=0) continue;
+          const crop=document.createElement('canvas'); crop.width=Math.ceil(width); crop.height=Math.ceil(height);
+          const cropContext=crop.getContext('2d');
+          if (!cropContext) throw new Error('PDF 이미지 저장을 준비하지 못했습니다.');
+          cropContext.drawImage(canvas,left,top,width,height,0,0,width,height);
+          const data=crop.toDataURL('image/png');
+          const src=imageSaveCallback ? await imageSaveCallback(data.split(',')[1],'image/png') : data;
+          embeddedImages.push({ ...box, src, alt: `PDF ${i}페이지 이미지 ${index+1}` });
+        }
+        canvas.width=canvas.height=0;
+      }
       const blocks = pdfRuledTableBlocks(content.items, operators.fnArray, operators.argsArray, pdfjsLib.OPS,
-        allBoxes.filter(box=>!boxes.includes(box)),fontNames);
+        allBoxes.filter(box=>!boxes.includes(box)),fontNames,embeddedImages);
       // A repeated numeric run in one inferred cell followed by empty cells is
       // a collapsed visual grid, not a trustworthy editable Markdown table.
       const brokenTable = blocks.filter(block => /^\|[^\n]+\n\|\s*:?-{3}/.test(block.markdown)).find(block =>
@@ -259,30 +284,10 @@ async function importPdf(
         text += serializePdfBlocks(prose.sort((a, b) => b.y - a.y), true) + '\n\n';
         continue;
       }
-      if (boxes.length && typeof document !== 'undefined') {
-        // Render once, then crop individual embedded image regions. Never turn
-        // the complete page or its editable text into a bitmap.
-        const viewport = page.getViewport({ scale: 2 });
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height);
-        const context = canvas.getContext('2d');
-        if (!context) throw new Error(`PDF ${i}페이지의 이미지를 추출하지 못했습니다.`);
-        await page.render({ canvasContext: context, viewport, canvas } as any).promise;
-        for (const [index, box] of Array.from(boxes.entries())) {
-          const [x1,y1] = viewport.convertToViewportPoint(box.x,box.y);
-          const [x2,y2] = viewport.convertToViewportPoint(box.x+box.width,box.y+box.height);
-          const left=Math.max(0,Math.min(x1,x2)), top=Math.max(0,Math.min(y1,y2));
-          const width=Math.min(canvas.width-left,Math.abs(x2-x1)), height=Math.min(canvas.height-top,Math.abs(y2-y1));
-          if (width<=0 || height<=0) continue;
-          const crop=document.createElement('canvas'); crop.width=Math.ceil(width); crop.height=Math.ceil(height);
-          const cropContext=crop.getContext('2d');
-          if (!cropContext) throw new Error('PDF 이미지 저장을 준비하지 못했습니다.');
-          cropContext.drawImage(canvas,left,top,width,height,0,0,width,height);
-          const data=crop.toDataURL('image/png');
-          const src=imageSaveCallback ? await imageSaveCallback(data.split(',')[1],'image/png') : data;
-          blocks.push({y:box.y+box.height,markdown:`![PDF ${i}페이지 이미지 ${index+1}](${src})`});
+      for (const img of embeddedImages) {
+        if (!img.used) {
+          blocks.push({ y: img.y + img.height, markdown: `![${img.alt}](${img.src})` });
         }
-        canvas.width=canvas.height=0;
       }
       text += serializePdfBlocks(blocks.sort((a,b)=>b.y-a.y), true) + '\n\n';
 

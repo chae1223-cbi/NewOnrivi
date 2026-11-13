@@ -4,6 +4,9 @@
  * 🚨 @PATCH : **2026-11-12** — [PDF 중복 표 제거 및 HTML 변환]: 큰 표에 포함된 셀별 중복 블록을 제거하고 복합 열 표를 HTML로 출력해 원래 열 배치를 유지
  * 🚨 @PATCH : **2026-11-12** — [번호 안내 상자 HTML 표 복원]: 제목 아래 연속된 ①·② 안내 항목을 독립 목록 대신 번호 열과 내용 열을 가진 HTML 표로 구성
  * 🚨 @PATCH : **2026-11-12** — [제목·내용 1열 2행 마크다운 표]: 안내·제외대상 상자의 제목과 번호 항목들을 한 열의 머리행·내용행으로 직렬화
+ * 🚨 @PATCH : 2026-11-13 — [표 셀 내부 및 표 상단 열 정렬 이미지 단일 HTML <table> 통합]:
+ *             1) pdfRuledTableBlocks에 embeddedImages를 전달받아 표 클리핑 셀/격자 셀 내부의 이미지와 표 바로 위 열에 배치된 이미지를 HTML <table>의 <td><img .../></td> 행으로 통합
+ *             2) 표 내부로 편입된 이미지는 used 플래그로 마킹하여 표 바깥에 개별 이미지 블록으로 중복 출력되지 않도록 처리
  * 🚨 @PATCH : 2026-11-13 — [복잡한 다중 행/멀티라인 셀 표 HTML <table> 자동 전환 강화]: 마크다운 표(| ... |)로 표현하기 어려운 다중 문단/줄바꿈(<br>) 셀을 포함한 표도 HTML <table>로 자동 변환
  * 🚨 @PATCH : 2026-11-13 — [HTML 표 셀 내 마크다운 서식(** / * / ~~) HTML 태그 복원 및 미세 슬리버 셀 열 밀림 방지]:
  *             1) escapeStyled에서 HTML <table> 셀 내부의 **텍스트**, *텍스트*, ~~텍스트~~를 <strong>, <em>, <del>로 변환하여 표 안에 ** 기호가 그대로 노출되는 결함 해결
@@ -18,12 +21,18 @@ import { pdfTextBlocks, deduplicatePdfRuns, type PdfImportBlock, type PdfFontNam
 type Rect = { x: number; y: number; width: number; height: number };
 type Grid = Rect & { xs: number[]; ys: number[] };
 type Run = { str: string; transform: number[] };
+export type PdfEmbeddedImage = Rect & { src: string; alt: string; used?: boolean };
 const close = (a: number, b: number) => Math.abs(a-b)<0.8;
 const unique = (values: number[]) => values.sort((a,b)=>a-b).filter((v,i,a)=>!i || !close(v,a[i-1]));
 const inside = (inner: Rect, outer: Rect) => inner.x>=outer.x-1 && inner.y>=outer.y-1 &&
   inner.x+inner.width<=outer.x+outer.width+1 && inner.y+inner.height<=outer.y+outer.height+1;
 const contains = (r: Run, box: Rect) => r.transform[4]>=box.x-0.5 && r.transform[4]<box.x+box.width-0.5 &&
   r.transform[5]>=box.y-0.5 && r.transform[5]<box.y+box.height-0.5;
+const containsImg = (img: PdfEmbeddedImage, box: Rect) => {
+  const cx = img.x + img.width / 2;
+  const cy = img.y + img.height / 2;
+  return cx >= box.x - 1 && cx <= box.x + box.width + 1 && cy >= box.y - 1 && cy <= box.y + box.height + 1;
+};
 const escape = (s: string) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 /**
  * ========================================================================================
@@ -41,7 +50,8 @@ const escapeStyled = (s: string) =>
 
 /** Use drawn rules, rather than text gaps, to keep adjacent and nested tables separate. */
 export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[], argsArray: unknown[][],
-  ops: Record<string, number>, codeRegions: Rect[] = [], fontNames: PdfFontNames = {}): PdfImportBlock[] {
+  ops: Record<string, number>, codeRegions: Rect[] = [], fontNames: PdfFontNames = {},
+  embeddedImages: PdfEmbeddedImage[] = []): PdfImportBlock[] {
   const vertical: Rect[] = [], horizontal: Rect[] = [];
   const clips: Rect[]=[];
   const filledBoxes: Rect[]=[];
@@ -111,7 +121,7 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
   for(const run of runs){const size=Math.round(run.height);sizes.set(size,(sizes.get(size)||0)+run.str.length);}
   const pageBodySize=Array.from(sizes).sort((a,b)=>b[1]-a[1])[0]?.[0]||12;
   let roots=grids.filter(g=>!grids.some(other=>other!==g && other.width*other.height>g.width*g.height && inside(g,other)));
-  const candidates=clips.filter(c=>runs.some(r=>contains(r,c)) && !roots.some(g=>inside(c,g)&&grids.some(child=>child!==g&&inside(child,g))));
+  const candidates=clips.filter(c=>(runs.some(r=>contains(r,c)) || embeddedImages.some(img=>img.width<c.width*1.1 && containsImg(img,c))) && !roots.some(g=>inside(c,g)&&grids.some(child=>child!==g&&inside(child,g))));
   const leaves=candidates.filter(c=>!candidates.some(other=>other!==c && inside(other,c) && other.width*other.height<c.width*c.height-2));
   // Independently boxed infographic columns have whitespace between cells.
   // Their enclosing clipping rectangle establishes reading order even when
@@ -152,6 +162,13 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
       const md:string[]=[], html:string[]=[];
       for(const cell of cells) {
         const values=pdfTextBlocks(runs.filter(r=>contains(r,cell)),[],false,undefined,fontNames,drawnRules).map(b=>b.markdown.replace(/^#{1,6}\s+/,''));
+        const cellImgs = xs.length >= 3
+          ? embeddedImages.filter(img => !img.used && img.width < box.width * 0.85 && containsImg(img, cell))
+          : [];
+        for (const img of cellImgs) img.used = true;
+        const imgHtml = cellImgs
+          .map(img => `<p><img src="${escape(img.src)}" alt="${escape(img.alt)}" /></p>`)
+          .join('');
         md.push(values.map(s=>s.replace(/\|/g,'\\|')).join('<br>'));
         const colspan=xs.slice(0,-1).filter((x,colIdx)=>{
           const colMid=(x+xs[colIdx+1])/2;
@@ -161,18 +178,40 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
           const rowMid=(y+ys[rowIdx+1])/2;
           return rowMid>=cell.y-0.5 && rowMid<=cell.y+cell.height+0.5;
         }).length || 1;
-        html.push('<td'+(colspan>1?' colspan="'+colspan+'"':'')+(rowspan>1?' rowspan="'+rowspan+'"':'')+'>'+values.map(s=>'<p>'+escapeStyled(s)+'</p>').join('')+'</td>');
+        html.push('<td'+(colspan>1?' colspan="'+colspan+'"':'')+(rowspan>1?' rowspan="'+rowspan+'"':'')+'>'+imgHtml+values.map(s=>'<p>'+escapeStyled(s)+'</p>').join('')+'</td>');
       }
       mdRows.push(md);htmlRows.push('<tr>'+html.join('')+'</tr>');
     }
-    const hasMultiLineCell = mdRows.some(r => r.some(c => c.includes('<br>')));
+    if (xs.length >= 3 && !htmlRows.some(r => r.includes('<img '))) {
+      const aboveImgs = embeddedImages.filter(img => {
+        if (img.used || img.width >= box.width * 0.85) return false;
+        const cx = img.x + img.width / 2;
+        return cx >= box.x - 2 && cx <= box.x + box.width + 2 &&
+          img.y >= box.y + box.height - 8 && img.y <= box.y + box.height + 90;
+      });
+      if (aboveImgs.length >= 2) {
+        const imgRowCells: string[] = [];
+        for (let col = 0; col < xs.length - 1; col++) {
+          const colImgs = aboveImgs.filter(img => {
+            const cx = img.x + img.width / 2;
+            return cx >= xs[col] - 2 && cx < xs[col + 1] + 2;
+          });
+          for (const img of colImgs) img.used = true;
+          imgRowCells.push('<td>' + colImgs.map(img => `<p><img src="${escape(img.src)}" alt="${escape(img.alt)}" /></p>`).join('') + '</td>');
+        }
+        htmlRows.unshift('<tr>' + imgRowCells.join('') + '</tr>');
+        const maxTop = Math.max(...aboveImgs.map(img => img.y + img.height));
+        box.height = Math.max(box.height, maxTop - box.y);
+      }
+    }
+    const hasMultiLineCell = mdRows.some(r => r.some(c => c.includes('<br>'))) || htmlRows.some(r => r.includes('<img '));
     const markdown=merged || xs.length>4 || hasMultiLineCell ? '<table><tbody>'+htmlRows.join('')+'</tbody></table>' :
       ['| '+mdRows[0].join(' | ')+' |','| '+mdRows[0].map(()=>'---').join(' | ')+' |',...mdRows.slice(1).map(r=>'| '+r.join(' | ')+' |')].join('\n');
     recovered.push({box,markdown});
   }
   const distinctRecovered=recovered.filter((candidate,index)=>
     !roots.some(grid=>inside(candidate.box,grid) && (grid.ys.length>2 ||
-      (candidate.markdown.match(/<tr>/g)||[]).length<3)) &&
+      ((candidate.markdown.match(/<tr>/g)||[]).length<3 && !candidate.markdown.includes('<img ')))) &&
     !recovered.some((other,otherIndex)=>otherIndex!==index &&
       other.box.width*other.box.height>candidate.box.width*candidate.box.height+2 && inside(candidate.box,other.box)));
   roots=roots.filter(g=>!distinctRecovered.some(r=>inside(g,r.box)));
@@ -183,6 +222,7 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
   function table(grid: Grid, forceHtml = false): string {
     const rows: string[]=[];
     const markdownRows: string[][]=[];
+    let hasGridImages = false;
     const useHtml=forceHtml || grid.xs.length>4 || grids.some(g=>g!==grid && inside(g,grid));
     for(let row=grid.ys.length-2;row>=0;row--) {
       const cells: string[]=[];
@@ -195,13 +235,42 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
         const textBlocks=pdfTextBlocks(text,[],false,undefined,fontNames,drawnRules);
         markdownCells.push(textBlocks.map(b=>b.markdown.replace(/^#{1,6}\s+/, '').replace(/\|/g,'\\|')).join('<br>'));
         const blocks=textBlocks.map(b=>({y:b.y,markdown:'<p>'+escapeStyled(b.markdown)+'</p>'}));
+        if (grid.xs.length >= 3) {
+          const cellImgs = embeddedImages.filter(img => !img.used && img.width < grid.width * 0.85 && containsImg(img, cell) && !children.some(g => containsImg(img, g)));
+          for (const img of cellImgs) {
+            img.used = true;
+            hasGridImages = true;
+            blocks.push({ y: img.y + img.height, markdown: `<p><img src="${escape(img.src)}" alt="${escape(img.alt)}" /></p>` });
+          }
+        }
         blocks.push(...children.map(g=>({y:g.y+g.height,markdown:table(g,true)})));
         cells.push('<td>'+blocks.sort((a,b)=>b.y-a.y).map(b=>b.markdown).join('')+'</td>');
       }
       rows.push('<tr>'+cells.join('')+'</tr>');
       markdownRows.push(markdownCells);
     }
-    const hasMultiLineCell = markdownRows.some(r => r.some(c => c.includes('<br>')));
+    if (grid.xs.length >= 3 && !hasGridImages) {
+      const aboveImgs = embeddedImages.filter(img => {
+        if (img.used || img.width >= grid.width * 0.85) return false;
+        const cx = img.x + img.width / 2;
+        return cx >= grid.x - 2 && cx <= grid.x + grid.width + 2 &&
+          img.y >= grid.y + grid.height - 8 && img.y <= grid.y + grid.height + 90;
+      });
+      if (aboveImgs.length >= 2) {
+        const imgRowCells: string[] = [];
+        for (let col = 0; col < grid.xs.length - 1; col++) {
+          const colImgs = aboveImgs.filter(img => {
+            const cx = img.x + img.width / 2;
+            return cx >= grid.xs[col] - 2 && cx < grid.xs[col + 1] + 2;
+          });
+          for (const img of colImgs) img.used = true;
+          imgRowCells.push('<td>' + colImgs.map(img => `<p><img src="${escape(img.src)}" alt="${escape(img.alt)}" /></p>`).join('') + '</td>');
+        }
+        rows.unshift('<tr>' + imgRowCells.join('') + '</tr>');
+        hasGridImages = true;
+      }
+    }
+    const hasMultiLineCell = markdownRows.some(r => r.some(c => c.includes('<br>'))) || hasGridImages;
     if(!useHtml && !hasMultiLineCell) return [
       '| '+markdownRows[0].join(' | ')+' |',
       '| '+markdownRows[0].map(()=>'---').join(' | ')+' |',
