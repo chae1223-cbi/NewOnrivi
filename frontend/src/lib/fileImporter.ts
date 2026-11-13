@@ -1,4 +1,5 @@
 // ====================================================================
+// 🚨 @PATCH : 2026-11-13 — [PDF 글꼴 서식 복원] 내장 글꼴 이름을 페이지 변환기에 전달해 강조와 기울임을 원문 위치에 적용
 // 🚨 @PATCH : **2026-11-07** — [PDF 페이지 간 마크다운 개행 분리]: 페이지 경계에서 serializePdfBlocks 반환값 뒤에 \n\n을 부여하여 다음 페이지 요소와 문단 병합 방지
 // 🚨 @PATCH : **2026-11-07** — [PDF 이미지 마크다운 URL 꺽쇠 제거]: PDF 추출 이미지 마크다운 생성 시 URL을 감싸던 꺽쇠(<...>)를 제거하여 driveId 파라미터 끝 꺽쇠 오파싱 및 404 차단
 // 🚨 @PATCH : **2026-11-11** — [DOCX lockedCanvas 이미지 복구]: Mammoth가 건너뛰는 그룹 그림을 원래 문단 위치에 저장·삽입
@@ -206,6 +207,12 @@ async function importPdf(
       }
       
       const operators = await page.getOperatorList();
+      const fontNames: Record<string,string> = {};
+      for (const fontId of Object.keys(content.styles)) {
+        if (!page.commonObjs.has(fontId)) continue;
+        const font = page.commonObjs.get(fontId) as { name?: string } | null;
+        if (font?.name) fontNames[fontId] = font.name;
+      }
       const allBoxes = pdfImageBoxes(operators.fnArray, operators.argsArray, pdfjsLib.OPS);
       const boxes = allBoxes.filter(box => {
         // Ignore raster backgrounds under selectable text (such as code panels).
@@ -215,7 +222,7 @@ async function importPdf(
         return overlapping.reduce((count, item: any) => count+item.str.length,0)<40;
       });
       const blocks = pdfRuledTableBlocks(content.items, operators.fnArray, operators.argsArray, pdfjsLib.OPS,
-        allBoxes.filter(box=>!boxes.includes(box)));
+        allBoxes.filter(box=>!boxes.includes(box)),fontNames);
       // A repeated numeric run in one inferred cell followed by empty cells is
       // a collapsed visual grid, not a trustworthy editable Markdown table.
       const brokenTable = blocks.filter(block => /^\|[^\n]+\n\|\s*:?-{3}/.test(block.markdown)).find(block =>

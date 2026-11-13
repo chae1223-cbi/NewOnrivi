@@ -9,12 +9,18 @@
  * 🚨 @PATCH : **2026-11-12** — [겹친 숫자 누락 글자층 제거]: 같은 위치의 '제 조'처럼 숫자가 빠진 중복 글자층을 완전한 표제에서 분리하지 않도록 정리
  * 🚨 @PATCH : **2026-11-12** — [PDF 박스 안내문 중복 제거]: ▶ 안내문의 전체 텍스트층을 우선하고 겹친 조각층에서 시작 기호와 누락된 끝 글자만 결합
  * 🚨 @PATCH : 2026-11-13 — [겹친 표·목록 문구 복원] 동일 위치의 문장층 중 괄호·쉼표가 보존된 글자층을 우선하고 * 목록의 중복 조각과 줄바꿈 띄어쓰기를 보정
+ * 🚨 @PATCH : 2026-11-13 — [PDF 글자 서식 복원] 글꼴과 그려진 선의 위치로 강조·기울임·밑줄·취소선을 판별하여 원문 단어에 적용
+ * 🚨 @PATCH : 2026-11-13 — [보고서 본문 줄 연결] 굵은 서식의 ㅇ 항목 둘째 줄을 제목으로 오인하지 않고 앞 문장에 연결
+ * 🚨 @PATCH : 2026-11-13 — [보고서 목차·표제 정리] 목차 배경 그림을 코드 문단으로 분류하지 않고 겹친 표제의 중복 문구를 제거
+ * 🚨 @PATCH : 2026-11-13 — [보고서 목록 단계 복원] ㅇ·✔·※ 표시를 순서에 맞는 하위 글머리로 변환
  */
 import { extractPdfPageText } from './pdfImportText';
 
 type Run = { str: string; transform: number[]; width: number; height: number; fontName?: string };
 export type PdfImportBlock = { y: number; markdown: string };
 type Box = { x: number; y: number; width: number; height: number };
+export type PdfFontNames = Record<string, string>;
+export type PdfDrawnRule = { x: number; y: number; width: number };
 /** Remove shadow/overprint runs at the same position, retaining genuine repetitions. */
 export function deduplicatePdfRuns(items: readonly unknown[]): Run[] {
   const runs=(items as Run[]).filter(r=>typeof r.str==='string'&&r.str.trim()&&r.transform);
@@ -34,7 +40,7 @@ export function deduplicatePdfRuns(items: readonly unknown[]): Run[] {
   })));
   return runs.filter((run,index)=>!redundant.has(run) && !runs.some((other,j)=>{
     if(redundant.has(other)) return false;
-    if(j===index || Math.abs(run.transform[5]-other.transform[5])>2.5) return false;
+    if(j===index || Math.abs(run.transform[5]-other.transform[5])>3.2) return false;
     const left=Math.max(run.transform[4],other.transform[4]);
     const right=Math.min(run.transform[4]+run.width,other.transform[4]+other.width);
     const overlap=Math.max(0,right-left)/Math.max(1,run.width);
@@ -92,7 +98,8 @@ export function serializePdfBlocks(blocks: PdfImportBlock[], compact = false): s
   }).join('');
 }
 
-export function pdfTextBlocks(items: readonly unknown[], codeRegions: Box[] = [], inferTables = true, pageBodySize?: number): PdfImportBlock[] {
+export function pdfTextBlocks(items: readonly unknown[], codeRegions: Box[] = [], inferTables = true, pageBodySize?: number,
+  fontNames: PdfFontNames = {}, drawnRules: PdfDrawnRule[] = []): PdfImportBlock[] {
   const runs = deduplicatePdfRuns(items);
   const sizes = new Map<number, number>();
   for (const r of runs) { const h = Math.round(r.height); sizes.set(h, (sizes.get(h) || 0) + r.str.length); }
@@ -111,7 +118,7 @@ export function pdfTextBlocks(items: readonly unknown[], codeRegions: Box[] = []
       Math.abs(other.y-line.y)<other.h*0.6 && line.x>=other.x-2 && line.x<other.end+2);
     if(parent) { parent.runs.push(...line.runs); lines.splice(i,1); }
   }
-  for (const l of lines) { l.runs.sort((a,b) => a.transform[4] - b.transform[4]); l.text = extractPdfPageText(l.runs.map(r => ({ ...r, hasEOL: false }))); }
+  for (const l of lines) { l.runs.sort((a,b) => a.transform[4] - b.transform[4]); l.text = extractPdfPageText(l.runs.map(r => ({ ...r, hasEOL: false }))).replace(/^(.{5,}?)\1$/,'$1'); }
   lines.sort((a,b) => b.y - a.y);
   for(let index=0;index<lines.length;index++) {
     const line=lines[index];
@@ -170,7 +177,9 @@ export function pdfTextBlocks(items: readonly unknown[], codeRegions: Box[] = []
   const blocks: PdfImportBlock[] = [];
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const codeRegion=codeRegions.find(b=>line.y>=b.y && line.y<=b.y+b.height && line.x>=b.x-2 && line.end<=b.x+b.width+2);
+    const codeRegion=codeRegions.find(b=>line.y>=b.y && line.y<=b.y+b.height && line.x>=b.x-2 && line.end<=b.x+b.width+2 &&
+      !lines.some(candidate=>candidate.y>=b.y && candidate.y<=b.y+b.height &&
+        (candidate.text.trim()==='순 서' || /^[ⅠⅡⅢⅣⅤⅥ]\./.test(candidate.text))));
     if (codeRegion) {
       const codeLines=[line];
       while(i+1<lines.length && lines[i+1].y>=codeRegion.y && lines[i+1].y<=codeRegion.y+codeRegion.height &&
@@ -222,21 +231,25 @@ export function pdfTextBlocks(items: readonly unknown[], codeRegions: Box[] = []
     if (inferTables && /^\d+\s+[^\d\s]/.test(line.text)) {
       blocks.push({y:line.y,markdown:`## ${line.text}`}); continue;
     }
+    const prev=lines[i-1];
+    const paragraphContinuation=prev && /^(?:ㅇ|v|❖|⇒)\s/.test(prev.text) &&
+      prev.y-line.y<bodySize*2.8 && Math.abs(line.x-prev.x-22)<12 &&
+      prev.end>rightEdge-bodySize*3;
     const precedingList=/^\s*- /.test(blocks.at(-1)?.markdown || '') && i>0 &&
       lines[i-1].y-line.y<bodySize*2.8;
-    if (!precedingList && line.h > Math.max(14,bodySize*1.2) && !/^(?:\(.+\)$|[□☐ㅇ*※◦①②③④⑤⑥⑦⑧⑨]|제\d+조|예\))/.test(line.text)) {
+    if (!precedingList && !paragraphContinuation && line.h > Math.max(14,bodySize*1.2) && !/^(?:\(.+\)$|[□☐ㅇ*※◦①②③④⑤⑥⑦⑧⑨]|제\d+조|예\))/.test(line.text)) {
       blocks.push({y:line.y,markdown:`${line.h>=17?'##':'###'} ${line.text}`}); continue;
     }
-    const prev=lines[i-1]; const last=blocks.at(-1);
-    const isNew = /^(?:예\)|[□☐ㅇ※■☞]|\*\s|\d+[.)]\s|[•●▪]\s|[QA]\d+[.:]|[📌💡👉]|(?:호기심 자극형|정보 전달형|찬반 논쟁 유발형):)/.test(line.text);
+    const last=blocks.at(-1);
+    const isNew = /^(?:예\)|[□☐ㅇ✔※■☞]|\*\s|\d+[.)]\s|[•●▪]\s|[QA]\d+[.:]|[📌💡👉]|(?:호기심 자극형|정보 전달형|찬반 논쟁 유발형):)/.test(line.text);
     const listContinuation=last && prev && /^\s*- /.test(last.markdown) &&
       Math.abs(line.x-prev.x-22)<12;
-    if (last && prev && !isNew && !/^#{1,6} |^\|/.test(last.markdown) && Math.abs(prev.h-line.h)<1 &&
-      prev.y-line.y < bodySize*(listContinuation ? 2.8 : 2.05) &&
-      ((Math.abs(prev.x-line.x)<4 && prev.end>rightEdge-bodySize*2) || listContinuation)) {
+    if (last && prev && !isNew && !/^#{1,6} |^\|/.test(last.markdown) && (Math.abs(prev.h-line.h)<1 || paragraphContinuation) &&
+      prev.y-line.y < bodySize*(listContinuation || paragraphContinuation ? 2.8 : 2.05) &&
+      ((Math.abs(prev.x-line.x)<4 && prev.end>rightEdge-bodySize*2) || listContinuation || paragraphContinuation)) {
       // An actual trailing space in the PDF run distinguishes a word boundary
       // from a Korean word that was split across physical lines.
-      const separator=listContinuation && /^[가-힣‘「]/.test(line.text) ? ' ' :
+      const separator=(listContinuation || paragraphContinuation) && /^[가-힣‘「]/.test(line.text) ? ' ' :
         wrapSeparator(prev.text,line.text,rightEdge-prev.end,bodySize);
       last.markdown += separator + line.text;
     } else {
@@ -247,6 +260,9 @@ export function pdfTextBlocks(items: readonly unknown[], codeRegions: Box[] = []
       blocks.push({y:line.y,markdown:noteText ?? (inferTables ? line.text
         .replace(/^\s*[□☐■]\s*/, '- ')
         .replace(/^\s*◦\s*/, '  - ')
+        .replace(/^\s*ㅇ\s*/, '  - ')
+        .replace(/^\s*✔\s*/, '    - ')
+        .replace(/^\s*※\s*/, '      - ')
         .replace(/^([①②③④⑤⑥⑦⑧⑨])\s*/, '  - $1 ')
         .replace(/^(\*{1,2})(?=\s)/, match=>match.split('').map(()=>'\\*').join(''))
         .replace(/^[•●▪]\s*/, '- ') : line.text.replace(/^[•●▪]\s*/, '- '))});
@@ -254,6 +270,34 @@ export function pdfTextBlocks(items: readonly unknown[], codeRegions: Box[] = []
   }
   for (const block of blocks) {
     if (!block.markdown.startsWith('```')) block.markdown=block.markdown.replace(/\*\*([^*\n]+)\*\*/g,(_,value:string)=>'<strong>'+value.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</strong>');
+  }
+  for (const [index, block] of blocks.entries()) {
+    if (block.markdown.startsWith('```') || block.markdown.startsWith('|') || block.markdown.startsWith('<table')) continue;
+    const lowerBound=blocks[index+1]?.y ?? -Infinity;
+    const candidates=runs.filter(run=>run.transform[5]<=block.y+2 && run.transform[5]>lowerBound+2 && run.str.trim().length>=2)
+      .sort((a,b)=>b.str.length-a.str.length);
+    for (const run of candidates) {
+      const font=fontNames[run.fontName || ''] || '';
+      const bold=/(?:bold|black|heavy|semibold|demibold)/i.test(font);
+      const italic=/(?:italic|oblique)/i.test(font);
+      const crossing=drawnRules.some(rule=>rule.x<=run.transform[4]+1 &&
+        rule.x+rule.width>=run.transform[4]+run.width-1 && rule.width<=run.width+8 &&
+        Math.abs(rule.y-(run.transform[5]+run.height*0.35))<2);
+      const underlined=drawnRules.some(rule=>rule.x<=run.transform[4]+1 &&
+        rule.x+rule.width>=run.transform[4]+run.width-1 && rule.width<=run.width+8 &&
+        Math.abs(rule.y-(run.transform[5]-Math.max(1,run.height*0.12)))<2);
+      if(!bold && !italic && !crossing && !underlined) continue;
+      const needle=run.str.trim();
+      const first=block.markdown.indexOf(needle);
+      if(first<0 || block.markdown.indexOf(needle,first+needle.length)>=0 ||
+        block.markdown.slice(0,first).endsWith('<')) continue;
+      let styled=needle.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      if(bold) styled=`<strong>${styled}</strong>`;
+      if(italic) styled=`<em>${styled}</em>`;
+      if(underlined) styled=`<u>${styled}</u>`;
+      if(crossing) styled=`<del>${styled}</del>`;
+      block.markdown=block.markdown.slice(0,first)+styled+block.markdown.slice(first+needle.length);
+    }
   }
   return blocks;
 }

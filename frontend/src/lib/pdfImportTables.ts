@@ -4,8 +4,11 @@
  * 🚨 @PATCH : **2026-11-12** — [PDF 중복 표 제거 및 HTML 변환]: 큰 표에 포함된 셀별 중복 블록을 제거하고 복합 열 표를 HTML로 출력해 원래 열 배치를 유지
  * 🚨 @PATCH : **2026-11-12** — [번호 안내 상자 HTML 표 복원]: 제목 아래 연속된 ①·② 안내 항목을 독립 목록 대신 번호 열과 내용 열을 가진 HTML 표로 구성
  * 🚨 @PATCH : **2026-11-12** — [제목·내용 1열 2행 마크다운 표]: 안내·제외대상 상자의 제목과 번호 항목들을 한 열의 머리행·내용행으로 직렬화
+ * 🚨 @PATCH : 2026-11-13 — [PDF 서식·구분선 복원] 글꼴과 선 정보를 셀 변환에 전달하고 독립 가로선을 마크다운 구분선으로 출력
+ * 🚨 @PATCH : 2026-11-13 — [행별 표 구조 우선] 전체 열만 인식한 단일 행 격자보다 클리핑 셀의 실제 여러 행을 우선하여 숫자 열 합침 방지
+ * 🚨 @PATCH : 2026-11-13 — [표 테두리 오차 보정] 3pt 미만의 중복 세로 경계를 제거하여 빈 열이 끼어드는 현상 완화
  */
-import { pdfTextBlocks, deduplicatePdfRuns, type PdfImportBlock } from './pdfImportLayout';
+import { pdfTextBlocks, deduplicatePdfRuns, type PdfImportBlock, type PdfFontNames, type PdfDrawnRule } from './pdfImportLayout';
 
 type Rect = { x: number; y: number; width: number; height: number };
 type Grid = Rect & { xs: number[]; ys: number[] };
@@ -17,10 +20,18 @@ const inside = (inner: Rect, outer: Rect) => inner.x>=outer.x-1 && inner.y>=oute
 const contains = (r: Run, box: Rect) => r.transform[4]>=box.x-0.5 && r.transform[4]<box.x+box.width-0.5 &&
   r.transform[5]>=box.y-0.5 && r.transform[5]<box.y+box.height-0.5;
 const escape = (s: string) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+/**
+ * ========================================================================================
+ * [escapeStyled] PDF 변환기가 생성한 제한된 글자 서식 태그만 HTML 표 안에 보존합니다.
+ * @param s - PDF 셀 문구
+ * @returns 안전하게 이스케이프한 HTML 문구
+ * ========================================================================================
+ */
+const escapeStyled = (s: string) => escape(s).replace(/&lt;(\/?(?:strong|em|u|del))&gt;/g,'<$1>');
 
 /** Use drawn rules, rather than text gaps, to keep adjacent and nested tables separate. */
 export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[], argsArray: unknown[][],
-  ops: Record<string, number>, codeRegions: Rect[] = []): PdfImportBlock[] {
+  ops: Record<string, number>, codeRegions: Rect[] = [], fontNames: PdfFontNames = {}): PdfImportBlock[] {
   const vertical: Rect[] = [], horizontal: Rect[] = [];
   const clips: Rect[]=[];
   const filledBoxes: Rect[]=[];
@@ -85,6 +96,7 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
       next.transform[4]-r.transform[4]<90 && /%/.test(next.str))) return {...r,str:'↑'};
     return r;
   });
+  const drawnRules: PdfDrawnRule[]=horizontal.map(rule=>({x:rule.x,y:rule.y,width:rule.width}));
   const sizes=new Map<number,number>();
   for(const run of runs){const size=Math.round(run.height);sizes.set(size,(sizes.get(size)||0)+run.str.length);}
   const pageBodySize=Array.from(sizes).sort((a,b)=>b[1]-a[1])[0]?.[0]||12;
@@ -110,10 +122,11 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
     const header=runs.filter(r=>r.transform[4]>=panel.x && r.transform[4]<panel.x+panel.width &&
       r.transform[5]>=panel.y+panel.height && r.transform[5]<panel.y+panel.height+28);
     const box={...panel,height:panel.height+(header.length?28:0)};
-    recovered.push({box,markdown:pdfTextBlocks(runs.filter(r=>contains(r,box)),[],false).map(b=>b.markdown).join('\n')});
+    recovered.push({box,markdown:pdfTextBlocks(runs.filter(r=>contains(r,box)),[],false,undefined,fontNames,drawnRules).map(b=>b.markdown).join('\n')});
   }
   for(const group of groups.filter(g=>g.length>=3)) {
-    const xs=unique(group.flatMap(c=>[c.x,c.x+c.width])), ys=unique(group.flatMap(c=>[c.y,c.y+c.height]));
+    const xs=unique(group.flatMap(c=>[c.x,c.x+c.width])).filter((x,index,array)=>
+      index===0 || x-array[index-1]>=3), ys=unique(group.flatMap(c=>[c.y,c.y+c.height]));
     const box={x:xs[0],y:ys[0],width:xs.at(-1)!-xs[0],height:ys.at(-1)!-ys[0]};
     const merged=group.some(c=>xs.some(x=>x>c.x+1&&x<c.x+c.width-1)||ys.some(y=>y>c.y+1&&y<c.y+c.height-1));
     const mdRows:string[][]=[], htmlRows:string[]=[];
@@ -128,11 +141,11 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
       cells.sort((a,b)=>a.x-b.x);
       const md:string[]=[], html:string[]=[];
       for(const cell of cells) {
-        const values=pdfTextBlocks(runs.filter(r=>contains(r,cell)),[],false).map(b=>b.markdown.replace(/^#{1,6}\s+/,''));
+        const values=pdfTextBlocks(runs.filter(r=>contains(r,cell)),[],false,undefined,fontNames,drawnRules).map(b=>b.markdown.replace(/^#{1,6}\s+/,''));
         md.push(values.map(s=>s.replace(/\|/g,'\\|')).join('<br>'));
         const colspan=xs.filter(x=>x>=cell.x-0.5&&x<cell.x+cell.width-0.5).length;
         const rowspan=ys.filter(y=>y>=cell.y-0.5&&y<cell.y+cell.height-0.5).length;
-        html.push('<td'+(colspan>1?' colspan="'+colspan+'"':'')+(rowspan>1?' rowspan="'+rowspan+'"':'')+'>'+values.map(s=>'<p>'+escape(s)+'</p>').join('')+'</td>');
+        html.push('<td'+(colspan>1?' colspan="'+colspan+'"':'')+(rowspan>1?' rowspan="'+rowspan+'"':'')+'>'+values.map(s=>'<p>'+escapeStyled(s)+'</p>').join('')+'</td>');
       }
       mdRows.push(md);htmlRows.push('<tr>'+html.join('')+'</tr>');
     }
@@ -141,7 +154,8 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
     recovered.push({box,markdown});
   }
   const distinctRecovered=recovered.filter((candidate,index)=>
-    !roots.some(grid=>inside(candidate.box,grid)) &&
+    !roots.some(grid=>inside(candidate.box,grid) && (grid.ys.length>2 ||
+      (candidate.markdown.match(/<tr>/g)||[]).length<3)) &&
     !recovered.some((other,otherIndex)=>otherIndex!==index &&
       other.box.width*other.box.height>candidate.box.width*candidate.box.height+2 && inside(candidate.box,other.box)));
   roots=roots.filter(g=>!distinctRecovered.some(r=>inside(g,r.box)));
@@ -161,9 +175,9 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
         const children=grids.filter(g=>g!==grid && inside(g,cell)).filter(g=>!grids.some(other=>
           other!==g && other!==grid && inside(other,cell) && other.width*other.height>g.width*g.height && inside(g,other)));
         const text=runs.filter(r=>contains(r,cell)&&!children.some(g=>contains(r,g)));
-        const textBlocks=pdfTextBlocks(text,[],false);
+        const textBlocks=pdfTextBlocks(text,[],false,undefined,fontNames,drawnRules);
         markdownCells.push(textBlocks.map(b=>b.markdown.replace(/^#{1,6}\s+/, '').replace(/\|/g,'\\|')).join('<br>'));
-        const blocks=textBlocks.map(b=>({y:b.y,markdown:'<p>'+escape(b.markdown)+'</p>'}));
+        const blocks=textBlocks.map(b=>({y:b.y,markdown:'<p>'+escapeStyled(b.markdown)+'</p>'}));
         blocks.push(...children.map(g=>({y:g.y+g.height,markdown:table(g,true)})));
         cells.push('<td>'+blocks.sort((a,b)=>b.y-a.y).map(b=>b.markdown).join('')+'</td>');
       }
@@ -178,11 +192,25 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
     return '<table><tbody>'+rows.join('')+'</tbody></table>';
   }
   const outside=runs.filter(r=>!roots.some(g=>contains(r,g))&&!distinctRecovered.some(g=>contains(r,g.box))&&!quotes.some(b=>contains(r,b)));
-  const textBlocks=pdfTextBlocks(outside,codeRegions,true,pageBodySize);
+  const textBlocks=pdfTextBlocks(outside,codeRegions,true,pageBodySize,fontNames,drawnRules);
+  const separators=horizontal.filter(rule=>rule.width>pageBodySize*20 &&
+    !textBlocks.some(block=>Math.abs(block.y-rule.y)<pageBodySize*1.7 &&
+      /^(?:\|[\s\S]*\n\|\s*:?-{3}|<table)/.test(block.markdown)) &&
+    !textBlocks.some(block=>Math.abs(block.y-rule.y)<pageBodySize*2.5 &&
+      /(?:<strong>|<u>|안내사항|제외 대상)/.test(block.markdown)) &&
+    !roots.some(grid=>rule.x>=grid.x-1 && rule.x+rule.width<=grid.x+grid.width+1 &&
+      rule.y>=grid.y-1 && rule.y<=grid.y+grid.height+1) &&
+    !distinctRecovered.some(recovered=>inside(rule,recovered.box)) &&
+    !runs.some(run=>Math.abs(run.transform[5]-rule.y)<pageBodySize*2.5 &&
+      run.transform[4]<rule.x+rule.width && run.transform[4]+run.width>rule.x) &&
+    !runs.some(run=>Math.abs(run.transform[5]-rule.y)<run.height*0.8 &&
+      run.transform[4]<rule.x+rule.width && run.transform[4]+run.width>rule.x))
+    .filter((rule,index,array)=>!array.slice(0,index).some(previous=>Math.abs(previous.y-rule.y)<2));
   for(let index=0;index<textBlocks.length-2;index++) {
     const title=textBlocks[index];
-    const titledNotice=/(?:안내사항|유의사항|참고사항)$/.test(title.markdown.trim());
-    const titledExclusions=/^신청 제외 대상\s*\(/.test(title.markdown.trim());
+    const titleText=title.markdown.replace(/<\/?(?:strong|em|u|del)>/g,'').trim();
+    const titledNotice=/(?:안내사항|유의사항|참고사항)$/.test(titleText);
+    const titledExclusions=/^신청 제외 대상\s*\(/.test(titleText);
     if(!titledNotice && !titledExclusions) continue;
     const entries:string[]=[];
     let cursor=index+1;
@@ -205,12 +233,12 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
       cursor++;
     }
     if(entries.length<2) continue;
-    const cell=entries.map(entry=>escape(entry).replace(/\|/g,'\\|')).join('<br>');
-    const header=escape(title.markdown.trim()).replace(/\|/g,'\\|');
+    const cell=entries.map(entry=>escapeStyled(entry).replace(/\|/g,'\\|')).join('<br>');
+    const header=escapeStyled(title.markdown.trim()).replace(/\|/g,'\\|');
     textBlocks.splice(index,cursor-index,{y:title.y,markdown:`| ${header} |\n| --- |\n| ${cell} |`});
   }
-  return [...textBlocks,...roots.map(g=>({y:g.y+g.height,markdown:table(g)})),
+  return [...textBlocks,...separators.map(rule=>({y:rule.y,markdown:'---'})),...roots.map(g=>({y:g.y+g.height,markdown:table(g)})),
     ...distinctRecovered.filter(g=>!quotes.some(b=>inside(g.box,b))).map(g=>({y:g.box.y+g.box.height,markdown:g.markdown})),
-    ...quotes.map(box=>({y:box.y+box.height,markdown:pdfTextBlocks(runs.filter(r=>contains(r,box)),[],false,pageBodySize)
+    ...quotes.map(box=>({y:box.y+box.height,markdown:pdfTextBlocks(runs.filter(r=>contains(r,box)),[],false,pageBodySize,fontNames,drawnRules)
       .map(b=>'> '+b.markdown.replace(/^#{1,6}\s+/,'')).join('\n')}))];
 }
