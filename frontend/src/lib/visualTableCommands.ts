@@ -2,6 +2,9 @@
 // 📊 [OMD-TABLE-CMDS-0001] frontend/src/lib/visualTableCommands.ts
 // 🎯 @KICK  : 위지윅 에디터 표(Table) 셀 이동, 편집, 구조 변경 및 선택 영역 명령 처리
 // 🛡️ @GUARD : Rule 1(단일 주석 관리), 불규칙 행(Ragged Table) 및 범위 초과(RangeError) 완전 방어
+// 🚨 @PATCH : 2026-11-14 — [표 정렬(본문 왼쪽/중앙/오른쪽) 및 행·열 편집 시 수동 조정된 칼럼 너비(widths) 보존]:
+//             1) tableAction에서 visualSchema.nodes.table.create(null, ...)로 표 재생성 시 table.attrs.widths가 null로 초기화되어 조정한 칼럼 위치가 리셋되던 결함 수정
+//             2) 본문 왼쪽/중앙/오른쪽 정렬 및 행 추가/삭제 시 기존 table.attrs.widths를 그대로 유지하고, 열 추가/삭제 시에는 기존 열 비율을 비례 재계산하여 칼럼 위치 변동을 방지
 // 🚨 @PATCH : **2026-11-08** — [표 셀 Shift 연속 누적 선택을 위한 tableContextAt 엔진 신설]:
 //             1) 선택 영역의 $from(시작점)에만 의존하던 tableContext를 임의 ResolvedPos(특히 $head) 기준의 tableContextAt으로 분리·신설
 //             2) Shift+방향키 연속 입력 시 $head가 가리키는 활성 셀 좌표를 실시간 추적하여 2칸, 3칸 이상 무제한 연속 누적 선택 가능하도록 지원
@@ -196,8 +199,32 @@ export function tableAction(action: Action): Command {
       });
     }
 
+    let nextWidths = Array.isArray(table.attrs?.widths) ? [...table.attrs.widths] : null;
+    if (nextWidths) {
+      if (action === 'addColumn') {
+        const newCount = rows[0]?.length || nextWidths.length;
+        const newColShare = Math.round((100 / newCount) * 10) / 10;
+        const remainRatio = (100 - newColShare) / 100;
+        const scaled = nextWidths.map((w: number) => Math.max(1, Math.round(Number(w) * remainRatio * 10) / 10));
+        const insertIdx = Math.min(column + 1, scaled.length);
+        scaled.splice(insertIdx, 0, newColShare);
+        const diff = Math.round((100 - scaled.reduce((a: number, b: number) => a + b, 0)) * 10) / 10;
+        scaled[scaled.length - 1] = Math.round((scaled[scaled.length - 1] + diff) * 10) / 10;
+        nextWidths = scaled;
+      } else if (action === 'deleteColumn' && column < nextWidths.length && nextWidths.length > 1) {
+        nextWidths.splice(column, 1);
+        const total = nextWidths.reduce((a: number, b: number) => a + b, 0);
+        if (total > 0) {
+          const scaled = nextWidths.map((w: number) => Math.max(1, Math.round(((Number(w) * 100) / total) * 10) / 10));
+          const diff = Math.round((100 - scaled.reduce((a: number, b: number) => a + b, 0)) * 10) / 10;
+          scaled[scaled.length - 1] = Math.round((scaled[scaled.length - 1] + diff) * 10) / 10;
+          nextWidths = scaled;
+        }
+      }
+    }
+
     const next = visualSchema.nodes.table.create(
-      null,
+      { ...table.attrs, widths: nextWidths },
       rows.map(cells => visualSchema.nodes.table_row.create(null, cells))
     );
     if (dispatch) {
