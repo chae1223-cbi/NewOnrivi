@@ -4,9 +4,10 @@
  * 🚨 @PATCH : **2026-11-12** — [PDF 중복 표 제거 및 HTML 변환]: 큰 표에 포함된 셀별 중복 블록을 제거하고 복합 열 표를 HTML로 출력해 원래 열 배치를 유지
  * 🚨 @PATCH : **2026-11-12** — [번호 안내 상자 HTML 표 복원]: 제목 아래 연속된 ①·② 안내 항목을 독립 목록 대신 번호 열과 내용 열을 가진 HTML 표로 구성
  * 🚨 @PATCH : **2026-11-12** — [제목·내용 1열 2행 마크다운 표]: 안내·제외대상 상자의 제목과 번호 항목들을 한 열의 머리행·내용행으로 직렬화
- * 🚨 @PATCH : 2026-11-13 — [분리 열 표의 행 경계(segmentedYs) 복원 및 중복 하위 표 출력 차단]:
- *             1) 열 사이에 간격이 있는 다단 표(예: 구분 | 현재 | 미래 비전)에서 열마다 끊어진 동일 높이(Y) 가로선들을 합산하여 행 경계(ys)로 복원함으로써 모든 행이 1행으로 뭉개지던 현상 해결
- *             2) roots와 distinctRecovered 간 포함 관계(inside(r.box, g)) 양방향 중복 필터링 및 모든 행이 비어있는 공백 간격 열 제거로 동일 표가 두 번 출력되거나 빈 간격 열이 생기는 문제 차단
+ * 🚨 @PATCH : 2026-11-13 — [분리 열 표의 행 경계(segmentedYs) 복원 및 클리핑 그룹 표(recovered) 행 수 우선 보존]:
+ *             1) 열 사이에 간격이 있는 다단 표(예: 구분 | 현재 | 미래 비전)에서 열마다 끊어진 동일 높이(Y) 가로선들을 합산하여 행 경계(ys)로 복원하되, 1pt 미만의 이중 테두리(double border)로 인한 가짜 행 추가를 제외하여 단일/이중 행 격자가 다중 행 클리핑 표(인원 현황 등)를 덮어쓰는 현상 방지
+ *             2) distinctRecovered 필터에서 후보 클리핑 표가 전체 표 너비의 85% 이상을 차지하고 grid보다 더 많은 행(candRows > gridRows)을 가지면 클리핑 표(recovered)를 우선 선택하고, 열의 일부분만 차지하는 하위 열 표만 중복 제거하도록 정교화
+ *             3) roots와 distinctRecovered 간 포함 관계(inside(r.box, g)) 양방향 중복 필터링 및 모든 행이 비어있는 공백 간격 열 제거로 동일 표가 두 번 출력되거나 빈 간격 열이 생기는 문제 차단
  * 🚨 @PATCH : 2026-11-13 — [표 셀 내부 및 표 상단 열 정렬 이미지 단일 HTML <table> 통합]:
  *             1) pdfRuledTableBlocks에 embeddedImages를 전달받아 표 클리핑 셀/격자 셀 내부의 이미지와 표 바로 위 열에 배치된 이미지를 HTML <table>의 <td><img .../></td> 행으로 통합
  *             2) 표 내부로 편입된 이미지는 used 플래그로 마킹하여 표 바깥에 개별 이미지 블록으로 중복 출력되지 않도록 처리
@@ -107,7 +108,7 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
       const coveredWidth=matching.reduce((sum,h)=>sum+h.width,0);
       return matching.length>=2 && coveredWidth>=(right-left)*0.5;
     });
-    const ys=unique([...fullYs, ...segmentedYs]);
+    const ys=unique([...fullYs, ...segmentedYs]).filter((y,i,a)=>!i || y-a[i-1]>=3);
     if(ys.length<2 && v.height<100 && !ys.some(y=>close(y,v.y)||close(y,v.y+v.height))) continue;
     // Continuation pages can omit both top and bottom rules. Three matching
     // long vertical rules still establish the same column boundaries.
@@ -219,9 +220,21 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
       ['| '+mdRows[0].join(' | ')+' |','| '+mdRows[0].map(()=>'---').join(' | ')+' |',...mdRows.slice(1).map(r=>'| '+r.join(' | ')+' |')].join('\n');
     recovered.push({box,markdown});
   }
+  const rowCount = (md: string) => {
+    const tr = (md.match(/<tr>/g) || []).length;
+    if (tr > 0) return tr;
+    const lines = md.split('\n').filter(l => l.trim().startsWith('|'));
+    return lines.length >= 2 ? lines.length - 1 : 1;
+  };
   const distinctRecovered=recovered.filter((candidate,index)=>
-    !roots.some(grid=>inside(candidate.box,grid) && (grid.ys.length>2 ||
-      ((candidate.markdown.match(/<tr>/g)||[]).length<3 && !candidate.markdown.includes('<img ')))) &&
+    !roots.some(grid=>{
+      if(!inside(candidate.box,grid)) return false;
+      const candRows=rowCount(candidate.markdown);
+      const gridRows=grid.ys.length-1;
+      const isPartialWidth=candidate.box.width<grid.width*0.85;
+      if(isPartialWidth && gridRows>=2) return true;
+      return gridRows>=candRows && (grid.ys.length>2 || (candRows<3 && !candidate.markdown.includes('<img ')));
+    }) &&
     !recovered.some((other,otherIndex)=>otherIndex!==index &&
       other.box.width*other.box.height>candidate.box.width*candidate.box.height+2 && inside(candidate.box,other.box)));
   roots=roots.filter(g=>!distinctRecovered.some(r=>inside(g,r.box) || inside(r.box,g)));
