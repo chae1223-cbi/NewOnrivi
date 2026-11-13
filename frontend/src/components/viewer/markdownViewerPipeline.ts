@@ -2,6 +2,7 @@
 // 📊 [OMD-CORE-Viewer-Pipeline] frontend/src/components/viewer/markdownViewerPipeline.ts
 // 🎯 @KICK  : 마크다운 뷰어(MarkdownViewer)의 경로 보안 가드(isPathInsideWorkspace), 마크다운 원문 전처리(preprocessMarkdownContent), 줄 번호/개행 Rehype 플러그인 및 전용 CSS 스타일 시트
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 작업장 외부 경로 순회 차단, CommonMark 중첩 코드블록/인용구/위키링크 무결성 보존
+// 🚨 @PATCH : 2026-11-13 — [문단 들여쓰기(onrivi:para-indent) 주석 정제]: preprocessMarkdownContent에서 최상위 및 인용문 내부의 <!-- onrivi:para-indent=N --> 주석을 깔끔하게 소거하여 미리보기 화면에 원문 주석이 노출되지 않도록 방어
 // 🚨 @PATCH : 2026-11-12 — [코드블록 자동 줄바꿈(white-space: pre-wrap) 적용]:
 //             1) .onrivi-content-root pre 및 pre code에 white-space: pre-wrap, word-break: break-all, overflow-wrap: anywhere를 적용하여 긴 문장이 가로 스크롤 없이 자동 줄바꿈되도록 개선
 // 🚨 @PATCH : 2026-11-12 — [번호 목록 직후 동급 글머리 기호의 하위 불릿(circle) 오변환 결함 해결]:
@@ -405,6 +406,8 @@ export function preprocessMarkdownContent(content: string): string {
   // 🛡️ 중첩 리스트 내부의 잘못된 onrivi:list-indent 주석 및 undefined/null/0 주석 정제
   processed = processed.replace(/^[ \t]+<!--\s*onrivi:list-indent=(?:undefined|null|\d+(?:\.\d+)?)\s*-->[ \t]*\r?\n?/gm, '');
   processed = processed.replace(/^<!--\s*onrivi:list-indent=(?:undefined|null|0)\s*-->[ \t]*\r?\n?/gm, '');
+  // 🛡️ 문단 들여쓰기 마커(<!-- onrivi:para-indent=N -->)가 미리보기 원문으로 노출되지 않도록 정제 (인용문 내부 포함)
+  processed = processed.replace(/^(?:[ \t]*>[ \t]*)*<!--\s*onrivi:para-indent=(?:undefined|null|\d+(?:\.\d+)?)\s*-->[ \t]*\r?\n?/gm, '');
 
   const wikiLinkRegex = /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g;
   processed = processed.replace(wikiLinkRegex, (_match, linkTarget, customText) => {

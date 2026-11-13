@@ -2,6 +2,9 @@
  * 프로그램명 : OnriviAuthor 
  * 버전 정보 : 1.0.1
  * 프로그램 ID : oaar-visual-codec
+ * 🚨 @PATCH : **2026-11-13** — [문단(paragraph) 독립 들여쓰기(indentPx) 스키마·직렬화·파싱 지원]:
+ *             1) visualSchema의 paragraph 노드에 indentPx(기본 null) 속성 및 data-onrivi-para-indent / margin-left 스타일을 추가하여 행 시작 Tab/Shift+Tab 시 문단 단위 들여쓰기·내어쓰기 지원
+ *             2) visualSerializer.nodes.paragraph에서 indentPx > 0(list_item 내부 제외)일 때 <!-- onrivi:para-indent=N --> 주석을 직렬화하고, visualTokenizer/parseVisualMarkdown에서 최상위 및 인용문(blockquote) 내부 문단까지 100% 무손실 복원
  * 🚨 @PATCH : **2026-11-12** — [인접 리스트 마크다운 자동 병합 방지 및 list-boundary 경계 보존]:
  *             1) [인접 리스트 경계 마커 직렬화]: doc.forEach 직렬화 시 들여쓰기(indentPx)나 체크박스 서식이 다른 인접 리스트 사이에 <!-- onrivi:list-boundary --> 마커를 자동 삽입하여, 문서 재오픈 시 마크다운 파서가 두 리스트를 하나로 합쳐 후속 리스트가 하위 레벨(◦)로 빨려들어가는 왜곡 현상 원천 차단
  *             2) [리스트 경계 무손실 복원]: createVisualDocumentCodec 파싱 시 list-boundary 마커를 인식하여 불필요한 노드 생성 없이 앞뒤 리스트를 100% 원래 레벨(•) 그대로 온전히 분리 복원
@@ -133,7 +136,27 @@ export const visualSchema = new Schema({
       rawSrc = rawSrc.replace(/^[<"']|[>"']$/g, '').trim();
       return ['img', { ...node.attrs, src: rawSrc }];
     }
-  }).update('list_item',{...markdownSchema.spec.nodes.get('list_item'),attrs:{checked:{default:null}},toDOM:node=>['li',{'data-task-checked':node.attrs.checked===null?undefined:String(node.attrs.checked)},0]}).update('doc', { ...markdownSchema.spec.nodes.get('doc'), attrs: { frontmatter: { default: '' } } }).update('blockquote', { ...markdownSchema.spec.nodes.get('blockquote'), attrs:{alertType:{default:null},indentPx:{default:null}},parseDOM:[{tag:'blockquote',getAttrs:dom=>{const value=(dom as HTMLElement).getAttribute('data-onrivi-quote-indent');return {alertType:(dom as HTMLElement).getAttribute('data-alert-type'),indentPx:value===null?null:Math.max(0,Math.min(4096,Number(value)||0))};}}], toDOM:node=>{
+  }).update('list_item',{...markdownSchema.spec.nodes.get('list_item'),attrs:{checked:{default:null}},toDOM:node=>['li',{'data-task-checked':node.attrs.checked===null?undefined:String(node.attrs.checked)},0]}).update('doc', { ...markdownSchema.spec.nodes.get('doc'), attrs: { frontmatter: { default: '' } } }).update('paragraph', {
+    ...markdownSchema.spec.nodes.get('paragraph'),
+    attrs: { indentPx: { default: null } },
+    parseDOM: [
+      {
+        tag: 'p',
+        getAttrs: dom => {
+          const val = (dom as HTMLElement).getAttribute('data-onrivi-para-indent');
+          return { indentPx: val === null ? null : Math.max(0, Math.min(4096, Number(val) || 0)) };
+        },
+      },
+    ],
+    toDOM: node => [
+      'p',
+      {
+        'data-onrivi-para-indent': node.attrs.indentPx ?? undefined,
+        style: node.attrs.indentPx ? `margin-left:${node.attrs.indentPx}px!important;` : undefined,
+      },
+      0,
+    ],
+  }).update('blockquote', { ...markdownSchema.spec.nodes.get('blockquote'), attrs:{alertType:{default:null},indentPx:{default:null}},parseDOM:[{tag:'blockquote',getAttrs:dom=>{const value=(dom as HTMLElement).getAttribute('data-onrivi-quote-indent');return {alertType:(dom as HTMLElement).getAttribute('data-alert-type'),indentPx:value===null?null:Math.max(0,Math.min(4096,Number(value)||0))};}}], toDOM:node=>{
     const tag=String(node.attrs.alertType || '').trim().toUpperCase();
     const aliases:Record<string,string>={'참고':'NOTE','참조':'NOTE','메모':'NOTE','알림':'NOTE','팁':'TIP','도움말':'TIP','중요':'IMPORTANT','필독':'IMPORTANT','주의':'WARNING','경고':'CAUTION','위험':'CAUTION'};
     const palette:Record<string,[string,string]>={NOTE:['#eff6ff','#3b82f6'],TIP:['#ecfdf5','#10b981'],IMPORTANT:['#faf5ff','#a855f7'],WARNING:['#fffbeb','#f59e0b'],CAUTION:['#fff1f2','#f43f5e']};
@@ -350,7 +373,21 @@ visualTokenizer.parse = (source,environment) => {
   const trailingNewlines = environment?.preserveTrailingNewlines && hasIntentionalBreak ? rawTrailingNewlines : 0;
   const parseSource = rawTrailingNewlines ? source.slice(0, -rawTrailingNewlines) : source;
   const prepared=parseSource.replace(/(\\\r?\n)(\s*)$/, '$1'+tailMarker+'$2').replace(/([^\n]*\S[ \t]+)(\r?\n*)$/, '$1'+tailMarker+'$2');
+  let pendingParaIndent: number | null = null;
   for(const token of tokenizer.parse(prepared,environment)) {
+    if (token.type === 'html_block') {
+      const paraMatch = token.content.trim().match(/^<!--\s*onrivi:para-indent=(\d+(?:\.\d+)?)\s*-->$/);
+      if (paraMatch) {
+        pendingParaIndent = Math.max(0, Math.min(4096, Number(paraMatch[1])));
+        continue;
+      }
+    }
+    if (token.type === 'paragraph_open' && pendingParaIndent !== null) {
+      token.attrSet('data-onrivi-para-indent', String(pendingParaIndent));
+      pendingParaIndent = null;
+    } else if (token.type !== 'paragraph_open' && token.type !== 'inline' && token.type !== 'paragraph_close') {
+      pendingParaIndent = null;
+    }
     if(token.type==='inline' && token.children)for(const child of token.children)if(child.type==='text')child.content=child.content.replaceAll(tailMarker,'');
     const constructor = token.constructor as any;
     if(token.type==='th_close'||token.type==='td_close')result.push(new constructor('paragraph_close','p',-1));
@@ -405,6 +442,7 @@ const visualParser = new MarkdownParser(visualSchema,visualTokenizer,{
   ...defaultMarkdownParser.tokens,
   image:{node:'image',getAttrs:(tok: any)=>({src:tok.attrGet('src'),title:tok.attrGet('title')||null,alt:tok.children?tok.children.map((c: any)=>c.content).join(''):(tok.content||null)})},
   softbreak:{node:'hard_break'},s:{mark:'strike'},u:{mark:'underline'},
+  paragraph:{block:'paragraph',getAttrs:(tok: any)=>{const v=tok.attrGet('data-onrivi-para-indent');return v===null?{}:{indentPx:Math.max(0,Math.min(4096,Number(v)||0))};}},
   math_inline:{node:'visual_inline_math',getAttrs:(token: any)=>({latex: token.content})},
   footnote_ref:{node:'visual_footnote_ref',getAttrs:(token: any)=>({label: token.content})},
   checkbox_inline:{node:'visual_checkbox',getAttrs:(token: any)=>{
@@ -431,6 +469,12 @@ export const visualSerializer = new MarkdownSerializer({
     state.text(value.slice(offset), false);
   },
   hard_break(state) { state.write('\n'); },
+  paragraph(state, node, parent, index) {
+    if (node.attrs.indentPx && Number(node.attrs.indentPx) > 0 && parent?.type !== visualSchema.nodes.list_item) {
+      state.write(`<!-- onrivi:para-indent=${node.attrs.indentPx} -->\n`);
+    }
+    defaultMarkdownSerializer.nodes.paragraph(state, node, parent, index);
+  },
   bullet_list(state,node) {
     if(node.attrs.indentPx && Number(node.attrs.indentPx) > 0 && !(state as any).delim)state.write(`<!-- onrivi:list-indent=${node.attrs.indentPx} -->\n`);
     state.renderList(node.type.create({...node.attrs,tight:true},node.content),'  ',()=>'- ');
@@ -625,9 +669,15 @@ export function createVisualDocumentCodec(markdown: string) {
   if (ranges.length && ranges[0] > 0) ranges.unshift(0);
   let quoteIndent: {value:number;raw:string}|null=null;
   let listIndent: {value:number;raw:string}|null=null;
+  let paraIndent: {value:number;raw:string}|null=null;
   let tableWidths: {value:number[];raw:string}|null=null;
   for (let i = 0; i < ranges.length; i++) {
     let raw = body.slice(offsets[ranges[i]], i + 1 < ranges.length ? offsets[ranges[i + 1]] : body.length);
+    const paraIndentMarker = raw.trim().match(/^<!--\s*onrivi:para-indent=(\d+(?:\.\d+)?)\s*-->$/);
+    if (paraIndentMarker && i + 1 < ranges.length) {
+      paraIndent = { value: Math.max(0, Math.min(4096, Number(paraIndentMarker[1]))), raw };
+      continue;
+    }
     const indentMarker=raw.trim().match(/^<!--\s*onrivi:quote-indent=(\d+(?:\.\d+)?)\s*-->$/);
     if(indentMarker && i+1<ranges.length && /^\s*>/.test(lines[ranges[i+1]])){
       quoteIndent={value:Math.max(0,Math.min(4096,Number(indentMarker[1]))),raw};continue;
@@ -754,6 +804,15 @@ export function createVisualDocumentCodec(markdown: string) {
         node=visualSchema.nodes.source_block.create({source:raw});
       }
       listIndent=null;
+    }
+    if (paraIndent) {
+      raw = paraIndent.raw + raw;
+      if (node.type === visualSchema.nodes.paragraph) {
+        node = node.type.create({ ...node.attrs, indentPx: paraIndent.value }, node.content, node.marks);
+      } else {
+        node = visualSchema.nodes.source_block.create({ source: raw });
+      }
+      paraIndent = null;
     }
     if (tableWidths) {
       const original = tableWidths.raw + raw;

@@ -2,6 +2,10 @@
 // ⚙️ [OMD-CORE-VisualDocCommands-0001] visualDocumentCommands.ts ➔ 시각 에디터 전용 ProseMirror 커맨드 및 정규화 플러그인
 // 🎯 @KICK  : 제목/코드블록/인용구/리스트/구분선/미디어 등 블록 조작 커맨드 및 리스트 정규화 트랜잭션 플러그인 제공
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 VisualDocumentEditor 대형 컴포넌트 모듈화 표준 준수
+// 🚨 @PATCH : 2026-11-13 — [행 시작 Tab 들여쓰기 / Shift+Tab 내어쓰기 전용 paragraphIndent 커맨드 추가]:
+//             1) 커서가 문단 시작(parentOffset === 0)에 있거나 범위 선택(!empty) 상태일 때 Tab으로 문단(paragraph)을 28px 단위로 들여쓰기(indentPx +28px), Shift+Tab으로 내어쓰기(indentPx -28px) 실행
+//             2) 더 이상 내어쓰기가 불가능한 좌측 경계(indentPx <= 0)에서는 노드 구조 변경 없이 제자리 유지 (잔존 레거시 선행 공백만 안전 정제)
+//             3) 선택 영역에 문단과 리스트가 혼재된 경우에도 단일 트랜잭션으로 문단과 리스트(independentIndentListItem / independentLiftListItem)를 함께 일관 이동
 // 🚨 @PATCH : 2026-11-12 — [선택 영역 Tab 시 문단 텍스트 공백 삽입 차단 및 안전 들여쓰기 보장]:
 //             1) safeListIndent에서 리스트 미선택 시 indentDocument 호출을 차단하고 independentIndentListItem 위임 또는 안전 정지 처리
 //             2) indentDocument에서 범위 선택(!empty) 상태일 때 Tab(!backward)으로 문단 본문에 공백 문자를 임의 삽입하여 줄바꿈이 깨지던 결함 원천 차단 (Shift+Tab 시에는 기존 선행 공백 안전 소거)
@@ -27,7 +31,7 @@ import { closeHistory } from 'prosemirror-history';
 import { sinkListItem } from 'prosemirror-schema-list';
 import { visualSchema } from '@/lib/visualDocumentCodec';
 import { quoteIndent } from '@/lib/visualQuoteCommands';
-import { selectedList, indentWholeList, independentIndentListItem } from '@/lib/visualListCommands';
+import { selectedList, indentWholeList, independentIndentListItem, independentLiftListItem } from '@/lib/visualListCommands';
 
 export const slashPattern = new RegExp('(?:^|[\\s(\\[{\'"«“‘])([\\/／][\\p{L}\\p{N}_-]*)$', 'u');
 
@@ -659,6 +663,113 @@ export const safeListIndent: Command = (state, dispatch, currentView) => {
   }
   if (independentIndentListItem(state, dispatch, currentView)) return true;
   return false;
+};
+
+export const paragraphIndent = (backward = false): Command => (state, dispatch, currentView) => {
+  const { $from, from, to, empty } = state.selection;
+  const configured = currentView
+    ? Number.parseInt(currentView.dom.dataset.editorTabSize || getComputedStyle(currentView.dom).tabSize, 10)
+    : 2;
+  const spaceSize = Number.isFinite(configured) ? Math.max(1, Math.min(16, configured)) : 2;
+  const STEP = 28;
+
+  if (empty) {
+    for (let d = $from.depth; d > 0; d--) {
+      if ($from.node(d).type === visualSchema.nodes.list_item) return false;
+    }
+    if ($from.parent.type !== visualSchema.nodes.paragraph) return false;
+    if (!backward && $from.parentOffset !== 0) return false;
+
+    const paraPos = $from.before($from.depth);
+    const current = Math.max(0, Number($from.parent.attrs.indentPx) || 0);
+
+    if (!backward) {
+      const next = Math.min(4096, current + STEP);
+      if (dispatch) {
+        dispatch(state.tr.setNodeMarkup(paraPos, undefined, { ...$from.parent.attrs, indentPx: next }).scrollIntoView());
+      }
+      return true;
+    }
+
+    if (current > 0) {
+      const next = Math.max(0, current - STEP);
+      if (dispatch) {
+        dispatch(
+          state.tr
+            .setNodeMarkup(paraPos, undefined, { ...$from.parent.attrs, indentPx: next === 0 ? null : next })
+            .scrollIntoView()
+        );
+      }
+      return true;
+    }
+
+    const leading = $from.parent.textContent.match(new RegExp('^[ \\t\\u00a0]{1,' + spaceSize + '}'))?.[0];
+    if (leading && ($from.parentOffset === 0 || $from.parentOffset <= leading.length)) {
+      if (dispatch) {
+        dispatch(state.tr.delete(paraPos + 1, paraPos + 1 + leading.length).scrollIntoView());
+      }
+      return true;
+    }
+    return true;
+  }
+
+  const paraTargets: { pos: number; node: DocumentNode }[] = [];
+  let hasList = false;
+  state.doc.nodesBetween(from, to, (node, pos) => {
+    if (node.type === visualSchema.nodes.list_item) {
+      hasList = true;
+      return false;
+    }
+    if (node.type === visualSchema.nodes.paragraph) {
+      if (pos + node.nodeSize > from && pos < to) {
+        paraTargets.push({ pos, node });
+      }
+      return false;
+    }
+  });
+
+  if (!paraTargets.length && !hasList) return false;
+
+  if (dispatch) {
+    const tr = state.tr;
+    const deleteEdits: { pos: number; len: number }[] = [];
+    for (const { pos, node } of paraTargets) {
+      const current = Math.max(0, Number(node.attrs.indentPx) || 0);
+      if (!backward) {
+        const next = Math.min(4096, current + STEP);
+        tr.setNodeMarkup(pos, undefined, { ...node.attrs, indentPx: next });
+      } else if (current > 0) {
+        const next = Math.max(0, current - STEP);
+        tr.setNodeMarkup(pos, undefined, { ...node.attrs, indentPx: next === 0 ? null : next });
+      } else {
+        const leading = node.textContent.match(new RegExp('^[ \\t\\u00a0]{1,' + spaceSize + '}'))?.[0];
+        if (leading?.length) {
+          deleteEdits.push({ pos: pos + 1, len: leading.length });
+        }
+      }
+    }
+    for (const edit of deleteEdits.reverse()) {
+      tr.delete(edit.pos, edit.pos + edit.len);
+    }
+    if (hasList) {
+      const listCmd = backward ? independentLiftListItem : independentIndentListItem;
+      const nextState = tr.steps.length ? state.apply(tr) : state;
+      listCmd(
+        nextState,
+        listTr => {
+          for (const step of listTr.steps) {
+            tr.step(step);
+          }
+          if (listTr.selectionSet) tr.setSelection(listTr.selection);
+        },
+        currentView
+      );
+    }
+    if (tr.steps.length) {
+      dispatch(tr.scrollIntoView());
+    }
+  }
+  return true;
 };
 
 export const indentDocument = (backward = false): Command => (state, dispatch, currentView) => {
