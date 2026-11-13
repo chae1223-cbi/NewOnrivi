@@ -8,6 +8,9 @@
  * 🚨 @PATCH : **2026-11-12** — [위첨자 번호 본문 위치 복원]: 본문보다 위에 그려진 작은 ①·②를 독립 목록으로 만들지 않고 해당 문장 줄에 합침
  * 🚨 @PATCH : **2026-11-12** — [겹친 숫자 누락 글자층 제거]: 같은 위치의 '제 조'처럼 숫자가 빠진 중복 글자층을 완전한 표제에서 분리하지 않도록 정리
  * 🚨 @PATCH : **2026-11-12** — [PDF 박스 안내문 중복 제거]: ▶ 안내문의 전체 텍스트층을 우선하고 겹친 조각층에서 시작 기호와 누락된 끝 글자만 결합
+ * 🚨 @PATCH : 2026-11-13 — [행 끝 위첨자([국정과제24] 등) 인라인 병합 및 고아 목록 들여쓰기 레벨 정규화]:
+ *             1) 제목/문장 우측 끝에 붙은 위첨자(other.end + other.h*2 이내, other.h >= line.h*1.2)도 본문 줄 끝에 인라인 병합되도록 허용 범위 확장
+ *             2) 상위(- ) 없이 중간 들여쓰기(  - /     - )로 시작하는 고아 목록의 최소 들여쓰기를 0(- ) 기준으로 정규화하여 레벨별 글머리 기호(• → ◦ → ▪) 일관성 보장
  * 🚨 @PATCH : 2026-11-13 — [위첨자 각주·보조어(’25.12월, 가칭, 행안부 등) 본문 위치 인라인 병합 확장]:
  *             1) 기호(’*†‡①-⑨)뿐만 아니라 본문 글자 위첨자 높이(other.h >= line.h * 1.3, 0.85*other.h 이내)에 위치한 짧은 위첨자 주석(연도, 가칭, 부처명 등)도 본문 줄의 정확한 X 좌표 위치로 병합하여 별도 줄로 분리되는 현상 해결
  * 🚨 @PATCH : 2026-11-13 — [겹친 조각 병합 시 정상 각주(* / **) 및 좌측 텍스트 누락 결함 수정]:
@@ -122,13 +125,13 @@ export function pdfTextBlocks(items: readonly unknown[], codeRegions: Box[] = []
   for (let i=lines.length-1;i>=0;i--) {
     const line=lines[i];
     const isSymbolSup = line.runs.every(run=>/^[’'*†‡①②③④⑤⑥⑦⑧⑨\s]+$/.test(run.str));
-    const isShortSup = line.h <= 10 &&
+    const isShortSup = line.h <= 11 &&
       !/^\s*(?:※|ㅇ|✔|□|☐|■|•|●|▪|-|\*\s)/.test(line.runs[0]?.str || '') &&
-      line.runs.every(run => run.str.trim().length <= 16);
+      line.runs.every(run => run.str.trim().length <= 20);
     if (!isSymbolSup && !isShortSup) continue;
-    const parent=lines.find(other=>other!==line && other.h>=line.h*1.3 &&
-      line.y>=other.y-other.h*0.25 && line.y-other.y<other.h*0.85 &&
-      line.x>=other.x-2 && line.x<other.end+2);
+    const parent=lines.find(other=>other!==line && other.h>=line.h*1.2 &&
+      line.y>=other.y-other.h*0.25 && line.y-other.y<other.h*0.95 &&
+      line.x>=other.x-2 && line.x<other.end+other.h*2);
     if(parent) { parent.runs.push(...line.runs); lines.splice(i,1); }
   }
   for (const l of lines) { l.runs.sort((a,b) => a.transform[4] - b.transform[4]); l.text = extractPdfPageText(l.runs.map(r => ({ ...r, hasEOL: false }))).replace(/^(.{5,}?)\1$/,'$1'); }
@@ -330,6 +333,27 @@ export function pdfTextBlocks(items: readonly unknown[], codeRegions: Box[] = []
     }
     block.markdown = block.markdown.replace(/\*\*\*\*/g, '').replace(/~~~~/g, '');
   }
+  // 상위(- ) 없이 중간 들여쓰기(  - /     - )로 시작하는 고아 목록은 첫 항목 기준으로 레벨(0, 2, 4...)을 정규화
+  let listStart = -1;
+  const flushList = (end: number) => {
+    if (listStart < 0) return;
+    const indents = blocks.slice(listStart, end).map(b => b.markdown.match(/^(\s*)- /)?.[1].length ?? 0);
+    const minIndent = Math.min(...indents);
+    if (minIndent > 0) {
+      for (let k = listStart; k < end; k++) {
+        blocks[k].markdown = blocks[k].markdown.slice(minIndent);
+      }
+    }
+    listStart = -1;
+  };
+  for (let i = 0; i < blocks.length; i++) {
+    if (/^\s*- /.test(blocks[i].markdown)) {
+      if (listStart < 0) listStart = i;
+    } else {
+      flushList(i);
+    }
+  }
+  flushList(blocks.length);
   return blocks;
 }
 

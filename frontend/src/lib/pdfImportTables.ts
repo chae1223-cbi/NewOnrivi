@@ -4,6 +4,7 @@
  * 🚨 @PATCH : **2026-11-12** — [PDF 중복 표 제거 및 HTML 변환]: 큰 표에 포함된 셀별 중복 블록을 제거하고 복합 열 표를 HTML로 출력해 원래 열 배치를 유지
  * 🚨 @PATCH : **2026-11-12** — [번호 안내 상자 HTML 표 복원]: 제목 아래 연속된 ①·② 안내 항목을 독립 목록 대신 번호 열과 내용 열을 가진 HTML 표로 구성
  * 🚨 @PATCH : **2026-11-12** — [제목·내용 1열 2행 마크다운 표]: 안내·제외대상 상자의 제목과 번호 항목들을 한 열의 머리행·내용행으로 직렬화
+ * 🚨 @PATCH : 2026-11-13 — [복잡한 다중 행/멀티라인 셀 표 HTML <table> 자동 전환 강화]: 마크다운 표(| ... |)로 표현하기 어려운 다중 문단/줄바꿈(<br>) 셀을 포함한 표도 HTML <table>로 자동 변환
  * 🚨 @PATCH : 2026-11-13 — [HTML 표 셀 내 마크다운 서식(** / * / ~~) HTML 태그 복원 및 미세 슬리버 셀 열 밀림 방지]:
  *             1) escapeStyled에서 HTML <table> 셀 내부의 **텍스트**, *텍스트*, ~~텍스트~~를 <strong>, <em>, <del>로 변환하여 표 안에 ** 기호가 그대로 노출되는 결함 해결
  *             2) groups 표 복원 시 3pt 미만 미세 경계 슬리버 셀이 별도 <td>를 생성해 행 전체가 1열씩 우측으로 밀리는 현상 차단 및 열 중점(colMid) 기준 colspan 산출로 열 정렬 무결성 보장
@@ -164,7 +165,8 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
       }
       mdRows.push(md);htmlRows.push('<tr>'+html.join('')+'</tr>');
     }
-    const markdown=merged || xs.length>4 ? '<table><tbody>'+htmlRows.join('')+'</tbody></table>' :
+    const hasMultiLineCell = mdRows.some(r => r.some(c => c.includes('<br>')));
+    const markdown=merged || xs.length>4 || hasMultiLineCell ? '<table><tbody>'+htmlRows.join('')+'</tbody></table>' :
       ['| '+mdRows[0].join(' | ')+' |','| '+mdRows[0].map(()=>'---').join(' | ')+' |',...mdRows.slice(1).map(r=>'| '+r.join(' | ')+' |')].join('\n');
     recovered.push({box,markdown});
   }
@@ -199,7 +201,8 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
       rows.push('<tr>'+cells.join('')+'</tr>');
       markdownRows.push(markdownCells);
     }
-    if(!useHtml) return [
+    const hasMultiLineCell = markdownRows.some(r => r.some(c => c.includes('<br>')));
+    if(!useHtml && !hasMultiLineCell) return [
       '| '+markdownRows[0].join(' | ')+' |',
       '| '+markdownRows[0].map(()=>'---').join(' | ')+' |',
       ...markdownRows.slice(1).map(row=>'| '+row.join(' | ')+' |')
