@@ -8,6 +8,9 @@
  * 🚨 @PATCH : **2026-11-12** — [위첨자 번호 본문 위치 복원]: 본문보다 위에 그려진 작은 ①·②를 독립 목록으로 만들지 않고 해당 문장 줄에 합침
  * 🚨 @PATCH : **2026-11-12** — [겹친 숫자 누락 글자층 제거]: 같은 위치의 '제 조'처럼 숫자가 빠진 중복 글자층을 완전한 표제에서 분리하지 않도록 정리
  * 🚨 @PATCH : **2026-11-12** — [PDF 박스 안내문 중복 제거]: ▶ 안내문의 전체 텍스트층을 우선하고 겹친 조각층에서 시작 기호와 누락된 끝 글자만 결합
+ * 🚨 @PATCH : 2026-11-13 — [겹친 조각 병합 시 정상 각주(* / **) 및 좌측 텍스트 누락 결함 수정]:
+ *             1) 줄 내 텍스트 런(run)들이 실제로 가로로 겹치지 않은 일반 줄은 병합 루프에서 제외하여 정상 문장이 잘려나가는 현상 원천 차단
+ *             2) 겹침이 있는 줄에서도 * / ** 각주 기호가 ▶로 강제 치환되거나 주 텍스트 좌측의 선행 텍스트가 소실되지 않도록 선행 런 보존 로직 추가
  * 🚨 @PATCH : 2026-11-13 — [PDF 인라인 서식 HTML 태그 제거 및 표준 마크다운 태그(** / * / ~~) 전환]:
  *             1) **...**를 <strong>으로 변환하던 후처리 제거 및 PDF 굵게(bold)/기울임(italic)/취소선(crossing) 서식을 HTML 태그(<strong>, <em>, <del>) 대신 순수 마크다운 태그(**텍스트**, *텍스트*, ~~텍스트~~)로 직접 변환
  *             2) 인접한 동일 마크다운 구분자(****, ~~~~) 자동 병합으로 비주얼/소스 에디터 호환성 보장
@@ -125,6 +128,11 @@ export function pdfTextBlocks(items: readonly unknown[], codeRegions: Box[] = []
   lines.sort((a,b) => b.y - a.y);
   for(let index=0;index<lines.length;index++) {
     const line=lines[index];
+    const sortedRuns=[...line.runs].sort((a,b)=>a.transform[4]-b.transform[4]);
+    const hasOverlap=sortedRuns.some((run,idx)=>
+      idx>0 && run.transform[4]<sortedRuns[idx-1].transform[4]+sortedRuns[idx-1].width-2
+    );
+    if(!hasOverlap) continue;
     const bullet=line.runs.find(run=>/^▶|^\*{1,2}\s/.test(run.str));
     const preceding=lines[index-1];
     const followsBullet=preceding?.runs.some(run=>/^▶|^\*{1,2}\s/.test(run.str)) &&
@@ -138,18 +146,32 @@ export function pdfTextBlocks(items: readonly unknown[], codeRegions: Box[] = []
       let overlap=0;
       for(let length=Math.min(bullet.str.length,main.str.length);length>=3;length--)
         if(bullet.str.endsWith(main.str.slice(0,length))) { overlap=length; break; }
-      prefix=overlap ? bullet.str.slice(0,-overlap) : '▶ ';
+      prefix=overlap ? bullet.str.slice(0,-overlap) : (bullet.str.startsWith('▶') ? '▶ ' : bullet.str);
       const punctuation=line.runs.filter(run=>run!==bullet && run!==main && /^[‧·•]$/.test(run.str) &&
         run.transform[4]>bullet.transform[4] && run.transform[4]<main.transform[4]+3)
         .map(run=>run.str).join('');
       if(punctuation) prefix=prefix.trimEnd()+punctuation;
     }
-    let result=prefix+main.str;
-    let end=main.transform[4]+main.width;
-    for(const run of line.runs.sort((a,b)=>a.transform[4]-b.transform[4])) {
+    const mainStart=main.transform[4];
+    const mainEnd=main.transform[4]+main.width;
+    let leading='';
+    let leadingEnd=-Infinity;
+    for(const run of sortedRuns) {
       if(run===bullet || run===main || /^[‧·•]$/.test(run.str)) continue;
       const right=run.transform[4]+run.width;
-      if(run.transform[4]<end-2 && right<=end+2) continue;
+      if(right<=mainStart+2) {
+        if(run.transform[4]<leadingEnd-2 && right<=leadingEnd+2) continue;
+        leading+=(leading && run.transform[4]>leadingEnd+2 ? ' ' : '')+run.str;
+        leadingEnd=Math.max(leadingEnd,right);
+      }
+    }
+    let result=(prefix ? (leading ? prefix+leading+' ' : prefix) : (leading ? leading+(mainStart>leadingEnd+2 ? ' ' : '') : ''))+main.str;
+    let end=mainEnd;
+    for(const run of sortedRuns) {
+      if(run===bullet || run===main || /^[‧·•]$/.test(run.str)) continue;
+      const right=run.transform[4]+run.width;
+      if(right<=mainStart+2) continue;
+      if(run.transform[4]>=mainStart-2 && run.transform[4]<end-2 && right<=end+2) continue;
       let overlap=0;
       if(run.transform[4]<end-2)
         for(let length=Math.min(result.length,run.str.length);length>=3;length--)
