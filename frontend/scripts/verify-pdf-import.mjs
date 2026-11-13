@@ -40,7 +40,7 @@ if(process.argv[2]) {
   assert(output.includes('명확히 했습니다.'));
   assert(!output.includes('2. 확히'));
   assert(output.includes('```text'));
-  assert(output.includes('<strong>온리비 어서(Onrivi Author)</strong>'));
+  assert(output.includes('**온리비 어서(Onrivi Author)**'));
   assert(!output.includes('다 이어그램'));
   assert(output.includes('되지 않았거든요'));
   assert(output.includes('늦어지거나 인증'));

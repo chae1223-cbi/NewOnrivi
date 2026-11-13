@@ -8,6 +8,9 @@
  * 🚨 @PATCH : **2026-11-12** — [위첨자 번호 본문 위치 복원]: 본문보다 위에 그려진 작은 ①·②를 독립 목록으로 만들지 않고 해당 문장 줄에 합침
  * 🚨 @PATCH : **2026-11-12** — [겹친 숫자 누락 글자층 제거]: 같은 위치의 '제 조'처럼 숫자가 빠진 중복 글자층을 완전한 표제에서 분리하지 않도록 정리
  * 🚨 @PATCH : **2026-11-12** — [PDF 박스 안내문 중복 제거]: ▶ 안내문의 전체 텍스트층을 우선하고 겹친 조각층에서 시작 기호와 누락된 끝 글자만 결합
+ * 🚨 @PATCH : 2026-11-13 — [PDF 인라인 서식 HTML 태그 제거 및 표준 마크다운 태그(** / * / ~~) 전환]:
+ *             1) **...**를 <strong>으로 변환하던 후처리 제거 및 PDF 굵게(bold)/기울임(italic)/취소선(crossing) 서식을 HTML 태그(<strong>, <em>, <del>) 대신 순수 마크다운 태그(**텍스트**, *텍스트*, ~~텍스트~~)로 직접 변환
+ *             2) 인접한 동일 마크다운 구분자(****, ~~~~) 자동 병합으로 비주얼/소스 에디터 호환성 보장
  * 🚨 @PATCH : 2026-11-13 — [겹친 표·목록 문구 복원] 동일 위치의 문장층 중 괄호·쉼표가 보존된 글자층을 우선하고 * 목록의 중복 조각과 줄바꿈 띄어쓰기를 보정
  * 🚨 @PATCH : 2026-11-13 — [PDF 글자 서식 복원] 글꼴과 그려진 선의 위치로 강조·기울임·밑줄·취소선을 판별하여 원문 단어에 적용
  * 🚨 @PATCH : 2026-11-13 — [보고서 본문 줄 연결] 굵은 서식의 ㅇ 항목 둘째 줄을 제목으로 오인하지 않고 앞 문장에 연결
@@ -268,9 +271,6 @@ export function pdfTextBlocks(items: readonly unknown[], codeRegions: Box[] = []
         .replace(/^[•●▪]\s*/, '- ') : line.text.replace(/^[•●▪]\s*/, '- '))});
     }
   }
-  for (const block of blocks) {
-    if (!block.markdown.startsWith('```')) block.markdown=block.markdown.replace(/\*\*([^*\n]+)\*\*/g,(_,value:string)=>'<strong>'+value.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</strong>');
-  }
   for (const [index, block] of blocks.entries()) {
     if (block.markdown.startsWith('```') || block.markdown.startsWith('|') || block.markdown.startsWith('<table')) continue;
     const lowerBound=blocks[index+1]?.y ?? -Infinity;
@@ -291,13 +291,15 @@ export function pdfTextBlocks(items: readonly unknown[], codeRegions: Box[] = []
       const first=block.markdown.indexOf(needle);
       if(first<0 || block.markdown.indexOf(needle,first+needle.length)>=0 ||
         block.markdown.slice(0,first).endsWith('<')) continue;
-      let styled=needle.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-      if(bold) styled=`<strong>${styled}</strong>`;
-      if(italic) styled=`<em>${styled}</em>`;
-      if(underlined) styled=`<u>${styled}</u>`;
-      if(crossing) styled=`<del>${styled}</del>`;
+      let styled = underlined
+        ? `<u>${needle.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</u>`
+        : needle;
+      if(bold) styled=`**${styled}**`;
+      if(italic) styled=`*${styled}*`;
+      if(crossing) styled=`~~${styled}~~`;
       block.markdown=block.markdown.slice(0,first)+styled+block.markdown.slice(first+needle.length);
     }
+    block.markdown = block.markdown.replace(/\*\*\*\*/g, '').replace(/~~~~/g, '');
   }
   return blocks;
 }

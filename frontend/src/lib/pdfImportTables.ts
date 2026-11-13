@@ -4,6 +4,7 @@
  * 🚨 @PATCH : **2026-11-12** — [PDF 중복 표 제거 및 HTML 변환]: 큰 표에 포함된 셀별 중복 블록을 제거하고 복합 열 표를 HTML로 출력해 원래 열 배치를 유지
  * 🚨 @PATCH : **2026-11-12** — [번호 안내 상자 HTML 표 복원]: 제목 아래 연속된 ①·② 안내 항목을 독립 목록 대신 번호 열과 내용 열을 가진 HTML 표로 구성
  * 🚨 @PATCH : **2026-11-12** — [제목·내용 1열 2행 마크다운 표]: 안내·제외대상 상자의 제목과 번호 항목들을 한 열의 머리행·내용행으로 직렬화
+ * 🚨 @PATCH : 2026-11-13 — [표 인접 구분선·제목 판별 시 마크다운 인라인 서식(** / * / ~~) 인식 추가]
  * 🚨 @PATCH : 2026-11-13 — [PDF 서식·구분선 복원] 글꼴과 선 정보를 셀 변환에 전달하고 독립 가로선을 마크다운 구분선으로 출력
  * 🚨 @PATCH : 2026-11-13 — [행별 표 구조 우선] 전체 열만 인식한 단일 행 격자보다 클리핑 셀의 실제 여러 행을 우선하여 숫자 열 합침 방지
  * 🚨 @PATCH : 2026-11-13 — [표 테두리 오차 보정] 3pt 미만의 중복 세로 경계를 제거하여 빈 열이 끼어드는 현상 완화
@@ -197,7 +198,7 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
     !textBlocks.some(block=>Math.abs(block.y-rule.y)<pageBodySize*1.7 &&
       /^(?:\|[\s\S]*\n\|\s*:?-{3}|<table)/.test(block.markdown)) &&
     !textBlocks.some(block=>Math.abs(block.y-rule.y)<pageBodySize*2.5 &&
-      /(?:<strong>|<u>|안내사항|제외 대상)/.test(block.markdown)) &&
+      /(?:\*\*|<strong>|<u>|안내사항|제외 대상)/.test(block.markdown)) &&
     !roots.some(grid=>rule.x>=grid.x-1 && rule.x+rule.width<=grid.x+grid.width+1 &&
       rule.y>=grid.y-1 && rule.y<=grid.y+grid.height+1) &&
     !distinctRecovered.some(recovered=>inside(rule,recovered.box)) &&
@@ -208,7 +209,7 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
     .filter((rule,index,array)=>!array.slice(0,index).some(previous=>Math.abs(previous.y-rule.y)<2));
   for(let index=0;index<textBlocks.length-2;index++) {
     const title=textBlocks[index];
-    const titleText=title.markdown.replace(/<\/?(?:strong|em|u|del)>/g,'').trim();
+    const titleText=title.markdown.replace(/<\/?(?:strong|em|u|del)>|\*\*|\*|~~/g,'').trim();
     const titledNotice=/(?:안내사항|유의사항|참고사항)$/.test(titleText);
     const titledExclusions=/^신청 제외 대상\s*\(/.test(titleText);
     if(!titledNotice && !titledExclusions) continue;
