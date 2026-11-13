@@ -1,4 +1,5 @@
 // ====================================================================
+// 🚨 @PATCH : 2026-11-14 — [HWP 그림·문자 서식 복원] 본문 그림은 마크다운 이미지로 출력하고 표 안 그림은 HTML로 유지하며 글자 모양 포인터별 굵게·기울임·밑줄·취소선을 보존
 // 🚨 @PATCH : 2026-11-13 — [PDF 표 내부·상단 이미지 단일 HTML <table> 통합]: 페이지 내 이미지 박스를 먼저 크롭하여 pdfRuledTableBlocks에 전달하고, 표 셀로 편입된 이미지(used)는 개별 이미지 블록 중복 생성에서 제외
 // 🚨 @PATCH : 2026-11-13 — [PDF 글꼴 서식 복원] 내장 글꼴 이름을 페이지 변환기에 전달해 강조와 기울임을 원문 위치에 적용
 // 🚨 @PATCH : **2026-11-07** — [PDF 페이지 간 마크다운 개행 분리]: 페이지 경계에서 serializePdfBlocks 반환값 뒤에 \n\n을 부여하여 다음 페이지 요소와 문단 병합 방지
@@ -30,6 +31,7 @@ import { importHwpx } from './hwpxImporter';
 import { importDoc } from './docImporter';
 import { convertFormCheckboxes } from './importCheckboxes';
 import { cleanHwpText } from './hwpTextCleanup';
+import { logError } from './errorDiagnostics';
 
 // Next.js 14 (Webpack 5) 환경에서 mammoth.js가 내부적으로 Buffer를 참조할 때 발생하는 오류 방지용 폴리필
 if (typeof globalThis !== 'undefined' && !(globalThis as any).Buffer) {
@@ -354,6 +356,14 @@ async function importHwp(
         if (Array.isArray(value)) return value.some(containsNestedTable);
         return Object.values(value).some(containsNestedTable);
       };
+      /**
+       * ========================================================================================
+       * [extractTextNode] HWP 문단의 문자 모양과 그림 제어 위치를 유지해 마크다운 또는 표 HTML로 변환합니다.
+       * @param obj - HWP 파서가 반환한 문단·표·그림 노드
+       * @param htmlContext - HTML 표 셀 안에서 호출했는지 여부
+       * @returns 서식과 제어 위치가 보존된 문서 조각
+       * ========================================================================================
+       */
       const extractTextNode = (obj: any, htmlContext = false): string => {
           let result = '';
           if (typeof obj === 'string') {
@@ -373,6 +383,39 @@ async function importHwp(
               if (obj.value === 9) return '\t';
               if (obj.value === 10 || obj.value === 13) return '\n';
               return '';
+            }
+            if (Array.isArray(obj.content) && Array.isArray(obj.shapeBuffer) && Array.isArray(obj.controls)) {
+              let result = '', segment = '', activeAttr = 0, pointer = 0, controlIndex = 0;
+              const pointers = obj.shapeBuffer.slice().sort((a: any, b: any) => a.pos - b.pos);
+              const flush = () => {
+                if (!segment) return;
+                const value = cleanHwpText(segment);
+                const leading = value.match(/^\s*/)?.[0] || '';
+                const rest = value.slice(leading.length);
+                const trailing = rest.match(/\s*$/)?.[0] || '';
+                let styled = rest.slice(0,rest.length-trailing.length);
+                if (htmlContext || activeAttr) styled = escapeHtmlText(styled);
+                if (styled && (activeAttr & 2)) styled = `<strong>${styled}</strong>`;
+                if (styled && (activeAttr & 1)) styled = `<em>${styled}</em>`;
+                if (styled && ((activeAttr >>> 2) & 3)) styled = `<u>${styled}</u>`;
+                if (styled && ((activeAttr >>> 26) & 15)) styled = `<del>${styled}</del>`;
+                result += leading + styled + trailing;
+                segment = '';
+              };
+              obj.content.forEach((char: any, index: number) => {
+                while (pointer + 1 < pointers.length && pointers[pointer + 1].pos <= index) pointer++;
+                const nextAttr = hwpDoc.info?.charShapes?.[pointers[pointer]?.shapeIndex]?.attr || 0;
+                if (nextAttr !== activeAttr) { flush(); activeAttr = nextAttr; }
+                if (char.type === 2) {
+                  flush();
+                  result += extractTextNode(obj.controls[controlIndex++], htmlContext);
+                } else if (typeof char.value === 'string') segment += char.value;
+                else if (char.value === 30 || char.value === 31) segment += ' ';
+                else if (char.value === 9) segment += '\t';
+                else if (char.value === 10 || char.value === 13) segment += '\n';
+              });
+              flush();
+              return result + '\n\n';
             }
             // Table (id = 543974004)
             if (isHwpTable(obj)) {
@@ -422,7 +465,7 @@ async function importHwp(
               }
               const grid = Array.from({ length: rowCount }, () => Array(columnCount).fill(''));
               for (const cell of cells) {
-                grid[cell.row][cell.column] = extractTextNode(cell.value).trim().replace(/\|/g, '\\|').replace(/\r?\n+/g, '<br>');
+                grid[cell.row][cell.column] = extractTextNode(cell.value, true).trim().replace(/\|/g, '\\|').replace(/\r?\n+/g, '<br>');
               }
               let mdTable = '\n\n';
               grid.forEach((row: any, rIdx: number) => {
@@ -446,12 +489,10 @@ async function importHwp(
             }
             
             // Picture (type = 1667854372 or GenShapeObject = 544174951)
-            if (obj.type === 611346787 || obj.type === 1667854372 || obj.id === 544174951) {
-              let placeholder = '::HWP_IMAGE_PLACEHOLDER::';
-              if (obj.info && obj.info.binID !== undefined) {
-                placeholder = '::HWP_IMAGE_PLACEHOLDER_' + obj.info.binID + '::';
-              }
-              return '\n\n' + placeholder + '\n\n';
+            if ((obj.type === 611346787 || obj.type === 1667854372 || obj.id === 544174951) &&
+                Number.isInteger(obj.info?.binID)) {
+              const prefix = htmlContext ? '::HWP_HTML_IMAGE_PLACEHOLDER_' : '::HWP_IMAGE_PLACEHOLDER_';
+              return '\n\n' + prefix + obj.info.binID + '::\n\n';
             }
 
             if (obj.text) result += extractTextNode(obj.text, htmlContext);
@@ -560,6 +601,7 @@ async function importHwp(
     // 💡 3단계: OLE BinData 내 첨부 이미지 디코딩 및 미디어 결합 파이프라인
     const imageTags: string[] = [];
     const imageMap: Record<number, string> = {};
+    const htmlImageMap: Record<number, string> = {};
     let parsedDoc = (view as any)._parsedHwpDoc;
 
     try {
@@ -592,11 +634,13 @@ async function importHwp(
           
           try {
             const src = await imageSaveCallback(base64, mimeType);
-            const imgTag = `<img src="${src}" alt="image_${i}" style="max-width: 100%; height: auto;" />`;
+            const imgTag = `![HWP 그림 ${i+1}](${src})`;
             imageTags.push(imgTag);
             imageMap[i] = imgTag;
+            htmlImageMap[i] = `<img src="${src.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" alt="HWP 그림 ${i+1}" style="max-width: 100%; height: auto;" />`;
           } catch (e) {
-            console.error('이미지 저장 콜백 실패 (hwp.js):', e);
+            logError({file:'frontend/src/lib/fileImporter.ts',func:'importHwp',doing:'HWP 내장 그림을 미디어 폴더에 저장하는 작업',target:`BinData ${i+1}`,error:e});
+            throw e;
           }
         }
       } else {
@@ -645,7 +689,7 @@ async function importHwp(
             
             try {
               const src = await imageSaveCallback(base64, mimeType);
-              const imgTag = `<img src="${src}" alt="${entry.name.split('/').pop()}" style="max-width: 100%; height: auto;" />`;
+              const imgTag = `![HWP 그림 ${entry.name}](${src})`;
               imageTags.push(imgTag);
               
               // HEX ID 추출 (예: BIN000A.bmp -> A -> 10)
@@ -653,6 +697,7 @@ async function importHwp(
               if (binMatch) {
                 const binId = parseInt(binMatch[1], 16) - 1; // 1-based index in file -> 0-based binID
                 imageMap[binId] = imgTag;
+                htmlImageMap[binId] = `<img src="${src.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" alt="HWP 그림 ${binId+1}" style="max-width: 100%; height: auto;" />`;
               }
             } catch (saveError) { throw saveError; }
           }
@@ -667,12 +712,15 @@ async function importHwp(
     // 1. binID 매핑된 플레이스홀더 치환
     for (const [binId, imgTag] of Object.entries(imageMap)) {
       const ph = `::HWP_IMAGE_PLACEHOLDER_${binId}::`;
-      if (replacedText.includes(ph)) usedImages.add(imgTag);
+      const htmlPh = `::HWP_HTML_IMAGE_PLACEHOLDER_${binId}::`;
+      if (replacedText.includes(ph) || replacedText.includes(htmlPh)) usedImages.add(imgTag);
       replacedText = replacedText.replaceAll(ph, imgTag);
+      replacedText = replacedText.replaceAll(htmlPh, htmlImageMap[Number(binId)] || imgTag);
     }
     
     // 2. 매핑되지 못한 남은 특정 ID 플레이스홀더 정리
     replacedText = replacedText.replace(/::HWP_IMAGE_PLACEHOLDER_\d+::/g, '');
+    replacedText = replacedText.replace(/::HWP_HTML_IMAGE_PLACEHOLDER_\d+::/g, '');
     
     // 3. 범용 플레이스홀더 (fallbackText 등에서 삽입한 경우) 순차 치환
     let imageIdx = 0;
@@ -725,7 +773,8 @@ async function importHwp(
       if (previous !== undefined) {
         const previousIsTable = isMarkdownTableRow(previous);
         const currentIsTable = isMarkdownTableRow(line);
-        if (previousIsTable !== currentIsTable || (pendingBlank && previousIsTable && currentIsTable)) {
+        const imageBoundary = /^!\[HWP 그림 /.test(line.trim()) || /^!\[HWP 그림 /.test(previous.trim());
+        if (previousIsTable !== currentIsTable || imageBoundary || (pendingBlank && previousIsTable && currentIsTable)) {
           compactLines.push('');
         }
       }
