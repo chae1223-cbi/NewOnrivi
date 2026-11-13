@@ -8,6 +8,8 @@
  * 🚨 @PATCH : **2026-11-12** — [위첨자 번호 본문 위치 복원]: 본문보다 위에 그려진 작은 ①·②를 독립 목록으로 만들지 않고 해당 문장 줄에 합침
  * 🚨 @PATCH : **2026-11-12** — [겹친 숫자 누락 글자층 제거]: 같은 위치의 '제 조'처럼 숫자가 빠진 중복 글자층을 완전한 표제에서 분리하지 않도록 정리
  * 🚨 @PATCH : **2026-11-12** — [PDF 박스 안내문 중복 제거]: ▶ 안내문의 전체 텍스트층을 우선하고 겹친 조각층에서 시작 기호와 누락된 끝 글자만 결합
+ * 🚨 @PATCH : 2026-11-13 — [위첨자 각주·보조어(’25.12월, 가칭, 행안부 등) 본문 위치 인라인 병합 확장]:
+ *             1) 기호(’*†‡①-⑨)뿐만 아니라 본문 글자 위첨자 높이(other.h >= line.h * 1.3, 0.85*other.h 이내)에 위치한 짧은 위첨자 주석(연도, 가칭, 부처명 등)도 본문 줄의 정확한 X 좌표 위치로 병합하여 별도 줄로 분리되는 현상 해결
  * 🚨 @PATCH : 2026-11-13 — [겹친 조각 병합 시 정상 각주(* / **) 및 좌측 텍스트 누락 결함 수정]:
  *             1) 줄 내 텍스트 런(run)들이 실제로 가로로 겹치지 않은 일반 줄은 병합 루프에서 제외하여 정상 문장이 잘려나가는 현상 원천 차단
  *             2) 겹침이 있는 줄에서도 * / ** 각주 기호가 ▶로 강제 치환되거나 주 텍스트 좌측의 선행 텍스트가 소실되지 않도록 선행 런 보존 로직 추가
@@ -119,9 +121,14 @@ export function pdfTextBlocks(items: readonly unknown[], codeRegions: Box[] = []
   }
   for (let i=lines.length-1;i>=0;i--) {
     const line=lines[i];
-    if(line.h>10 || !line.runs.every(run=>/^[’'*†‡①②③④⑤⑥⑦⑧⑨\s]+$/.test(run.str))) continue;
-    const parent=lines.find(other=>other!==line && other.h>line.h*1.3 &&
-      Math.abs(other.y-line.y)<other.h*0.6 && line.x>=other.x-2 && line.x<other.end+2);
+    const isSymbolSup = line.runs.every(run=>/^[’'*†‡①②③④⑤⑥⑦⑧⑨\s]+$/.test(run.str));
+    const isShortSup = line.h <= 10 &&
+      !/^\s*(?:※|ㅇ|✔|□|☐|■|•|●|▪|-|\*\s)/.test(line.runs[0]?.str || '') &&
+      line.runs.every(run => run.str.trim().length <= 16);
+    if (!isSymbolSup && !isShortSup) continue;
+    const parent=lines.find(other=>other!==line && other.h>=line.h*1.3 &&
+      line.y>=other.y-other.h*0.25 && line.y-other.y<other.h*0.85 &&
+      line.x>=other.x-2 && line.x<other.end+2);
     if(parent) { parent.runs.push(...line.runs); lines.splice(i,1); }
   }
   for (const l of lines) { l.runs.sort((a,b) => a.transform[4] - b.transform[4]); l.text = extractPdfPageText(l.runs.map(r => ({ ...r, hasEOL: false }))).replace(/^(.{5,}?)\1$/,'$1'); }
