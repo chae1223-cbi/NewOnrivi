@@ -8,6 +8,7 @@
  * 🚨 @PATCH : **2026-11-12** — [위첨자 번호 본문 위치 복원]: 본문보다 위에 그려진 작은 ①·②를 독립 목록으로 만들지 않고 해당 문장 줄에 합침
  * 🚨 @PATCH : **2026-11-12** — [겹친 숫자 누락 글자층 제거]: 같은 위치의 '제 조'처럼 숫자가 빠진 중복 글자층을 완전한 표제에서 분리하지 않도록 정리
  * 🚨 @PATCH : **2026-11-12** — [PDF 박스 안내문 중복 제거]: ▶ 안내문의 전체 텍스트층을 우선하고 겹친 조각층에서 시작 기호와 누락된 끝 글자만 결합
+ * 🚨 @PATCH : 2026-11-13 — [겹친 표·목록 문구 복원] 동일 위치의 문장층 중 괄호·쉼표가 보존된 글자층을 우선하고 * 목록의 중복 조각과 줄바꿈 띄어쓰기를 보정
  */
 import { extractPdfPageText } from './pdfImportText';
 
@@ -17,7 +18,22 @@ type Box = { x: number; y: number; width: number; height: number };
 /** Remove shadow/overprint runs at the same position, retaining genuine repetitions. */
 export function deduplicatePdfRuns(items: readonly unknown[]): Run[] {
   const runs=(items as Run[]).filter(r=>typeof r.str==='string'&&r.str.trim()&&r.transform);
-  return runs.filter((run,index)=>!runs.some((other,j)=>{
+  const redundant=new Set(runs.filter(run=>runs.some(prefix=>{
+    if(prefix===run || !/^[가-힣]{1,3}$/.test(prefix.str) ||
+      Math.abs(prefix.transform[5]-run.transform[5])>2.5 ||
+      Math.abs(prefix.transform[4]-run.transform[4])>2 ||
+      !run.str.startsWith(prefix.str+' ')) return false;
+    const remaining=run.str.slice(prefix.str.length).trimStart();
+    if(remaining.length<8) return false;
+    return runs.some(suffix=>suffix!==run && suffix!==prefix &&
+      Math.abs(suffix.transform[5]-run.transform[5])<2.5 &&
+      suffix.transform[4]>prefix.transform[4]+prefix.width &&
+      suffix.transform[4]<=run.transform[4]+run.width+3 &&
+      suffix.str.startsWith(remaining) &&
+      suffix.transform[4]+suffix.width>run.transform[4]+run.width+3);
+  })));
+  return runs.filter((run,index)=>!redundant.has(run) && !runs.some((other,j)=>{
+    if(redundant.has(other)) return false;
     if(j===index || Math.abs(run.transform[5]-other.transform[5])>2.5) return false;
     const left=Math.max(run.transform[4],other.transform[4]);
     const right=Math.min(run.transform[4]+run.width,other.transform[4]+other.width);
@@ -25,6 +41,12 @@ export function deduplicatePdfRuns(items: readonly unknown[]): Run[] {
     if(run.str===other.str) return j<index && overlap>0.9;
     const normalizedRun=run.str.replace(/[\s,.:()\[\]{}]/g,'');
     const normalizedOther=other.str.replace(/[\s,.:()\[\]{}]/g,'');
+    const sameBox=Math.abs(run.transform[4]-other.transform[4])<2 && Math.abs(run.width-other.width)<2;
+    if(sameBox && normalizedRun===normalizedOther && normalizedRun.length>=2) {
+      const punctuation=(value:string)=>(value.match(/[,.:;()\[\]{}]/g)||[]).length;
+      return punctuation(other.str)>punctuation(run.str) ||
+        (punctuation(other.str)===punctuation(run.str) && j<index);
+    }
     if(overlap>0.85 && normalizedRun.length>=4 && normalizedOther.length>normalizedRun.length &&
       normalizedOther.includes(normalizedRun)) return true;
     const withoutDigits=(value:string)=>value.replace(/[\s\d,.:()\[\]{}]/g,'');
@@ -44,7 +66,7 @@ function wrapSeparator(previous: string, next: string, remaining: number, fontSi
   if (/^[가-힣]{1,2}$/.test(next) || /^(?:니다|습니다|어요)/.test(next)) return '';
   if (/^[가-힣]$/.test(word) && !/^[수것등중내그이]$/.test(word) && /^[가-힣]/.test(next)) return '';
   // Apply linguistic hints only at a physical wrap, never across the document.
-  const boundary=/(?:거나|로만|되지|[가-힣]+적)$/.test(word) ||
+  const boundary=/(?:거나|로만|되지|하며|되고|[가-힣]+적)$/.test(word) ||
     /^(?:정부|정책|클라우드|기계|텍스트)$/.test(word) || /[가-힣]{2,}가$/.test(word) || /^[#'"“‘]/.test(next);
   return boundary || /[,.!?。]$/.test(previous) || remaining>fontSize*0.95 ? ' ' : '';
 }
@@ -93,9 +115,9 @@ export function pdfTextBlocks(items: readonly unknown[], codeRegions: Box[] = []
   lines.sort((a,b) => b.y - a.y);
   for(let index=0;index<lines.length;index++) {
     const line=lines[index];
-    const bullet=line.runs.find(run=>run.str.startsWith('▶'));
+    const bullet=line.runs.find(run=>/^▶|^\*{1,2}\s/.test(run.str));
     const preceding=lines[index-1];
-    const followsBullet=preceding?.runs.some(run=>run.str.startsWith('▶')) &&
+    const followsBullet=preceding?.runs.some(run=>/^▶|^\*{1,2}\s/.test(run.str)) &&
       preceding.y-line.y<line.h*1.65;
     if(!bullet && !followsBullet) continue;
     const main=line.runs.filter(run=>run!==bullet && run.str.length>5)
