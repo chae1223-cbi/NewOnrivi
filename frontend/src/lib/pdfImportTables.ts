@@ -4,6 +4,9 @@
  * 🚨 @PATCH : **2026-11-12** — [PDF 중복 표 제거 및 HTML 변환]: 큰 표에 포함된 셀별 중복 블록을 제거하고 복합 열 표를 HTML로 출력해 원래 열 배치를 유지
  * 🚨 @PATCH : **2026-11-12** — [번호 안내 상자 HTML 표 복원]: 제목 아래 연속된 ①·② 안내 항목을 독립 목록 대신 번호 열과 내용 열을 가진 HTML 표로 구성
  * 🚨 @PATCH : **2026-11-12** — [제목·내용 1열 2행 마크다운 표]: 안내·제외대상 상자의 제목과 번호 항목들을 한 열의 머리행·내용행으로 직렬화
+ * 🚨 @PATCH : 2026-11-13 — [분리 열 표의 행 경계(segmentedYs) 복원 및 중복 하위 표 출력 차단]:
+ *             1) 열 사이에 간격이 있는 다단 표(예: 구분 | 현재 | 미래 비전)에서 열마다 끊어진 동일 높이(Y) 가로선들을 합산하여 행 경계(ys)로 복원함으로써 모든 행이 1행으로 뭉개지던 현상 해결
+ *             2) roots와 distinctRecovered 간 포함 관계(inside(r.box, g)) 양방향 중복 필터링 및 모든 행이 비어있는 공백 간격 열 제거로 동일 표가 두 번 출력되거나 빈 간격 열이 생기는 문제 차단
  * 🚨 @PATCH : 2026-11-13 — [표 셀 내부 및 표 상단 열 정렬 이미지 단일 HTML <table> 통합]:
  *             1) pdfRuledTableBlocks에 embeddedImages를 전달받아 표 클리핑 셀/격자 셀 내부의 이미지와 표 바로 위 열에 배치된 이미지를 HTML <table>의 <td><img .../></td> 행으로 통합
  *             2) 표 내부로 편입된 이미지는 used 플래그로 마킹하여 표 바깥에 개별 이미지 블록으로 중복 출력되지 않도록 처리
@@ -96,8 +99,15 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
     const xs=unique(peers.map(p=>p.x));
     if(xs.length<3) continue;
     const left=xs[0], right=xs.at(-1)!;
-    const ys=unique(horizontal.filter(h=>h.x<=left+1 && h.x+h.width>=right-1 &&
-      h.y>=v.y-1 && h.y<=v.y+v.height+1).map(h=>h.y));
+    const inBand=horizontal.filter(h=>h.x>=left-2 && h.x+h.width<=right+2 &&
+      h.y>=v.y-1 && h.y<=v.y+v.height+1);
+    const fullYs=inBand.filter(h=>h.x<=left+1 && h.x+h.width>=right-1).map(h=>h.y);
+    const segmentedYs=unique(inBand.map(h=>h.y)).filter(y=>{
+      const matching=inBand.filter(h=>close(h.y,y));
+      const coveredWidth=matching.reduce((sum,h)=>sum+h.width,0);
+      return matching.length>=2 && coveredWidth>=(right-left)*0.5;
+    });
+    const ys=unique([...fullYs, ...segmentedYs]);
     if(ys.length<2 && v.height<100 && !ys.some(y=>close(y,v.y)||close(y,v.y+v.height))) continue;
     // Continuation pages can omit both top and bottom rules. Three matching
     // long vertical rules still establish the same column boundaries.
@@ -214,7 +224,7 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
       ((candidate.markdown.match(/<tr>/g)||[]).length<3 && !candidate.markdown.includes('<img ')))) &&
     !recovered.some((other,otherIndex)=>otherIndex!==index &&
       other.box.width*other.box.height>candidate.box.width*candidate.box.height+2 && inside(candidate.box,other.box)));
-  roots=roots.filter(g=>!distinctRecovered.some(r=>inside(g,r.box)));
+  roots=roots.filter(g=>!distinctRecovered.some(r=>inside(g,r.box) || inside(r.box,g)));
   // Large shaded prose panels are editable Markdown quotations. Tables and
   // nested tables keep their existing representation rather than becoming quotes.
   const quotes=filledBoxes.filter((box,i)=>runs.filter(r=>contains(r,box)).reduce((n,r)=>n+r.str.length,0)>100 &&
@@ -224,10 +234,21 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
     const markdownRows: string[][]=[];
     let hasGridImages = false;
     const useHtml=forceHtml || grid.xs.length>4 || grids.some(g=>g!==grid && inside(g,grid));
+    const activeCols: number[] = [];
+    for (let col = 0; col < grid.xs.length - 1; col++) {
+      const colBox = { x: grid.xs[col], y: grid.y, width: grid.xs[col + 1] - grid.xs[col], height: grid.height };
+      const midX = (grid.xs[col] + grid.xs[col + 1]) / 2;
+      const bridged = horizontal.some(h => h.y >= grid.y - 1 && h.y <= grid.y + grid.height + 1 && h.x <= midX - 1 && h.x + h.width >= midX + 1);
+      const hasContent = bridged || runs.some(r => contains(r, colBox)) ||
+        grids.some(g => g !== grid && inside(g, colBox)) ||
+        embeddedImages.some(img => containsImg(img, colBox));
+      if (hasContent) activeCols.push(col);
+    }
+    const colsToRender = activeCols.length ? activeCols : Array.from({ length: grid.xs.length - 1 }, (_, idx) => idx);
     for(let row=grid.ys.length-2;row>=0;row--) {
       const cells: string[]=[];
       const markdownCells: string[]=[];
-      for(let col=0;col<grid.xs.length-1;col++) {
+      for(const col of colsToRender) {
         const cell={x:grid.xs[col],y:grid.ys[row],width:grid.xs[col+1]-grid.xs[col],height:grid.ys[row+1]-grid.ys[row]};
         const children=grids.filter(g=>g!==grid && inside(g,cell)).filter(g=>!grids.some(other=>
           other!==g && other!==grid && inside(other,cell) && other.width*other.height>g.width*g.height && inside(g,other)));
@@ -258,7 +279,7 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
       });
       if (aboveImgs.length >= 2) {
         const imgRowCells: string[] = [];
-        for (let col = 0; col < grid.xs.length - 1; col++) {
+        for (const col of colsToRender) {
           const colImgs = aboveImgs.filter(img => {
             const cx = img.x + img.width / 2;
             return cx >= grid.xs[col] - 2 && cx < grid.xs[col + 1] + 2;
