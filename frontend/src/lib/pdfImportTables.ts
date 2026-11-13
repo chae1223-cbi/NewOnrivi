@@ -4,6 +4,9 @@
  * 🚨 @PATCH : **2026-11-12** — [PDF 중복 표 제거 및 HTML 변환]: 큰 표에 포함된 셀별 중복 블록을 제거하고 복합 열 표를 HTML로 출력해 원래 열 배치를 유지
  * 🚨 @PATCH : **2026-11-12** — [번호 안내 상자 HTML 표 복원]: 제목 아래 연속된 ①·② 안내 항목을 독립 목록 대신 번호 열과 내용 열을 가진 HTML 표로 구성
  * 🚨 @PATCH : **2026-11-12** — [제목·내용 1열 2행 마크다운 표]: 안내·제외대상 상자의 제목과 번호 항목들을 한 열의 머리행·내용행으로 직렬화
+ * 🚨 @PATCH : 2026-11-13 — [HTML 표 셀 내 마크다운 서식(** / * / ~~) HTML 태그 복원 및 미세 슬리버 셀 열 밀림 방지]:
+ *             1) escapeStyled에서 HTML <table> 셀 내부의 **텍스트**, *텍스트*, ~~텍스트~~를 <strong>, <em>, <del>로 변환하여 표 안에 ** 기호가 그대로 노출되는 결함 해결
+ *             2) groups 표 복원 시 3pt 미만 미세 경계 슬리버 셀이 별도 <td>를 생성해 행 전체가 1열씩 우측으로 밀리는 현상 차단 및 열 중점(colMid) 기준 colspan 산출로 열 정렬 무결성 보장
  * 🚨 @PATCH : 2026-11-13 — [표 인접 구분선·제목 판별 시 마크다운 인라인 서식(** / * / ~~) 인식 추가]
  * 🚨 @PATCH : 2026-11-13 — [PDF 서식·구분선 복원] 글꼴과 선 정보를 셀 변환에 전달하고 독립 가로선을 마크다운 구분선으로 출력
  * 🚨 @PATCH : 2026-11-13 — [행별 표 구조 우선] 전체 열만 인식한 단일 행 격자보다 클리핑 셀의 실제 여러 행을 우선하여 숫자 열 합침 방지
@@ -28,7 +31,12 @@ const escape = (s: string) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').repla
  * @returns 안전하게 이스케이프한 HTML 문구
  * ========================================================================================
  */
-const escapeStyled = (s: string) => escape(s).replace(/&lt;(\/?(?:strong|em|u|del))&gt;/g,'<$1>');
+const escapeStyled = (s: string) =>
+  escape(s)
+    .replace(/&lt;(\/?(?:strong|em|u|del))&gt;/g, '<$1>')
+    .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*([^*\n]+)\*/g, '<em>$1</em>')
+    .replace(/~~([^~\n]+)~~/g, '<del>$1</del>');
 
 /** Use drawn rules, rather than text gaps, to keep adjacent and nested tables separate. */
 export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[], argsArray: unknown[][],
@@ -132,11 +140,11 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
     const merged=group.some(c=>xs.some(x=>x>c.x+1&&x<c.x+c.width-1)||ys.some(y=>y>c.y+1&&y<c.y+c.height-1));
     const mdRows:string[][]=[], htmlRows:string[]=[];
     for(let row=ys.length-2;row>=0;row--) {
-      const cells=group.filter(c=>close(c.y+c.height,ys[row+1])).sort((a,b)=>a.x-b.x);
+      const cells=group.filter(c=>close(c.y+c.height,ys[row+1]) && c.width>=3 && c.height>=3).sort((a,b)=>a.x-b.x);
       // Keep empty graphic/logo cells so a title is not shifted to column one.
       for(let col=0;col<xs.length-1;col++) {
         const x=(xs[col]+xs[col+1])/2, y=(ys[row]+ys[row+1])/2;
-        if(!group.some(c=>x>c.x-0.5&&x<c.x+c.width+0.5&&y>c.y-0.5&&y<c.y+c.height+0.5))
+        if(!group.some(c=>c.width>=3 && c.height>=3 && x>c.x-0.5&&x<c.x+c.width+0.5&&y>c.y-0.5&&y<c.y+c.height+0.5))
           cells.push({x:xs[col],y:ys[row],width:xs[col+1]-xs[col],height:ys[row+1]-ys[row]});
       }
       cells.sort((a,b)=>a.x-b.x);
@@ -144,8 +152,14 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
       for(const cell of cells) {
         const values=pdfTextBlocks(runs.filter(r=>contains(r,cell)),[],false,undefined,fontNames,drawnRules).map(b=>b.markdown.replace(/^#{1,6}\s+/,''));
         md.push(values.map(s=>s.replace(/\|/g,'\\|')).join('<br>'));
-        const colspan=xs.filter(x=>x>=cell.x-0.5&&x<cell.x+cell.width-0.5).length;
-        const rowspan=ys.filter(y=>y>=cell.y-0.5&&y<cell.y+cell.height-0.5).length;
+        const colspan=xs.slice(0,-1).filter((x,colIdx)=>{
+          const colMid=(x+xs[colIdx+1])/2;
+          return colMid>=cell.x-0.5 && colMid<=cell.x+cell.width+0.5;
+        }).length || 1;
+        const rowspan=ys.slice(0,-1).filter((y,rowIdx)=>{
+          const rowMid=(y+ys[rowIdx+1])/2;
+          return rowMid>=cell.y-0.5 && rowMid<=cell.y+cell.height+0.5;
+        }).length || 1;
         html.push('<td'+(colspan>1?' colspan="'+colspan+'"':'')+(rowspan>1?' rowspan="'+rowspan+'"':'')+'>'+values.map(s=>'<p>'+escapeStyled(s)+'</p>').join('')+'</td>');
       }
       mdRows.push(md);htmlRows.push('<tr>'+html.join('')+'</tr>');
