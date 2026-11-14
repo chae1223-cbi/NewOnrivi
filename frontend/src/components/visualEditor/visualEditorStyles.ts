@@ -2,7 +2,7 @@
 // 🎨 [OMD-CORE-VisualEditorStyles-0001] visualEditorStyles.ts ➔ 시각 에디터 전용 격리 CSS 스타일
 // 🎯 @KICK  : 시각 에디터 본문(.visual-document-surface), 제목 H1~H6 시각화 뱃지, 표 조판, 각주, 코드블록, 머메이드 서랍 등 위지윅 스타일 격리
 // 🛡️ @GUARD : Rule 6(Content Document Scope) 준수 - .visual-document-surface 및 컴포넌트 하위로만 스코핑
-// 🚨 @PATCH : 2026-11-14 — [HTML 표 원문 편집 서랍(.visual-html-table-editor) 기본 숨김 및 편집 액션 버튼 토글 연동]: 평소(!open)에는 문서 내에 'HTML 표 원문 편집' 바가 노출되지 않도록 display: none 처리하고 상단 편집 아이콘 버튼 클릭 시에만 열리고 닫히도록 개선
+// 🚨 @PATCH : 2026-11-14 — [원문·코드 편집 서랍(HTML 표 / 머메이드 / 기타 원문 블록) 기본 숨김 및 편집 액션 버튼 토글 일원화]: 평소(:not([open]))에는 문서 내에 원문/코드 편집 서랍 바가 노출되지 않도록 숨기고, 우측 상단 편집(✏️) 액션 버튼 클릭 시 펼쳐져 편집 및 닫기(코드 접기·적용 완료·상단 바·편집 버튼)가 가능하도록 통일
 // 🚨 @PATCH : 2026-11-13 — [미디어 및 서명 플로팅 컨트롤 여백·간격 소형화]: 아이콘 전용 액션 버튼 규격에 맞춰 우측 상단 오프셋(6px) 및 버튼 간격(4px) 최적화
 // 🚨 @PATCH : 2026-11-12 — [코드블록 상단 "CODE" 라벨 제거 및 언어 텍스트박스 배경 투명·상시 표시]:
 //             1) "CODE" 라벨 제거 후 언어 입력 input을 상시 표시(opacity: 1)로 전환하여 평소에도 지정된 언어명이 보이도록 개선
@@ -283,7 +283,9 @@ export const VISUAL_EDITOR_STYLES = `
   .visual-mermaid-container:focus-within .mermaid-header-delete-btn,
   .visual-mermaid-container:focus-within [data-editor-controls],
   .visual-mermaid-container.ProseMirror-selectednode [data-editor-controls] { opacity: 1; pointer-events: auto; }
-  .visual-html-table-editor:not([open]) {
+  .visual-html-table-editor:not([open]),
+  .visual-mermaid-editor:not([open]),
+  .visual-code-editor-panel[data-mermaid="true"]:not([open]) {
     display: none !important;
   }
   .visual-html-table-editor {

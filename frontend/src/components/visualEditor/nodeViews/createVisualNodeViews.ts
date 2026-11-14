@@ -2,6 +2,7 @@
 // 🧩 [OMD-CORE-VisualNodeViews-0001] createVisualNodeViews.ts ➔ 시각 에디터 ProseMirror NodeViews 팩토리
 // 🎯 @KICK  : table, visual_math, visual_inline_math, list_item, code_block, visual_footnote_ref, visual_footnote_def, visual_checkbox, source_block, mediaNodeView 10대 위지윅 NodeView 인스턴스화
 // 🛡️ @GUARD : Rule 3(역할 기반 분리: Core View) 준수 - DOM 렌더링 및 인터랙션 격리
+// 🚨 @PATCH : 2026-11-14 — [머메이드 다이어그램 및 원문(source_block) 편집 서랍 액션 버튼 토글 일원화]: 머메이드(code_block/source_block)와 일반 원문 블록도 HTML 표와 동일하게 평소에는 코드 편집 바를 숨기고 우측 상단 편집(✏️) 아이콘 버튼 클릭 시 펼쳐져 수정 및 닫기(코드 접기/적용 완료)가 가능하도록 통일
 // 🚨 @PATCH : 2026-11-13 — [시각 에디터 전 블록 액션 버튼(미디어/표/코드블록/머메이드/서명) 소형 아이콘화]: 모든 블록 컨트롤 버튼의 텍스트를 제거하고 13x13 SVG 아이콘과 툴팁(title/aria-label)으로 일원화하여 컨텐츠 가림 해소
 // 🚨 @PATCH : 2026-11-12 — [코드블록 상단 "CODE" 라벨 제거 및 언어 입력창 상시 노출]: header.textContent = 'CODE ' 라벨을 제거하고, 코드블록 언어 입력창(input)으로 직접 언어를 표시하도록 개선
 // 🚨 @PATCH : 2026-11-11 — [각주 참조(visual_footnote_ref) 선택 방어 및 커서 포커스 격리]: select-all을 select-none으로 전환하여 각주 인접 커서 위치 시 브라우저 네이티브 뱃지 텍스트 선택 방지
@@ -588,15 +589,17 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
       panel.className = 'visual-code-editor-panel';
       const initialLang = String(node.attrs.params || '').split(/\s/)[0].toLowerCase();
       const isInitialMermaid = initialLang === 'mermaid';
+      panel.setAttribute('data-mermaid', isInitialMermaid ? 'true' : 'false');
       panel.open = !isInitialMermaid || !node.textContent;
       const summary = document.createElement('summary');
       summary.contentEditable = 'false';
       summary.textContent = '코드 편집';
       summary.className = 'onrivi-media-control no-print text-[11px] opacity-70 hover:opacity-100';
+      summary.hidden = true;
       const done = document.createElement('button');
       done.type = 'button';
       done.innerHTML = ICON_CHECK;
-      done.title = '편집 완료';
+      done.title = '편집 완료 (코드 접기)';
       done.setAttribute('aria-label', '편집 완료');
       done.className = 'onrivi-media-control no-print';
       done.contentEditable = 'false';
@@ -611,11 +614,57 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
       let renderedSource: string | null = null;
       let renderTimer: ReturnType<typeof setTimeout> | undefined;
       let previousSpecial = isInitialMermaid;
+      const syncPreviewControls = () => {
+        const controls = preview.querySelector('[data-editor-controls]');
+        if (controls && !controls.querySelector('.mermaid-header-edit-btn')) {
+          const editBtn = document.createElement('button');
+          editBtn.type = 'button';
+          editBtn.className = 'onrivi-media-control mermaid-header-edit-btn';
+          editBtn.title = '다이어그램 코드 편집기 펼치기 / 접기';
+          editBtn.setAttribute('aria-label', '코드 편집');
+          editBtn.innerHTML = ICON_EDIT;
+          editBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            panel.open = !panel.open;
+            if (panel.open) {
+              setTimeout(() => currentView.focus(), 60);
+            }
+          });
+          controls.prepend(editBtn);
+        }
+        if (controls && !controls.querySelector('.mermaid-header-delete-btn')) {
+          const delBtn = document.createElement('button');
+          delBtn.type = 'button';
+          delBtn.className = 'onrivi-media-control mermaid-header-delete-btn text-red-400 hover:text-red-300 cursor-pointer';
+          delBtn.title = '다이어그램 블록 삭제';
+          delBtn.setAttribute('aria-label', '다이어그램 블록 삭제');
+          delBtn.innerHTML = ICON_TRASH;
+          delBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const pos = getPos();
+            if (typeof pos !== 'number' || !currentView.editable) return;
+            const tr = currentView.state.tr;
+            const nodeSize = node.nodeSize;
+            if (currentView.state.doc.childCount === 1 && pos === 0) {
+              currentView.dispatch(closeHistory(tr.replaceWith(pos, pos + nodeSize, visualSchema.nodes.paragraph.create())));
+            } else {
+              currentView.dispatch(closeHistory(tr.delete(pos, pos + nodeSize)));
+            }
+            currentView.focus();
+          });
+          controls.append(delBtn);
+        }
+      };
+      const previewObserver = new MutationObserver(() => syncPreviewControls());
+      previewObserver.observe(preview, { childList: true, subtree: true });
       const render = () => {
         const lang = String(node.attrs.params || '').split(/\s/)[0].toLowerCase();
         const mermaid = lang === 'mermaid';
+        panel.setAttribute('data-mermaid', mermaid ? 'true' : 'false');
         preview.hidden = !mermaid;
-        summary.hidden = !mermaid;
+        summary.hidden = true;
         done.hidden = !mermaid;
         if (!mermaid) panel.open = true;
         else if (!previousSpecial && node.textContent) panel.open = false;
@@ -625,18 +674,21 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
         renderedSource = source;
         clearTimeout(renderTimer);
         if (source && node.textContent.trim()) {
-          renderTimer = setTimeout(() => setImageMounts(previous => [...previous.filter(item => item.id !== id), { id, element: preview, source }]), 180);
+          renderTimer = setTimeout(() => {
+            setImageMounts(previous => [...previous.filter(item => item.id !== id), { id, element: preview, source }]);
+            setTimeout(syncPreviewControls, 60);
+          }, 180);
         } else {
           setImageMounts(previous => previous.filter(item => item.id !== id));
         }
       };
       pre.appendChild(code);
-      dom.append(panel, preview);
+      dom.append(preview, panel);
       render();
       return {
         dom,
         contentDOM: code,
-        stopEvent: event => header.contains(event.target as Node) || event.target === summary,
+        stopEvent: event => header.contains(event.target as Node) || event.target === summary || Boolean((event.target as HTMLElement)?.closest?.('[data-editor-controls], .onrivi-media-control')),
         ignoreMutation: mutation => mutation.type !== 'selection' && !code.contains(mutation.target) && mutation.target !== code,
         update(next) {
           if (next.type !== node.type) return false;
@@ -648,6 +700,7 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
         destroy() {
           clearTimeout(renderTimer);
           clearTimeout(copyTimer);
+          previewObserver.disconnect();
           queueMicrotask(() => {
             if (viewRef.current) setImageMounts(previous => previous.filter(item => item.id !== id));
           });
@@ -900,21 +953,23 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
       let sourceTimer: ReturnType<typeof setTimeout> | undefined;
       let observer: MutationObserver | null = null;
 
-      if (isMermaid || isTable) {
+      if (!isSignature) {
         details = document.createElement('details');
-        details.className = isTable ? 'visual-html-table-editor no-print text-xs' : 'visual-mermaid-editor no-print text-xs';
+        details.className = isMermaid ? 'visual-mermaid-editor no-print text-xs' : 'visual-html-table-editor no-print text-xs';
 
         const summary = document.createElement('summary');
         summary.className = 'cursor-pointer select-none font-medium text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 flex items-center justify-between px-4 py-2.5 bg-zinc-50/90 dark:bg-slate-800/70 hover:bg-zinc-100/90 dark:hover:bg-slate-800 transition-colors';
         summary.innerHTML = isTable
           ? '<span class="flex items-center gap-1.5 font-semibold"><svg class="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18"/><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/></svg>HTML 표 원문 편집</span><span class="flex items-center gap-1 text-[11px] font-normal text-slate-500 dark:text-slate-400"><span>클릭하여 코드 펼치기 / 접기</span><svg class="w-3.5 h-3.5 transition-transform duration-200 mermaid-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>'
-          : '<span class="flex items-center gap-1.5 font-semibold"><svg class="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m14 9 3 3-3 3"/></svg>머메이드(Mermaid) 코드 편집</span><span class="flex items-center gap-1 text-[11px] font-normal text-slate-500 dark:text-slate-400"><span>클릭하여 코드 펼치기 / 접기</span><svg class="w-3.5 h-3.5 transition-transform duration-200 mermaid-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>';
+          : isMermaid
+          ? '<span class="flex items-center gap-1.5 font-semibold"><svg class="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m14 9 3 3-3 3"/></svg>머메이드(Mermaid) 코드 편집</span><span class="flex items-center gap-1 text-[11px] font-normal text-slate-500 dark:text-slate-400"><span>클릭하여 코드 펼치기 / 접기</span><svg class="w-3.5 h-3.5 transition-transform duration-200 mermaid-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>'
+          : '<span class="flex items-center gap-1.5 font-semibold"><svg class="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>원문 코드 편집</span><span class="flex items-center gap-1 text-[11px] font-normal text-slate-500 dark:text-slate-400"><span>클릭하여 코드 펼치기 / 접기</span><svg class="w-3.5 h-3.5 transition-transform duration-200 mermaid-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></span>';
 
         const body = document.createElement('div');
         body.className = 'p-3 bg-zinc-50/40 dark:bg-slate-900/40 border-t border-zinc-200/50 dark:border-slate-800/60 flex flex-col gap-2.5';
 
         input = document.createElement('textarea');
-        input.setAttribute('aria-label', isTable ? 'HTML 표 블록 원문' : '머메이드 블록 원문');
+        input.setAttribute('aria-label', isTable ? 'HTML 표 블록 원문' : isMermaid ? '머메이드 블록 원문' : '블록 원문');
         input.value = node.attrs.source;
         input.rows = 8;
         input.className = 'w-full font-mono text-xs p-3 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500 custom-scrollbar resize-y leading-relaxed';
@@ -950,8 +1005,8 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
 
         const deleteDrawerBtn = document.createElement('button');
         deleteDrawerBtn.type = 'button';
-        deleteDrawerBtn.textContent = isTable ? '표 삭제' : '다이어그램 삭제';
-        deleteDrawerBtn.setAttribute('aria-label', isTable ? '표 삭제' : '다이어그램 삭제');
+        deleteDrawerBtn.textContent = isTable ? '표 삭제' : isMermaid ? '다이어그램 삭제' : '블록 삭제';
+        deleteDrawerBtn.setAttribute('aria-label', isTable ? '표 삭제' : isMermaid ? '다이어그램 삭제' : '블록 삭제');
         deleteDrawerBtn.className = 'px-2.5 py-1 text-xs text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-950/40 rounded transition-colors cursor-pointer shrink-0';
         deleteDrawerBtn.addEventListener('click', () => {
           const pos = getPos();
@@ -968,7 +1023,7 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
 
         const helper = document.createElement('span');
         helper.className = 'text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1 min-w-0 truncate';
-        helper.innerHTML = `<svg class="w-3 h-3 text-blue-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg><span class="truncate">${isTable ? 'HTML 수정 시 표가 실시간 반영됩니다.' : '타이핑 시 다이어그램이 실시간 반영됩니다.'}</span>`;
+        helper.innerHTML = `<svg class="w-3 h-3 text-blue-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg><span class="truncate">${isTable ? 'HTML 수정 시 표가 실시간 반영됩니다.' : isMermaid ? '타이핑 시 다이어그램이 실시간 반영됩니다.' : '원문 수정 시 블록이 실시간 반영됩니다.'}</span>`;
 
         const btnGroup = document.createElement('div');
         btnGroup.className = 'flex items-center gap-1.5 shrink-0';
@@ -1001,80 +1056,123 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
         details.append(summary, body);
         dom.append(details);
 
-        // 상단 헤더 컨트롤 영역에 '✏️ 코드/HTML 편집' 및 '🗑️ 삭제' 토글 버튼 자동 연결
-        const syncHeaderButton = () => {
-          if (isMermaid) {
-            const controls = picture.querySelector('[data-editor-controls]');
-            if (controls && !controls.querySelector('.mermaid-header-edit-btn')) {
-              const editBtn = document.createElement('button');
-              editBtn.type = 'button';
-              editBtn.className = 'onrivi-media-control mermaid-header-edit-btn';
-              editBtn.title = '다이어그램 코드 편집기 펼치기 / 접기';
-              editBtn.setAttribute('aria-label', '코드 편집');
-              editBtn.innerHTML = ICON_EDIT;
-              editBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (details) {
-                  details.open = !details.open;
-                  if (details.open && input) {
-                    setTimeout(() => input?.focus(), 60);
+        if (isMermaid || isTable) {
+          // 상단 헤더 컨트롤 영역에 '✏️ 코드/HTML 편집' 및 '🗑️ 삭제' 토글 버튼 자동 연결
+          const syncHeaderButton = () => {
+            if (isMermaid) {
+              const controls = picture.querySelector('[data-editor-controls]');
+              if (controls && !controls.querySelector('.mermaid-header-edit-btn')) {
+                const editBtn = document.createElement('button');
+                editBtn.type = 'button';
+                editBtn.className = 'onrivi-media-control mermaid-header-edit-btn';
+                editBtn.title = '다이어그램 코드 편집기 펼치기 / 접기';
+                editBtn.setAttribute('aria-label', '코드 편집');
+                editBtn.innerHTML = ICON_EDIT;
+                editBtn.addEventListener('click', (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (details) {
+                    details.open = !details.open;
+                    if (details.open && input) {
+                      setTimeout(() => input?.focus(), 60);
+                    }
                   }
-                }
-              });
-              controls.prepend(editBtn);
-            }
+                });
+                controls.prepend(editBtn);
+              }
 
-            if (controls && !controls.querySelector('.mermaid-header-delete-btn')) {
-              const deleteBtn = document.createElement('button');
-              deleteBtn.type = 'button';
-              deleteBtn.className = 'onrivi-media-control mermaid-header-delete-btn text-red-400 hover:text-red-300 cursor-pointer';
-              deleteBtn.title = '다이어그램 블록 삭제';
-              deleteBtn.setAttribute('aria-label', '다이어그램 블록 삭제');
-              deleteBtn.innerHTML = ICON_TRASH;
-              deleteBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const pos = getPos();
-                if (typeof pos !== 'number' || !currentView.editable) return;
-                const tr = currentView.state.tr;
-                const nodeSize = node.nodeSize;
-                if (currentView.state.doc.childCount === 1 && pos === 0) {
-                  currentView.dispatch(closeHistory(tr.replaceWith(pos, pos + nodeSize, visualSchema.nodes.paragraph.create())));
-                } else {
-                  currentView.dispatch(closeHistory(tr.delete(pos, pos + nodeSize)));
-                }
-                currentView.focus();
-              });
-              controls.append(deleteBtn);
-            }
-          } else if (isTable) {
-            const wrapper = picture.querySelector('.table-wrapper-area');
-            if (wrapper && !wrapper.querySelector('.table-header-edit-btn')) {
-              const editBtn = document.createElement('button');
-              editBtn.type = 'button';
-              editBtn.className = 'onrivi-media-control table-header-edit-btn absolute top-1 right-8 bg-black/60 dark:bg-white/20 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-10 hover:bg-black/80 no-print cursor-pointer';
-              editBtn.title = 'HTML 표 코드 편집기 펼치기 / 접기';
-              editBtn.setAttribute('aria-label', 'HTML 표 편집');
-              editBtn.innerHTML = ICON_EDIT;
-              editBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (details) {
-                  details.open = !details.open;
-                  if (details.open && input) {
-                    setTimeout(() => input?.focus(), 60);
+              if (controls && !controls.querySelector('.mermaid-header-delete-btn')) {
+                const deleteBtn = document.createElement('button');
+                deleteBtn.type = 'button';
+                deleteBtn.className = 'onrivi-media-control mermaid-header-delete-btn text-red-400 hover:text-red-300 cursor-pointer';
+                deleteBtn.title = '다이어그램 블록 삭제';
+                deleteBtn.setAttribute('aria-label', '다이어그램 블록 삭제');
+                deleteBtn.innerHTML = ICON_TRASH;
+                deleteBtn.addEventListener('click', (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const pos = getPos();
+                  if (typeof pos !== 'number' || !currentView.editable) return;
+                  const tr = currentView.state.tr;
+                  const nodeSize = node.nodeSize;
+                  if (currentView.state.doc.childCount === 1 && pos === 0) {
+                    currentView.dispatch(closeHistory(tr.replaceWith(pos, pos + nodeSize, visualSchema.nodes.paragraph.create())));
+                  } else {
+                    currentView.dispatch(closeHistory(tr.delete(pos, pos + nodeSize)));
                   }
-                }
-              });
-              wrapper.prepend(editBtn);
+                  currentView.focus();
+                });
+                controls.append(deleteBtn);
+              }
+            } else if (isTable) {
+              const wrapper = picture.querySelector('.table-wrapper-area');
+              if (wrapper && !wrapper.querySelector('.table-header-edit-btn')) {
+                const editBtn = document.createElement('button');
+                editBtn.type = 'button';
+                editBtn.className = 'onrivi-media-control table-header-edit-btn absolute top-1 right-8 bg-black/60 dark:bg-white/20 text-white rounded opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-10 hover:bg-black/80 no-print cursor-pointer';
+                editBtn.title = 'HTML 표 코드 편집기 펼치기 / 접기';
+                editBtn.setAttribute('aria-label', 'HTML 표 편집');
+                editBtn.innerHTML = ICON_EDIT;
+                editBtn.addEventListener('click', (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (details) {
+                    details.open = !details.open;
+                    if (details.open && input) {
+                      setTimeout(() => input?.focus(), 60);
+                    }
+                  }
+                });
+                wrapper.prepend(editBtn);
+              }
             }
-          }
-        };
+          };
 
-        observer = new MutationObserver(() => syncHeaderButton());
-        observer.observe(picture, { childList: true, subtree: true });
-        setTimeout(syncHeaderButton, 60);
+          observer = new MutationObserver(() => syncHeaderButton());
+          observer.observe(picture, { childList: true, subtree: true });
+          setTimeout(syncHeaderButton, 60);
+        } else {
+          const controls = document.createElement('div');
+          controls.className = 'visual-media-controls no-print';
+          const editBtn = document.createElement('button');
+          editBtn.type = 'button';
+          editBtn.className = 'onrivi-media-control cursor-pointer';
+          editBtn.innerHTML = ICON_EDIT;
+          editBtn.setAttribute('aria-label', '원문 편집');
+          editBtn.title = '원문 코드 편집기 펼치기 / 접기';
+          editBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (details) {
+              details.open = !details.open;
+              if (details.open && input) {
+                setTimeout(() => input?.focus(), 60);
+              }
+            }
+          });
+          const deleteBtn = document.createElement('button');
+          deleteBtn.type = 'button';
+          deleteBtn.className = 'onrivi-media-control text-red-400 hover:text-red-300 cursor-pointer';
+          deleteBtn.innerHTML = ICON_TRASH;
+          deleteBtn.setAttribute('aria-label', '삭제');
+          deleteBtn.title = '블록 삭제';
+          deleteBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const pos = getPos();
+            if (typeof pos === 'number' && currentView.editable) {
+              const tr = currentView.state.tr;
+              if (currentView.state.doc.childCount === 1 && pos === 0) {
+                currentView.dispatch(closeHistory(tr.replaceWith(pos, pos + node.nodeSize, visualSchema.nodes.paragraph.create())));
+              } else {
+                currentView.dispatch(closeHistory(tr.delete(pos, pos + node.nodeSize)));
+              }
+              currentView.focus();
+            }
+          });
+          controls.append(editBtn, deleteBtn);
+          dom.append(controls);
+        }
       } else if (isSignature) {
         const controls = document.createElement('div');
         controls.className = 'visual-media-controls visual-signature-controls no-print flex items-center gap-1 bg-white/95 dark:bg-zinc-800/95 shadow-md border border-slate-200/80 dark:border-zinc-700/80 rounded-lg p-0.5 z-25';
@@ -1166,31 +1264,6 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
         });
 
         controls.append(leftBtn, rightBtn, editBtn, deleteBtn);
-        dom.append(controls);
-      } else {
-        const controls = document.createElement('div');
-        controls.className = 'visual-media-controls no-print';
-        const deleteBtn = document.createElement('button');
-        deleteBtn.type = 'button';
-        deleteBtn.className = 'onrivi-media-control text-red-400 hover:text-red-300 cursor-pointer';
-        deleteBtn.innerHTML = ICON_TRASH;
-        deleteBtn.setAttribute('aria-label', '삭제');
-        deleteBtn.title = '블록 삭제';
-        deleteBtn.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          const pos = getPos();
-          if (typeof pos === 'number' && currentView.editable) {
-            const tr = currentView.state.tr;
-            if (currentView.state.doc.childCount === 1 && pos === 0) {
-              currentView.dispatch(closeHistory(tr.replaceWith(pos, pos + node.nodeSize, visualSchema.nodes.paragraph.create())));
-            } else {
-              currentView.dispatch(closeHistory(tr.delete(pos, pos + node.nodeSize)));
-            }
-            currentView.focus();
-          }
-        });
-        controls.append(deleteBtn);
         dom.append(controls);
       }
 
