@@ -36,6 +36,7 @@
 | **대기업 전략기획 보고서** (`corp-strategy-report`) | 일반문서 (`a4`) | 개조식 기호 체계(`□` ➔ `○` ➔ `-` ➔ `ㆍ`), 네이비 헤더 & 가로선 강조 표, 핵심 요약 콜아웃 인용구 |
 | **국책연구원(KDI) 학술보고서** (`academic-kdi-report`) | 일반문서 (`a4`) | 학술 장·절 번호 체계(`제1장` ➔ `제1절` ➔ `1.` ➔ `가.`), 양끝 정렬(`justify`), 상하 굵은 테두리(`2px`) 및 세로선 없는 학술 표 |
 | **글로벌 빅테크 6-Pager** (`global-tech-6pager`) | 일반문서 (`a4`) | 서술형 메모 스타일, 번호 없는 타이포그래피 위계, 다크 코드블록 및 깔끔한 가로선 표 |
+| **Google Developers 기술 문서 (DevSite 표준)** (`google-dev-docs`) | 일반문서 (`a4`) | `developers.google.com/style/lists` 공식 조판: Google Sans/Roboto 16px(행간 1.5, `#202124`), 40px 다단계 목록(`• ➔ ○ ➔ ■`), `#f1f3f4` 헤더 미니멀 가로선 표, `#e8f0fe` Google Blue Note 콜아웃, `Roboto Mono` `#f1f3f4`/`#37474f` 코드 |
 | **한컴 테크 블로그** (`hancom-tech-blog`) | 일반문서 (`a4`) | 오렌지 포인트 H2 하단선 및 H3 좌측 색깔바(`border-left`), 1.8배 줄간격, 8px 문장 간격(`sentence-gap`) |
 | **SNS 카드뉴스** (`sns-card-news`) | SNS 카드뉴스 (`sns_square`) | 인스타그램·링크드인 최적 1:1 정사각 규격(`sns_square`) 및 고대비 타이포그래피 |
 | **그림책 전체표지 / 오른쪽표지** | 그림책 (`picturebook`) | 가로형(`landscape`) 스토리북 전용 레이아웃 (`cover: "full-image"` 또는 `"image-right"`) |

@@ -1,6 +1,9 @@
 /**
  * cssProfileGuide.ts
  * 온리비 어서(Onrivi Author) 최신 서식 프로필(CSS Profile) 명세서 및 AI 서식 생성 가이드 마크다운 정의
+ * 🚨 @PATCH : **2026-11-14** — [Google Developer Documentation Style Guide(developers.google.com/style/lists) 분석 및 공식 프리셋·가이드 반영]:
+ *             1) AI_STANDARD_PRESETS에 '🌐 Google Developers 기술 문서 (DevSite 표준)' 프리셋 추가 (Google Sans / Roboto / Roboto Mono, 40px 들여쓰기 다단계 목록 disc➔circle➔square, #f1f3f4 헤더 미니멀 가로선 비교표, #e8f0fe Note 콜아웃, #f1f3f4/#37474f 코드)
+ *             2) CSS_PROFILE_GUIDE_MD에 Google Developers(DevSite) 실측 타이포그래피·목록·표·콜아웃·코드 토큰 명세 섹션 수록
  * 🚨 @PATCH : **2026-10-27** — [SNS 카드뉴스 전용 용지 규격(sns_square, sns_portrait) 및 4종 서식 생성 워크플로우·프리셋 가이드 반영]:
  *             1) pageStyle.paperSize에 SNS 카드뉴스 1:1 정사각('sns_square') 및 4:5 세로형('sns_portrait') 명세 추가, AI 표준 프리셋에 '📱 SNS 카드뉴스 (인스타·링크드인)' 수록
  *             2) pageStyle.headingSizeOffset 미정의 시 최초 기본값 '3pt'(0pt~6pt 조절) 명세 및 JSON 스키마·마스터 프롬프트 동기화
@@ -73,6 +76,14 @@ export const AI_STANDARD_PRESETS: AiStylePresetItem[] = [
     summary: '인스타그램·쓰레드·링크드인 캐러셀용 1:1 정사각(sns_square), 굵은 타이포 및 형광펜 하이라이트',
     prompt:
       'paperSize는 "sns_square"(1:1 정사각 카드뉴스, 4:5 세로형은 "sns_portrait"), 여백은 상하좌우 14mm, Pretendard 고딕 18px, 줄간격 1.65, H1은 28px 굵은 타이틀과 하단 코발트 블루 포인트선(3px solid #1d4ed8), H2는 좌측 6px 코발트 색깔바(6px solid #1d4ed8, padding-left 12px), 굵게(strong)는 노란 형광펜 배경(#fef08a), 인용구는 둥근 요약 박스(#eff6ff 배경, 16px 곡률)로 만들어줘.',
+  },
+  {
+    id: 'google-dev-docs',
+    label: '🌐 Google Developers 기술 문서 (DevSite 표준)',
+    badge: 'Roboto · 40px 목록 · 미니멀 표',
+    summary: 'developers.google.com/style/lists 공식 규격: Google Sans/Roboto 16px(행간 1.5), 40px 다단계 목록(•➔○➔■), #f1f3f4 헤더 가로선 표, #e8f0fe Note 콜아웃',
+    prompt:
+      'Google Developers(developers.google.com/style/lists) DevSite 기술 문서 표준으로 만들어줘. 본문은 Roboto 및 Noto Sans KR 16px, 줄간격 1.5, 글자색 #202124, 배경 #ffffff, 제목(H1 34px, H2 24px, H3 20px)은 Google Sans Regular(font-weight 400, 밑줄/좌측바 없음), 목록(ul/ol)은 padding-left 40px, 항목 간격(li margin-bottom) 8px, bulletStructure는 disc ➔ circle ➔ square, 표는 외곽선/세로선 없는 가로선 미니멀형(outer 0px, row 1px, col 0px, th 배경 #f1f3f4, 셀 패딩 12px 16px, 테두리 #dadce0/#e8eaed), 인용구(Note 콜아웃)는 배경 #e8f0fe 및 좌측 4px Google Blue 바(#1a73e8), 인라인 코드 및 코드블록은 Roboto Mono 14px(배경 #f1f3f4, 글자색 #37474f), 링크는 #1a73e8 밑줄 스타일로 구성해줘.',
   },
 ];
 
@@ -734,7 +745,35 @@ export const CSS_PROFILE_GUIDE_MD = `# 🎨 온리비 어서(Onrivi Author) 최�
 
 ---
 
-## 📌 3. 외부 AI용 만능 서식 생성 프롬프트 템플릿
+## 📌 3. Google Developer Documentation Style Guide (\`developers.google.com/style/lists\`) 실측 레퍼런스 규격
+
+Google 공식 개발자 문서 스타일 가이드(\`https://developers.google.com/style/lists\`)의 실제 렌더링된 DevSite 디자인 시스템 토큰을 온리비 15대 서식 카테고리로 매핑한 표준 규격(\`id: "google-dev-docs"\`)입니다.
+
+- **본문 & 타이포그래피 (\`pageStyle\`, \`rules.p\`)**:
+  - 본문 서체: \`'Roboto', 'Google Sans', 'Noto Sans KR', sans-serif\`
+  - 본문 크기 및 행간: \`fontSize: "16px"\`, \`lineHeight: "1.5"\` (\`24px\`), \`color: "#202124"\` (DevSite Grey 900), \`margin-bottom: "16px"\`
+- **제목 위계 (\`rules.h1\` ~ \`h4\`)**:
+  - 제목 서체: \`'Google Sans', 'Roboto', 'Noto Sans KR', sans-serif\` (밑줄·좌측 색깔바·자동 번호 없는 클린 헤딩)
+  - \`h1\`: \`34px\`, \`font-weight: "400"\`, \`line-height: "1.18"\` (\`40px\`), \`letter-spacing: "-0.01em"\`, \`margin: "40px 0 20px"\`
+  - \`h2\`: \`24px\`, \`font-weight: "400"\`, \`line-height: "1.33"\` (\`32px\`), \`margin: "40px 0 20px"\`
+  - \`h3\`: \`20px\`, \`font-weight: "400"\`, \`line-height: "1.6"\` (\`32px\`), \`margin: "32px 0 16px"\`
+  - \`h4\`: \`16px\`, \`font-weight: "500"\` (Medium), \`line-height: "1.5"\` (\`24px\`), \`margin: "24px 0 12px"\`
+- **목록 & 중첩 리스트 (\`rules.ul\`, \`ol\`, \`li\`, \`bulletStructure\`)**:
+  - 들여쓰기 및 여백: \`ul\`, \`ol\` 모두 \`padding-left: "40px"\`, \`margin-bottom: "16px"\`, \`li\` \`margin-bottom: "8px"\`, \`line-height: "1.5"\`
+  - 다단계 글머리 기호 (\`bulletStructure\`): 1단계 \`"disc"\` (•) ➔ 2단계 \`"circle"\` (○) ➔ 3단계 \`"square"\` (■), 중첩 숫자 목록(\`ol ol\`)은 \`lower-alpha\` (\`a, b, c\`)
+- **표 (\`tableStructure\`, \`rules.table\`, \`th\`, \`td\`)**:
+  - 테두리 구조체: \`outerBorderWidth: "0px"\`, \`rowBorderWidth: "1px"\`, \`colBorderWidth: "0px"\` (외곽·세로선 없는 DevSite 미니멀 가로선 표)
+  - 헤더(\`th\`): 배경 \`"#f1f3f4"\` (Grey 100), 글자 \`"#202124"\`, \`font-weight: "500"\`, \`font-size: "14px"\`, \`padding: "12px 16px"\`, 하단선 \`"#dadce0"\`
+  - 셀(\`td\`): 배경 \`"#ffffff"\`, 글자 \`"#202124"\`, \`font-size: "14px"\`, \`padding: "12px 16px"\`, 행 구분선 \`"#e8eaed"\` (Grey 200)
+- **콜아웃 Note 박스 (\`rules.blockquote\`) & 코드 (\`code\`, \`codeBlock\`) & 링크 (\`a\`)**:
+  - Note 콜아웃(\`blockquote\`): 배경 \`"#e8f0fe"\` (Google Blue 50), 좌측 바 \`"4px solid #1a73e8"\`, 글자 \`"#202124"\`, \`padding: "15px 24px"\`, \`border-radius: "4px"\`
+  - 인라인 코드(\`code\`): \`Roboto Mono\` \`14px\`, 배경 \`"#f1f3f4"\`, 글자 \`"#37474f"\`, \`padding: "2px 4px"\`, \`border-radius: "4px"\`
+  - 코드블록(\`codeBlock\`): 배경 \`"#f1f3f4"\`, 글자 \`"#37474f"\`, 테두리 \`"1px solid #dadce0"\`, \`padding: "16px 24px"\`, \`border-radius: "8px"\`
+  - 하이퍼링크(\`a\`): \`color: "#1a73e8"\` (Google Blue 600), \`text-decoration: "underline"\`
+
+---
+
+## 📌 4. 외부 AI용 만능 서식 생성 프롬프트 템플릿
 
 외부 AI(ChatGPT, Claude, Gemini 등)에 아래 프롬프트를 복사하여 붙여넣고 **[내가 원하는 서식 컨셉]** 한 줄만 수정하면 완벽한 최신 온리비 서식 JSON을 얻을 수 있습니다.
 

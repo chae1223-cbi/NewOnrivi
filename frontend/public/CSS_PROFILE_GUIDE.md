@@ -453,3 +453,31 @@
   - `cover`: `"full-image"` (전체 그림 표지) | `"image-right"` (오른쪽 그림 표지)
 - **고급 사용자 정의 CSS (`customCss`)**:
   - 프리뷰 루트(`.custom-preview-container`) 하위에 적용할 추가 CSS 규칙을 자유롭게 문자열로 작성할 수 있습니다.
+
+---
+
+## 📌 3. Google Developer Documentation Style Guide (`developers.google.com/style/lists`) 실측 레퍼런스 규격
+
+Google 공식 개발자 문서 스타일 가이드(`https://developers.google.com/style/lists`)의 실제 렌더링된 DevSite 디자인 시스템 토큰을 온리비 15대 서식 카테고리로 매핑한 표준 규격(`id: "google-dev-docs"`)입니다.
+
+- **본문 & 타이포그래피 (`pageStyle`, `rules.p`)**:
+  - 본문 서체: `'Roboto', 'Google Sans', 'Noto Sans KR', sans-serif`
+  - 본문 크기 및 행간: `fontSize: "16px"`, `lineHeight: "1.5"` (`24px`), `color: "#202124"` (DevSite Grey 900), `margin-bottom: "16px"`
+- **제목 위계 (`rules.h1` ~ `h4`)**:
+  - 제목 서체: `'Google Sans', 'Roboto', 'Noto Sans KR', sans-serif` (밑줄·좌측 색깔바·자동 번호 없는 클린 헤딩)
+  - `h1`: `34px`, `font-weight: "400"`, `line-height: "1.18"` (`40px`), `letter-spacing: "-0.01em"`, `margin: "40px 0 20px"`
+  - `h2`: `24px`, `font-weight: "400"`, `line-height: "1.33"` (`32px`), `margin: "40px 0 20px"`
+  - `h3`: `20px`, `font-weight: "400"`, `line-height: "1.6"` (`32px`), `margin: "32px 0 16px"`
+  - `h4`: `16px`, `font-weight: "500"` (Medium), `line-height: "1.5"` (`24px`), `margin: "24px 0 12px"`
+- **목록 & 중첩 리스트 (`rules.ul`, `ol`, `li`, `bulletStructure`)**:
+  - 들여쓰기 및 여백: `ul`, `ol` 모두 `padding-left: "40px"`, `margin-bottom: "16px"`, `li` `margin-bottom: "8px"`, `line-height: "1.5"`
+  - 다단계 글머리 기호 (`bulletStructure`): 1단계 `"disc"` (•) ➔ 2단계 `"circle"` (○) ➔ 3단계 `"square"` (■), 중첩 숫자 목록(`ol ol`)은 `lower-alpha` (`a, b, c`)
+- **표 (`tableStructure`, `rules.table`, `th`, `td`)**:
+  - 테두리 구조체: `outerBorderWidth: "0px"`, `rowBorderWidth: "1px"`, `colBorderWidth: "0px"` (외곽·세로선 없는 DevSite 미니멀 가로선 표)
+  - 헤더(`th`): 배경 `"#f1f3f4"` (Grey 100), 글자 `"#202124"`, `font-weight: "500"`, `font-size: "14px"`, `padding: "12px 16px"`, 하단선 `"#dadce0"`
+  - 셀(`td`): 배경 `"#ffffff"`, 글자 `"#202124"`, `font-size: "14px"`, `padding: "12px 16px"`, 행 구분선 `"#e8eaed"` (Grey 200)
+- **콜아웃 Note 박스 (`rules.blockquote`) & 코드 (`code`, `codeBlock`) & 링크 (`a`)**:
+  - Note 콜아웃(`blockquote`): 배경 `"#e8f0fe"` (Google Blue 50), 좌측 바 `"4px solid #1a73e8"`, 글자 `"#202124"`, `padding: "15px 24px"`, `border-radius: "4px"`
+  - 인라인 코드(`code`): `Roboto Mono` `14px`, 배경 `"#f1f3f4"`, 글자 `"#37474f"`, `padding: "2px 4px"`, `border-radius: "4px"`
+  - 코드블록(`codeBlock`): 배경 `"#f1f3f4"`, 글자 `"#37474f"`, 테두리 `"1px solid #dadce0"`, `padding: "16px 24px"`, `border-radius: "8px"`
+  - 하이퍼링크(`a`): `color: "#1a73e8"` (Google Blue 600), `text-decoration: "underline"`
