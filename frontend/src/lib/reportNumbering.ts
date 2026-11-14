@@ -2,6 +2,9 @@
 // 📊 [OMD-STYLE-reportNumbering-0001] reportNumbering.ts ➔ 리스트 번호 체계 및 불릿 서식 엔진
 // 🎯 @KICK  : 한국형 보고서 번호 체계, 원문자(①, ②, ③) 목록 및 계층별(1~3단계) 글머리 불릿 동적 CSS & 내보내기 마커 생성
 // 🛡️ @GUARD : Rule 1(단일 주석 관리), task-list-item 불릿 침범 방어, @counter-style 미지원 환경 폴백 보장
+// 🚨 @PATCH : **2026-11-14** — [개별 이동된 인접 리스트 간 여백 밀착 및 3단계(data-onrivi-list-level="3") 불릿·보고서 번호 서식 연동]:
+//             1) 인접한 최상위 리스트(:is(ul, ol):has(+ :is(ul, ol)) 및 :is(ul, ol) + :is(ul, ol))의 상하 외곽 마진/패딩을 0으로 보정하여, 개별 항목 Tab/Shift+Tab 분할 시에도 항목 간 줄간격이 100% 균일하게 유지되도록 개선
+//             2) data-onrivi-list-level="3" 선택자 및 내보내기(materializeReportNumbers) indentPx 깊이를 반영하여 평탄화된 2·3단계 리스트의 기호·번호 체계 완벽 보장
 // 🚨 @PATCH : **2026-11-12** — [번호 목록 직후 동급 글머리 기호의 하위 불릿(◦) 오변환 결함 해결]:
 //             1) listBulletCss에서 형제 결합자(ol + ul)를 제거하여, 번호 목록 뒤에 이어지는 동일 레벨(동급) 글머리 목록이 2단계 하위 불릿(◦)으로 오변환되지 않고 정상 1단계(•)로 렌더링되도록 수정
 // 🚨 @PATCH : **2026-11-11** — [글머리 기호 상위 리스트 인식 기반 상대적 레벨(1~3단계) 기호 적용]:
@@ -98,12 +101,15 @@ export function listBulletCss(profile: CssProfile): string {
 
   const roots = ':is(.custom-preview-container,.onrivi-content-root,.markdown-viewer-root,.visual-document-surface)';
   return `
+${roots} :is(ul, ol):has(+ :is(ul, ol)) { margin-bottom: 0 !important; padding-bottom: 0 !important; }
+${roots} :is(ul, ol) + :is(ul, ol) { margin-top: 0 !important; padding-top: 0 !important; }
 ${roots} ul > li:not(.task-list-item) { list-style-type: ${l1.css} !important; }
 ${roots} :is(ul, ol) ul > li:not(.task-list-item),
 ${roots} ul[data-onrivi-list-indent]:not([data-onrivi-list-indent="0"]):not([data-onrivi-list-indent=""]) > li:not(.task-list-item) { list-style-type: ${l2.css} !important; }
 ${roots} :is(ul, ol) :is(ul, ol) ul > li:not(.task-list-item),
 ${roots} :is(ul, ol) ul[data-onrivi-list-indent]:not([data-onrivi-list-indent="0"]):not([data-onrivi-list-indent=""]) > li:not(.task-list-item),
-${roots} ul[data-onrivi-list-indent]:not([data-onrivi-list-indent="0"]):not([data-onrivi-list-indent=""]) ul > li:not(.task-list-item) { list-style-type: ${l3.css} !important; }
+${roots} ul[data-onrivi-list-indent]:not([data-onrivi-list-indent="0"]):not([data-onrivi-list-indent=""]) ul > li:not(.task-list-item),
+${roots} ul[data-onrivi-list-level="3"] > li:not(.task-list-item) { list-style-type: ${l3.css} !important; }
 `;
 }
 
@@ -123,6 +129,7 @@ export function reportNumberingCss(profile: CssProfile): string {
     const types = ['onrivi-report', 'decimal', 'onrivi-report-hangul', 'onrivi-report-decimal-paren', 'onrivi-report-hangul-paren'];
     const rules = types.map((type, i) => `:is(.custom-preview-container,.onrivi-content-root,.markdown-viewer-root,.visual-document-surface) ${'ol '.repeat(i + 1).trim()}{list-style-type:${type}!important;}`);
     rules.push(':is(.custom-preview-container,.onrivi-content-root,.markdown-viewer-root,.visual-document-surface) ol[data-onrivi-list-indent]:not([data-onrivi-list-indent="0"]):not([data-onrivi-list-indent=""]){list-style-type:decimal!important;}');
+    rules.push(':is(.custom-preview-container,.onrivi-content-root,.markdown-viewer-root,.visual-document-surface) ol[data-onrivi-list-level="3"]{list-style-type:onrivi-report-hangul!important;}');
     rules.push(':is(.custom-preview-container,.onrivi-content-root,.markdown-viewer-root,.visual-document-surface) ol[data-onrivi-list-indent]:not([data-onrivi-list-indent="0"]):not([data-onrivi-list-indent=""]) ol{list-style-type:onrivi-report-hangul!important;}');
     rules.push(':is(.custom-preview-container,.onrivi-content-root,.markdown-viewer-root,.visual-document-surface) ol ol ol ol ol ol{list-style-type:decimal!important;}');
     return `${circledCounterStyle}
@@ -148,6 +155,8 @@ export function materializeReportNumbers(source: HTMLElement, clone: HTMLElement
     while (parent && parent !== source.parentElement) {
       if (parent.tagName === 'OL') {
         depth++;
+        const indentVal = Number(parent.getAttribute('data-onrivi-list-indent')) || 0;
+        if (indentVal > 0) depth += Math.max(1, Math.round(indentVal / 28));
         const styleType = getComputedStyle(parent).listStyleType;
         if (styleType === REPORT_LIST_STYLE) report = true;
         if (styleType === CIRCLED_DECIMAL_LIST_STYLE) circled = true;

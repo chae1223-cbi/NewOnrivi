@@ -2,6 +2,8 @@
 // 📊 [OMD-CORE-VisualEditor-ProseMirrorHandlers] frontend/src/components/visualEditor/visualEditorProseMirrorHandlers.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 ProseMirror Keymap, 키보드/텍스트 입력, 스마트 붙여넣기(handlePaste), 드롭(handleDrop), 마우스 클릭/링크 이동(handleClick) 및 DOM 이벤트 핸들러 팩토리
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 클립보드 이미지/HTML 붙여넣기 정제, 5대 정밀 진단 로깅(logError/logWarn) 준수
+// 🚨 @PATCH : 2026-11-14 — [리스트 항목 Enter 분할 시 하위 리스트 끌림 방어(independentSplitListItem 연동)]:
+//             1) Enter 키맵에서 기본 splitListItem 대신 independentSplitListItem을 호출하여, 하위 리스트를 가진 부모 리스트 항목에서 Enter 입력 시 하위 리스트가 새 항목으로 끌려가지 않고 현재 항목만 독립 분할되도록 개선
 // 🚨 @PATCH : 2026-11-13 — [행 시작 Tab 들여쓰기 / Shift+Tab 내어쓰기 및 좌측 경계 정지 보장]:
 //             1) 행의 시작(parentOffset === 0) 또는 범위 선택(!empty) 시 Tab으로 paragraphIndent(false) (+28px), Shift+Tab으로 paragraphIndent(true) (-28px) 실행 (인용문 내부/외부 공통)
 //             2) 더 이상 내어쓰기가 불가능할 때(indentPx <= 0) 노드 구조 이탈 없이 제자리 유지 보장
@@ -93,6 +95,7 @@ import {
   moveUpFromEmptyOrderedItem,
   exitEmptyListItem,
   exitListToParagraph,
+  independentSplitListItem,
   joinOrderedListsAcrossEmptyParagraph,
   deleteNextListBoundary,
   deleteEmptyParagraphBeforeList,
@@ -305,13 +308,7 @@ export function createVisualEditorKeymap({
       tableEnter(),
       calloutEnter,
       exitEmptyListItem,
-      (state, dispatch, currentView) => {
-        const parent = state.selection.$from.depth > 0 ? state.selection.$from.node(state.selection.$from.depth - 1) : null;
-        return splitListItem(
-          visualSchema.nodes.list_item,
-          parent?.type === visualSchema.nodes.list_item && parent.attrs.checked !== null ? { checked: false } : undefined
-        )(state, dispatch, currentView);
-      },
+      independentSplitListItem,
       exitQuote(true),
       headingEnter,
       newlineInCode,

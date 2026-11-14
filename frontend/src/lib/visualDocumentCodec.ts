@@ -2,6 +2,9 @@
  * 프로그램명 : OnriviAuthor 
  * 버전 정보 : 1.0.1
  * 프로그램 ID : oaar-visual-codec
+ * 🚨 @PATCH : **2026-11-14** — [개별 이동된 평탄화 리스트(indentPx)의 단계별 레벨 속성(data-onrivi-list-level) 및 직렬화 경계 강화]:
+ *             1) bullet_list 및 ordered_list의 toDOM에 data-onrivi-list-level(2단계: indentPx > 0, 3단계: indentPx >= 50)을 부여하여 개별 들여쓰기/내어쓰기 시에도 1·2·3단계 불릿/번호 서식이 정확히 렌더링되도록 연동
+ *             2) onrivi:list-indent 및 onrivi:list-boundary 주석 행을 블록 시작 경계(starts)에 명시 등록하고, 편집 분할된 인접 리스트 직렬화 시 개행(\n\n) 및 list-boundary 보존 강화
  * 🚨 @PATCH : **2026-11-13** — [문단(paragraph) 첫 줄 들여쓰기(text-indent / indentPx) 스키마·직렬화·파싱 지원]:
  *             1) visualSchema의 paragraph 노드에 indentPx(기본 null) 속성 및 data-onrivi-para-indent / text-indent 스타일을 추가하여 행 시작 Tab/Shift+Tab 시 문단 전체가 아닌 첫 줄 시작 간격(문단 시작 들여쓰기) 적용·해제 지원
  *             2) visualSerializer.nodes.paragraph에서 indentPx > 0(list_item 내부 제외)일 때 <!-- onrivi:para-indent=N --> 주석을 직렬화하고, visualTokenizer/parseVisualMarkdown에서 최상위 및 인용문(blockquote) 내부 문단까지 100% 무손실 복원
@@ -175,14 +178,19 @@ export const visualSchema = new Schema({
         },
       },
     ],
-    toDOM: node => [
-      'ul',
-      {
-        'data-onrivi-list-indent': node.attrs.indentPx ?? undefined,
-        style: node.attrs.indentPx ? `margin-left:${node.attrs.indentPx}px!important;` : undefined,
-      },
-      0,
-    ],
+    toDOM: node => {
+      const indentPx = Number(node.attrs.indentPx) || 0;
+      const level = indentPx >= 50 ? '3' : indentPx > 0 ? '2' : undefined;
+      return [
+        'ul',
+        {
+          'data-onrivi-list-indent': node.attrs.indentPx ?? undefined,
+          'data-onrivi-list-level': level,
+          style: node.attrs.indentPx ? `margin-left:${node.attrs.indentPx}px!important;` : undefined,
+        },
+        0,
+      ];
+    },
   }).update('ordered_list', {
     ...markdownSchema.spec.nodes.get('ordered_list'),
     attrs: { order: { default: 1 }, indentPx: { default: null } },
@@ -196,15 +204,20 @@ export const visualSchema = new Schema({
         },
       },
     ],
-    toDOM: node => [
-      'ol',
-      {
-        start: node.attrs.order === 1 ? undefined : node.attrs.order,
-        'data-onrivi-list-indent': node.attrs.indentPx ?? undefined,
-        style: node.attrs.indentPx ? `margin-left:${node.attrs.indentPx}px!important;` : undefined,
-      },
-      0,
-    ],
+    toDOM: node => {
+      const indentPx = Number(node.attrs.indentPx) || 0;
+      const level = indentPx >= 50 ? '3' : indentPx > 0 ? '2' : undefined;
+      return [
+        'ol',
+        {
+          start: node.attrs.order === 1 ? undefined : node.attrs.order,
+          'data-onrivi-list-indent': node.attrs.indentPx ?? undefined,
+          'data-onrivi-list-level': level,
+          style: node.attrs.indentPx ? `margin-left:${node.attrs.indentPx}px!important;` : undefined,
+        },
+        0,
+      ];
+    },
   }).addToEnd('page_break', {
     group:'block',atom:true,selectable:true,
     toDOM:()=>['div',{'data-onrivi-page-break':'true',class:'onrivi-page-break',contenteditable:'false','aria-label':'수동 페이지 나누기'},'수동 페이지 나누기'],
@@ -617,6 +630,11 @@ export function createVisualDocumentCodec(markdown: string) {
     if (/<\/table>\s*$/i.test(line) && index + 1 < lines.length && lines[index + 1].trim() && !starts.includes(index + 1)) starts.push(index + 1);
     // 🛡️ 빈 문단(<p></p>) 경계 분할: 연속된 빈 행이 뭉치지 않고 각각 독립 빈 문단 노드로 100% 복원
     if (/^\s*<p\b[^>]*>\s*<\/p>/i.test(line) && !starts.includes(index)) starts.push(index);
+    // 🛡️ onrivi 전용 주석 마커(list-indent, list-boundary, para-indent, quote-indent, table-widths) 경계 명시 분할
+    if (/^\s*<!--\s*onrivi:(?:list-indent|list-boundary|para-indent|quote-indent|table-widths)\b/i.test(line)) {
+      if (!starts.includes(index)) starts.push(index);
+      if (index + 1 < lines.length && lines[index + 1].trim() && !starts.includes(index + 1)) starts.push(index + 1);
+    }
   });
   let inMathBlock = false;
   for (let i = 0; i < lines.length; i++) {
@@ -894,9 +912,12 @@ export function createVisualDocumentCodec(markdown: string) {
           // Positional suffixes belong to the old source blocks. After a list
           // is split into paragraphs, its old single newline must not merge
           // the first two newly created paragraphs on the next parse.
+          const isPrevList = isListType(previousNode?.type.name);
+          const isCurList = isListType(node.type.name);
           const sep = (previousNode?.type.name === 'paragraph' && node.type.name === 'paragraph')
             || previousNode?.type.name === 'blockquote' || node.type.name === 'blockquote'
             || previousNode?.type.name === 'page_break' || node.type.name === 'page_break'
+            || isPrevList || isCurList
             || (node.type.name==='paragraph' && !node.content.size)
             || (previousNode?.type.name==='paragraph' && !previousNode.content.size)
             ? '\n\n' : prevSuffix !== undefined ? prevSuffix : (previousNode?.type.name === 'heading' ? '\n' : '\n\n');

@@ -1,6 +1,9 @@
 /**
  * 프로그램명 : OnriviAuthor 
  * 파일명 : visualListCommands.ts
+ * 🚨 @PATCH : **2026-11-14** — [모든 리스트 항목 100% 개별 이동(Tab / Shift+Tab) 및 중첩 리스트 하단 점프·번호 변질 결함 근본 해결]:
+ *             1) [Shift+Tab 제자리 개별 내어쓰기]: 중첩된 하위 불릿 항목(예: ○ 목표 설정)에서 Shift+Tab 입력 시 상위 번호 목록(ordered_list)의 맨 아래(5. 목표 설정)로 점프·변질되던 결함을 제거하고, 원래 줄 위치(동기부여와 의사 결정 사이)에서 자기 자신의 리스트 타입(• 목표 설정)을 유지한 채 단독으로 -28px 내어쓰기되도록 전면 개편
+ *             2) [부모·자식 리스트 완전 개별 이동]: 상위 리스트 항목(예: 4. 리더십 기술 개발, 5. 선도적인 팀 및 조직)이나 하위 항목에서 Tab / Shift+Tab / Enter / Backspace / 서식 변경 시 하위 리스트가 부모를 따라 함께 끌려다니거나 승격되지 않고, 커서·선택 영역에 해당하는 항목만 독립적으로 이동·조작되도록 평탄화(flattenListTree) 및 인접 리스트 자동 정합·번호 재계산(normalizeTopLevelListsInTransaction) 엔진 탑재
  * 🚨 @PATCH : **2026-11-12** — [선택 영역 내 모든 교차 리스트 동시 들여쓰기/내어쓰기 완비]:
  *             1) [모든 선택 리스트 동시 이동]: 선택 영역(Selection)이 여러 개의 서로 다른 리스트(글머리, 체크, 번호 등)에 걸쳐 있을 때 첫 리스트만 움직이던 결함을 해결하고, 선택 영역과 교차하는 모든 리스트를 동시 수집하여 레벨 체크 없이 무조건 함께 +28px 들여쓰기 이동 보장
  *             2) [다중 리스트 동시 내어쓰기]: Shift+Tab 시에도 선택된 모든 교차 리스트 항목이 동시 -28px 내어쓰기되며, 최좌측 시 일반 문단 오염 방어
@@ -158,139 +161,6 @@ function indentItemIntoPreviousList(
 }
 
 
-/** Remove the next item's boundary without letting a structural replacement
- * move the caret to an unrelated trailing paragraph. */
-/** 빈 문단에서 Delete 시 아래 리스트가 일반 텍스트로 풀리는 현상을 방지하고,
- * 빈 문단만 삭제하며 아래 리스트의 서식을 온전히 유지한 채 위로 끌어올림 */
-/** 상위 리스트 항목에서 Tab 입력 시 하위 리스트의 위계 구조를 그대로 보존하며
- * 이전 형제 항목 또는 교차 리스트로 안전하게 들여쓰기 수행 */
-export const independentIndentListItem: Command = (state, dispatch, currentView) => {
-  const { from, to, empty } = state.selection;
-  const step = listStep(currentView);
-
-  // 🌟 선택 영역과 교차하는 모든 리스트 노드(bullet_list, ordered_list)와 그 위치 수집
-  interface TargetList {
-    pos: number;
-    node: DocumentNode;
-    first: number;
-    last: number;
-    items: DocumentNode[];
-  }
-
-  const targetLists: TargetList[] = [];
-
-  if (empty) {
-    const { $from } = state.selection;
-    let listDepth = -1;
-    for (let d = $from.depth; d > 0; d--) {
-      if (isList($from.node(d))) {
-        listDepth = d;
-        break;
-      }
-    }
-    if (listDepth === -1) return false;
-    const listNode = $from.node(listDepth);
-    const itemIndex = $from.index(listDepth);
-    const items: DocumentNode[] = [];
-    for (let i = 0; i < listNode.childCount; i++) items.push(listNode.child(i));
-    targetLists.push({
-      pos: $from.before(listDepth),
-      node: listNode,
-      first: itemIndex,
-      last: itemIndex,
-      items
-    });
-  } else {
-    // 🌟 다중 선택: doc 전체에서 선택 영역 [from, to]와 겹치는 모든 리스트 노드들 탐색
-    state.doc.nodesBetween(from, to, (node, pos) => {
-      if (isList(node)) {
-        const items: DocumentNode[] = [];
-        let first = -1;
-        let last = -1;
-        node.forEach((item, offset, index) => {
-          const itemStart = pos + 1 + offset;
-          const itemEnd = itemStart + item.nodeSize;
-          items.push(item);
-          if (itemStart < to && itemEnd > from) {
-            if (first < 0) first = index;
-            last = index;
-          }
-        });
-        if (first >= 0 && last >= 0) {
-          targetLists.push({
-            pos,
-            node,
-            first,
-            last,
-            items
-          });
-        }
-        return false; // 중첩 리스트의 경우 부모 리스트 레벨에서 처리
-      }
-    });
-  }
-
-  if (targetLists.length === 0) return false;
-  if (!dispatch) return true;
-
-  let tr = state.tr;
-  const makeList = (orig: DocumentNode, part: DocumentNode[], isIndented: boolean, indent: number | null, startOrder: number) =>
-    orig.type.create({
-      ...orig.attrs,
-      indentPx: indent && indent > 0 ? indent : null,
-      ...(orig.type === visualSchema.nodes.ordered_list ? { order: isIndented ? 1 : startOrder } : {})
-    }, Fragment.fromArray(part));
-
-  // 뒤쪽 리스트부터 역순(pos 내림차순)으로 교체하여 위치 오프셋 왜곡 방지
-  targetLists.sort((a, b) => b.pos - a.pos);
-
-  for (const target of targetLists) {
-    const { pos, node: list, first, last, items } = target;
-    const currentIndent = list.attrs.indentPx ?? 0;
-    const nextIndent = bounded(currentIndent + step);
-
-    const replacement: DocumentNode[] = [];
-
-    // 1) 리스트 내 모든 항목이 선택된 경우
-    if (first === 0 && last === items.length - 1) {
-      replacement.push(list.type.create({
-        ...list.attrs,
-        indentPx: nextIndent > 0 ? nextIndent : null
-      }, Fragment.fromArray(items)));
-    } else {
-      // 2) 리스트의 일부만 선택된 경우: before, selected(+step), after 분할
-      const baseOrder = list.attrs.order || 1;
-      if (first > 0) {
-        replacement.push(makeList(list, items.slice(0, first), false, currentIndent > 0 ? currentIndent : null, baseOrder));
-      }
-      replacement.push(makeList(list, items.slice(first, last + 1), true, nextIndent > 0 ? nextIndent : null, 1));
-      if (last + 1 < items.length) {
-        replacement.push(makeList(list, items.slice(last + 1), false, currentIndent > 0 ? currentIndent : null, baseOrder + last + 1));
-      }
-    }
-
-    tr = tr.replaceWith(pos, pos + list.nodeSize, Fragment.fromArray(replacement));
-  }
-
-  // 선택 영역 재설정
-  const relocate = ($pos: typeof state.selection.$anchor) => {
-    let found: number | undefined;
-    tr.doc.descendants((node, pos) => {
-      if (node === $pos.parent && found === undefined) {
-        found = pos + 1 + $pos.parentOffset;
-      }
-    });
-    return found;
-  };
-  const anchor = relocate(state.selection.$anchor);
-  const head = relocate(state.selection.$head);
-  if (anchor !== undefined && head !== undefined) {
-    tr.setSelection(TextSelection.create(tr.doc, anchor, head));
-  }
-  dispatch(closeHistory(tr).scrollIntoView());
-  return true;
-};
-
 function listStep(view?: any): number {
   if (!view) return 28;
   try {
@@ -304,6 +174,505 @@ function listStep(view?: any): number {
 }
 
 const bounded = (value: number) => Math.max(0, Math.min(4096, Math.round(value * 100) / 100));
+
+interface FlatListEntry {
+  listType: DocumentNode['type'];
+  listAttrs: Record<string, any>;
+  itemNode: DocumentNode;
+  indentPx: number;
+  order: number;
+  selected: boolean;
+  moved?: boolean;
+}
+
+/**
+ * ========================================================================================
+ * [함수명] hasNestedSubLists - 리스트 노드 내부에 중첩된 하위 리스트(bullet_list / ordered_list)가 존재하는지 검사합니다.
+ *
+ * @param {DocumentNode} listNode - 검사할 상위 리스트 노드
+ * @returns {boolean} 중첩 하위 리스트 존재 여부
+ *
+ * @example
+ * const nested = hasNestedSubLists(listNode);
+ * ==========================================================================================
+ */
+export function hasNestedSubLists(listNode: DocumentNode): boolean {
+  let found = false;
+  listNode.forEach(item => {
+    if (found) return;
+    item.forEach(child => {
+      if (isList(child)) found = true;
+    });
+  });
+  return found;
+}
+
+/**
+ * ========================================================================================
+ * [함수명] flattenListTree - 중첩된 리스트 트리를 각 항목(list_item) 단위의 독립 평탄화 엔트리 배열로 분해합니다.
+ *
+ * @param {DocumentNode} listNode - 분해할 리스트 노드
+ * @param {number} listPos - 문서 내 리스트 노드의 시작 위치
+ * @param {number} visualIndent - 현재 리스트의 시각적 들여쓰기(px)
+ * @param {number} step - 1단계 들여쓰기 폭(기본 28px)
+ * @param {Selection} selection - 현재 에디터 선택 영역
+ * @returns {FlatListEntry[]} 평탄화된 개별 리스트 항목 배열
+ *
+ * @example
+ * const entries = flattenListTree(rootList, rootPos, rootList.attrs.indentPx ?? 0, 28, state.selection);
+ * ==========================================================================================
+ */
+function flattenListTree(
+  listNode: DocumentNode,
+  listPos: number,
+  visualIndent: number,
+  step: number,
+  selection: Selection
+): FlatListEntry[] {
+  const entries: FlatListEntry[] = [];
+  const { $from, from, to, empty } = selection;
+  const baseOrder = Number(listNode.attrs.order) || 1;
+
+  listNode.forEach((item, offset, index) => {
+    const itemPos = listPos + 1 + offset;
+    const ownBlocks: DocumentNode[] = [];
+    const subLists: { node: DocumentNode; pos: number }[] = [];
+
+    let isSelected = false;
+    item.forEach((child, childOffset) => {
+      const childStart = itemPos + 1 + childOffset;
+      const childEnd = childStart + child.nodeSize;
+      if (isList(child)) {
+        subLists.push({ node: child, pos: childStart });
+      } else {
+        ownBlocks.push(child);
+        if (empty) {
+          if ($from.pos >= childStart && $from.pos <= childEnd) {
+            isSelected = true;
+          }
+        } else {
+          if (childStart < to && childEnd > from) {
+            isSelected = true;
+          }
+        }
+      }
+    });
+
+    if (ownBlocks.length > 0) {
+      const cleanItem = item.copy(Fragment.fromArray(ownBlocks));
+      entries.push({
+        listType: listNode.type,
+        listAttrs: listNode.attrs,
+        itemNode: cleanItem,
+        indentPx: visualIndent,
+        order: baseOrder + index,
+        selected: isSelected,
+      });
+    }
+
+    for (const sub of subLists) {
+      const subOwnIndent = Number(sub.node.attrs.indentPx) || 0;
+      const nextVisualIndent = bounded(visualIndent + (subOwnIndent > 0 ? subOwnIndent : step));
+      entries.push(...flattenListTree(sub.node, sub.pos, nextVisualIndent, step, selection));
+    }
+  });
+
+  return entries;
+}
+
+/**
+ * ========================================================================================
+ * [함수명] buildListNodesFromFlatEntries - 평탄화된 리스트 항목 배열을 연속된 동일 타입·동일 들여쓰기 리스트 노드들로 재조립합니다.
+ *
+ * @param {FlatListEntry[]} entries - 평탄화된 리스트 엔트리 목록
+ * @param {'indent' | 'outdent' | 'none'} direction - 이동 방향
+ * @returns {DocumentNode[]} 생성된 최상위 리스트 노드 배열
+ *
+ * @example
+ * const replacement = buildListNodesFromFlatEntries(entries, 'outdent');
+ * ==========================================================================================
+ */
+function buildListNodesFromFlatEntries(
+  entries: FlatListEntry[],
+  direction: 'indent' | 'outdent' | 'none'
+): DocumentNode[] {
+  const result: DocumentNode[] = [];
+  if (entries.length === 0) return result;
+
+  let groupStart = 0;
+  while (groupStart < entries.length) {
+    const first = entries[groupStart];
+    const firstIsTask = first.itemNode.attrs.checked !== null && first.itemNode.attrs.checked !== undefined;
+    let groupEnd = groupStart + 1;
+    while (groupEnd < entries.length) {
+      const curr = entries[groupEnd];
+      const currIsTask = curr.itemNode.attrs.checked !== null && curr.itemNode.attrs.checked !== undefined;
+      if (
+        curr.listType !== first.listType ||
+        curr.indentPx !== first.indentPx ||
+        currIsTask !== firstIsTask
+      ) {
+        break;
+      }
+      groupEnd++;
+    }
+
+    const groupEntries = entries.slice(groupStart, groupEnd);
+    const items = groupEntries.map(e => e.itemNode);
+    const indentAttr = first.indentPx > 0 ? first.indentPx : null;
+
+    if (first.listType === visualSchema.nodes.ordered_list) {
+      const startOrder = first.moved && direction === 'indent' ? 1 : first.order;
+      result.push(
+        first.listType.create(
+          {
+            ...first.listAttrs,
+            indentPx: indentAttr,
+            order: startOrder,
+          },
+          Fragment.fromArray(items)
+        )
+      );
+    } else {
+      result.push(
+        first.listType.create(
+          {
+            ...first.listAttrs,
+            indentPx: indentAttr,
+          },
+          Fragment.fromArray(items)
+        )
+      );
+    }
+
+    groupStart = groupEnd;
+  }
+
+  return result;
+}
+
+/**
+ * ========================================================================================
+ * [함수명] normalizeTopLevelListsInTransaction - 인접한 동일 타입·동일 들여쓰기 리스트를 병합하고, 연속된 리스트 구간 내 ordered_list의 레벨별 번호(order)를 순차 재계산합니다.
+ *
+ * @param {Transaction} tr - 대상 ProseMirror 트랜잭션
+ * @returns {boolean} 변경 발생 여부
+ *
+ * @example
+ * normalizeTopLevelListsInTransaction(tr);
+ * ==========================================================================================
+ */
+export function normalizeTopLevelListsInTransaction(tr: Transaction): boolean {
+  const savedSelection = tr.selection;
+  const doc = tr.doc;
+  interface ListRun {
+    startPos: number;
+    endPos: number;
+    nodes: { node: DocumentNode; pos: number }[];
+  }
+
+  const runs: ListRun[] = [];
+  let currentRun: ListRun | null = null;
+
+  doc.forEach((node, offset) => {
+    if (isList(node) && !hasNestedSubLists(node)) {
+      if (!currentRun) {
+        currentRun = { startPos: offset, endPos: offset + node.nodeSize, nodes: [{ node, pos: offset }] };
+      } else {
+        currentRun.endPos = offset + node.nodeSize;
+        currentRun.nodes.push({ node, pos: offset });
+      }
+    } else {
+      if (currentRun) {
+        runs.push(currentRun);
+        currentRun = null;
+      }
+    }
+  });
+  if (currentRun) runs.push(currentRun);
+
+  let anyChanged = false;
+  let structuralMergeOccurred = false;
+
+  for (let r = runs.length - 1; r >= 0; r--) {
+    const run = runs[r];
+    const merged: DocumentNode[] = [];
+
+    for (const { node } of run.nodes) {
+      const prev = merged.length > 0 ? merged[merged.length - 1] : null;
+      const prevIndent = prev ? (Number(prev.attrs.indentPx) || 0) : -1;
+      const curIndent = Number(node.attrs.indentPx) || 0;
+      const prevIsTask = prev ? (prev.firstChild?.attrs?.checked !== null && prev.firstChild?.attrs?.checked !== undefined) : false;
+      const curIsTask = node.firstChild?.attrs?.checked !== null && node.firstChild?.attrs?.checked !== undefined;
+
+      if (prev && prev.type === node.type && prevIndent === curIndent && prevIsTask === curIsTask) {
+        merged[merged.length - 1] = prev.copy(prev.content.append(node.content));
+      } else {
+        merged.push(node);
+      }
+    }
+
+    const nextOrderByIndent = new Map<number, number>();
+    const orderUpdates: { index: number; expectedOrder: number }[] = [];
+    for (let i = 0; i < merged.length; i++) {
+      const listNode = merged[i];
+      const indent = Number(listNode.attrs.indentPx) || 0;
+      for (const key of Array.from(nextOrderByIndent.keys())) {
+        if (key > indent) nextOrderByIndent.delete(key);
+      }
+      if (listNode.type === visualSchema.nodes.ordered_list) {
+        const expectedOrder = nextOrderByIndent.get(indent) ?? 1;
+        nextOrderByIndent.set(indent, expectedOrder + listNode.childCount);
+        if ((Number(listNode.attrs.order) || 1) !== expectedOrder) {
+          merged[i] = listNode.type.create(
+            { ...listNode.attrs, order: expectedOrder },
+            listNode.content,
+            listNode.marks
+          );
+          orderUpdates.push({ index: i, expectedOrder });
+        }
+      }
+    }
+
+    if (merged.length !== run.nodes.length) {
+      tr.replaceWith(run.startPos, run.endPos, Fragment.fromArray(merged));
+      anyChanged = true;
+      structuralMergeOccurred = true;
+    } else if (orderUpdates.length > 0) {
+      for (let u = orderUpdates.length - 1; u >= 0; u--) {
+        const { index, expectedOrder } = orderUpdates[u];
+        const targetEntry = run.nodes[index];
+        tr.setNodeMarkup(targetEntry.pos, undefined, {
+          ...targetEntry.node.attrs,
+          order: expectedOrder,
+        });
+      }
+      anyChanged = true;
+    }
+  }
+
+  if (structuralMergeOccurred && savedSelection instanceof TextSelection) {
+    const relocate = ($pos: typeof savedSelection.$anchor) => {
+      let found: number | undefined;
+      tr.doc.descendants((node, pos) => {
+        if (node === $pos.parent && found === undefined) {
+          found = pos + 1 + $pos.parentOffset;
+          return false;
+        }
+      });
+      return found;
+    };
+    const anchor = relocate(savedSelection.$anchor);
+    const head = relocate(savedSelection.$head);
+    if (anchor !== undefined && head !== undefined) {
+      tr.setSelection(TextSelection.create(tr.doc, anchor, head));
+    }
+  }
+
+  return anyChanged;
+}
+
+/**
+ * ========================================================================================
+ * [함수명] collectIntersectingTopLists - 현재 선택 영역과 교차하는 최상위 리스트 노드들을 수집합니다.
+ *
+ * @param {EditorState} state - ProseMirror 에디터 상태
+ * @returns {{ pos: number; node: DocumentNode }[]} 최상위 리스트 위치 및 노드 배열
+ *
+ * @example
+ * const topLists = collectIntersectingTopLists(state);
+ * ==========================================================================================
+ */
+function collectIntersectingTopLists(state: EditorState): { pos: number; node: DocumentNode }[] {
+  const { $from, from, to, empty } = state.selection;
+  const topLists: { pos: number; node: DocumentNode }[] = [];
+
+  if (empty) {
+    let topListDepth = -1;
+    for (let d = 1; d <= $from.depth; d++) {
+      if (isList($from.node(d))) {
+        topListDepth = d;
+        break;
+      }
+    }
+    if (topListDepth !== -1) {
+      topLists.push({
+        pos: $from.before(topListDepth),
+        node: $from.node(topListDepth),
+      });
+    }
+  } else {
+    state.doc.nodesBetween(from, to, (node, pos) => {
+      if (isList(node)) {
+        topLists.push({ pos, node });
+        return false;
+      }
+    });
+  }
+
+  return topLists;
+}
+
+/**
+ * ========================================================================================
+ * [함수명] ensureFlatTopLevelListsForSelection - 선택 영역과 교차하는 리스트에 중첩 하위 리스트가 있는 경우 선행 평탄화 트랜잭션을 생성합니다.
+ *
+ * @param {EditorState} state - ProseMirror 에디터 상태
+ * @param {any} [view] - EditorView 인스턴스
+ * @returns {Transaction | null} 중첩 리스트가 평탄화된 트랜잭션 (중첩이 없으면 null)
+ *
+ * @example
+ * const flatTr = ensureFlatTopLevelListsForSelection(state, view);
+ * ==========================================================================================
+ */
+export function ensureFlatTopLevelListsForSelection(state: EditorState, view?: any): Transaction | null {
+  const topLists = collectIntersectingTopLists(state).filter(t => hasNestedSubLists(t.node));
+  if (topLists.length === 0) return null;
+
+  const step = listStep(view);
+  let tr = state.tr;
+  topLists.sort((a, b) => b.pos - a.pos);
+
+  for (const target of topLists) {
+    const baseIndent = Number(target.node.attrs.indentPx) || 0;
+    const entries = flattenListTree(target.node, target.pos, baseIndent, step, state.selection);
+    const replacement = buildListNodesFromFlatEntries(entries, 'none');
+    tr = tr.replaceWith(target.pos, target.pos + target.node.nodeSize, Fragment.fromArray(replacement));
+  }
+
+  normalizeTopLevelListsInTransaction(tr);
+
+  const relocate = ($pos: typeof state.selection.$anchor) => {
+    let found: number | undefined;
+    tr.doc.descendants((node, pos) => {
+      if (node === $pos.parent && found === undefined) {
+        found = pos + 1 + $pos.parentOffset;
+        return false;
+      }
+    });
+    return found;
+  };
+  const anchor = relocate(state.selection.$anchor);
+  const head = relocate(state.selection.$head);
+  if (anchor !== undefined && head !== undefined) {
+    tr.setSelection(TextSelection.create(tr.doc, anchor, head));
+  }
+  return tr;
+}
+
+/**
+ * ========================================================================================
+ * [함수명] moveSelectedListItemsIndividually - 선택된 리스트 항목(들)만 독립적으로 들여쓰기(+28px) 또는 내어쓰기(-28px) 이동합니다.
+ * 부모 항목 이동 시 자식 리스트가 함께 끌려가지 않으며, 자식 항목 Shift+Tab 시 상위 번호 목록 하단으로 점프하거나 마커가 변질되지 않고 제자리에서 개별 이동합니다.
+ *
+ * @param {EditorState} state - ProseMirror 에디터 상태
+ * @param {((tr: Transaction) => void) | undefined} dispatch - 트랜잭션 디스패치 함수
+ * @param {any} view - EditorView 인스턴스
+ * @param {'indent' | 'outdent'} direction - 이동 방향 ('indent': Tab, 'outdent': Shift+Tab)
+ * @returns {boolean} 커맨드 처리 여부
+ *
+ * @example
+ * moveSelectedListItemsIndividually(state, dispatch, view, 'outdent');
+ * ==========================================================================================
+ */
+function moveSelectedListItemsIndividually(
+  state: EditorState,
+  dispatch: ((tr: Transaction) => void) | undefined,
+  view: any,
+  direction: 'indent' | 'outdent'
+): boolean {
+  const step = listStep(view);
+  const topLists = collectIntersectingTopLists(state);
+  if (topLists.length === 0) return false;
+
+  interface FlattenedTarget {
+    pos: number;
+    node: DocumentNode;
+    entries: FlatListEntry[];
+  }
+
+  const flattenedTargets: FlattenedTarget[] = [];
+  for (const target of topLists) {
+    const baseIndent = Number(target.node.attrs.indentPx) || 0;
+    const entries = flattenListTree(target.node, target.pos, baseIndent, step, state.selection);
+    if (entries.some(e => e.selected)) {
+      flattenedTargets.push({ pos: target.pos, node: target.node, entries });
+    }
+  }
+
+  if (flattenedTargets.length === 0) return false;
+
+  if (direction === 'outdent') {
+    const canReduceAny = flattenedTargets.some(t => t.entries.some(e => e.selected && e.indentPx > 0));
+    if (!canReduceAny) {
+      // 이미 최좌측(0px)에 위치한 리스트 항목에서 Shift+Tab 입력 시:
+      // 일반 문단으로 풀리거나 하위 리스트를 임의로 끌어올리지 않고 제자리에서 안전하게 정지
+      return true;
+    }
+  }
+
+  if (!dispatch) return true;
+
+  let tr = state.tr;
+  flattenedTargets.sort((a, b) => b.pos - a.pos);
+
+  for (const target of flattenedTargets) {
+    const { pos, node, entries } = target;
+    for (const entry of entries) {
+      if (!entry.selected) continue;
+      if (direction === 'indent') {
+        entry.indentPx = bounded(entry.indentPx + step);
+        entry.moved = true;
+      } else if (entry.indentPx > 0) {
+        entry.indentPx = Math.max(0, bounded(entry.indentPx - step));
+        entry.moved = true;
+      }
+    }
+
+    const replacement = buildListNodesFromFlatEntries(entries, direction);
+    tr = tr.replaceWith(pos, pos + node.nodeSize, Fragment.fromArray(replacement));
+  }
+
+  normalizeTopLevelListsInTransaction(tr);
+
+  const relocate = ($pos: typeof state.selection.$anchor) => {
+    let found: number | undefined;
+    tr.doc.descendants((node, pos) => {
+      if (node === $pos.parent && found === undefined) {
+        found = pos + 1 + $pos.parentOffset;
+        return false;
+      }
+    });
+    return found;
+  };
+  const anchor = relocate(state.selection.$anchor);
+  const head = relocate(state.selection.$head);
+  if (anchor !== undefined && head !== undefined) {
+    tr.setSelection(TextSelection.create(tr.doc, anchor, head));
+  } else {
+    tr.setSelection(Selection.near(tr.doc.resolve(Math.min(state.selection.anchor, tr.doc.content.size))));
+  }
+
+  dispatch(closeHistory(tr).scrollIntoView());
+  return true;
+}
+
+/**
+ * ========================================================================================
+ * [함수명] independentIndentListItem - 리스트 항목에서 Tab 입력 시 하위 리스트나 비선택 항목과 무관하게 선택된 항목만 개별적으로 +28px 들여쓰기합니다.
+ *
+ * @param {EditorState} state - ProseMirror 에디터 상태
+ * @param {((tr: Transaction) => void) | undefined} dispatch - 트랜잭션 디스패치 함수
+ * @param {any} currentView - EditorView 인스턴스
+ * @returns {boolean} 처리 여부
+ *
+ * @example
+ * independentIndentListItem(state, dispatch, view);
+ * ==========================================================================================
+ */
+export const independentIndentListItem: Command = (state, dispatch, currentView) => {
+  return moveSelectedListItemsIndividually(state, dispatch, currentView, 'indent');
+};
 
 /** 리스트의 첫 항목에서 Tab 시 빈 상위 항목을 만들지 않고 목록 전체의 indentPx를 1단계 증가 */
 export const indentWholeList = (state: EditorState, dispatch?: (tr: Transaction) => void, view?: any, listDepthParam?: number): boolean => {
@@ -367,9 +736,21 @@ export const outdentWholeList = (state: EditorState, dispatch?: (tr: Transaction
   return true;
 };
 
-/** 상위 리스트 항목에서 Shift+Tab 입력 시 하위 레벨 항목의 위계를 보존하며 안전하게 내어쓰기 수행 */
+/**
+ * ========================================================================================
+ * [함수명] independentLiftListItem - 리스트 항목에서 Shift+Tab 입력 시 상위 번호 목록 하단으로 점프하거나 서식이 변질되지 않고 제자리에서 선택된 항목만 개별적으로 -28px 내어쓰기합니다.
+ *
+ * @param {EditorState} state - ProseMirror 에디터 상태
+ * @param {((tr: Transaction) => void) | undefined} dispatch - 트랜잭션 디스패치 함수
+ * @param {any} view - EditorView 인스턴스
+ * @returns {boolean} 처리 여부
+ *
+ * @example
+ * independentLiftListItem(state, dispatch, view);
+ * ==========================================================================================
+ */
 export const independentLiftListItem: Command = (state, dispatch, view) => {
-  const { $from, $to } = state.selection;
+  const { $from } = state.selection;
   let itemDepth = -1;
   for (let d = $from.depth; d > 0; d--) {
     if ($from.node(d).type === visualSchema.nodes.list_item) {
@@ -377,239 +758,43 @@ export const independentLiftListItem: Command = (state, dispatch, view) => {
       break;
     }
   }
-  if (itemDepth === -1) return false;
+  if (itemDepth === -1 && state.selection.empty) return false;
 
   // 마지막 목록 항목 안의 이어지는 문단은 상위 항목 전체가 아닌 현재 문단만 내어쓴다.
-  const containingItem = $from.node(itemDepth);
-  const paragraphIndex = $from.index(itemDepth);
-  if (state.selection.empty && $from.parent.type === visualSchema.nodes.paragraph
-    && paragraphIndex > 0 && paragraphIndex === containingItem.childCount - 1) {
-    if (!dispatch) return true;
-    const listDepth = itemDepth - 1;
-    const listNode = $from.node(listDepth);
-    const itemIndex = $from.index(listDepth);
-    const beforeItems: DocumentNode[] = [];
-    const afterItems: DocumentNode[] = [];
-    listNode.forEach((item, _offset, index) => {
-      if (index < itemIndex) beforeItems.push(item);
-      else if (index > itemIndex) afterItems.push(item);
-    });
-    const retained = containingItem.copy(containingItem.content.cut(0, containingItem.content.size - $from.parent.nodeSize));
-    beforeItems.push(retained);
-    const beforeList = listNode.copy(Fragment.fromArray(beforeItems));
-    const replacement: DocumentNode[] = [beforeList, $from.parent];
-    if (afterItems.length) replacement.push(listNode.copy(Fragment.fromArray(afterItems)));
-    const listPos = $from.before(listDepth);
-    const tr = state.tr.replaceWith(listPos, $from.after(listDepth), replacement);
-    const paragraphPos = listPos + beforeList.nodeSize;
-    tr.setSelection(TextSelection.create(tr.doc, paragraphPos + 1 + $from.parentOffset));
-    dispatch(closeHistory(tr).scrollIntoView());
-    return true;
-  }
-
-  const range = $from.blockRange($to, node => isList(node) && node.firstChild?.type === visualSchema.nodes.list_item);
-  if (range && range.depth >= 3 && $from.node(range.depth - 1).type === visualSchema.nodes.list_item && state.selection instanceof TextSelection) {
-    if (!dispatch) return true;
-    const list = range.parent, parent = $from.node(range.depth - 1), outer = $from.node(range.depth - 2);
-    const parentIndex = $from.index(range.depth - 2), childIndex = $from.index(range.depth - 1);
-    const beforeBlocks: DocumentNode[] = [];
-    for (let index = 0; index < childIndex; index++) beforeBlocks.push(parent.child(index));
-    if (range.startIndex) beforeBlocks.push(list.type.create({...list.attrs, indentPx: null}, Fragment.fromArray(Array.from({length:range.startIndex},(_,index)=>list.child(index)))));
-    const lifted: DocumentNode[] = [];
-    for (let index = range.startIndex; index < range.endIndex; index++) lifted.push(list.child(index));
-    
-    // 🛡️ 선택되지 않은 후속 형제 항목들은 내어써진(lifted) 항목의 자식으로 끌려가지 않고, 부모(parent) 내부에 그대로 보존
-    const remainingSubItems: DocumentNode[] = [];
-    if (range.endIndex < list.childCount) {
-      const remaining: DocumentNode[] = [];
-      for (let index = range.endIndex; index < list.childCount; index++) remaining.push(list.child(index));
-      remainingSubItems.push(list.type.create({...list.attrs, indentPx: null, ...(list.type.name==='ordered_list'?{order:(list.attrs.order||1)+range.endIndex}:{})},Fragment.fromArray(remaining)));
-    }
-    for (let index = childIndex + 1; index < parent.childCount; index++) remainingSubItems.push(parent.child(index));
-    if (remainingSubItems.length) beforeBlocks.push(...remainingSubItems);
-
-    const items: DocumentNode[] = [];
-    for (let index = 0; index < parentIndex; index++) items.push(outer.child(index));
-    if (beforeBlocks.length) items.push(parent.copy(Fragment.fromArray(beforeBlocks)));
-    const outerPos = $from.before(range.depth - 2);
-    const selectedStart = outerPos + 1 + items.reduce((size,node)=>size+node.nodeSize,0);
-    items.push(...lifted);
-    for (let index = parentIndex + 1; index < outer.childCount; index++) items.push(outer.child(index));
-    const tr = state.tr.replaceWith(outerPos,$from.after(range.depth - 2),outer.copy(Fragment.fromArray(items)));
-    tr.setSelection(TextSelection.create(tr.doc,selectedStart+state.selection.anchor-range.start,selectedStart+state.selection.head-range.start));
-    dispatch(closeHistory(tr).scrollIntoView());
-    return true;
-  }
-
-  // 2) 선택 영역과 교차하는 모든 리스트 노드 수집
-  const listDepth = itemDepth - 1;
-  const list = $from.node(listDepth);
-  interface TargetList {
-    pos: number;
-    node: DocumentNode;
-    first: number;
-    last: number;
-    items: DocumentNode[];
-  }
-
-  const targetLists: TargetList[] = [];
-  const { from, to, empty } = state.selection;
-
-  if (empty) {
-    const itemIndex = $from.index(listDepth);
-    const items: DocumentNode[] = [];
-    for (let i = 0; i < list.childCount; i++) items.push(list.child(i));
-    targetLists.push({
-      pos: $from.before(listDepth),
-      node: list,
-      first: itemIndex,
-      last: itemIndex,
-      items
-    });
-  } else {
-    state.doc.nodesBetween(from, to, (node, pos) => {
-      if (isList(node)) {
-        const items: DocumentNode[] = [];
-        let first = -1;
-        let last = -1;
-        node.forEach((item, offset, index) => {
-          const itemStart = pos + 1 + offset;
-          const itemEnd = itemStart + item.nodeSize;
-          items.push(item);
-          if (itemStart < to && itemEnd > from) {
-            if (first < 0) first = index;
-            last = index;
-          }
-        });
-        if (first >= 0 && last >= 0) {
-          targetLists.push({
-            pos,
-            node,
-            first,
-            last,
-            items
-          });
-        }
-        return false;
-      }
-    });
-  }
-
-  if (targetLists.length === 0) return false;
-
-  const hasIndentToReduce = targetLists.some(t => (t.node.attrs.indentPx ?? 0) > 0);
-  if (hasIndentToReduce) {
-    if (!dispatch) return true;
-
-    let tr = state.tr;
-    const makeList = (orig: DocumentNode, part: DocumentNode[], indent: number | null, startOrder: number) =>
-      orig.type.create({
-        ...orig.attrs,
-        indentPx: indent && indent > 0 ? indent : null,
-        ...(orig.type === visualSchema.nodes.ordered_list ? { order: startOrder } : {})
-      }, Fragment.fromArray(part));
-
-    targetLists.sort((a, b) => b.pos - a.pos);
-
-    for (const target of targetLists) {
-      const { pos, node: list, first, last, items } = target;
-      const currentIndent = list.attrs.indentPx ?? 0;
-      if (currentIndent <= 0) continue;
-
-      const nextIndent = Math.max(0, currentIndent - listStep(view));
-      const replacement: DocumentNode[] = [];
-
-      if (first === 0 && last === items.length - 1) {
-        replacement.push(list.type.create({
-          ...list.attrs,
-          indentPx: nextIndent > 0 ? nextIndent : null
-        }, Fragment.fromArray(items)));
-      } else {
-        const baseOrder = list.attrs.order || 1;
-        if (first > 0) {
-          replacement.push(makeList(list, items.slice(0, first), currentIndent > 0 ? currentIndent : null, baseOrder));
-        }
-        replacement.push(makeList(list, items.slice(first, last + 1), nextIndent > 0 ? nextIndent : null, baseOrder + first));
-        if (last + 1 < items.length) {
-          replacement.push(makeList(list, items.slice(last + 1), currentIndent > 0 ? currentIndent : null, baseOrder + last + 1));
-        }
-      }
-
-      tr = tr.replaceWith(pos, pos + list.nodeSize, Fragment.fromArray(replacement));
-    }
-
-    const relocate = ($pos: typeof state.selection.$anchor) => {
-      let found: number | undefined;
-      tr.doc.descendants((node, pos) => {
-        if (node === $pos.parent && found === undefined) {
-          found = pos + 1 + $pos.parentOffset;
-        }
+  if (itemDepth !== -1) {
+    const containingItem = $from.node(itemDepth);
+    const paragraphIndex = $from.index(itemDepth);
+    if (
+      state.selection.empty &&
+      $from.parent.type === visualSchema.nodes.paragraph &&
+      paragraphIndex > 0 &&
+      paragraphIndex === containingItem.childCount - 1
+    ) {
+      if (!dispatch) return true;
+      const listDepth = itemDepth - 1;
+      const listNode = $from.node(listDepth);
+      const itemIndex = $from.index(listDepth);
+      const beforeItems: DocumentNode[] = [];
+      const afterItems: DocumentNode[] = [];
+      listNode.forEach((item, _offset, index) => {
+        if (index < itemIndex) beforeItems.push(item);
+        else if (index > itemIndex) afterItems.push(item);
       });
-      return found;
-    };
-    const anchor = relocate(state.selection.$anchor);
-    const head = relocate(state.selection.$head);
-    if (anchor !== undefined && head !== undefined) {
-      tr.setSelection(TextSelection.create(tr.doc, anchor, head));
+      const retained = containingItem.copy(containingItem.content.cut(0, containingItem.content.size - $from.parent.nodeSize));
+      beforeItems.push(retained);
+      const beforeList = listNode.copy(Fragment.fromArray(beforeItems));
+      const replacement: DocumentNode[] = [beforeList, $from.parent];
+      if (afterItems.length) replacement.push(listNode.copy(Fragment.fromArray(afterItems)));
+      const listPos = $from.before(listDepth);
+      const tr = state.tr.replaceWith(listPos, $from.after(listDepth), replacement);
+      const paragraphPos = listPos + beforeList.nodeSize;
+      tr.setSelection(TextSelection.create(tr.doc, paragraphPos + 1 + $from.parentOffset));
+      dispatch(closeHistory(tr).scrollIntoView());
+      return true;
     }
-    dispatch(closeHistory(tr).scrollIntoView());
-    return true;
   }
 
-  // A top-level item has no parent list level to move into. Consume Shift+Tab
-  // without lifting it into a plain paragraph and losing its marker.
-  if (listDepth <= 1 || $from.node(listDepth - 1).type !== visualSchema.nodes.list_item) {
-    // The selected item is already at the left edge. Promote its direct child
-    // lists instead, keeping the selected item's marker and each child's type.
-    const listPos = $from.before(listDepth);
-    const replacement: DocumentNode[] = [];
-    let segment: DocumentNode[] = [];
-    let changed = false;
-    list.forEach((item: DocumentNode, offset: number) => {
-      const itemStart = listPos + 1 + offset;
-      const selected = itemStart < state.selection.to && itemStart + item.nodeSize > state.selection.from;
-      if (!selected) {
-        segment.push(item);
-        return;
-      }
-      const children: DocumentNode[] = [];
-      const retained: DocumentNode[] = [];
-      item.forEach((node: DocumentNode, childOffset: number) => {
-        const childStart = itemStart + 1 + childOffset;
-        const childSelected = childStart < state.selection.to && childStart + node.nodeSize > state.selection.from;
-        (isList(node) && (state.selection.empty || childSelected) ? children : retained).push(node);
-      });
-      if (!children.length) {
-        segment.push(item);
-        return;
-      }
-      changed = true;
-      segment.push(item.copy(Fragment.fromArray(retained)));
-      replacement.push(list.copy(Fragment.fromArray(segment)), ...children);
-      segment = [];
-    });
-    if (!changed) return true;
-    if (!dispatch) return true;
-    if (segment.length) replacement.push(list.copy(Fragment.fromArray(segment)));
-    const tr = state.tr.replaceWith(listPos, $from.after(listDepth), Fragment.fromArray(replacement));
-    const relocate = ($position: typeof state.selection.$anchor) => {
-      let found: number | undefined;
-      tr.doc.descendants((node, pos) => {
-        if (node === $position.parent && found === undefined) found = pos + 1 + $position.parentOffset;
-      });
-      return found;
-    };
-    const anchor = relocate(state.selection.$anchor);
-    const head = relocate(state.selection.$head);
-    if (anchor !== undefined && head !== undefined) {
-      tr.setSelection(TextSelection.create(tr.doc, anchor, head));
-    } else {
-      tr.setSelection(TextSelection.near(tr.doc.resolve(Math.min(state.selection.anchor, tr.doc.content.size))));
-    }
-    dispatch(closeHistory(tr).scrollIntoView());
-    return true;
-  }
-  return liftListItem(visualSchema.nodes.list_item)(state, dispatch, view);
+  return moveSelectedListItemsIndividually(state, dispatch, view, 'outdent');
 };
 
 export const deleteEmptyParagraphBeforeList: Command = (state, dispatch) => {
@@ -699,9 +884,94 @@ export const joinOrderedListsAcrossEmptyParagraph: Command = (state,dispatch) =>
   return true;
 };
 
+/**
+ * ========================================================================================
+ * [함수명] withFlattenedListCommand - 중첩된 하위 리스트가 있는 경우 선행 평탄화 후 리스트 커맨드를 실행하여 각 항목이 100% 개별적으로 동작하도록 보장합니다.
+ *
+ * @param {Command} cmd - 실행할 내부 ProseMirror 커맨드
+ * @returns {Command} 평탄화 및 후처리 정규화가 결합된 커맨드
+ *
+ * @example
+ * export const independentSplitListItem = withFlattenedListCommand(rawSplitListItem);
+ * ==========================================================================================
+ */
+function withFlattenedListCommand(cmd: Command): Command {
+  return (state, dispatch, view) => {
+    const flatTr = ensureFlatTopLevelListsForSelection(state, view);
+    if (!flatTr) {
+      return cmd(
+        state,
+        dispatch
+          ? innerTr => {
+              const stepCountBeforeNorm = innerTr.steps.length;
+              if (normalizeTopLevelListsInTransaction(innerTr)) {
+                const normMapping = innerTr.mapping.slice(stepCountBeforeNorm);
+                const mappedAnchor = Math.min(normMapping.map(innerTr.selection.anchor), innerTr.doc.content.size);
+                const mappedHead = Math.min(normMapping.map(innerTr.selection.head), innerTr.doc.content.size);
+                if (mappedAnchor === mappedHead) {
+                  innerTr.setSelection(Selection.near(innerTr.doc.resolve(mappedAnchor)));
+                } else {
+                  innerTr.setSelection(TextSelection.between(innerTr.doc.resolve(mappedAnchor), innerTr.doc.resolve(mappedHead)));
+                }
+              }
+              dispatch(innerTr);
+            }
+          : undefined,
+        view
+      );
+    }
+
+    const nextState = state.apply(flatTr);
+    if (!dispatch) {
+      return cmd(nextState, undefined, view);
+    }
+    return cmd(
+      nextState,
+      innerTr => {
+        for (const step of innerTr.steps) {
+          flatTr.step(step);
+        }
+        const stepCountBeforeNorm = flatTr.steps.length;
+        normalizeTopLevelListsInTransaction(flatTr);
+        const normMapping = flatTr.mapping.slice(stepCountBeforeNorm);
+        const mappedAnchor = Math.min(normMapping.map(innerTr.selection.anchor), flatTr.doc.content.size);
+        const mappedHead = Math.min(normMapping.map(innerTr.selection.head), flatTr.doc.content.size);
+        if (mappedAnchor === mappedHead) {
+          flatTr.setSelection(Selection.near(flatTr.doc.resolve(mappedAnchor)));
+        } else {
+          flatTr.setSelection(TextSelection.between(flatTr.doc.resolve(mappedAnchor), flatTr.doc.resolve(mappedHead)));
+        }
+        dispatch(closeHistory(flatTr).scrollIntoView());
+      },
+      view
+    );
+  };
+}
+
+/**
+ * ========================================================================================
+ * [함수명] independentSplitListItem - 리스트 항목 내부에서 Enter 입력 시 하위 리스트가 새 항목으로 끌려가지 않고 현재 항목만 독립 분할합니다.
+ *
+ * @param {EditorState} state - ProseMirror 에디터 상태
+ * @param {((tr: Transaction) => void) | undefined} dispatch - 트랜잭션 디스패치 함수
+ * @param {any} view - EditorView 인스턴스
+ * @returns {boolean} 처리 여부
+ *
+ * @example
+ * independentSplitListItem(state, dispatch, view);
+ * ==========================================================================================
+ */
+export const independentSplitListItem: Command = withFlattenedListCommand((state, dispatch, currentView) => {
+  const parent = state.selection.$from.depth > 0 ? state.selection.$from.node(state.selection.$from.depth - 1) : null;
+  return splitListItem(
+    visualSchema.nodes.list_item,
+    parent?.type === visualSchema.nodes.list_item && parent.attrs.checked !== null ? { checked: false } : undefined
+  )(state, dispatch, currentView);
+});
+
 /** Enter exits an empty item at its own position; Backspace has a different
  * contract and may move to the preceding item. */
-export const exitEmptyListItem: Command = (state, dispatch, view) => {
+const rawExitEmptyListItem: Command = (state, dispatch, view) => {
   const { $from, empty } = state.selection;
   if (!empty || $from.parent.type !== visualSchema.nodes.paragraph) return false;
   let blank = true;
@@ -831,6 +1101,8 @@ export const exitEmptyListItem: Command = (state, dispatch, view) => {
   }
   return true;
 };
+
+export const exitEmptyListItem: Command = withFlattenedListCommand(rawExitEmptyListItem);
 
 /** Native vertical movement preserves the empty item's horizontal column,
  * which can land halfway through a wrapped previous item. */
@@ -1026,7 +1298,7 @@ function withoutTypedMarker(line: Fragment): Fragment {
 
 /** At an item's first text position remove one list level, never join its text
  * into the preceding item as the generic Backspace command can do. */
-export const removeListMarkerAtStart: Command = (state, dispatch, view) => {
+const rawRemoveListMarkerAtStart: Command = (state, dispatch, view) => {
   const { $from, empty } = state.selection;
   if (!empty || $from.parent.type !== visualSchema.nodes.paragraph || $from.parentOffset !== 0) return false;
   const itemDepth = $from.depth - 1;
@@ -1093,8 +1365,11 @@ export const removeListMarkerAtStart: Command = (state, dispatch, view) => {
 
   return false;
 };
+
+export const removeListMarkerAtStart: Command = withFlattenedListCommand(rawRemoveListMarkerAtStart);
+
 export function selectedList(kind:'bullet'|'ordered'|'check'|'clear'):Command {
-  return (state,dispatch,currentView)=>{
+  return withFlattenedListCommand((state,dispatch,currentView)=>{
     let {$from,$to}=state.selection;
     if (!state.selection.empty && $from.parent.isTextblock && $from.parentOffset === $from.parent.content.size && $from.pos + 1 < $to.pos) {
       $from = state.doc.resolve($from.pos + 1);
@@ -1341,7 +1616,7 @@ export function selectedList(kind:'bullet'|'ordered'|'check'|'clear'):Command {
       dispatch(closeHistory(tr));
     }
     return true;
-  };
+  });
 }
 
 /**
@@ -1349,7 +1624,7 @@ export function selectedList(kind:'bullet'|'ordered'|'check'|'clear'):Command {
  * 리스트(bullet_list / ordered_list / list_item) 내부에서 Shift + Enter 입력 시,
  * 리스트를 완전히 벗어나 독립된 새로운 일반 문단(paragraph)을 생성하고 커서를 이동합니다.
  */
-export const exitListToParagraph: Command = (state, dispatch, view) => {
+export const exitListToParagraph: Command = withFlattenedListCommand((state, dispatch, view) => {
   const { $from, empty } = state.selection;
   if (!empty) return false;
 
@@ -1421,5 +1696,5 @@ export const exitListToParagraph: Command = (state, dispatch, view) => {
   currentTr.setSelection(Selection.near(currentTr.doc.resolve(Math.min(currentTr.doc.content.size, tempState.selection.from))));
   dispatch(closeHistory(currentTr).scrollIntoView());
   return true;
-};
+});
 

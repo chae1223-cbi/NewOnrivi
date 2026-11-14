@@ -2,6 +2,8 @@
 // ⚙️ [OMD-CORE-VisualDocCommands-0001] visualDocumentCommands.ts ➔ 시각 에디터 전용 ProseMirror 커맨드 및 정규화 플러그인
 // 🎯 @KICK  : 제목/코드블록/인용구/리스트/구분선/미디어 등 블록 조작 커맨드 및 리스트 정규화 트랜잭션 플러그인 제공
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 VisualDocumentEditor 대형 컴포넌트 모듈화 표준 준수
+// 🚨 @PATCH : 2026-11-14 — [리스트 정규화 플러그인에 인접 리스트 병합 및 ordered_list 순차 번호 동기화(normalizeTopLevelListsInTransaction) 연동]:
+//             1) createListNormalizationPlugin에서 문서 변경 시 normalizeTopLevelListsInTransaction을 함께 실행하여, 개별 분할된 번호 목록의 항목 추가/삭제 시에도 후속 번호 목록(order)이 자동으로 순차 재계산되도록 보장
 // 🚨 @PATCH : 2026-11-13 — [행 시작 Tab 들여쓰기 / Shift+Tab 내어쓰기 전용 paragraphIndent 커맨드 추가]:
 //             1) 커서가 문단 시작(parentOffset === 0)에 있거나 범위 선택(!empty) 상태일 때 Tab으로 문단(paragraph)을 28px 단위로 들여쓰기(indentPx +28px), Shift+Tab으로 내어쓰기(indentPx -28px) 실행
 //             2) 더 이상 내어쓰기가 불가능한 좌측 경계(indentPx <= 0)에서는 노드 구조 변경 없이 제자리 유지 (잔존 레거시 선행 공백만 안전 정제)
@@ -31,7 +33,7 @@ import { closeHistory } from 'prosemirror-history';
 import { sinkListItem } from 'prosemirror-schema-list';
 import { visualSchema } from '@/lib/visualDocumentCodec';
 import { quoteIndent } from '@/lib/visualQuoteCommands';
-import { selectedList, indentWholeList, independentIndentListItem, independentLiftListItem } from '@/lib/visualListCommands';
+import { selectedList, indentWholeList, independentIndentListItem, independentLiftListItem, normalizeTopLevelListsInTransaction } from '@/lib/visualListCommands';
 
 export const slashPattern = new RegExp('(?:^|[\\s(\\[{\'"«“‘])([\\/／][\\p{L}\\p{N}_-]*)$', 'u');
 
@@ -628,13 +630,14 @@ export function createListNormalizationPlugin() {
         }
       });
 
-      if (fixes.length === 0) return null;
-
       const tr = newState.tr;
       for (let i = fixes.length - 1; i >= 0; i--) {
         const { pos, nodeSize, items } = fixes[i];
         tr.replaceWith(pos, pos + nodeSize, items);
       }
+
+      const normChanged = normalizeTopLevelListsInTransaction(tr);
+      if (fixes.length === 0 && !normChanged) return null;
 
       return tr;
     }
