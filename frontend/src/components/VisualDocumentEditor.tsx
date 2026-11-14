@@ -2,6 +2,8 @@
 // 🏷️ 파일명 : VisualDocumentEditor.tsx
 // 🎭 역할(Role) : Core (위지윅 시각 문서 편집기 메인 코어 뷰)
 // 🎯 주요기능 : ProseMirror 상태/트랜잭션 라이프사이클 관리, 스크롤/커서 양방향 동기화, 인쇄 페이지 가이드 및 서브모듈 오케스트레이션
+// 🚨 @PATCH : 2026-11-14 — [본문 인용([@키]) 삽입 시 선택된 단어/문구 보존 및 바로 뒤 삽입]:
+//             1) 텍스트가 선택된 상태에서 본문 인용을 삽입할 때 선택 텍스트를 덮어쓰지 않고 선택 영역 끝(pending.selection.to) 바로 옆에 [@키]를 삽입하도록 개선
 // 🚨 @PATCH : 2026-11-10 — [/명령어 선택 시 Space(스페이스바)로 적용 지원]:
 //             1) 슬래시 메뉴에서 화살표로 리스트를 선택했거나 / 뒤에 검색어를 입력한 상태에서 Space 바 입력 시 선택된 명령어가 즉시 적용되도록 slashNavigatedRef 상태 연동
 // 🚨 @PATCH : 2026-11-10 — [대용량 문서 타이핑 래그 및 커서 이동 지연 구조적 완전 최적화]:
@@ -211,7 +213,8 @@ export default function VisualDocumentEditor({
       }
       const key = (event as CustomEvent).detail?.key;
       if (typeof key !== 'string' || !key || /[\]\r\n]/.test(key)) return;
-      view.dispatch(closeHistory(view.state.tr.setSelection(pending.selection).insertText(`[@${key}]`)).scrollIntoView());
+      const insertPos = pending.selection.to;
+      view.dispatch(closeHistory(view.state.tr.insertText(`[@${key}]`, insertPos, insertPos)).scrollIntoView());
       view.focus();
     };
     window.addEventListener('onrivi:insert-citation', insert);
