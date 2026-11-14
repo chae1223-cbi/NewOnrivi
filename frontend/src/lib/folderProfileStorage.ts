@@ -2,6 +2,7 @@
 // 📊 [OMD-STORE-folderProfileStorage-0001] frontend/src/lib/folderProfileStorage.ts
 // 🎯 @KICK  : 폴더별 디폴트 서식 프로필(Default CSS Profile) 저장·조회·이름변경·삭제 및 계층적 상속 해석 모듈
 // 🛡️ @GUARD : 계정별 격리 스토리지(browserAccountStorage) 사용, 경로 정규화(\ ➔ /, NFC, 대소문자 통일) 및 드라이브 ID 다중 키 매핑 보장
+// 🚨 @PATCH : **2026-11-14** — [온리비_* 8종 시스템 서식 개편에 따른 레거시 서식 ID 하위 호환 매핑 보강]
 // 🚨 @PATCH : **2026-11-14** — [폴더별 디폴트 서식 저장·관리 및 3단계 서식 우선순위(파일 지정 ➔ 폴더 지정 ➔ Onrivi 기본서식) 엔진 신설]:
 //             1) 폴더 생성 및 폴더 컨텍스트 메뉴에서 지정한 폴더별 기본 서식(profileId)을 영속 저장·관리하는 스토리지 헬퍼 구현
 //             2) 로컬 절대경로, 워크스페이스 상대경로, Google Drive 폴더 ID를 모두 매핑하여 환경(Local/Browser/Cloud)에 관계없이 일관된 폴더 서식 조회 지원
@@ -373,12 +374,14 @@ export function resolveProfileByPriority({
       p =>
         p.id === cleaned ||
         p.name === cleaned ||
-        ((cleaned === 'ChatGPT 스타일 콘텐츠' || cleaned === '온리비어서 표준 서식' || cleaned === 'Onrivi 기본서식' || cleaned === 'google-dev-docs' || cleaned === 'Google Developers 기술 문서 (DevSite 표준)') &&
+        ((cleaned === 'ChatGPT 스타일 콘텐츠' || cleaned === '온리비어서 표준 서식' || cleaned === 'Onrivi 기본서식' || cleaned === 'google-dev-docs' || cleaned === 'Google Developers 기술 문서 (DevSite 표준)' || cleaned === 'github-readme-style' || cleaned === 'GitHub 기술 블로그/명세서' || cleaned === 'system-2') &&
           p.id === SYSTEM_PROFILES[0].id) ||
-        ((cleaned === 'GitHub 기술 블로그/명세서' || cleaned === 'system-2') && p.id === 'github-readme-style') ||
-        ((cleaned === 'Stroy Book - 오른쪽 그림 표지' || cleaned === 'Story Book - 오른쪽 그림 표지') && p.id === 'profile-1792072480655') ||
-        ((cleaned === 'Story Book-전체표지' || cleaned === 'Story Book - 전체표지' || cleaned === 'profile-1792072443551' || cleaned === 'profile-1792073192013') &&
-          (p.id === 'profile-1792073192013' || p.id === 'profile-1792072443551'))
+        ((cleaned === 'legal-contract-a4' || cleaned === 'Onrivi 법률·계약서 A4 공식 문서') && p.id === 'onrivi-legal-contract') ||
+        ((cleaned === 'ai-friendly-report' || cleaned === 'ks-tech-standard' || cleaned === 'corp-strategy-report' || cleaned === 'academic-kdi-report' || cleaned === 'global-tech-6pager') &&
+          p.id === 'onrivi-report') ||
+        ((cleaned === 'profile-1791514218283' || cleaned === '편안한 전자책 서식' || cleaned === 'profile-tech-book-2026') &&
+          p.id === 'onrivi-prose-book') ||
+        ((cleaned === 'profile-official-notice-letter') && p.id === 'onrivi-application-doc')
     );
   };
 

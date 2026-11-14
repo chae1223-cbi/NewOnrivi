@@ -4,6 +4,9 @@ import { normalizeBookLayout } from '../lib/picturebook';
 // ====================================================================
 // 📊 [OMD-CORE-cssProfile-0006] cssProfile ➔ SYSTEM_PROFILE_IDS
 // 🎯 @KICK  : 시스템 프로필 식별자 목록을 정의한다
+// 🚨 @PATCH : **2026-11-14** — [온리비 시스템 서식 8종('온리비_*') 체계 전면 개편 및 정교화]:
+//             1) 기존 17종으로 분산·중복되어 있던 시스템 서식을 실생활·실무·집필 핵심 8종('온리비_사용 설명·절차 안내', '온리비_할 일·생활 기록', '온리비_가계부·지출 정리', '온리비_회의·대화 기록', '온리비_신청·제출 문서', '온리비_교과서·산문 집필', '온리비_업무·전략 보고서', '온리비_법률·계약 문서')으로 정교화 및 일원화
+//             2) 모든 시스템 제공 서식 명칭에 '온리비_' 접두사를 부여하고, 내부 전용 도움말 서식(HELP_PROFILE / 'onrivi-help')은 사용자 서식 목록(SYSTEM_PROFILES)에서 분리
 // 🚨 @PATCH : **2026-11-14** — [Google Developers 기술 문서(DevSite 표준)를 'Onrivi 기본서식(system-1 / DEFAULT_PROFILE)'으로 전면 승격 일원화]:
 //             1) Google Developer Documentation Style Guide(https://developers.google.com/style/lists)의 DevSite 디자인 토큰을 'Onrivi 기본서식(system-1 / DEFAULT_PROFILE)'의 공식 표준 규격으로 전면 적용
 //             2) Google Sans / Roboto / Roboto Mono 타이포그래피, #202124 본문(16px / line-height 1.5), 클린 헤딩(H1 34px ~ H6 14px), 40px 들여쓰기 다단계 목록(disc ➔ circle ➔ square), #f1f3f4 헤더 및 #dadce0/#e8eaed 미니멀 가로선 비교표(outer 0px, row 1px, col 0px), #e8f0fe Google Blue Note 콜아웃(4px solid #1a73e8), #f1f3f4/#37474f 코드블록 및 인라인코드 반영
@@ -60,24 +63,14 @@ import { normalizeBookLayout } from '../lib/picturebook';
  */
 export const SYSTEM_PROFILE_IDS = [
   'system-1',
+  'onrivi-todo-life',
+  'onrivi-household-ledger',
+  'onrivi-meeting-notes',
+  'onrivi-application-doc',
+  'onrivi-prose-book',
+  'onrivi-report',
+  'onrivi-legal-contract',
   'onrivi-help',
-  'ai-friendly-report',
-  'github-readme-style',
-  'legal-contract-a4',
-  'naver-blog-style',
-  'profile-tech-book-2026',
-  'profile-official-notice-letter',
-  'hancom-tech-blog',
-  'profile-1791514218283',
-  'profile-1792072443551',
-  'profile-1792073192013',
-  'profile-1792072480655',
-  'ks-tech-standard',
-  'corp-strategy-report',
-  'academic-kdi-report',
-  'global-tech-6pager',
-  'sns-card-news',
-  'google-dev-docs'
 ] as const;
 export type SystemProfileId = typeof SYSTEM_PROFILE_IDS[number];
 
@@ -143,8 +136,8 @@ const EMPTY_RULES = {
 export const SYSTEM_PROFILES: CssProfile[] = [
   {
     "id": "system-1",
-    "name": "Onrivi 기본서식",
-    "description": "온리비 어서(Onrivi Author)의 공식 기본 서식 테마입니다. Google Developer Documentation Style Guide(DevSite 표준) 기반의 깔끔한 타이포그래피(#202124), 40px 다단계 목록, 미니멀 가로선 표(#F1F3F4 헤더), Google Blue 콜아웃(#E8F0FE)을 제공합니다.",
+    "name": "온리비_사용 설명·절차 안내",
+    "description": "온리비 기본서식. 기기 설정법, 업무 인수인계, 가족 공유 매뉴얼에 최적화된 깔끔한 고딕·단계별 번호·화면 이미지 테두리/캡션·주의/팁 콜아웃 표준 서식입니다.",
     "pageStyle": {
       "fontFamily": "'Roboto', 'Google Sans', 'Noto Sans KR', 'Noto Sans', -apple-system, BlinkMacSystemFont, sans-serif",
       "fontUrl": "https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Roboto+Mono:wght@400;500&family=Roboto:ital,wght@0,300;0,400;0,500;0,700;1,400&display=swap",
@@ -379,15 +372,16 @@ export const SYSTEM_PROFILES: CssProfile[] = [
         "margin-right": "auto",
         "background-color": "white",
         "padding": "0px",
-        "box-shadow": "none"
+        "border": "1px solid #dadce0",
+        "box-shadow": "0 2px 8px rgba(0, 0, 0, 0.06)"
       },
       "code": {
         "background-color": "#f1f3f4",
         "color": "#37474f",
-        "padding": "2px 4px",
+        "padding": "2px 6px",
         "border-radius": "4px",
-        "font-weight": "normal",
-        "border": "none"
+        "font-weight": "500",
+        "border": "1px solid #e2e8f0"
       },
       "video": {
         "width": "100%",
@@ -456,2809 +450,310 @@ export const SYSTEM_PROFILES: CssProfile[] = [
     },
     "headingNumbering": [],
     "customCss": ".custom-preview-container h1, .custom-preview-container h2, .custom-preview-container h3 { font-family: 'Google Sans', 'Roboto', 'Noto Sans KR', sans-serif !important; }\n.custom-preview-container code, .custom-preview-container pre { font-family: 'Roboto Mono', 'JetBrains Mono', monospace !important; }\n.custom-preview-container ul ol, .custom-preview-container ol ol { list-style-type: lower-alpha !important; }"
-  },
-  {
-    "id": "github-readme-style",
-    "name": "Onrivi 기술 표준 서식",
-    "description": "GitHub Flavored Markdown 및 GitHub Markdown CSS의 콘텐츠 표현을 참고한 Onrivi Author Preview 전용 서식 테마. GitHub 앱 UI가 아니라 README 문서 콘텐츠의 가독성과 Markdown 표현을 재현한다.",
-    "pageStyle": {
-      "fontFamily": "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', 'Noto Sans', Helvetica, Arial, sans-serif",
-      "fontSize": "16px",
-      "lineHeight": "1.5",
-      "letterSpacing": "0em",
-      "backgroundColor": "#ffffff",
-      "paperSize": "a4",
-      "marginTop": "18mm",
-      "marginBottom": "18mm",
-      "marginLeft": "12mm",
-      "marginRight": "12mm",
-      "orientation": "portrait",
-      "headingSizeOffset": "3pt",
-      "tabSize": "4",
-      "exportPageBreakLevel": "none"
-    },
-    "rules": {
-      "h1": {
-        "font-size": "32px",
-        "font-weight": "600",
-        "color": "#1f2328",
-        "padding-left": "0px",
-        "margin-bottom": "16px",
-        "border-bottom": "1px solid #d0d7de",
-        "margin-top": "24px",
-        "text-align": "left",
-        "text-decoration": "none",
-        "font-style": "normal",
-        "line-height": "1.25",
-        "letter-spacing": "-0.025em",
-        "padding-bottom": "8px"
-      },
-      "h2": {
-        "font-size": "24px",
-        "font-weight": "600",
-        "color": "#1f2328",
-        "border-bottom": "1px solid #d8dee4",
-        "padding-bottom": "6px",
-        "margin-top": "24px",
-        "text-decoration": "none",
-        "font-style": "normal",
-        "margin-bottom": "16px",
-        "text-align": "left",
-        "line-height": "1.25",
-        "letter-spacing": "-0.02em"
-      },
-      "h3": {
-        "text-align": "left",
-        "font-weight": "600",
-        "font-size": "20px",
-        "margin-top": "24px",
-        "margin-bottom": "16px",
-        "color": "#1f2328",
-        "border-bottom": "",
-        "line-height": "1.25"
-      },
-      "h4": {
-        "text-align": "left",
-        "font-weight": "600",
-        "font-size": "16px",
-        "margin-top": "24px",
-        "margin-bottom": "16px",
-        "color": "#1f2328",
-        "border-bottom": "",
-        "line-height": "1.5"
-      },
-      "h5": {
-        "text-align": "left",
-        "font-weight": "600",
-        "font-size": "14px",
-        "margin-top": "24px",
-        "margin-bottom": "16px",
-        "color": "#1f2328",
-        "border-bottom": "",
-        "line-height": "1.5"
-      },
-      "h6": {
-        "text-align": "left",
-        "font-weight": "600",
-        "font-size": "12px",
-        "margin-top": "24px",
-        "margin-bottom": "16px",
-        "color": "#656d76",
-        "border-bottom": "",
-        "line-height": "1.5"
-      },
-      "p": {
-        "margin-bottom": "16px",
-        "margin-top": "0px",
-        "line-height": "1.5",
-        "color": "#1f2328",
-        "text-align": "left",
-        "text-indent": "0px",
-        "letter-spacing": "0em",
-        "sentence-gap": "4px"
-      },
-      "strong": {
-        "font-weight": "600",
-        "color": "#1f2328"
-      },
-      "em": {
-        "font-style": "italic",
-        "color": "#1f2328"
-      },
-      "u": {
-        "text-decoration-color": "#0d0d0d",
-        "text-decoration-style": "solid",
-        "text-underline-offset": "2px",
-        "text-decoration": "underline"
-      },
-      "del": {
-        "text-decoration": "line-through",
-        "color": "#656d76"
-      },
-      "ul": {
-        "padding-left": "2em",
-        "list-style-type": "disc",
-        "color": "#1f2328"
-      },
-      "ol": {
-        "padding-left": "2em",
-        "color": "#1f2328",
-        "list-style-type": "decimal"
-      },
-      "li": {
-        "margin-bottom": "4px",
-        "padding-inline-start": "3px",
-        "line-height": "1.5"
-      },
-      "taskList": {
-        "boxSize": "16px",
-        "checkedEffect": "none",
-        "textGap": "8px",
-        "color": "#1f2328"
-      },
-      "hr": {
-        "border-top-color": "#d8dee4",
-        "border-top-width": "1px",
-        "border-top-style": "solid",
-        "margin-top": "24px",
-        "margin-bottom": "24px",
-        "width": "100%"
-      },
-      "table": {
-        "width": "100%",
-        "border-collapse": "collapse",
-        "border-style": "solid",
-        "border-width": "1px",
-        "border-color": "#9ca3af",
-        "margin-top": "0px",
-        "margin-bottom": "16px",
-        "font-size": "14px",
-        "border-radius": "6px",
-        "overflow": "hidden"
-      },
-      "th": {
-        "background-color": "#f6f8fa",
-        "padding": "6px 13px",
-        "border-style": "solid",
-        "border-width": "1px",
-        "border-color": "#9ca3af",
-        "font-weight": "600",
-        "border-bottom": "1px solid #e5e5e5",
-        "border-left": "none",
-        "border-right": "none",
-        "text-align": "left",
-        "color": "#1f2328",
-        "line-height": "1.5"
-      },
-      "td": {
-        "padding": "6px 13px",
-        "border-style": "solid",
-        "border-width": "1px",
-        "border-color": "#9ca3af",
-        "border-bottom": "1px solid #e5e5e5",
-        "border-left": "none",
-        "border-right": "none",
-        "color": "#1f2328",
-        "line-height": "1.5"
-      },
-      "blockquote": {
-        "padding": "0 16px",
-        "color": "#656d76",
-        "background-color": "transparent",
-        "border-radius": "0",
-        "margin-top": "0px",
-        "margin-bottom": "16px",
-        "font-weight": "normal",
-        "border-left": "4px solid #d0d7de",
-        "font-size": "16px",
-        "line-height": "1.5"
-      },
-      "codeBlock": {
-        "background-color": "#f6f8fa",
-        "color": "#1f2328",
-        "padding": "16px",
-        "border-radius": "6px",
-        "font-size": "13px",
-        "border": "1px solid #d0d7de",
-        "line-height": "1.45"
-      },
-      "codeBlockTitle": {
-        "background-color": "#f6f8fa",
-        "color": "#656d76",
-        "padding": "8px 12px",
-        "border-radius": "8px 8px 0 0",
-        "border": "1px solid #d0d7de"
-      },
-      "a": {
-        "color": "#0969da",
-        "text-decoration": "none",
-        "font-weight": "bold"
-      },
-      "img": {
-        "width": "100%",
-        "border-radius": "6px",
-        "margin-top": "16px",
-        "margin-bottom": "16px",
-        "margin-left": "auto",
-        "margin-right": "auto",
-        "background-color": "white",
-        "padding": "0px",
-        "box-shadow": "none"
-      },
-      "code": {
-        "background-color": "#afb8c133",
-        "color": "#1f2328",
-        "padding": "0.2em 0.4em",
-        "border-radius": "6px",
-        "font-weight": "normal",
-        "border": "none"
-      },
-      "video": {
-        "width": "100%",
-        "height": "315px",
-        "border-radius": "6px",
-        "box-shadow": "none",
-        "margin-top": "16px",
-        "margin-bottom": "16px",
-        "margin-left": "auto",
-        "margin-right": "auto",
-        "display": "block",
-        "float": "none"
-      },
-      "math": {
-        "color": "#1f2328",
-        "font-size": "16px",
-        "text-align": "center",
-        "margin-top": "16px",
-        "margin-bottom": "16px"
-      },
-      "map": {
-        "width": "100%",
-        "height": "400px",
-        "border-radius": "6px",
-        "box-shadow": "none",
-        "margin-top": "16px",
-        "margin-bottom": "16px",
-        "margin-left": "auto",
-        "margin-right": "auto"
-      },
-      "footnote": {
-        "font-size": "12px",
-        "color": "#656d76",
-        "line-height": "1.5",
-        "margin-top": "12px",
-        "margin-bottom": "12px",
-        "font-weight": "normal"
-      }
-    },
-    "hrStructure": {
-      "borderTopStyle": "solid",
-      "borderTopWidth": "1px",
-      "marginTopBottom": "24px",
-      "lineWidth": "100%"
-    },
-    "checkboxStructure": {
-      "boxSize": "16px",
-      "textGap": "8px",
-      "color": "#292829",
-      "checkedEffect": "none"
-    },
-    "tableStructure": {
-      "outerBorderWidth": "1px",
-      "rowBorderWidth": "1px",
-      "colBorderWidth": "1px"
-    },
-    "customCss": ""
-  },
-  {
-    "id": "legal-contract-a4",
-    "name": "Onrivi 법률·계약서 A4 공식 문서",
-    "description": "법률문서, 계약서, 협약서, 합의서 및 공식 문서 작성에 적합한 A4 전용 서식 테마",
-    "pageStyle": {
-      "fontFamily": "'Noto Serif KR', 'KoPubBatang', 'Batang', 'Malgun Gothic', serif",
-      "fontSize": "16px",
-      "lineHeight": "1.8",
-      "letterSpacing": "0em",
-      "backgroundColor": "#ffffff",
-      "paperSize": "a4",
-      "marginTop": "18mm",
-      "marginBottom": "18mm",
-      "marginLeft": "12mm",
-      "marginRight": "12mm",
-      "orientation": "portrait",
-      "headingSizeOffset": "3pt",
-      "tabSize": "4",
-      "exportPageBreakLevel": "none"
-    },
-    "rules": {
-      "h1": {
-        "font-size": "34px",
-        "font-weight": "700",
-        "color": "#111111",
-        "padding-left": "0px",
-        "margin-bottom": "20px",
-        "border-bottom": "",
-        "margin-top": "28px",
-        "text-align": "center",
-        "text-decoration": "none",
-        "font-style": "normal",
-        "line-height": "1.5",
-        "letter-spacing": "-0.025em"
-      },
-      "h2": {
-        "font-size": "18px",
-        "font-weight": "700",
-        "color": "#111111",
-        "border-bottom": "",
-        "padding-bottom": "8px",
-        "margin-top": "24px",
-        "text-decoration": "none",
-        "font-style": "normal",
-        "margin-bottom": "12px",
-        "text-align": "left",
-        "line-height": "1.6",
-        "letter-spacing": "-0.02em"
-      },
-      "h3": {
-        "text-align": "left",
-        "font-weight": "700",
-        "font-size": "15px",
-        "margin-top": "18px",
-        "margin-bottom": "8px",
-        "color": "#111111",
-        "border-bottom": "",
-        "line-height": "1.7"
-      },
-      "h4": {
-        "text-align": "left",
-        "font-weight": "700",
-        "font-size": "13px",
-        "margin-top": "14px",
-        "margin-bottom": "6px",
-        "color": "#222222",
-        "border-bottom": "",
-        "line-height": "1.7"
-      },
-      "h5": {
-        "text-align": "left",
-        "font-weight": "700",
-        "font-size": "12px",
-        "margin-top": "12px",
-        "margin-bottom": "5px",
-        "color": "#333333",
-        "border-bottom": "",
-        "line-height": "1.7"
-      },
-      "h6": {
-        "text-align": "left",
-        "font-weight": "700",
-        "font-size": "11px",
-        "margin-top": "10px",
-        "margin-bottom": "4px",
-        "color": "#444444",
-        "border-bottom": "",
-        "line-height": "1.7"
-      },
-      "p": {
-        "margin-bottom": "8px",
-        "margin-top": "0px",
-        "line-height": "1.8",
-        "color": "#111111",
-        "text-align": "justify",
-        "text-indent": "0px",
-        "letter-spacing": "0em",
-        "sentence-gap": "4px"
-      },
-      "strong": {
-        "font-weight": "700",
-        "color": "#111111"
-      },
-      "em": {
-        "font-style": "italic",
-        "color": "#222222"
-      },
-      "u": {
-        "text-decoration-color": "#0d0d0d",
-        "text-decoration-style": "solid",
-        "text-underline-offset": "3px",
-        "text-decoration": "underline"
-      },
-      "del": {
-        "text-decoration": "line-through",
-        "color": "#666666"
-      },
-      "ul": {
-        "padding-left": "24px",
-        "list-style-type": "disc",
-        "color": "#111111"
-      },
-      "ol": {
-        "padding-left": "28px",
-        "color": "#111111",
-        "list-style-type": "decimal"
-      },
-      "li": {
-        "margin-bottom": "3px",
-        "padding-inline-start": "3px",
-        "line-height": "1.8"
-      },
-      "taskList": {
-        "boxSize": "14px",
-        "checkedEffect": "none",
-        "textGap": "7px",
-        "color": "#111111"
-      },
-      "hr": {
-        "border-top-color": "#777777",
-        "border-top-width": "1px",
-        "border-top-style": "solid",
-        "margin-top": "18px",
-        "margin-bottom": "18px",
-        "width": "100%"
-      },
-      "table": {
-        "width": "100%",
-        "border-collapse": "collapse",
-        "border-style": "solid",
-        "border-width": "1px",
-        "border-color": "#9ca3af",
-        "margin-top": "12px",
-        "margin-bottom": "16px",
-        "font-size": "15px",
-        "border-radius": "8px",
-        "overflow": "hidden"
-      },
-      "th": {
-        "background-color": "#f5f5f5",
-        "padding": "7px 9px",
-        "border-style": "solid",
-        "border-width": "1px",
-        "border-color": "#9ca3af",
-        "font-weight": "700",
-        "border-bottom": "1px solid #e5e5e5",
-        "border-left": "none",
-        "border-right": "none",
-        "text-align": "center",
-        "color": "#111111"
-      },
-      "td": {
-        "padding": "7px 9px",
-        "border-style": "solid",
-        "border-width": "1px",
-        "border-color": "#9ca3af",
-        "border-bottom": "1px solid #e5e5e5",
-        "border-left": "none",
-        "border-right": "none",
-        "color": "#111111"
-      },
-      "blockquote": {
-        "padding": "8px 14px",
-        "color": "#333333",
-        "background-color": "#fafafa",
-        "border-radius": "0",
-        "margin-top": "12px",
-        "margin-bottom": "12px",
-        "font-weight": "normal",
-        "border-left": "2px solid #777777",
-        "font-size": "11px"
-      },
-      "codeBlock": {
-        "background-color": "#f7f7f7",
-        "color": "#222222",
-        "padding": "12px 14px",
-        "border-radius": "3px",
-        "font-size": "13.5px",
-        "border": "1px solid #cccccc"
-      },
-      "codeBlockTitle": {
-        "background-color": "#eeeeee",
-        "color": "#444444",
-        "padding": "8px 12px",
-        "border-radius": "8px 8px 0 0",
-        "border": "1px solid #cccccc"
-      },
-      "a": {
-        "color": "#111111",
-        "text-decoration": "underline",
-        "font-weight": "bold"
-      },
-      "img": {
-        "width": "800px",
-        "border-radius": "0",
-        "margin-top": "10px",
-        "margin-bottom": "10px",
-        "margin-left": "auto",
-        "margin-right": "auto",
-        "background-color": "white",
-        "padding": "0px",
-        "box-shadow": "none",
-        "height": "600px",
-        "display": "block"
-      },
-      "code": {
-        "background-color": "#f4f4f4",
-        "color": "#222222",
-        "padding": "1px 4px",
-        "border-radius": "2px",
-        "font-weight": "normal",
-        "border": "1px solid #dddddd"
-      },
-      "video": {
-        "width": "800px",
-        "height": "600px",
-        "border-radius": "0",
-        "box-shadow": "none",
-        "margin-top": "12px",
-        "margin-bottom": "12px",
-        "margin-left": "auto",
-        "margin-right": "auto",
-        "display": "block",
-        "float": "none"
-      },
-      "math": {
-        "color": "#111111",
-        "font-size": "13px",
-        "text-align": "center",
-        "margin-top": "12px",
-        "margin-bottom": "12px"
-      },
-      "map": {
-        "width": "800px",
-        "height": "600px",
-        "border-radius": "0",
-        "box-shadow": "none",
-        "margin-top": "12px",
-        "margin-bottom": "12px",
-        "margin-left": "auto",
-        "margin-right": "auto"
-      },
-      "footnote": {
-        "font-size": "9px",
-        "color": "#555555",
-        "line-height": "1.5",
-        "margin-top": "8px",
-        "margin-bottom": "8px",
-        "font-weight": "normal"
-      }
-    },
-    "hrStructure": {
-      "borderTopStyle": "solid",
-      "borderTopWidth": "1px",
-      "marginTopBottom": "18px",
-      "lineWidth": "100%"
-    },
-    "checkboxStructure": {
-      "boxSize": "14px",
-      "textGap": "7px",
-      "color": "#111111",
-      "checkedEffect": "none"
-    },
-    "tableStructure": {
-      "outerBorderWidth": "1px",
-      "rowBorderWidth": "1px",
-      "colBorderWidth": "1px"
-    },
-    "customCss": ""
-  },
-  {
-    "id": "naver-blog-style",
-    "name": "Onrivi 네이버 블로그 감성 서식",
-    "description": "트렌디하고 가독성이 뛰어난 네이버 블로그 전용 서식 테마",
-    "pageStyle": {
-      "fontFamily": "'Pretendard', 'NanumSquare', 'Nanum Gothic', sans-serif",
-      "fontSize": "15px",
-      "lineHeight": "1.8",
-      "letterSpacing": "-0.01em",
-      "backgroundColor": "#FFFFFF",
-      "paperSize": "a4",
-      "marginTop": "18mm",
-      "marginBottom": "18mm",
-      "marginLeft": "12mm",
-      "marginRight": "12mm",
-      "orientation": "portrait",
-      "headingSizeOffset": "3px",
-      "tabSize": "4",
-      "exportPageBreakLevel": "none"
-    },
-    "rules": {
-      "h1": {
-        "font-size": "24px",
-        "font-weight": "700",
-        "color": "#111111",
-        "padding-left": "12px",
-        "margin-bottom": "16px",
-        "border-bottom": "",
-        "margin-top": "28px",
-        "text-align": "left",
-        "text-decoration": "none",
-        "font-style": "normal",
-        "line-height": "1.25",
-        "letter-spacing": "-0.025em",
-        "border-left": "5px solid #03C75A"
-      },
-      "h2": {
-        "font-size": "20px",
-        "font-weight": "700",
-        "color": "#4e62e2",
-        "border-bottom": "1px solid #E5E7EB",
-        "padding-bottom": "8px",
-        "margin-top": "22px",
-        "text-decoration": "none",
-        "font-style": "normal",
-        "margin-bottom": "12px",
-        "text-align": "left",
-        "line-height": "1.35",
-        "letter-spacing": "-0.02em",
-        "padding-left": "0px"
-      },
-      "h3": {
-        "text-align": "left",
-        "font-weight": "600",
-        "font-size": "17px",
-        "margin-top": "18px",
-        "margin-bottom": "8px",
-        "color": "#333333",
-        "border-bottom": "",
-        "line-height": "1.4"
-      },
-      "h4": {
-        "text-align": "left",
-        "font-weight": "600",
-        "font-size": "15px",
-        "margin-top": "14px",
-        "margin-bottom": "6px",
-        "color": "#444444",
-        "border-bottom": "",
-        "line-height": "1.5"
-      },
-      "h5": {
-        "text-align": "left",
-        "font-weight": "600",
-        "font-size": "14px",
-        "margin-top": "12px",
-        "margin-bottom": "4px",
-        "color": "#666666",
-        "border-bottom": "",
-        "line-height": "1.55"
-      },
-      "h6": {
-        "text-align": "left",
-        "font-weight": "600",
-        "font-size": "13px",
-        "margin-top": "10px",
-        "margin-bottom": "4px",
-        "color": "#888888",
-        "border-bottom": "",
-        "line-height": "1.55"
-      },
-      "p": {
-        "margin-bottom": "14px",
-        "margin-top": "0px",
-        "line-height": "1.8",
-        "color": "#333333",
-        "text-align": "left",
-        "text-indent": "0px",
-        "letter-spacing": "-0.01em",
-        "sentence-gap": "6px"
-      },
-      "strong": {
-        "font-weight": "bold",
-        "color": "#111111",
-        "background-color": "#F7F9FA"
-      },
-      "em": {
-        "font-style": "italic",
-        "color": "#0d0d0d"
-      },
-      "u": {
-        "text-decoration-color": "#0d0d0d",
-        "text-decoration-style": "solid",
-        "text-underline-offset": "3px",
-        "text-decoration": "underline"
-      },
-      "del": {
-        "text-decoration": "line-through",
-        "color": "#999999"
-      },
-      "ul": {
-        "padding-left": "20px",
-        "list-style-type": "disc",
-        "color": "#333333"
-      },
-      "ol": {
-        "padding-left": "20px",
-        "color": "#333333",
-        "list-style-type": "decimal"
-      },
-      "li": {
-        "margin-bottom": "6px",
-        "padding-inline-start": "3px",
-        "line-height": "1.7"
-      },
-      "taskList": {
-        "boxSize": "16px",
-        "checkedEffect": "none",
-        "textGap": "8px",
-        "color": "#333333"
-      },
-      "hr": {
-        "border-top-color": "#E5E7EB",
-        "border-top-width": "3px",
-        "border-top-style": "solid",
-        "margin-top": "24px",
-        "margin-bottom": "24px",
-        "width": "100%"
-      },
-      "table": {
-        "width": "100%",
-        "border-collapse": "collapse",
-        "border-style": "solid",
-        "border-width": "1px",
-        "border-color": "#9ca3af",
-        "margin-top": "16px",
-        "margin-bottom": "20px",
-        "font-size": "14px",
-        "border-radius": "8px",
-        "overflow": "hidden"
-      },
-      "th": {
-        "background-color": "#F3F4F6",
-        "padding": "10px 12px",
-        "border-style": "solid",
-        "border-width": "1px",
-        "border-color": "#9ca3af",
-        "font-weight": "bold",
-        "border-bottom": "1px solid #e5e5e5",
-        "border-left": "none",
-        "border-right": "none",
-        "text-align": "center",
-        "color": "#111111"
-      },
-      "td": {
-        "padding": "10px 12px",
-        "border-style": "solid",
-        "border-width": "1px",
-        "border-color": "#9ca3af",
-        "border-bottom": "1px solid #e5e5e5",
-        "border-left": "none",
-        "border-right": "none",
-        "color": "#333333"
-      },
-      "blockquote": {
-        "padding": "16px 20px",
-        "color": "#495057",
-        "background-color": "#F7F9FA",
-        "border-radius": "12px",
-        "margin-top": "18px",
-        "margin-bottom": "18px",
-        "font-weight": "normal",
-        "border-left": "5px solid #2563eb",
-        "font-size": "14px",
-        "border": "1px solid #E9ECEF"
-      },
-      "codeBlock": {
-        "background-color": "#1E293B",
-        "color": "#F8FAFC",
-        "padding": "16px",
-        "border-radius": "10px",
-        "font-size": "13.5px",
-        "border": "1px solid #e5e5e5"
-      },
-      "codeBlockTitle": {
-        "background-color": "#0F172A",
-        "color": "#94A3B8",
-        "padding": "8px 12px",
-        "border-radius": "8px 8px 0 0",
-        "border": "1px solid #e5e5e5"
-      },
-      "a": {
-        "color": "#4e62e2",
-        "text-decoration": "underline",
-        "font-weight": "bold"
-      },
-      "img": {
-        "width": "100%",
-        "border-radius": "12px",
-        "margin-top": "16px",
-        "margin-bottom": "16px",
-        "margin-left": "auto",
-        "margin-right": "auto",
-        "background-color": "white",
-        "padding": "0px",
-        "box-shadow": "0 4px 12px rgba(0,0,0,0.06)"
-      },
-      "code": {
-        "background-color": "#F1F5F9",
-        "color": "#4e62e2",
-        "padding": "2px 6px",
-        "border-radius": "4px",
-        "font-weight": "bold",
-        "border": "1px solid #e5e5e5"
-      },
-      "video": {
-        "width": "100%",
-        "height": "315px",
-        "border-radius": "12px",
-        "box-shadow": "0 4px 12px rgba(0,0,0,0.08)",
-        "margin-top": "16px",
-        "margin-bottom": "16px",
-        "margin-left": "auto",
-        "margin-right": "auto",
-        "display": "block",
-        "float": "none"
-      },
-      "math": {
-        "color": "#333333",
-        "font-size": "16px",
-        "text-align": "center",
-        "margin-top": "14px",
-        "margin-bottom": "14px"
-      },
-      "map": {
-        "width": "100%",
-        "height": "360px",
-        "border-radius": "12px",
-        "box-shadow": "0 4px 12px rgba(0,0,0,0.08)",
-        "margin-top": "16px",
-        "margin-bottom": "16px",
-        "margin-left": "auto",
-        "margin-right": "auto"
-      },
-      "footnote": {
-        "font-size": "12px",
-        "color": "#6B7280",
-        "line-height": "1.5",
-        "margin-top": "10px",
-        "margin-bottom": "10px",
-        "font-weight": "normal"
-      }
-    },
-    "hrStructure": {
-      "borderTopStyle": "solid",
-      "borderTopWidth": "3px",
-      "marginTopBottom": "24px",
-      "lineWidth": "100%"
-    },
-    "checkboxStructure": {
-      "boxSize": "16px",
-      "textGap": "8px",
-      "color": "#333333",
-      "checkedEffect": "none"
-    },
-    "tableStructure": {
-      "outerBorderWidth": "1px",
-      "rowBorderWidth": "1px",
-      "colBorderWidth": "1px"
-    },
-    "customCss": ""
-  },
-  {
-    "id": "profile-tech-book-2026",
-    "name": "Onrivi 일반 기술서적 표준 서식",
-    "description": "가독성과 코드/도표 식별성을 극대화한 IT 및 일반 기술 서적 전용 표준 서식 테마입니다.",
-    "pageStyle": {
-      "fontFamily": "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', 'Noto Sans', Arial, sans-serif",
-      "fontSize": "16px",
-      "lineHeight": "1.75",
-      "letterSpacing": "-0.01em",
-      "backgroundColor": "#ffffff",
-      "paperSize": "a4",
-      "marginTop": "18mm",
-      "marginBottom": "18mm",
-      "marginLeft": "12mm",
-      "marginRight": "12mm",
-      "orientation": "portrait",
-      "headingSizeOffset": "3pt",
-      "tabSize": "2",
-      "exportPageBreakLevel": "none"
-    },
-    "rules": {
-      "h1": {
-        "font-size": "30px",
-        "font-weight": "800",
-        "color": "#0f172a",
-        "padding-left": "0px",
-        "margin-bottom": "20px",
-        "border-bottom": "2px solid #0284c7",
-        "margin-top": "36px",
-        "text-align": "left",
-        "text-decoration": "none",
-        "font-style": "normal",
-        "line-height": "1.3",
-        "letter-spacing": "-0.02em",
-        "padding-bottom": "10px"
-      },
-      "h2": {
-        "font-size": "23px",
-        "font-weight": "700",
-        "color": "#1e293b",
-        "border-bottom": "1px solid #e2e8f0",
-        "padding-bottom": "8px",
-        "margin-top": "30px",
-        "text-decoration": "none",
-        "font-style": "normal",
-        "margin-bottom": "14px",
-        "text-align": "left",
-        "line-height": "1.35",
-        "letter-spacing": "-0.015em"
-      },
-      "h3": {
-        "text-align": "left",
-        "font-weight": "700",
-        "font-size": "19px",
-        "margin-top": "24px",
-        "margin-bottom": "10px",
-        "color": "#0284c7",
-        "border-bottom": "",
-        "line-height": "1.4"
-      },
-      "h4": {
-        "text-align": "left",
-        "font-weight": "650",
-        "font-size": "17px",
-        "margin-top": "20px",
-        "margin-bottom": "8px",
-        "color": "#334155",
-        "border-bottom": "",
-        "line-height": "1.45"
-      },
-      "h5": {
-        "text-align": "left",
-        "font-weight": "650",
-        "font-size": "16px",
-        "margin-top": "18px",
-        "margin-bottom": "6px",
-        "color": "#475569",
-        "border-bottom": "",
-        "line-height": "1.5"
-      },
-      "h6": {
-        "text-align": "left",
-        "font-weight": "600",
-        "font-size": "15px",
-        "margin-top": "16px",
-        "margin-bottom": "6px",
-        "color": "#64748b",
-        "border-bottom": "",
-        "line-height": "1.5"
-      },
-      "p": {
-        "margin-bottom": "16px",
-        "margin-top": "0px",
-        "line-height": "1.75",
-        "color": "#334155",
-        "text-align": "left",
-        "text-indent": "0px",
-        "letter-spacing": "-0.01em",
-        "sentence-gap": "3px"
-      },
-      "strong": {
-        "font-weight": "700",
-        "color": "#0f172a"
-      },
-      "em": {
-        "font-style": "italic",
-        "color": "#0284c7"
-      },
-      "u": {
-        "text-decoration-color": "#0284c7",
-        "text-decoration-style": "solid",
-        "text-underline-offset": "3px",
-        "text-decoration": "underline"
-      },
-      "del": {
-        "text-decoration": "line-through",
-        "color": "#94a3b8"
-      },
-      "ul": {
-        "padding-left": "24px",
-        "list-style-type": "disc",
-        "color": "#334155"
-      },
-      "ol": {
-        "padding-left": "24px",
-        "color": "#334155",
-        "list-style-type": "decimal"
-      },
-      "li": {
-        "margin-bottom": "6px",
-        "padding-inline-start": "2px",
-        "line-height": "1.7"
-      },
-      "taskList": {
-        "boxSize": "16px",
-        "checkedEffect": "none",
-        "textGap": "9px",
-        "color": "#334155"
-      },
-      "hr": {
-        "border-top-color": "#cbd5e1",
-        "border-top-width": "1px",
-        "border-top-style": "solid",
-        "margin-top": "28px",
-        "margin-bottom": "28px",
-        "width": "100%"
-      },
-      "table": {
-        "width": "100%",
-        "border-collapse": "collapse",
-        "border-style": "solid",
-        "border-width": "1px",
-        "border-color": "#cbd5e1",
-        "margin-top": "20px",
-        "margin-bottom": "20px",
-        "font-size": "14.5px",
-        "border-radius": "4px",
-        "overflow": "hidden"
-      },
-      "th": {
-        "background-color": "#f1f5f9",
-        "padding": "10px 14px",
-        "border-style": "solid",
-        "border-width": "1px",
-        "border-color": "#cbd5e1",
-        "font-weight": "700",
-        "border-bottom": "2px solid #94a3b8",
-        "border-left": "1px solid #cbd5e1",
-        "border-right": "1px solid #cbd5e1",
-        "text-align": "left",
-        "color": "#0f172a"
-      },
-      "td": {
-        "padding": "9px 14px",
-        "border-style": "solid",
-        "border-width": "1px",
-        "border-color": "#cbd5e1",
-        "border-bottom": "1px solid #cbd5e1",
-        "border-left": "1px solid #cbd5e1",
-        "border-right": "1px solid #cbd5e1",
-        "color": "#334155"
-      },
-      "blockquote": {
-        "padding": "14px 18px",
-        "color": "#334155",
-        "background-color": "#f0f9ff",
-        "border-radius": "0px 6px 6px 0px",
-        "margin-top": "20px",
-        "margin-bottom": "20px",
-        "font-weight": "normal",
-        "border-left": "4px solid #0284c7",
-        "font-size": "15px"
-      },
-      "codeBlock": {
-        "background-color": "#1e293b",
-        "color": "#f8fafc",
-        "padding": "16px",
-        "border-radius": "6px",
-        "font-size": "13.5px",
-        "border": "1px solid #0f172a"
-      },
-      "codeBlockTitle": {
-        "background-color": "#0f172a",
-        "color": "#94a3b8",
-        "padding": "8px 14px",
-        "border-radius": "6px 6px 0 0",
-        "border": "1px solid #0f172a"
-      },
-      "a": {
-        "color": "#0284c7",
-        "text-decoration": "underline",
-        "font-weight": "600"
-      },
-      "img": {
-        "width": "100%",
-        "border-radius": "6px",
-        "margin-top": "20px",
-        "margin-bottom": "20px",
-        "margin-left": "auto",
-        "margin-right": "auto",
-        "background-color": "#ffffff",
-        "padding": "0px",
-        "box-shadow": "0 1px 3px rgba(0,0,0,0.1)"
-      },
-      "code": {
-        "background-color": "#f1f5f9",
-        "color": "#0f172a",
-        "padding": "2px 6px",
-        "border-radius": "4px",
-        "font-weight": "600",
-        "border": "1px solid #e2e8f0"
-      },
-      "video": {
-        "width": "100%",
-        "height": "350px",
-        "border-radius": "6px",
-        "box-shadow": "none",
-        "margin-top": "20px",
-        "margin-bottom": "20px",
-        "margin-left": "auto",
-        "margin-right": "auto",
-        "display": "block",
-        "float": "none"
-      },
-      "math": {
-        "color": "#0f172a",
-        "font-size": "16px",
-        "text-align": "center",
-        "margin-top": "20px",
-        "margin-bottom": "20px"
-      },
-      "map": {
-        "width": "100%",
-        "height": "380px",
-        "border-radius": "6px",
-        "box-shadow": "none",
-        "margin-top": "20px",
-        "margin-bottom": "20px",
-        "margin-left": "auto",
-        "margin-right": "auto"
-      },
-      "footnote": {
-        "font-size": "13px",
-        "color": "#64748b",
-        "line-height": "1.5",
-        "margin-top": "10px",
-        "margin-bottom": "10px",
-        "font-weight": "normal"
-      }
-    },
-    "hrStructure": {
-      "borderTopStyle": "solid",
-      "borderTopWidth": "1px",
-      "marginTopBottom": "28px",
-      "lineWidth": "100%"
-    },
-    "checkboxStructure": {
-      "boxSize": "16px",
-      "textGap": "9px",
-      "color": "#0d0d0d",
-      "checkedEffect": "none"
-    },
-    "tableStructure": {
-      "outerBorderWidth": "1px",
-      "rowBorderWidth": "1px",
-      "colBorderWidth": "1px"
-    },
-    "customCss": ""
-  },
-  {
-    "id": "profile-official-notice-letter",
-    "name": "Onrivi 공식 행사 및 가정통신문 안내장 서식",
-    "description": "학교 가정통신문, 사내 공지문, 세미나 및 행사 안내장을 정갈하고 신뢰감 있게 출력·배포할 수 있는 공식 안내장 테마입니다.",
-    "pageStyle": {
-      "fontFamily": "'Pretendard', 'KoPubDotum', 'Noto Sans KR', -apple-system, sans-serif",
-      "fontSize": "15.5px",
-      "lineHeight": "1.75",
-      "letterSpacing": "-0.015em",
-      "backgroundColor": "#ffffff",
-      "paperSize": "a4",
-      "marginTop": "18mm",
-      "marginBottom": "18mm",
-      "marginLeft": "12mm",
-      "marginRight": "12mm",
-      "orientation": "portrait",
-      "headingSizeOffset": "3pt",
-      "tabSize": "2",
-      "exportPageBreakLevel": "none"
-    },
-    "rules": {
-      "h1": {
-        "font-size": "30px",
-        "font-weight": "800",
-        "color": "#111827",
-        "padding-left": "0px",
-        "margin-bottom": "22px",
-        "border-bottom": "3px double #374151",
-        "margin-top": "24px",
-        "text-align": "center",
-        "text-decoration": "none",
-        "font-style": "normal",
-        "line-height": "1.3",
-        "letter-spacing": "-0.02em",
-        "padding-bottom": "12px"
-      },
-      "h2": {
-        "font-size": "22px",
-        "font-weight": "750",
-        "color": "#1f2937",
-        "border-bottom": "1px solid #d1d5db",
-        "padding-bottom": "6px",
-        "margin-top": "28px",
-        "text-decoration": "none",
-        "font-style": "normal",
-        "margin-bottom": "14px",
-        "text-align": "left",
-        "line-height": "1.35",
-        "letter-spacing": "-0.015em"
-      },
-      "h3": {
-        "text-align": "left",
-        "font-weight": "700",
-        "font-size": "18.5px",
-        "margin-top": "22px",
-        "margin-bottom": "10px",
-        "color": "#374151",
-        "border-bottom": "",
-        "line-height": "1.4"
-      },
-      "h4": {
-        "text-align": "left",
-        "font-weight": "650",
-        "font-size": "17px",
-        "margin-top": "18px",
-        "margin-bottom": "8px",
-        "color": "#4b5563",
-        "border-bottom": "",
-        "line-height": "1.45"
-      },
-      "h5": {
-        "text-align": "left",
-        "font-weight": "650",
-        "font-size": "16px",
-        "margin-top": "16px",
-        "margin-bottom": "8px",
-        "color": "#4b5563",
-        "border-bottom": "",
-        "line-height": "1.5"
-      },
-      "h6": {
-        "text-align": "left",
-        "font-weight": "650",
-        "font-size": "15px",
-        "margin-top": "14px",
-        "margin-bottom": "6px",
-        "color": "#6b7280",
-        "border-bottom": "",
-        "line-height": "1.5"
-      },
-      "p": {
-        "margin-bottom": "14px",
-        "margin-top": "0px",
-        "line-height": "1.75",
-        "color": "#374151",
-        "text-align": "justify",
-        "text-indent": "0px",
-        "letter-spacing": "-0.01em",
-        "sentence-gap": "4px"
-      },
-      "strong": {
-        "font-weight": "700",
-        "color": "#111827"
-      },
-      "em": {
-        "font-style": "italic",
-        "color": "#4b5563"
-      },
-      "u": {
-        "text-decoration-color": "#4b5563",
-        "text-decoration-style": "solid",
-        "text-underline-offset": "3px",
-        "text-decoration": "underline"
-      },
-      "del": {
-        "text-decoration": "line-through",
-        "color": "#9ca3af"
-      },
-      "ul": {
-        "padding-left": "24px",
-        "list-style-type": "disc",
-        "color": "#374151"
-      },
-      "ol": {
-        "padding-left": "24px",
-        "color": "#374151",
-        "list-style-type": "decimal"
-      },
-      "li": {
-        "margin-bottom": "5px",
-        "padding-inline-start": "3px",
-        "line-height": "1.7"
-      },
-      "taskList": {
-        "boxSize": "16px",
-        "checkedEffect": "none",
-        "textGap": "9px",
-        "color": "#374151"
-      },
-      "hr": {
-        "border-top-color": "#e5e7eb",
-        "border-top-width": "1px",
-        "border-top-style": "solid",
-        "margin-top": "26px",
-        "margin-bottom": "26px",
-        "width": "100%"
-      },
-      "table": {
-        "width": "100%",
-        "border-collapse": "collapse",
-        "border-style": "solid",
-        "border-width": "1px",
-        "border-color": "#9ca3af",
-        "margin-top": "20px",
-        "margin-bottom": "20px",
-        "font-size": "14.5px",
-        "border-radius": "6px",
-        "overflow": "hidden"
-      },
-      "th": {
-        "background-color": "#f3f4f6",
-        "padding": "10px 12px",
-        "border-style": "solid",
-        "border-width": "1px",
-        "border-color": "#9ca3af",
-        "font-weight": "700",
-        "border-bottom": "1.5px solid #6b7280",
-        "border-left": "none",
-        "border-right": "none",
-        "text-align": "center",
-        "color": "#111827"
-      },
-      "td": {
-        "padding": "9px 12px",
-        "border-style": "solid",
-        "border-width": "1px",
-        "border-color": "#d1d5db",
-        "border-bottom": "1px solid #e5e5e5",
-        "border-left": "none",
-        "border-right": "none",
-        "color": "#374151"
-      },
-      "blockquote": {
-        "padding": "12px 18px",
-        "color": "#1f2937",
-        "background-color": "#f9fafb",
-        "border-radius": "6px",
-        "margin-top": "20px",
-        "margin-bottom": "20px",
-        "font-weight": "500",
-        "border-left": "4px solid #4b5563",
-        "font-size": "15px"
-      },
-      "codeBlock": {
-        "background-color": "#f3f4f6",
-        "color": "#1f2937",
-        "padding": "14px 18px",
-        "border-radius": "6px",
-        "font-size": "13.5px",
-        "border": "1px solid #e5e7eb"
-      },
-      "codeBlockTitle": {
-        "background-color": "#e5e7eb",
-        "color": "#374151",
-        "padding": "8px 12px",
-        "border-radius": "6px 6px 0 0",
-        "border": "1px solid #d1d5db"
-      },
-      "a": {
-        "color": "#1d4ed8",
-        "text-decoration": "underline",
-        "font-weight": "600"
-      },
-      "img": {
-        "width": "100%",
-        "border-radius": "6px",
-        "margin-top": "20px",
-        "margin-bottom": "20px",
-        "margin-left": "auto",
-        "margin-right": "auto",
-        "background-color": "white",
-        "padding": "0px",
-        "box-shadow": "none"
-      },
-      "code": {
-        "background-color": "#f3f4f6",
-        "color": "#111827",
-        "padding": "2px 6px",
-        "border-radius": "4px",
-        "font-weight": "600",
-        "border": "1px solid #e5e7eb"
-      },
-      "video": {
-        "width": "100%",
-        "height": "315px",
-        "border-radius": "6px",
-        "box-shadow": "none",
-        "margin-top": "20px",
-        "margin-bottom": "20px",
-        "margin-left": "auto",
-        "margin-right": "auto",
-        "display": "block",
-        "float": "none"
-      },
-      "math": {
-        "color": "#111827",
-        "font-size": "16px",
-        "text-align": "center",
-        "margin-top": "20px",
-        "margin-bottom": "20px"
-      },
-      "map": {
-        "width": "100%",
-        "height": "400px",
-        "border-radius": "6px",
-        "box-shadow": "none",
-        "margin-top": "20px",
-        "margin-bottom": "20px",
-        "margin-left": "auto",
-        "margin-right": "auto"
-      },
-      "footnote": {
-        "font-size": "12.5px",
-        "color": "#6b7280",
-        "line-height": "1.5",
-        "margin-top": "12px",
-        "margin-bottom": "12px",
-        "font-weight": "normal"
-      }
-    },
-    "hrStructure": {
-      "borderTopStyle": "solid",
-      "borderTopWidth": "1px",
-      "marginTopBottom": "26px",
-      "lineWidth": "100%"
-    },
-    "checkboxStructure": {
-      "checkedEffect": "none",
-      "boxSize": "16px",
-      "textGap": "9px",
-      "color": "#374151"
-    },
-    "tableStructure": {
-      "outerBorderWidth": "1px",
-      "rowBorderWidth": "1px",
-      "colBorderWidth": "1px"
-    },
-    "customCss": ""
-  },
-  {
-    "id": "hancom-tech-blog",
-    "name": "Onrivi 한컴 테크 블로그 서식",
-    "description": "한컴(HANCOM) 공식 기술 블로그의 모던 테크니컬 디자인을 완벽 구현한 서식입니다. H2 오렌지 하단선과 H3 오렌지 버티컬 바, 1.8배 본문 줄간격과 8px 문장 사이 간격, 가로선 중심의 비교표와 100% 와이드 라운드 미디어로 전문적인 IT 기술 아티클과 리포트를 완성합니다.",
-    "pageStyle": {
-      "fontFamily": "Pretendard, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', Arial, sans-serif",
-      "fontSize": "16px",
-      "lineHeight": "1.8",
-      "letterSpacing": "-0.02em",
-      "backgroundColor": "#ffffff",
-      "paperSize": "a4",
-      "marginTop": "18mm",
-      "marginBottom": "18mm",
-      "marginLeft": "12mm",
-      "marginRight": "12mm",
-      "orientation": "portrait",
-      "headingSizeOffset": "3pt",
-      "tabSize": "4",
-      "exportPageBreakLevel": "none"
-    },
-    "rules": {
-      "h1": {
-        "font-size": "32px",
-        "font-weight": "800",
-        "color": "#111827",
-        "line-height": "1.35",
-        "letter-spacing": "-0.03em",
-        "margin-top": "36px",
-        "margin-bottom": "24px",
-        "text-align": "left",
-        "padding-left": "0px"
-      },
-      "h2": {
-        "font-size": "23px",
-        "font-weight": "700",
-        "color": "#111827",
-        "line-height": "1.4",
-        "letter-spacing": "-0.02em",
-        "border-bottom": "2px solid #ff5a00",
-        "padding-bottom": "10px",
-        "margin-top": "52px",
-        "margin-bottom": "20px",
-        "text-align": "left",
-        "padding-left": "0px"
-      },
-      "h3": {
-        "font-size": "18.5px",
-        "font-weight": "700",
-        "color": "#1f2937",
-        "line-height": "1.5",
-        "letter-spacing": "-0.015em",
-        "border-left": "4px solid #ff5a00",
-        "padding-left": "12px",
-        "margin-top": "34px",
-        "margin-bottom": "14px",
-        "text-align": "left"
-      },
-      "h4": {
-        "font-size": "16px",
-        "font-weight": "700",
-        "color": "#374151",
-        "line-height": "1.5",
-        "letter-spacing": "-0.01em",
-        "margin-top": "24px",
-        "margin-bottom": "10px",
-        "text-align": "left",
-        "padding-left": "0px"
-      },
-      "h5": {
-        "font-size": "15px",
-        "font-weight": "700",
-        "color": "#4b5563",
-        "line-height": "1.5",
-        "margin-top": "20px",
-        "margin-bottom": "8px",
-        "text-align": "left",
-        "padding-left": "0px"
-      },
-      "h6": {
-        "font-size": "14px",
-        "font-weight": "700",
-        "color": "#64748b",
-        "line-height": "1.5",
-        "margin-top": "16px",
-        "margin-bottom": "6px",
-        "text-align": "left",
-        "padding-left": "0px"
-      },
-      "p": {
-        "font-size": "16px",
-        "font-weight": "400",
-        "line-height": "1.8",
-        "letter-spacing": "-0.02em",
-        "color": "#374151",
-        "margin-top": "0px",
-        "margin-bottom": "20px",
-        "sentence-gap": "8px",
-        "text-align": "left",
-        "text-indent": "0px"
-      },
-      "strong": {
-        "font-weight": "700",
-        "color": "#111827"
-      },
-      "em": {
-        "font-style": "italic",
-        "color": "#374151"
-      },
-      "u": {
-        "text-decoration": "underline",
-        "text-decoration-color": "#ff5a00",
-        "text-underline-offset": "3px"
-      },
-      "del": {
-        "text-decoration": "line-through",
-        "color": "#94a3b8"
-      },
-      "a": {
-        "color": "#0284c7",
-        "text-decoration": "underline",
-        "text-underline-offset": "3px",
-        "font-weight": "600"
-      },
-      "blockquote": {
-        "background-color": "#f8fafc",
-        "border-left": "4px solid #ff5a00",
-        "border-radius": "6px",
-        "padding": "16px 20px",
-        "margin-top": "24px",
-        "margin-bottom": "24px",
-        "color": "#475569",
-        "font-size": "15px",
-        "line-height": "1.7"
-      },
-      "table": {
-        "width": "100%",
-        "border-collapse": "collapse",
-        "margin-top": "24px",
-        "margin-bottom": "32px",
-        "border-top": "2px solid #111827",
-        "border-bottom": "1px solid #e2e8f0"
-      },
-      "th": {
-        "background-color": "#f8fafc",
-        "color": "#111827",
-        "font-weight": "700",
-        "padding": "12px 16px",
-        "text-align": "center",
-        "border-bottom": "1.5px solid #cbd5e1"
-      },
-      "td": {
-        "padding": "12px 16px",
-        "color": "#334155",
-        "border-bottom": "1px solid #f1f5f9",
-        "font-size": "14.5px",
-        "line-height": "1.6"
-      },
-      "ul": {
-        "padding-left": "22px",
-        "list-style-type": "disc",
-        "color": "#374151",
-        "margin-bottom": "20px"
-      },
-      "ol": {
-        "padding-left": "22px",
-        "list-style-type": "decimal",
-        "color": "#374151",
-        "margin-bottom": "20px"
-      },
-      "li": {
-        "margin-bottom": "8px",
-        "line-height": "1.75",
-        "padding-inline-start": "6px"
-      },
-      "taskList": {
-        "boxSize": "16px",
-        "checkedEffect": "none",
-        "textGap": "10px",
-        "color": "#ff5a00"
-      },
-      "hr": {
-        "border-top": "1px solid #e2e8f0",
-        "margin-top": "40px",
-        "margin-bottom": "40px",
-        "width": "100%"
-      },
-      "codeBlock": {
-        "background-color": "#0f172a",
-        "color": "#f8fafc",
-        "border-radius": "8px",
-        "padding": "16px 20px",
-        "margin-top": "20px",
-        "margin-bottom": "24px",
-        "font-family": "JetBrains Mono, D2Coding, Consolas, monospace",
-        "font-size": "14px",
-        "line-height": "1.6"
-      },
-      "codeBlockTitle": {
-        "background-color": "#1e293b",
-        "color": "#94a3b8",
-        "padding": "8px 16px",
-        "border-radius": "8px 8px 0 0",
-        "font-size": "13px"
-      },
-      "code": {
-        "background-color": "#f1f5f9",
-        "color": "#ea580c",
-        "border-radius": "4px",
-        "padding": "2px 6px",
-        "font-weight": "600"
-      },
-      "img": {
-        "width": "100%",
-        "height": "auto",
-        "border-radius": "10px",
-        "box-shadow": "0 4px 16px -2px rgba(0, 0, 0, 0.08)",
-        "margin-top": "28px",
-        "margin-bottom": "28px",
-        "display": "block",
-        "margin-left": "auto",
-        "margin-right": "auto"
-      },
-      "video": {
-        "width": "100%",
-        "height": "315px",
-        "border-radius": "10px",
-        "margin-top": "28px",
-        "margin-bottom": "28px",
-        "display": "block",
-        "margin-left": "auto",
-        "margin-right": "auto"
-      },
-      "map": {
-        "width": "100%",
-        "height": "400px",
-        "border-radius": "10px",
-        "margin-top": "28px",
-        "margin-bottom": "28px",
-        "display": "block",
-        "margin-left": "auto",
-        "margin-right": "auto"
-      },
-      "math": {
-        "color": "#111827",
-        "margin-top": "20px",
-        "margin-bottom": "20px",
-        "text-align": "center"
-      },
-      "footnote": {
-        "font-size": "13px",
-        "color": "#64748b",
-        "line-height": "1.6",
-        "margin-top": "32px",
-        "margin-bottom": "16px"
-      }
-    },
-    "tableStructure": {
-      "outerBorderWidth": "1px",
-      "rowBorderWidth": "1px",
-      "colBorderWidth": "0px"
-    },
-    "hrStructure": {
-      "borderTopWidth": "1px",
-      "borderTopStyle": "solid",
-      "lineWidth": "100%",
-      "marginTopBottom": "40px"
-    },
-    "checkboxStructure": {
-      "boxSize": "16px",
-      "checkedEffect": "none",
-      "textGap": "10px",
-      "color": "#ff5a00"
-    },
-    "customCss": ""
-  },
-  {
-    "id": "profile-1791514218283",
-    "name": "편안한 전자책 서식",
-    "description": "시니어 독자와 저자를 위해 큰 글자(20px), 여유로운 줄 간격(1.85), 눈이 편안한 미색 배경과 고대비 폰트를 적용한 시니어 전용 전자책 출판 서식입니다.",
-    "pageStyle": {
-      "fontFamily": "'KoPubDotum', 'Pretendard', 'Noto Sans KR', sans-serif",
-      "fontSize": "20px",
-      "lineHeight": "1.85",
-      "letterSpacing": "-0.005em",
-      "backgroundColor": "#fcfbf7",
-      "paperSize": "a4",
-      "marginTop": "20mm",
-      "marginBottom": "20mm",
-      "marginLeft": "16mm",
-      "marginRight": "16mm",
-      "orientation": "portrait",
-      "headingSizeOffset": "3pt",
-      "tabSize": "2",
-      "exportPageBreakLevel": "none"
-    },
-    "rules": {
-      "h1": {
-        "font-size": "34px",
-        "font-weight": "800",
-        "color": "#1a202c",
-        "padding-left": "0px",
-        "margin-bottom": "22px",
-        "border-bottom": "",
-        "margin-top": "36px",
-        "text-align": "left",
-        "text-decoration": "none",
-        "font-style": "normal",
-        "line-height": "1.3",
-        "letter-spacing": "-0.02em"
-      },
-      "h2": {
-        "font-size": "26px",
-        "font-weight": "700",
-        "color": "#1a202c",
-        "border-bottom": "2.5px solid #2b6cb0",
-        "padding-bottom": "10px",
-        "margin-top": "40px",
-        "text-decoration": "none",
-        "font-style": "normal",
-        "margin-bottom": "18px",
-        "text-align": "left",
-        "line-height": "1.4",
-        "letter-spacing": "-0.015em"
-      },
-      "h3": {
-        "text-align": "left",
-        "font-weight": "700",
-        "font-size": "22px",
-        "margin-top": "30px",
-        "margin-bottom": "14px",
-        "color": "#2b6cb0",
-        "border-bottom": "",
-        "line-height": "1.45",
-        "border-left": "4.5px solid #2b6cb0",
-        "padding-left": "12px"
-      },
-      "h4": {
-        "text-align": "left",
-        "font-weight": "700",
-        "font-size": "20px",
-        "margin-top": "24px",
-        "margin-bottom": "12px",
-        "color": "#2d3748",
-        "border-bottom": "",
-        "line-height": "1.5"
-      },
-      "h5": {
-        "text-align": "left",
-        "font-weight": "650",
-        "font-size": "19px",
-        "margin-top": "20px",
-        "margin-bottom": "10px",
-        "color": "#2d3748",
-        "border-bottom": "",
-        "line-height": "1.55"
-      },
-      "h6": {
-        "text-align": "left",
-        "font-weight": "650",
-        "font-size": "18px",
-        "margin-top": "18px",
-        "margin-bottom": "10px",
-        "color": "#4a5568",
-        "border-bottom": "",
-        "line-height": "1.55"
-      },
-      "p": {
-        "margin-bottom": "20px",
-        "margin-top": "0px",
-        "line-height": "1.85",
-        "color": "#222222",
-        "text-align": "left",
-        "text-indent": "0px",
-        "letter-spacing": "-0.005em",
-        "sentence-gap": "6px"
-      },
-      "strong": {
-        "font-weight": "700",
-        "color": "#1a202c"
-      },
-      "em": {
-        "font-style": "italic",
-        "color": "#2d3748"
-      },
-      "u": {
-        "text-decoration-color": "#2b6cb0",
-        "text-decoration-style": "solid",
-        "text-underline-offset": "4px",
-        "text-decoration": "underline"
-      },
-      "del": {
-        "text-decoration": "line-through",
-        "color": "#718096"
-      },
-      "ul": {
-        "padding-left": "32px",
-        "list-style-type": "disc",
-        "color": "#222222"
-      },
-      "ol": {
-        "padding-left": "32px",
-        "color": "#222222",
-        "list-style-type": "decimal"
-      },
-      "li": {
-        "margin-bottom": "8px",
-        "padding-inline-start": "4px",
-        "line-height": "1.8"
-      },
-      "taskList": {
-        "boxSize": "20px",
-        "checkedEffect": "none",
-        "textGap": "12px",
-        "color": "#222222"
-      },
-      "hr": {
-        "border-top-color": "#cbd5e1",
-        "border-top-width": "2px",
-        "border-top-style": "solid",
-        "margin-top": "32px",
-        "margin-bottom": "32px",
-        "width": "100%"
-      },
-      "table": {
-        "width": "100%",
-        "border-collapse": "collapse",
-        "border-style": "solid",
-        "border-width": "1.5px",
-        "border-color": "#a0aec0",
-        "margin-top": "24px",
-        "margin-bottom": "24px",
-        "font-size": "17px",
-        "border-radius": "8px",
-        "overflow": "hidden"
-      },
-      "th": {
-        "background-color": "#edf2f7",
-        "padding": "12px 16px",
-        "border-style": "solid",
-        "border-width": "1.5px",
-        "border-color": "#a0aec0",
-        "font-weight": "700",
-        "text-align": "left",
-        "color": "#1a202c"
-      },
-      "td": {
-        "padding": "12px 16px",
-        "border-style": "solid",
-        "border-width": "1px",
-        "border-color": "#cbd5e1",
-        "color": "#222222"
-      },
-      "blockquote": {
-        "padding": "16px 22px",
-        "color": "#2d3748",
-        "background-color": "#edf2f7",
-        "border-radius": "6px",
-        "margin-top": "24px",
-        "margin-bottom": "24px",
-        "font-weight": "normal",
-        "border-left": "5px solid #2b6cb0",
-        "font-size": "18px"
-      },
-      "codeBlock": {
-        "background-color": "#f1f5f9",
-        "color": "#1e293b",
-        "padding": "18px",
-        "border-radius": "8px",
-        "font-size": "15px",
-        "border": "1px solid #cbd5e1"
-      },
-      "codeBlockTitle": {
-        "background-color": "#e2e8f0",
-        "color": "#334155",
-        "padding": "10px 14px",
-        "border-radius": "8px 8px 0 0",
-        "border": "1px solid #cbd5e1"
-      },
-      "a": {
-        "color": "#2b6cb0",
-        "text-decoration": "underline",
-        "font-weight": "bold"
-      },
-      "img": {
-        "width": "100%",
-        "border-radius": "10px",
-        "margin-top": "24px",
-        "margin-bottom": "24px",
-        "margin-left": "auto",
-        "margin-right": "auto",
-        "background-color": "white",
-        "padding": "0px",
-        "box-shadow": "none"
-      },
-      "code": {
-        "background-color": "#edf2f7",
-        "color": "#2b6cb0",
-        "padding": "3px 8px",
-        "border-radius": "5px",
-        "font-weight": "600",
-        "border": "1px solid #cbd5e1"
-      },
-      "video": {
-        "width": "100%",
-        "height": "340px",
-        "border-radius": "10px",
-        "box-shadow": "none",
-        "margin-top": "24px",
-        "margin-bottom": "24px",
-        "margin-left": "auto",
-        "margin-right": "auto",
-        "display": "block",
-        "float": "none"
-      },
-      "math": {
-        "color": "#1a202c",
-        "font-size": "18px",
-        "text-align": "center",
-        "margin-top": "24px",
-        "margin-bottom": "24px"
-      },
-      "map": {
-        "width": "100%",
-        "height": "420px",
-        "border-radius": "10px",
-        "box-shadow": "none",
-        "margin-top": "24px",
-        "margin-bottom": "24px",
-        "margin-left": "auto",
-        "margin-right": "auto"
-      },
-      "footnote": {
-        "font-size": "15px",
-        "color": "#4a5568",
-        "line-height": "1.6",
-        "margin-top": "14px",
-        "margin-bottom": "14px",
-        "font-weight": "normal"
-      }
-    },
-    "hrStructure": {
-      "borderTopStyle": "solid",
-      "borderTopWidth": "2px",
-      "marginTopBottom": "32px",
-      "lineWidth": "100%"
-    },
-    "checkboxStructure": {
-      "boxSize": "20px",
-      "textGap": "12px",
-      "color": "#222222",
-      "checkedEffect": "none"
-    },
-    "tableStructure": {
-      "outerBorderWidth": "1.5px",
-      "rowBorderWidth": "1.5px",
-      "colBorderWidth": "1px"
-    },
-    "customCss": ""
-  },
-  {
-    "id": "profile-1792073192013",
-    "name": "Story Book-전체표지",
-    "description": "온리비 어서(Onrivi Author)의 공식 기본 서식 테마입니다. 정갈한 텍스트 배치와 최적화된 용지 규격을 제공합니다.",
-    "pageStyle": {
-      "fontFamily": "\"EBS 훈민정음 새론\", serif",
-      "fontSize": "20px",
-      "lineHeight": "1.75",
-      "letterSpacing": "-0.01em",
-      "backgroundColor": "#ffffff",
-      "paperSize": "a4",
-      "marginTop": "18mm",
-      "marginBottom": "18mm",
-      "marginLeft": "12mm",
-      "marginRight": "12mm",
-      "orientation": "landscape",
-      "headingSizeOffset": "3pt",
-      "tabSize": "2",
-      "exportPageBreakLevel": "none"
-    },
-    "rules": {
-      "h1": {
-        "font-size": "32px",
-        "font-weight": "700",
-        "color": "#202123",
-        "padding-left": "0px",
-        "margin-bottom": "18px",
-        "border-bottom": "",
-        "margin-top": "32px",
-        "text-align": "left",
-        "text-decoration": "none",
-        "font-style": "normal",
-        "line-height": "1.25",
-        "letter-spacing": "-0.025em"
-      },
-      "h2": {
-        "font-size": "24px",
-        "font-weight": "700",
-        "color": "#202123",
-        "border-bottom": "",
-        "padding-bottom": "8px",
-        "margin-top": "28px",
-        "text-decoration": "none",
-        "font-style": "normal",
-        "margin-bottom": "14px",
-        "text-align": "left",
-        "line-height": "1.35",
-        "letter-spacing": "-0.02em"
-      },
-      "h3": {
-        "text-align": "left",
-        "font-weight": "650",
-        "font-size": "20px",
-        "margin-top": "24px",
-        "margin-bottom": "12px",
-        "color": "#202123",
-        "border-bottom": "",
-        "line-height": "1.4"
-      },
-      "h4": {
-        "text-align": "left",
-        "font-weight": "650",
-        "font-size": "18px",
-        "margin-top": "20px",
-        "margin-bottom": "10px",
-        "color": "#202123",
-        "border-bottom": "",
-        "line-height": "1.5"
-      },
-      "h5": {
-        "text-align": "left",
-        "font-weight": "650",
-        "font-size": "16px",
-        "margin-top": "18px",
-        "margin-bottom": "8px",
-        "color": "#202123",
-        "border-bottom": "",
-        "line-height": "1.55"
-      },
-      "h6": {
-        "text-align": "left",
-        "font-weight": "650",
-        "font-size": "15px",
-        "margin-top": "16px",
-        "margin-bottom": "8px",
-        "color": "#6b6b6b",
-        "border-bottom": "",
-        "line-height": "1.55"
-      },
-      "p": {
-        "margin-bottom": "16px",
-        "margin-top": "0px",
-        "line-height": "1.75",
-        "color": "#2f2f2f",
-        "text-align": "left",
-        "text-indent": "0px",
-        "letter-spacing": "-0.01em",
-        "sentence-gap": "4px"
-      },
-      "strong": {
-        "font-weight": "700",
-        "color": "#202123"
-      },
-      "em": {
-        "font-style": "italic",
-        "color": "#2f2f2f"
-      },
-      "u": {
-        "text-decoration-color": "#0d0d0d",
-        "text-decoration-style": "solid",
-        "text-underline-offset": "3px",
-        "text-decoration": "underline"
-      },
-      "del": {
-        "text-decoration": "line-through",
-        "color": "#6b6b6b"
-      },
-      "ul": {
-        "padding-left": "28px",
-        "list-style-type": "disc",
-        "color": "#2f2f2f"
-      },
-      "ol": {
-        "padding-left": "28px",
-        "color": "#2f2f2f",
-        "list-style-type": "decimal"
-      },
-      "li": {
-        "margin-bottom": "5px",
-        "padding-inline-start": "3px",
-        "line-height": "1.7"
-      },
-      "taskList": {
-        "boxSize": "16px",
-        "checkedEffect": "none",
-        "textGap": "9px",
-        "color": "#2f2f2f"
-      },
-      "hr": {
-        "border-top-color": "#e5e5e5",
-        "border-top-width": "1px",
-        "border-top-style": "solid",
-        "margin-top": "28px",
-        "margin-bottom": "28px",
-        "width": "100%"
-      },
-      "table": {
-        "width": "100%",
-        "border-collapse": "collapse",
-        "border-style": "solid",
-        "border-width": "1px",
-        "border-color": "#9ca3af",
-        "margin-top": "22px",
-        "margin-bottom": "22px",
-        "font-size": "15px",
-        "border-radius": "8px",
-        "overflow": "hidden"
-      },
-      "th": {
-        "background-color": "#f7f7f8",
-        "padding": "5px 8px",
-        "border-style": "solid",
-        "border-width": "1px",
-        "border-color": "#cbd5e1",
-        "font-weight": "650",
-        "text-align": "left",
-        "color": "#202123",
-        "font-size": "inherit"
-      },
-      "td": {
-        "padding": "5px 8px",
-        "border-style": "solid",
-        "border-width": "1px",
-        "border-color": "#cbd5e1",
-        "color": "#2f2f2f",
-        "font-size": "inherit"
-      },
-      "blockquote": {
-        "padding": "2px 0 2px 18px",
-        "color": "#6b6b6b",
-        "background-color": "transparent",
-        "border-radius": "0",
-        "margin-top": "20px",
-        "margin-bottom": "20px",
-        "font-weight": "normal",
-        "border-left": "3px solid #d9d9d9",
-        "font-size": "16px"
-      },
-      "codeBlock": {
-        "background-color": "#f7f7f8",
-        "color": "#242424",
-        "padding": "16px",
-        "border-radius": "8px",
-        "font-size": "13.5px",
-        "border": "1px solid #e5e5e5"
-      },
-      "codeBlockTitle": {
-        "background-color": "#ececec",
-        "color": "#5f5f5f",
-        "padding": "8px 12px",
-        "border-radius": "8px 8px 0 0",
-        "border": "1px solid #e5e5e5"
-      },
-      "a": {
-        "color": "#2563eb",
-        "text-decoration": "underline",
-        "font-weight": "bold"
-      },
-      "img": {
-        "width": "100%",
-        "border-radius": "8px",
-        "margin-top": "20px",
-        "margin-bottom": "20px",
-        "margin-left": "auto",
-        "margin-right": "auto",
-        "background-color": "white",
-        "padding": "0px",
-        "box-shadow": "none"
-      },
-      "code": {
-        "background-color": "#f7f7f8",
-        "color": "#242424",
-        "padding": "2px 6px",
-        "border-radius": "5px",
-        "font-weight": "normal",
-        "border": "1px solid #e5e5e5"
-      },
-      "video": {
-        "width": "100%",
-        "height": "315px",
-        "border-radius": "8px",
-        "box-shadow": "none",
-        "margin-top": "20px",
-        "margin-bottom": "20px",
-        "margin-left": "auto",
-        "margin-right": "auto",
-        "display": "block",
-        "float": "none"
-      },
-      "math": {
-        "color": "#2f2f2f",
-        "font-size": "16px",
-        "text-align": "center",
-        "margin-top": "20px",
-        "margin-bottom": "20px"
-      },
-      "map": {
-        "width": "100%",
-        "height": "400px",
-        "border-radius": "8px",
-        "box-shadow": "none",
-        "margin-top": "20px",
-        "margin-bottom": "20px",
-        "margin-left": "auto",
-        "margin-right": "auto"
-      },
-      "footnote": {
-        "font-size": "13px",
-        "color": "#6b6b6b",
-        "line-height": "1.5",
-        "margin-top": "12px",
-        "margin-bottom": "12px",
-        "font-weight": "normal"
-      }
-    },
-    "hrStructure": {
-      "borderTopStyle": "solid",
-      "borderTopWidth": "1px",
-      "marginTopBottom": "28px",
-      "lineWidth": "100%"
-    },
-    "checkboxStructure": {
-      "boxSize": "16px",
-      "textGap": "9px",
-      "color": "#2f2f2f",
-      "checkedEffect": "none"
-    },
-    "tableStructure": {
-      "outerBorderWidth": "1px",
-      "rowBorderWidth": "1px",
-      "colBorderWidth": "0px"
-    },
-    "customCss": "",
-    "layout": {
-      "schemaVersion": 1,
-      "type": "picturebook",
-      "cover": "full-image",
-      "imageRatio": 0.5,
-      "imageFit": "cover",
-      "gap": "6mm",
-      "pageNumbers": true
-    }
-  },
-  {
-    "id": "profile-1792072480655",
-    "name": "Story Book - 오른쪽 그림 표지",
-    "description": "온리비 어서(Onrivi Author)의 공식 기본 서식 테마입니다. 정갈한 텍스트 배치와 최적화된 용지 규격을 제공합니다.",
-    "pageStyle": {
-      "fontFamily": "\"EBS 훈민정음 새론\", serif",
-      "fontSize": "20px",
-      "lineHeight": "1.75",
-      "letterSpacing": "-0.01em",
-      "backgroundColor": "#ffffff",
-      "paperSize": "a4",
-      "marginTop": "18mm",
-      "marginBottom": "18mm",
-      "marginLeft": "12mm",
-      "marginRight": "12mm",
-      "orientation": "landscape",
-      "headingSizeOffset": "3pt",
-      "tabSize": "2",
-      "exportPageBreakLevel": "none"
-    },
-    "rules": {
-      "h1": {
-        "font-size": "32px",
-        "font-weight": "700",
-        "color": "#202123",
-        "padding-left": "0px",
-        "margin-bottom": "18px",
-        "border-bottom": "",
-        "margin-top": "32px",
-        "text-align": "left",
-        "text-decoration": "none",
-        "font-style": "normal",
-        "line-height": "1.25",
-        "letter-spacing": "-0.025em"
-      },
-      "h2": {
-        "font-size": "24px",
-        "font-weight": "700",
-        "color": "#202123",
-        "border-bottom": "",
-        "padding-bottom": "8px",
-        "margin-top": "28px",
-        "text-decoration": "none",
-        "font-style": "normal",
-        "margin-bottom": "14px",
-        "text-align": "left",
-        "line-height": "1.35",
-        "letter-spacing": "-0.02em"
-      },
-      "h3": {
-        "text-align": "left",
-        "font-weight": "650",
-        "font-size": "20px",
-        "margin-top": "24px",
-        "margin-bottom": "12px",
-        "color": "#202123",
-        "border-bottom": "",
-        "line-height": "1.4"
-      },
-      "h4": {
-        "text-align": "left",
-        "font-weight": "650",
-        "font-size": "18px",
-        "margin-top": "20px",
-        "margin-bottom": "10px",
-        "color": "#202123",
-        "border-bottom": "",
-        "line-height": "1.5"
-      },
-      "h5": {
-        "text-align": "left",
-        "font-weight": "650",
-        "font-size": "16px",
-        "margin-top": "18px",
-        "margin-bottom": "8px",
-        "color": "#202123",
-        "border-bottom": "",
-        "line-height": "1.55"
-      },
-      "h6": {
-        "text-align": "left",
-        "font-weight": "650",
-        "font-size": "15px",
-        "margin-top": "16px",
-        "margin-bottom": "8px",
-        "color": "#6b6b6b",
-        "border-bottom": "",
-        "line-height": "1.55"
-      },
-      "p": {
-        "margin-bottom": "16px",
-        "margin-top": "0px",
-        "line-height": "1.75",
-        "color": "#2f2f2f",
-        "text-align": "left",
-        "text-indent": "0px",
-        "letter-spacing": "-0.01em",
-        "sentence-gap": "4px"
-      },
-      "strong": {
-        "font-weight": "700",
-        "color": "#202123"
-      },
-      "em": {
-        "font-style": "italic",
-        "color": "#2f2f2f"
-      },
-      "u": {
-        "text-decoration-color": "#0d0d0d",
-        "text-decoration-style": "solid",
-        "text-underline-offset": "3px",
-        "text-decoration": "underline"
-      },
-      "del": {
-        "text-decoration": "line-through",
-        "color": "#6b6b6b"
-      },
-      "ul": {
-        "padding-left": "28px",
-        "list-style-type": "disc",
-        "color": "#2f2f2f"
-      },
-      "ol": {
-        "padding-left": "28px",
-        "color": "#2f2f2f",
-        "list-style-type": "decimal"
-      },
-      "li": {
-        "margin-bottom": "5px",
-        "padding-inline-start": "3px",
-        "line-height": "1.7"
-      },
-      "taskList": {
-        "boxSize": "16px",
-        "checkedEffect": "none",
-        "textGap": "9px",
-        "color": "#2f2f2f"
-      },
-      "hr": {
-        "border-top-color": "#e5e5e5",
-        "border-top-width": "1px",
-        "border-top-style": "solid",
-        "margin-top": "28px",
-        "margin-bottom": "28px",
-        "width": "100%"
-      },
-      "table": {
-        "width": "100%",
-        "border-collapse": "collapse",
-        "border-style": "solid",
-        "border-width": "1px",
-        "border-color": "#9ca3af",
-        "margin-top": "22px",
-        "margin-bottom": "22px",
-        "font-size": "15px",
-        "border-radius": "8px",
-        "overflow": "hidden"
-      },
-      "th": {
-        "background-color": "#f7f7f8",
-        "padding": "5px 8px",
-        "border-style": "solid",
-        "border-width": "1px",
-        "border-color": "#cbd5e1",
-        "font-weight": "650",
-        "text-align": "left",
-        "color": "#202123",
-        "font-size": "15px"
-      },
-      "td": {
-        "padding": "5px 8px",
-        "border-style": "solid",
-        "border-width": "1px",
-        "border-color": "#cbd5e1",
-        "color": "#2f2f2f",
-        "font-size": "15px"
-      },
-      "blockquote": {
-        "padding": "2px 0 2px 18px",
-        "color": "#6b6b6b",
-        "background-color": "transparent",
-        "border-radius": "0",
-        "margin-top": "20px",
-        "margin-bottom": "20px",
-        "font-weight": "normal",
-        "border-left": "3px solid #d9d9d9",
-        "font-size": "20px"
-      },
-      "codeBlock": {
-        "background-color": "#f7f7f8",
-        "color": "#242424",
-        "padding": "16px",
-        "border-radius": "8px",
-        "font-size": "13.5px",
-        "border": "1px solid #e5e5e5"
-      },
-      "codeBlockTitle": {
-        "background-color": "#ececec",
-        "color": "#5f5f5f",
-        "padding": "8px 12px",
-        "border-radius": "8px 8px 0 0",
-        "border": "1px solid #e5e5e5"
-      },
-      "a": {
-        "color": "#2563eb",
-        "text-decoration": "underline",
-        "font-weight": "bold"
-      },
-      "img": {
-        "width": "100%",
-        "border-radius": "8px",
-        "margin-top": "20px",
-        "margin-bottom": "20px",
-        "margin-left": "auto",
-        "margin-right": "auto",
-        "background-color": "white",
-        "padding": "0px",
-        "box-shadow": "none"
-      },
-      "code": {
-        "background-color": "#f7f7f8",
-        "color": "#242424",
-        "padding": "2px 6px",
-        "border-radius": "5px",
-        "font-weight": "normal",
-        "border": "1px solid #e5e5e5"
-      },
-      "video": {
-        "width": "100%",
-        "height": "315px",
-        "border-radius": "8px",
-        "box-shadow": "none",
-        "margin-top": "20px",
-        "margin-bottom": "20px",
-        "margin-left": "auto",
-        "margin-right": "auto",
-        "display": "block",
-        "float": "none"
-      },
-      "math": {
-        "color": "#2f2f2f",
-        "font-size": "16px",
-        "text-align": "center",
-        "margin-top": "20px",
-        "margin-bottom": "20px"
-      },
-      "map": {
-        "width": "100%",
-        "height": "400px",
-        "border-radius": "8px",
-        "box-shadow": "none",
-        "margin-top": "20px",
-        "margin-bottom": "20px",
-        "margin-left": "auto",
-        "margin-right": "auto"
-      },
-      "footnote": {
-        "font-size": "13px",
-        "color": "#6b6b6b",
-        "line-height": "1.5",
-        "margin-top": "12px",
-        "margin-bottom": "12px",
-        "font-weight": "normal"
-      }
-    },
-    "hrStructure": {
-      "borderTopStyle": "solid",
-      "borderTopWidth": "1px",
-      "marginTopBottom": "28px",
-      "lineWidth": "100%"
-    },
-    "checkboxStructure": {
-      "boxSize": "16px",
-      "textGap": "9px",
-      "color": "#2f2f2f",
-      "checkedEffect": "none"
-    },
-    "tableStructure": {
-      "outerBorderWidth": "1px",
-      "rowBorderWidth": "1px",
-      "colBorderWidth": "0px"
-    },
-    "customCss": "",
-    "layout": {
-      "schemaVersion": 1,
-      "type": "picturebook",
-      "cover": "image-right",
-      "imageRatio": 0.5,
-      "imageFit": "cover",
-      "gap": "6mm",
-      "pageNumbers": true
-    }
   }
 ];
+
+/**
+ * 시스템 기본서식(SYSTEM_PROFILES[0])을 기반으로 개별 시스템 서식을 일관되게 생성하는 헬퍼
+ */
+function buildSystemProfile(config: {
+  id: SystemProfileId;
+  name: string;
+  description: string;
+  pageStyle?: Partial<CssProfile["pageStyle"]>;
+  rules?: Partial<Record<keyof CssProfile["rules"], Record<string, string>>>;
+  hrStructure?: Partial<NonNullable<CssProfile["hrStructure"]>>;
+  checkboxStructure?: Partial<NonNullable<CssProfile["checkboxStructure"]>>;
+  tableStructure?: Partial<NonNullable<CssProfile["tableStructure"]>>;
+  mediaCaptionStructure?: CssProfile["mediaCaptionStructure"];
+  bulletStructure?: Partial<NonNullable<CssProfile["bulletStructure"]>>;
+  headingNumbering?: CssProfile["headingNumbering"];
+  customCss?: string;
+}): CssProfile {
+  const profile: CssProfile = JSON.parse(JSON.stringify(SYSTEM_PROFILES[0]));
+  profile.id = config.id;
+  profile.name = config.name;
+  profile.description = config.description;
+  if (config.pageStyle) {
+    profile.pageStyle = { ...profile.pageStyle, ...config.pageStyle };
+  }
+  if (config.rules) {
+    for (const [tag, rule] of Object.entries(config.rules)) {
+      if (!rule) continue;
+      (profile.rules as any)[tag] = { ...(profile.rules as any)[tag], ...rule };
+    }
+  }
+  if (config.hrStructure) {
+    profile.hrStructure = { ...profile.hrStructure!, ...config.hrStructure };
+  }
+  if (config.checkboxStructure) {
+    profile.checkboxStructure = { ...profile.checkboxStructure!, ...config.checkboxStructure };
+  }
+  if (config.tableStructure) {
+    profile.tableStructure = { ...profile.tableStructure!, ...config.tableStructure };
+  }
+  if (config.mediaCaptionStructure) {
+    profile.mediaCaptionStructure = config.mediaCaptionStructure;
+  }
+  if (config.bulletStructure) {
+    profile.bulletStructure = { ...profile.bulletStructure!, ...config.bulletStructure };
+  }
+  if (config.headingNumbering !== undefined) {
+    profile.headingNumbering = config.headingNumbering;
+  }
+  if (config.customCss !== undefined) {
+    profile.customCss = config.customCss;
+  }
+  return profile;
+}
+
+// 2. 온리비_할 일·생활 기록
+SYSTEM_PROFILES.push(buildSystemProfile({
+  id: "onrivi-todo-life",
+  name: "온리비_할 일·생활 기록",
+  description: "오늘 할 일, 약속, 루틴, 일상 메모 정리에 최적화된 산뜻한 체크리스트·구분선 중심의 생활 기록 서식입니다.",
+  pageStyle: {
+    fontFamily: "'Pretendard', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif",
+    fontSize: "15.5px",
+    lineHeight: "1.6",
+    marginTop: "14mm",
+    marginBottom: "14mm",
+    marginLeft: "12mm",
+    marginRight: "12mm",
+  },
+  rules: {
+    h1: { "font-size": "26px", "font-weight": "800", "color": "#0f172a", "border-bottom": "2px solid #0d9488", "padding-bottom": "8px", "margin-top": "20px", "margin-bottom": "16px" },
+    h2: { "font-size": "19px", "font-weight": "700", "color": "#0f766e", "border-left": "4px solid #0d9488", "padding-left": "10px", "margin-top": "24px", "margin-bottom": "12px" },
+    h3: { "font-size": "16.5px", "font-weight": "700", "color": "#334155", "margin-top": "18px", "margin-bottom": "8px" },
+    p: { "color": "#1e293b", "line-height": "1.6", "margin-bottom": "10px" },
+    li: { "margin-bottom": "6px", "line-height": "1.6", "color": "#1e293b" },
+    taskList: { "boxSize": "18px", "checkedEffect": "strike", "textGap": "10px", "color": "#1e293b" },
+    hr: { "border-top-style": "dashed", "border-top-width": "1px", "border-top-color": "#cbd5e1", "margin-top": "18px", "margin-bottom": "18px" },
+    blockquote: { "border-left": "3px solid #0d9488", "background-color": "#f0fdfa", "color": "#134e4a", "padding": "12px 16px", "border-radius": "6px" },
+  },
+  hrStructure: { borderTopStyle: "dashed", borderTopWidth: "1px", marginTopBottom: "18px", lineWidth: "100%" },
+  checkboxStructure: { boxSize: "18px", checkedEffect: "strike", textGap: "10px", color: "#1e293b" },
+  customCss: "",
+}));
+
+// 3. 온리비_가계부·지출 정리
+SYSTEM_PROFILES.push(buildSystemProfile({
+  id: "onrivi-household-ledger",
+  name: "온리비_가계부·지출 정리",
+  description: "생활비, 고정 지출, 구독료 및 영수증 이미지 관리에 최적화된 숫자 가독성·격자 정산표 중심 서식입니다.",
+  pageStyle: {
+    fontFamily: "'Pretendard', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif",
+    fontSize: "15px",
+    lineHeight: "1.55",
+    marginTop: "15mm",
+    marginBottom: "15mm",
+    marginLeft: "12mm",
+    marginRight: "12mm",
+  },
+  rules: {
+    h1: { "font-size": "26px", "font-weight": "800", "color": "#1e3a8a", "border-bottom": "2px solid #1d4ed8", "padding-bottom": "8px", "margin-top": "20px", "margin-bottom": "16px" },
+    h2: { "font-size": "18px", "font-weight": "700", "color": "#1d4ed8", "border-left": "4px solid #1d4ed8", "padding-left": "10px", "margin-top": "24px", "margin-bottom": "10px" },
+    h3: { "font-size": "16px", "font-weight": "700", "color": "#334155", "margin-top": "16px", "margin-bottom": "8px" },
+    p: { "color": "#1e293b", "line-height": "1.55", "margin-bottom": "10px" },
+    table: { "border-width": "1px", "border-color": "#cbd5e1", "border-radius": "6px", "font-size": "13.5px" },
+    th: { "background-color": "#eff6ff", "color": "#1e3a8a", "font-weight": "700", "padding": "8px 12px", "border-color": "#cbd5e1" },
+    td: { "padding": "8px 12px", "border-color": "#e2e8f0", "color": "#1e293b" },
+    img: { "width": "360px", "border": "1px solid #cbd5e1", "border-radius": "6px", "box-shadow": "0 1px 4px rgba(0,0,0,0.06)" },
+    blockquote: { "border-left": "4px solid #2563eb", "background-color": "#f8fafc", "color": "#0f172a", "padding": "12px 16px", "font-weight": "600" },
+  },
+  tableStructure: { outerBorderWidth: "1px", rowBorderWidth: "1px", colBorderWidth: "1px" },
+  mediaCaptionStructure: {
+    position: "top", format: "standard", customTemplate: "**{kind} {n}. {title}**",
+    kindOverrides: { image: { position: "bottom" }, video: { position: "bottom" }, map: { position: "bottom" } },
+  },
+  customCss: ".custom-preview-container table, .markdown-viewer-root table { font-variant-numeric: tabular-nums !important; }",
+}));
+
+// 4. 온리비_회의·대화 기록
+SYSTEM_PROFILES.push(buildSystemProfile({
+  id: "onrivi-meeting-notes",
+  name: "온리비_회의·대화 기록",
+  description: "직장 회의, 상담, 가족 간 결정 사항을 참석자·안건·결정사항·담당자 기한 순으로 명쾌하게 정리하는 회의록 표준 서식입니다.",
+  pageStyle: {
+    fontFamily: "'Pretendard', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif",
+    fontSize: "15.5px",
+    lineHeight: "1.65",
+    marginTop: "16mm",
+    marginBottom: "16mm",
+    marginLeft: "12mm",
+    marginRight: "12mm",
+  },
+  rules: {
+    h1: { "font-size": "28px", "font-weight": "800", "color": "#0f172a", "border-bottom": "2px solid #334155", "padding-bottom": "10px", "margin-top": "20px", "margin-bottom": "18px" },
+    h2: { "font-size": "20px", "font-weight": "700", "color": "#1d4ed8", "border-bottom": "1px solid #dbeafe", "padding-bottom": "6px", "margin-top": "26px", "margin-bottom": "12px" },
+    h3: { "font-size": "17px", "font-weight": "700", "color": "#1e40af", "border-left": "3px solid #3b82f6", "padding-left": "10px", "margin-top": "20px", "margin-bottom": "10px" },
+    p: { "color": "#1e293b", "line-height": "1.65", "margin-bottom": "12px" },
+    table: { "border-width": "1px", "border-color": "#cbd5e1" },
+    th: { "background-color": "#f1f5f9", "color": "#0f172a", "font-weight": "700", "padding": "10px 14px", "border-color": "#cbd5e1" },
+    td: { "padding": "10px 14px", "border-color": "#e2e8f0", "color": "#1e293b" },
+    blockquote: { "border-left": "4px solid #1d4ed8", "background-color": "#eff6ff", "color": "#0f172a", "padding": "14px 18px", "font-weight": "500" },
+    taskList: { "boxSize": "16px", "checkedEffect": "strike", "textGap": "9px", "color": "#1e293b" },
+  },
+  checkboxStructure: { boxSize: "16px", checkedEffect: "strike", textGap: "9px", color: "#1e293b" },
+  tableStructure: { outerBorderWidth: "1px", rowBorderWidth: "1px", colBorderWidth: "0px" },
+  customCss: "",
+}));
+
+// 5. 온리비_신청·제출 문서
+SYSTEM_PROFILES.push(buildSystemProfile({
+  id: "onrivi-application-doc",
+  name: "온리비_신청·제출 문서",
+  description: "학교·회사·기관 제출용 신청서, 요청서 및 공식 안내문 작성에 적합한 단정한 A4 인쇄 표준 서식입니다.",
+  pageStyle: {
+    fontFamily: "'Noto Sans KR', 'Malgun Gothic', sans-serif",
+    fontSize: "15.5px",
+    lineHeight: "1.7",
+    marginTop: "18mm",
+    marginBottom: "18mm",
+    marginLeft: "15mm",
+    marginRight: "15mm",
+  },
+  rules: {
+    h1: { "font-size": "28px", "font-weight": "800", "color": "#111827", "text-align": "center", "border-bottom": "2px solid #111827", "padding-bottom": "12px", "margin-top": "16px", "margin-bottom": "24px" },
+    h2: { "font-size": "18px", "font-weight": "700", "color": "#1e293b", "border-left": "4px solid #334155", "padding-left": "10px", "margin-top": "24px", "margin-bottom": "12px" },
+    h3: { "font-size": "16px", "font-weight": "700", "color": "#334155", "margin-top": "18px", "margin-bottom": "8px" },
+    p: { "color": "#111827", "line-height": "1.7", "margin-bottom": "12px" },
+    table: { "border-width": "1px", "border-color": "#9ca3af", "border-radius": "0px" },
+    th: { "background-color": "#f3f4f6", "color": "#111827", "font-weight": "700", "padding": "10px 14px", "border-color": "#9ca3af" },
+    td: { "padding": "10px 14px", "border-color": "#d1d5db", "color": "#111827" },
+    blockquote: { "border-left": "3px solid #4b5563", "background-color": "#f9fafb", "color": "#1f2937", "padding": "12px 16px" },
+  },
+  tableStructure: { outerBorderWidth: "1px", rowBorderWidth: "1px", colBorderWidth: "1px" },
+  customCss: "",
+}));
+
+// 6. 온리비_교과서·산문 집필
+SYSTEM_PROFILES.push(buildSystemProfile({
+  id: "onrivi-prose-book",
+  name: "온리비_교과서·산문 집필",
+  description: "어릴 적 국어 교과서와 단행본처럼 명조체, 미색 용지, 문단 첫 줄 들여쓰기(1em), 넉넉한 행간으로 수필·에세이·소설을 집필하는 산문 전용 서식입니다.",
+  pageStyle: {
+    fontFamily: "'Noto Serif KR', 'KoPubWorldBatang', 'NanumMyeongjo', 'Batang', serif",
+    fontUrl: "https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;500;700&display=swap",
+    fontSize: "16.5px",
+    lineHeight: "1.88",
+    letterSpacing: "-0.01em",
+    backgroundColor: "#fcfbf7",
+    marginTop: "20mm",
+    marginBottom: "20mm",
+    marginLeft: "16mm",
+    marginRight: "16mm",
+  },
+  rules: {
+    h1: { "font-size": "30px", "font-weight": "700", "color": "#1c1917", "text-align": "center", "margin-top": "32px", "margin-bottom": "26px", "line-height": "1.35" },
+    h2: { "font-size": "21px", "font-weight": "700", "color": "#44403c", "margin-top": "34px", "margin-bottom": "16px", "line-height": "1.45" },
+    h3: { "font-size": "17.5px", "font-weight": "700", "color": "#57534e", "margin-top": "24px", "margin-bottom": "12px" },
+    p: { "color": "#292524", "line-height": "1.88", "text-align": "justify", "text-indent": "1em", "margin-bottom": "6px", "sentence-gap": "2px" },
+    li: { "color": "#292524", "line-height": "1.85" },
+    hr: { "border-top-style": "solid", "border-top-width": "1px", "border-top-color": "#a8a29e", "width": "30%", "margin-top": "28px", "margin-bottom": "28px" },
+    blockquote: { "border-left": "3px solid #a8a29e", "background-color": "#f5f2eb", "color": "#44403c", "padding": "14px 20px", "font-style": "italic" },
+    footnote: { "color": "#57534e", "font-size": "13px", "line-height": "1.6" },
+  },
+  hrStructure: { borderTopStyle: "solid", borderTopWidth: "1px", marginTopBottom: "28px", lineWidth: "30%" },
+  customCss: ".custom-preview-container :is(h1,h2,h3,h4,h5,h6,hr) + p, .markdown-viewer-root :is(h1,h2,h3,h4,h5,h6,hr) + p { text-indent: 0px !important; }\n.custom-preview-container :is(blockquote,li,td,th) p, .markdown-viewer-root :is(blockquote,li,td,th) p { text-indent: 0px !important; }\n.custom-preview-container hr, .markdown-viewer-root hr { margin-left: auto !important; margin-right: auto !important; }",
+}));
+
+// 7. 온리비_업무·전략 보고서
+SYSTEM_PROFILES.push(buildSystemProfile({
+  id: "onrivi-report",
+  name: "온리비_업무·전략 보고서",
+  description: "직장 업무 보고, 프로젝트 기획, 성과·분석 리포트용 완성형 보고서 서식입니다. 보고서 표준 번호(Ⅰ.➔1.➔가.), 요약 콜아웃, 블루 틴트 비교표를 제공합니다.",
+  pageStyle: {
+    fontFamily: "'Pretendard', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif",
+    fontSize: "15.5px",
+    lineHeight: "1.65",
+    marginTop: "18mm",
+    marginBottom: "18mm",
+    marginLeft: "12mm",
+    marginRight: "12mm",
+  },
+  rules: {
+    h1: { "font-size": "28px", "font-weight": "800", "color": "#1d4ed8", "border-bottom": "2px solid #1d4ed8", "padding-bottom": "10px", "margin-top": "24px", "margin-bottom": "18px" },
+    h2: { "font-size": "20px", "font-weight": "700", "color": "#1e40af", "border-bottom": "1px solid #bfdbfe", "padding-bottom": "6px", "margin-top": "28px", "margin-bottom": "14px" },
+    h3: { "font-size": "17px", "font-weight": "700", "color": "#0f172a", "border-left": "4px solid #2563eb", "padding-left": "12px", "margin-top": "22px", "margin-bottom": "10px" },
+    p: { "color": "#0f172a", "line-height": "1.65", "margin-bottom": "12px" },
+    table: { "border-width": "1px", "border-color": "#bfdbfe" },
+    th: { "background-color": "#eff6ff", "color": "#1e3a8a", "font-weight": "700", "padding": "10px 14px", "border-color": "#bfdbfe" },
+    td: { "padding": "10px 14px", "border-color": "#e2e8f0", "color": "#0f172a" },
+    blockquote: { "border-left": "4px solid #1d4ed8", "background-color": "#eff6ff", "color": "#0f172a", "padding": "14px 18px", "font-weight": "600" },
+  },
+  headingNumbering: ["roman", "decimal", "hangul", "decimal-paren", "hangul-paren", "none"],
+  tableStructure: { outerBorderWidth: "1px", rowBorderWidth: "1px", colBorderWidth: "0px" },
+  mediaCaptionStructure: {
+    position: "top", format: "standard", customTemplate: "**{kind} {n}. {title}**",
+    kindOverrides: { image: { position: "bottom" }, video: { position: "bottom" }, map: { position: "bottom" } },
+  },
+  customCss: "",
+}));
+
+// 8. 온리비_법률·계약 문서
+SYSTEM_PROFILES.push(buildSystemProfile({
+  id: "onrivi-legal-contract",
+  name: "온리비_법률·계약 문서",
+  description: "계약서, 합의서, 각서, 차용증, 내용증명 등 법적 효력과 격식이 필요한 공식 문서를 위한 정갈한 바탕/명조 A4 표준 서식입니다.",
+  pageStyle: {
+    fontFamily: "'Noto Serif KR', 'KoPubBatang', 'Batang', 'Malgun Gothic', serif",
+    fontUrl: "https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;500;700&display=swap",
+    fontSize: "16px",
+    lineHeight: "1.8",
+    letterSpacing: "0em",
+    backgroundColor: "#ffffff",
+    marginTop: "18mm",
+    marginBottom: "18mm",
+    marginLeft: "14mm",
+    marginRight: "14mm",
+    tabSize: "4",
+  },
+  rules: {
+    h1: { "font-size": "30px", "font-weight": "700", "color": "#111111", "text-align": "center", "margin-top": "24px", "margin-bottom": "24px", "line-height": "1.45", "letter-spacing": "-0.025em" },
+    h2: { "font-size": "18px", "font-weight": "700", "color": "#111111", "margin-top": "24px", "margin-bottom": "10px", "line-height": "1.6", "letter-spacing": "-0.02em" },
+    h3: { "font-size": "15.5px", "font-weight": "700", "color": "#111111", "margin-top": "16px", "margin-bottom": "8px", "line-height": "1.7" },
+    p: { "color": "#111111", "line-height": "1.8", "text-align": "justify", "margin-bottom": "8px", "sentence-gap": "4px" },
+    table: { "border-width": "1px", "border-color": "#374151", "border-radius": "0px" },
+    th: { "background-color": "#f3f4f6", "color": "#111111", "font-weight": "700", "padding": "10px 12px", "border-color": "#374151" },
+    td: { "padding": "10px 12px", "border-color": "#4b5563", "color": "#111111" },
+    blockquote: { "border": "1px solid #d1d5db", "border-left": "4px solid #111111", "background-color": "#f9fafb", "color": "#111111", "padding": "12px 16px" },
+  },
+  tableStructure: { outerBorderWidth: "1px", rowBorderWidth: "1px", colBorderWidth: "1px" },
+  customCss: "",
+}));
+
 // ====================================================================
-// 📊 [OMD-CORE-cssProfile-0002] cssProfile ➔ DEFAULT_PROFILE
-// 🎯 @KICK  : 시스템 기본 프로필(system-gov)을 기본값으로 내보낸다
-// 🛡️ @GUARD : SYSTEM_PROFILES[0]을 참조하며 시스템 프로필이므로 수정/삭제 불가
-// 🚨 @PATCH : 없음
+// 📊 [OMD-CORE-cssProfile-0002] cssProfile ➔ DEFAULT_PROFILE & HELP_PROFILE
+// 🎯 @KICK  : 시스템 기본 프로필(system-1)과 내부 도움말 전용 서식(HELP_PROFILE)을 내보낸다
+// 🛡️ @GUARD : HELP_PROFILE은 도움말 뷰어 전용이므로 사용자 서식 목록(SYSTEM_PROFILES)에는 포함하지 않음
+// 🚨 @PATCH : 2026-11-14 — HELP_PROFILE을 SYSTEM_PROFILES 목록에서 분리하여 사용자 서식 선택지 8종 유지
 // 🔗 @CALLS : SYSTEM_PROFILES
 // ====================================================================
-/**
- * DEFAULT_PROFILE: 사용자 정의 프로필 생성/가져오기 시 템플릿으로 사용합니다.
- * (시스템 프로필이 아니므로 가져온 스타일로 덮어쓸 수 있습니다)
- */
-// Optional report theme. Layout values below are product defaults, not government-prescribed measurements.
-export const HELP_PROFILE: CssProfile = JSON.parse(JSON.stringify(SYSTEM_PROFILES[0]));
-HELP_PROFILE.id = 'onrivi-help';
-HELP_PROFILE.name = '온리비 도움말';
-HELP_PROFILE.description = '사용 설명서 전용 서식. 읽기 편한 본문, 파란 제목, 표와 코드 예제, 항목별 제목 번호.';
-HELP_PROFILE.headingNumbering = ['none', 'decimal', 'hangul', 'decimal-paren', 'hangul-paren', {type:'custom',number:'bullet',prefix:'',suffix:'',bullet:'•'}];
-delete HELP_PROFILE.layout;
-HELP_PROFILE.pageStyle = { ...HELP_PROFILE.pageStyle, fontFamily: "'Noto Sans KR', 'Malgun Gothic', sans-serif", fontSize: '16px', lineHeight: '1.8', letterSpacing: '0', backgroundColor: '#ffffff', paperSize: 'a4', orientation: 'portrait', marginTop: '18mm', marginBottom: '18mm', marginLeft: '16mm', marginRight: '16mm', headingSizeOffset: '3pt' };
-for (const [index, key] of Array.from((['h1','h2','h3','h4','h5','h6'] as const).entries())) {
-  HELP_PROFILE.rules[key] = { 'font-size': [28,24,21,19,17,16][index] + 'px', 'font-weight':'700', 'line-height':'1.4', color: index < 2 ? '#1d4ed8' : '#1e293b', 'text-align':'left', 'text-indent':'0', 'margin-top': index ? '28px' : '0', 'margin-bottom':'12px', padding:'0', 'background-color':'transparent', border:'none', 'box-shadow':'none', 'text-shadow':'none', 'border-bottom':index === 1 ? '1px solid #dbeafe' : 'none' };
-}
-Object.assign(HELP_PROFILE.rules.p, { 'font-size':'16px', 'line-height':'1.8', 'text-align':'left', 'text-indent':'0', 'margin-top':'0', 'margin-bottom':'14px', color:'#334155', 'background-color':'transparent' });
-Object.assign(HELP_PROFILE.rules.li, { 'font-size':'16px', 'line-height':'1.8', 'margin-bottom':'6px', color:'#334155' });
-Object.assign(HELP_PROFILE.rules.ol, { 'list-style-type':'decimal' });
-Object.assign(HELP_PROFILE.rules.table, { width:'100%', 'border-collapse':'collapse', 'font-size':'14px', 'margin-top':'16px', 'margin-bottom':'20px', 'border-color':'#cbd5e1' });
-for (const key of ['th','td'] as const) Object.assign(HELP_PROFILE.rules[key], { padding:'10px 12px', border:'1px solid #cbd5e1', 'font-size':'14px', 'line-height':'1.65', color:'#334155', 'background-color': key === 'th' ? '#eff6ff' : 'transparent', 'text-align':'left' });
-Object.assign(HELP_PROFILE.rules.a, { color:'#1d4ed8', 'text-decoration':'underline' });
-Object.assign(HELP_PROFILE.rules.blockquote, { 'border-left':'3px solid #93c5fd', 'background-color':'#eff6ff', padding:'12px 16px', color:'#334155' });
-Object.assign(HELP_PROFILE.rules.codeBlock, { 'background-color':'#f1f5f9', color:'#1e293b', padding:'16px', 'font-size':'14px', 'line-height':'1.6', 'border-radius':'8px' });
-HELP_PROFILE.rules.code = { 'background-color':'#eff6ff', color:'#1e40af', padding:'2px 5px', 'border-radius':'4px', 'font-size':'0.9em' };
-HELP_PROFILE.tableStructure = {outerBorderWidth:'1px',rowBorderWidth:'1px',colBorderWidth:'1px'};
-HELP_PROFILE.customCss = '';
-SYSTEM_PROFILES.push(HELP_PROFILE);
-
-const aiReportProfile: CssProfile = JSON.parse(JSON.stringify(SYSTEM_PROFILES[0]));
-aiReportProfile.id = 'ai-friendly-report';
-aiReportProfile.name = 'AI 친화적 보고서';
-aiReportProfile.description = '2026.8.24. 행안부 보도자료의 핵심 원칙을 참고한 선택 서식: 서술형 본문, 단순 표, 상단 그림 제목. 정부 지정 양식은 아닙니다.';
-aiReportProfile.pageStyle.fontFamily = "'Noto Sans KR', 'Malgun Gothic', sans-serif";
-aiReportProfile.pageStyle.backgroundColor = '#ffffff';
-for (const key of ['h1','h2','h3','h4','h5','h6','p','table','th','td','blockquote'] as const) {
-  Object.assign(aiReportProfile.rules[key], {'color':'#202123','box-shadow':'none','text-shadow':'none','background-color':'transparent'});
-}
-Object.assign(aiReportProfile.rules.th, {'background-color':'#f3f4f6','font-weight':'700'});
-Object.assign(aiReportProfile.rules.table, {'border-style':'solid','border-color':'#9ca3af'});
-aiReportProfile.tableStructure = {outerBorderWidth:'1px',rowBorderWidth:'1px',colBorderWidth:'1px'};
-aiReportProfile.headingNumbering = ['roman', 'decimal', 'hangul', 'decimal-paren', 'hangul-paren', 'none'];
-aiReportProfile.customCss = `.custom-preview-container figure.onrivi-image-figure, .markdown-viewer-root figure.onrivi-image-figure { display:flex; flex-direction:column; }
-.custom-preview-container figure.onrivi-image-figure > figcaption, .markdown-viewer-root figure.onrivi-image-figure > figcaption { order:-1!important; text-align:left!important; align-self:flex-start!important; font-weight:700!important; color:inherit!important; margin:0 0 4px!important; }
-.custom-preview-container :is(h1,h2,h3,h4,h5,h6) { border:0!important; background:transparent!important; box-shadow:none!important; padding-left:0!important; }
-.custom-preview-container p:has(+table), .custom-preview-container p:has(+.table-wrapper-area) { break-after:avoid; }
-.custom-preview-container img { box-shadow:none!important; }`;
-SYSTEM_PROFILES.push(aiReportProfile);
-
-// 1. KS / ISO 기술표준 서식
-const ksTechProfile: CssProfile = JSON.parse(JSON.stringify(SYSTEM_PROFILES[0]));
-ksTechProfile.id = 'ks-tech-standard';
-ksTechProfile.name = 'KS 기술표준 (1. ➔ 1.1)';
-ksTechProfile.description = '국가기술표준원(KS A 0001) 및 ISO/IEC 국제 기술표준 규격: 십진 분류 번호 체계(1. ➔ 1.1 ➔ 1.1.1), 표 상단(표 1 -), 그림 하단(그림 1 -) 표기.';
-ksTechProfile.pageStyle.fontFamily = "'Pretendard', 'Noto Sans KR', Arial, sans-serif";
-ksTechProfile.pageStyle.fontSize = '15.5px';
-ksTechProfile.pageStyle.lineHeight = '1.7';
-ksTechProfile.mediaCaptionStructure = {
-  position: 'top', format: 'custom', customTemplate: '**{kind} {n} - {title}**',
-  kindOverrides: { image: { position: 'bottom' }, video: { position: 'bottom' }, map: { position: 'bottom' } }
-};
-ksTechProfile.headingNumbering = ['decimal-outline', 'decimal-outline', 'decimal-outline', 'none', 'none', 'none'];
-ksTechProfile.tableStructure = { outerBorderWidth: '1px', rowBorderWidth: '1px', colBorderWidth: '1px' };
-ksTechProfile.customCss = `.custom-preview-container figure.onrivi-image-figure > figcaption, .markdown-viewer-root figure.onrivi-image-figure > figcaption { order: 1!important; text-align: center!important; font-weight: 700!important; margin-top: 4px!important; }`;
-SYSTEM_PROFILES.push(ksTechProfile);
-
-// 2. 대기업 전략기획서 (삼성/현대 스타일)
-const corpReportProfile: CssProfile = JSON.parse(JSON.stringify(SYSTEM_PROFILES[0]));
-corpReportProfile.id = 'corp-strategy-report';
-corpReportProfile.name = '대기업 전략기획서 (삼성/현대)';
-corpReportProfile.description = '국내 주요 대기업 및 컨설팅펌 표준: 기호 체계(□ ➔ ○ ➔ - ➔ ㆍ), 상단 핵심 요약 헤드라인 박스, 콤팩트 개조식 서식.';
-corpReportProfile.pageStyle.fontFamily = "'Pretendard', 'Malgun Gothic', -apple-system, sans-serif";
-corpReportProfile.pageStyle.fontSize = '15px';
-corpReportProfile.pageStyle.lineHeight = '1.65';
-corpReportProfile.mediaCaptionStructure = { position: 'top', format: 'standard', customTemplate: '**{kind} {n}. {title}**' };
-corpReportProfile.headingNumbering = [
-  { type: 'custom', number: 'bullet', prefix: '', suffix: '', bullet: '□' },
-  { type: 'custom', number: 'bullet', prefix: '', suffix: '', bullet: '○' },
-  { type: 'custom', number: 'bullet', prefix: '', suffix: '', bullet: '-' },
-  { type: 'custom', number: 'bullet', prefix: '', suffix: '', bullet: 'ㆍ' },
-  'none', 'none'
-];
-corpReportProfile.tableStructure = { outerBorderWidth: '1px', rowBorderWidth: '1px', colBorderWidth: '0px' };
-corpReportProfile.rules.blockquote = { 'border-left': '4px solid #1d4ed8', 'background-color': '#f8fafc', 'padding': '10px 14px', 'font-weight': '600' };
-corpReportProfile.customCss = `.custom-preview-container blockquote { border-left: 4px solid #1d4ed8!important; background: #f8fafc!important; border-radius: 4px; padding: 10px 14px!important; margin: 12px 0!important; }`;
-SYSTEM_PROFILES.push(corpReportProfile);
-
-// 3. 학술·정책 연구보고서 (KDI 표준)
-const academicReportProfile: CssProfile = JSON.parse(JSON.stringify(SYSTEM_PROFILES[0]));
-academicReportProfile.id = 'academic-kdi-report';
-academicReportProfile.name = '학술·정책 연구보고서 (KDI 표준)';
-academicReportProfile.description = '국책연구기관 및 연구재단 표준 논문 규격: 장절 체계(제1장 ➔ 제1절 ➔ 1.), 표 상단(<표 1>), 그림 하단([그림 1]), 바탕/명조 활자.';
-academicReportProfile.pageStyle.fontFamily = "'KoPubWorldBatang', 'NanumMyeongjo', 'Batang', serif";
-academicReportProfile.pageStyle.fontSize = '16px';
-academicReportProfile.pageStyle.lineHeight = '1.85';
-academicReportProfile.mediaCaptionStructure = {
-  position: 'top', format: 'angle', customTemplate: '**<{kind} {n}> {title}**',
-  kindOverrides: {
-    image: { position: 'bottom', format: 'bracket' },
-    video: { position: 'bottom', format: 'bracket' },
-    map: { position: 'bottom', format: 'bracket' }
+export const HELP_PROFILE: CssProfile = (() => {
+  const help: CssProfile = JSON.parse(JSON.stringify(SYSTEM_PROFILES[0]));
+  help.id = "onrivi-help";
+  help.name = "온리비 도움말";
+  help.description = "사용 설명서 전용 서식. 읽기 편한 본문, 파란 제목, 표와 코드 예제, 항목별 제목 번호.";
+  help.headingNumbering = ["none", "decimal", "hangul", "decimal-paren", "hangul-paren", { type: "custom", number: "bullet", prefix: "", suffix: "", bullet: "•" }];
+  delete help.layout;
+  help.pageStyle = { ...help.pageStyle, fontFamily: "'Noto Sans KR', 'Malgun Gothic', sans-serif", fontSize: "16px", lineHeight: "1.8", letterSpacing: "0", backgroundColor: "#ffffff", paperSize: "a4", orientation: "portrait", marginTop: "18mm", marginBottom: "18mm", marginLeft: "16mm", marginRight: "16mm", headingSizeOffset: "3pt" };
+  for (const [index, key] of Array.from((["h1", "h2", "h3", "h4", "h5", "h6"] as const).entries())) {
+    help.rules[key] = { "font-size": [28, 24, 21, 19, 17, 16][index] + "px", "font-weight": "700", "line-height": "1.4", color: index < 2 ? "#1d4ed8" : "#1e293b", "text-align": "left", "text-indent": "0", "margin-top": index ? "28px" : "0", "margin-bottom": "12px", padding: "0", "background-color": "transparent", border: "none", "box-shadow": "none", "text-shadow": "none", "border-bottom": index === 1 ? "1px solid #dbeafe" : "none" };
   }
-};
-academicReportProfile.headingNumbering = [
-  { type: 'custom', number: 'decimal', prefix: '제', suffix: '장' },
-  { type: 'custom', number: 'decimal', prefix: '제', suffix: '절' },
-  'decimal', 'hangul', 'none', 'none'
-];
-academicReportProfile.tableStructure = { outerBorderWidth: '1.5px', rowBorderWidth: '1px', colBorderWidth: '0px' };
-academicReportProfile.customCss = `.custom-preview-container figure.onrivi-image-figure > figcaption, .markdown-viewer-root figure.onrivi-image-figure > figcaption { order: 1!important; text-align: center!important; font-weight: 700!important; margin-top: 4px!important; }
-.custom-preview-container p.table-title, .markdown-viewer-root p.table-title { font-weight: 700!important; text-align: center!important; margin-bottom: 6px!important; }`;
-SYSTEM_PROFILES.push(academicReportProfile);
-
-// 4. 글로벌 테크/아마존 6-Pager
-const globalTechProfile: CssProfile = JSON.parse(JSON.stringify(SYSTEM_PROFILES[0]));
-globalTechProfile.id = 'global-tech-6pager';
-globalTechProfile.name = '글로벌 테크/아마존 6-Pager';
-globalTechProfile.description = '실리콘밸리 글로벌 테크 및 아마존 표준: 6페이지 내러티브 서술식, 시맨틱 헤딩 위계, 콜아웃 안내 박스.';
-globalTechProfile.pageStyle.fontFamily = "'Inter', 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif";
-globalTechProfile.pageStyle.fontSize = '15.5px';
-globalTechProfile.pageStyle.lineHeight = '1.75';
-globalTechProfile.mediaCaptionStructure = { position: 'top', format: 'standard', customTemplate: '**{kind} {n}. {title}**' };
-globalTechProfile.headingNumbering = [];
-globalTechProfile.tableStructure = { outerBorderWidth: '1px', rowBorderWidth: '1px', colBorderWidth: '1px' };
-SYSTEM_PROFILES.push(globalTechProfile);
-
-// 5. SNS 카드뉴스 (인스타·링크드인 1:1 정사각 표준)
-const snsCardNewsProfile: CssProfile = JSON.parse(JSON.stringify(SYSTEM_PROFILES[0]));
-snsCardNewsProfile.id = 'sns-card-news';
-snsCardNewsProfile.name = 'SNS 카드뉴스 (인스타·링크드인)';
-snsCardNewsProfile.description = '인스타그램·쓰레드·링크드인·블로그 공유에 최적화된 1:1 정사각형(1080×1080) SNS 카드뉴스 공식 서식입니다. 구분선(---) 또는 대제목(# H1)마다 카드 1장씩 분리 출력됩니다.';
-snsCardNewsProfile.pageStyle = {
-  ...snsCardNewsProfile.pageStyle,
-  fontFamily: "Pretendard, 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Noto Sans KR', sans-serif",
-  fontSize: '13pt',
-  lineHeight: '1.65',
-  letterSpacing: '-0.02em',
-  backgroundColor: '#f8fafc',
-  paperSize: 'sns_square',
-  marginTop: '16mm',
-  marginBottom: '16mm',
-  marginLeft: '16mm',
-  marginRight: '16mm',
-  orientation: 'portrait',
-  headingSizeOffset: '3pt',
-  exportPageBreakLevel: 'h1',
-};
-snsCardNewsProfile.rules.h1 = {
-  ...snsCardNewsProfile.rules.h1,
-  'font-size': '28px',
-  'font-weight': '800',
-  'color': '#0f172a',
-  'margin-top': '8px',
-  'margin-bottom': '16px',
-  'padding-bottom': '10px',
-  'border-bottom': '3px solid #1d4ed8',
-  'line-height': '1.3',
-  'letter-spacing': '-0.03em',
-};
-snsCardNewsProfile.rules.h2 = {
-  ...snsCardNewsProfile.rules.h2,
-  'font-size': '22px',
-  'font-weight': '700',
-  'color': '#1d4ed8',
-  'margin-top': '16px',
-  'margin-bottom': '10px',
-  'border-left': '4px solid #1d4ed8',
-  'padding-left': '12px',
-  'border-bottom': 'none',
-  'line-height': '1.35',
-};
-snsCardNewsProfile.rules.p = {
-  ...snsCardNewsProfile.rules.p,
-  'margin-top': '0px',
-  'margin-bottom': '14px',
-  'line-height': '1.65',
-  'color': '#1e293b',
-};
-snsCardNewsProfile.rules.strong = {
-  'font-weight': '800',
-  'color': '#1d4ed8',
-  'background-color': '#dbeafe',
-};
-snsCardNewsProfile.rules.blockquote = {
-  'padding': '14px 18px',
-  'color': '#0f172a',
-  'background-color': '#ffffff',
-  'border': '1.5px solid #cbd5e1',
-  'border-left': '5px solid #1d4ed8',
-  'border-radius': '12px',
-  'margin-top': '16px',
-  'margin-bottom': '16px',
-  'font-weight': '600',
-  'box-shadow': '0 4px 12px rgba(15, 23, 42, 0.06)',
-};
-snsCardNewsProfile.headingNumbering = [];
-SYSTEM_PROFILES.push(snsCardNewsProfile);
+  Object.assign(help.rules.p, { "font-size": "16px", "line-height": "1.8", "text-align": "left", "text-indent": "0", "margin-top": "0", "margin-bottom": "14px", color: "#334155", "background-color": "transparent" });
+  Object.assign(help.rules.li, { "font-size": "16px", "line-height": "1.8", "margin-bottom": "6px", color: "#334155" });
+  Object.assign(help.rules.ol, { "list-style-type": "decimal" });
+  Object.assign(help.rules.table, { width: "100%", "border-collapse": "collapse", "font-size": "14px", "margin-top": "16px", "margin-bottom": "20px", "border-color": "#cbd5e1" });
+  for (const key of ["th", "td"] as const) Object.assign(help.rules[key], { padding: "10px 12px", border: "1px solid #cbd5e1", "font-size": "14px", "line-height": "1.65", color: "#334155", "background-color": key === "th" ? "#eff6ff" : "transparent", "text-align": "left" });
+  Object.assign(help.rules.a, { color: "#1d4ed8", "text-decoration": "underline" });
+  Object.assign(help.rules.blockquote, { "border-left": "3px solid #93c5fd", "background-color": "#eff6ff", padding: "12px 16px", color: "#334155" });
+  Object.assign(help.rules.codeBlock, { "background-color": "#f1f5f9", color: "#1e293b", padding: "16px", "font-size": "14px", "line-height": "1.6", "border-radius": "8px" });
+  help.rules.code = { "background-color": "#eff6ff", color: "#1e40af", padding: "2px 5px", "border-radius": "4px", "font-size": "0.9em" };
+  help.tableStructure = { outerBorderWidth: "1px", rowBorderWidth: "1px", colBorderWidth: "1px" };
+  help.customCss = "";
+  return help;
+})();
 
 export const DEFAULT_PROFILE: CssProfile = SYSTEM_PROFILES[0]; // Onrivi 기본서식 (Google Developers DevSite 표준)
 

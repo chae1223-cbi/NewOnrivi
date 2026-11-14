@@ -1,3 +1,4 @@
+// 🚨 @PATCH : 2026-11-14 — [시스템 기본서식 명칭 '온리비_사용 설명·절차 안내' 동기화]
 "use client";
 
 import { useModalEscape } from '@/hooks/useModalEscape';
@@ -190,7 +191,7 @@ export default function PromptModal({
                 className="w-full px-3.5 py-2.5 bg-[#F7F8F9] dark:bg-zinc-800 border border-[#EFEFEF] dark:border-white/10 rounded-lg text-sm font-medium text-[#1F1F1F] dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-[#1d4ed8]/40 cursor-pointer"
               >
                 <option value={SYSTEM_PROFILES[0].id}>
-                  🌐 {SYSTEM_PROFILES[0].name} (Google Developers 표준 · 기본값)
+                  🌐 {SYSTEM_PROFILES[0].name} (기본값)
                 </option>
                 <option value="NONE">
                   ⚡ 별도 지정 안함 (상위 폴더 서식 또는 Onrivi 기본서식 자동 적용)
