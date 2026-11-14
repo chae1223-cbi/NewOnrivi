@@ -1,5 +1,8 @@
 // ====================================================================
 // 📊 [OMD-LIB-headingNumbering-0001] headingNumbering.ts ➔ 제목(H1~H6) 번호 형식 및 마크다운 원문 동기화
+// 🚨 @PATCH : **2026-11-14** — [보고서 표준(1), 가)) 제목 번호 적용 시 닫는 괄호 ') ' 무한 생성 루프 버그 완전 해결]:
+//             1) HEADING_LABEL_PATTERN에서 '\d+(?:\.\d+)*\.?'가 '1) 제목'의 숫자 '1'만 먼저 매칭하고 ') '를 남겨 매 동기화 주기마다 ') '가 무한 증식하던 정규식 우선순위 결함을 '\d+(?:\.\d+)+\.?|\d+[.)]'로 수정
+//             2) 이미 생성된 잔여 고아 괄호/마침표('[.)]+(?=\s)') 및 법령/도서 접두어('제1조', 'Chapter 1.' 등)까지 루프에서 일괄 소거하도록 보강하여 오염된 제목도 즉시 정상 복구
 // 🚨 @PATCH : **2026-11-08** — [서식 변경 시 기호 무한 누적 버그 완전 해결]:
 //             1) 기하학 도형(▤, ▥, ▦, ◈, ◆, ○, □ 등 \u25A0-\u25FF), 딩뱃(\u2700-\u27BF), 화살표(\u2190-\u21FF), 박스드로잉, 원문자, PUA(󰊱~󰊺), 한글 자음(ㅇ, ㅁ) 등 유니코드 전체 기호 정규식 전수 탑재
 //             2) headingLabelLength에서 루프(while)를 통해 제목 선두에 기호가 중복/누적된 경우(예: '1. ▤ ㅇ ▤ ▤') 모두 일괄 감지하여 깔끔히 제거하도록 개편
@@ -33,8 +36,8 @@ export function headingFormat(value: unknown): HeadingNumberFormat {
   if (value && typeof value === 'object' && (value as any).type === 'custom') return 'custom';
   return HEADING_NUMBER_FORMATS.includes(value as HeadingNumberFormat) ? value as HeadingNumberFormat : 'none';
 }
-// 포괄적 제목 라벨 패턴 (로마자, 십진 아웃라인, 한글 음절/자음, 기하학도형 ▤▥▦◈◆○□, 딩뱃, 원문자, PUA 특수기호, 불릿 등)
-const HEADING_LABEL_PATTERN = /^(?:[Ⅰ-ⅫⅬⅭⅮⅯ]+[.\-)]|[IVXLCDM]+\.|\d+(?:\.\d+)*\.?|\d+[.)]|[가-힣][.)]|[ㄱ-ㅎ][.)]?|제\s*\d+\s*[장절편]|\([가-힣\dⅠ-Ⅻa-zA-Z]+\)|[①-⑳⑴-⒇⒈-⒛ⓐ-ⓩ•\-\–\—\*·]|[\u2190-\u21FF]|[\u2460-\u24FF]|[\u2500-\u257F]|[\u25A0-\u25FF]|[\u2600-\u26FF]|[\u2700-\u27BF]|[\u2B00-\u2BFF]|[\u3200-\u32FF]|[\uF000-\uF8FF]|[\uD800-\uDBFF][\uDC00-\uDFFF])\s*/;
+// 포괄적 제목 라벨 패턴 (로마자, 십진 아웃라인 1.1+, 숫자 1./1), 한글 가./가), 기하학도형, 딩뱃, 원문자, 법령 제N장/절/조, 영문 Chapter/Part, 잔여 고아 괄호 등)
+const HEADING_LABEL_PATTERN = /^(?:[Ⅰ-ⅫⅬⅭⅮⅯ]+[.\-)]|[IVXLCDM]+[.\-)]|\d+(?:\.\d+)+\.?|\d+[.)]|[가-힣][.)]|[ㄱ-ㅎ][.)]?|제\s*\d+\s*[장절편조항관부]\.?|(?:Chapter|Section|Part|Unit)\s+(?:\d+|[IVXLCDMⅠ-Ⅻ]+)[.)]?|\([가-힣\dⅠ-Ⅻa-zA-Z]+\)|[①-⑳㉑-㊿⑴-⒇⒈-⒛ⓐ-ⓩ•\-\–\—\*·※]|[\u2190-\u21FF]|[\u2460-\u24FF]|[\u2500-\u257F]|[\u25A0-\u25FF]|[\u2600-\u26FF]|[\u2700-\u27BF]|[\u2B00-\u2BFF]|[\u3200-\u32FF]|[\uF000-\uF8FF]|[\uD800-\uDBFF][\uDC00-\uDFFF]|[.)]+(?=\s))\s*/i;
 
 export function hasHeadingNumber(text: string): boolean {
   return headingLabelLength(text) > 0;
