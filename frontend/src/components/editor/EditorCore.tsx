@@ -1867,7 +1867,7 @@ export default function EditorCore(props: EditorCoreProps) {
                                   </button>
                                 </div>
                                 {directEditEnabled && !isRestrictedUser && activeTabId && currentFileName !== '도움말.md' && !activeProfile.layout ? (
-                                   <VisualDocumentEditor key={activeTabId} documentId={activeTabId} headingNumbering={activeProfile.headingNumbering} bibContent={bibContent} onCitation={()=>setIsCitationModalOpen(true)} onReferenceSettings={() => setIsReferenceModalOpen(true)} pageStyle={resolveEffectiveDocumentProfile(content).pageStyle} onPdfPagePreview={signal=>handlersRef.current.print(true,undefined,signal)} spellCheck={spellCheck} tabSize={editorTabSize} onToast={showToast} onStyleSettings={() => setIsStyleModalOpen(true)}
+                                   <VisualDocumentEditor key={activeTabId} documentId={activeTabId} headingNumbering={activeProfile.headingNumbering} bibContent={bibContent} onCitation={()=>setIsCitationModalOpen(true)} onReferenceSettings={() => setIsReferenceModalOpen(true)} pageStyle={resolveEffectiveDocumentProfile(content).pageStyle} onPdfPagePreview={signal=>handlersRef.current.print(true,undefined,signal)} spellCheck={spellCheck} tabSize={editorTabSize} autoClosingBrackets={autoClosingBrackets} onToast={showToast} onStyleSettings={() => setIsStyleModalOpen(true)}
                                      onSourceScroll={offset => {
                                        const editor = editorRef.current;
                                        if (previewModeRef.current !== 'both' || !editor?.getModel() || isScrollingRef.current === 'editor') return;

@@ -122,6 +122,7 @@ type Props = {
   onCitation?: () => void;
   bibContent?: string;
   showBibliography?: boolean;
+  autoClosingBrackets?: boolean;
 };
 
 /**
@@ -139,6 +140,7 @@ export default function VisualDocumentEditor({
   headingNumbering = [],
   tabSize = 4,
   spellCheck = false,
+  autoClosingBrackets = true,
   pageStyle,
   onPdfPagePreview,
   onSourceScroll,
@@ -166,6 +168,8 @@ export default function VisualDocumentEditor({
   bibContent = '',
   showBibliography = true,
 }: Props) {
+  const autoClosingBracketsRef = useRef(autoClosingBrackets);
+  autoClosingBracketsRef.current = autoClosingBrackets;
   const citationEntries = React.useMemo(() => {
     const parsed = parseBibliography(bibContent);
     return new Map(
@@ -593,6 +597,7 @@ export default function VisualDocumentEditor({
       viewRef,
       caretRef,
       codecRef,
+      autoClosingBracketsRef,
       imagesRef: images,
       beginImageRef,
       hotkeysRef,

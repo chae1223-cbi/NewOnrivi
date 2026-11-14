@@ -2,6 +2,9 @@
 // 📊 [OMD-CORE-VisualEditor-ProseMirrorHandlers] frontend/src/components/visualEditor/visualEditorProseMirrorHandlers.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 ProseMirror Keymap, 키보드/텍스트 입력, 스마트 붙여넣기(handlePaste), 드롭(handleDrop), 마우스 클릭/링크 이동(handleClick) 및 DOM 이벤트 핸들러 팩토리
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 클립보드 이미지/HTML 붙여넣기 정제, 5대 정밀 진단 로깅(logError/logWarn) 준수
+// 🚨 @PATCH : 2026-11-14 — [문서 보기(VisualDocumentEditor) 괄호 자동 완성(Auto Closing Brackets) 연동]:
+//             1) 환경설정 '괄호 자동 완성' 옵션이 켜져 있을 때 문서 보기에서도 (, [, { 입력 시 닫는 괄호를 자동 추가하고 커서를 내부에 배치 (드래그 선택 시 선택 영역을 괄호로 감싸기 지원)
+//             2) 닫는 괄호(), ], }) 직전 입력 시 중복 삽입 대신 커서 통과(Overtype) 및 빈 괄호 쌍에서 Backspace 시 쌍 삭제 지원
 // 🚨 @PATCH : 2026-11-14 — [인라인 마크다운 태그(굵게/기울임/밑줄/취소선/코드) 적용 문장 Enter 시 줄바꿈 분리 및 storedMarks 보존]:
 //             1) Enter 입력으로 hard_break(<br>) 삽입 시 replaceSelectionWith(..., false)를 사용하여 <br> 노드가 인라인 마크 태그 내부에 갇히지 않도록 분리하고, 활성 마크(activeMarks)를 setStoredMarks로 보존하여 다음 줄에서도 태그 서식이 그대로 유지되도록 개선
 //             2) 연속 Enter(2번째 Enter)로 문단 분할 시에도 직전 인라인 마크(activeMarks)를 새 문단의 storedMarks로 승계
@@ -388,6 +391,7 @@ export interface VisualEditorHandlersParams {
   viewRef: React.MutableRefObject<EditorView | null>;
   caretRef: React.MutableRefObject<ReturnType<typeof installVisualCaret> | null>;
   codecRef: React.MutableRefObject<Codec | null>;
+  autoClosingBracketsRef?: React.MutableRefObject<boolean>;
   imagesRef: React.MutableRefObject<{
     onImageFile?: (file: Blob) => Promise<string | null>;
     [key: string]: any;
@@ -437,6 +441,7 @@ export function createVisualEditorHandlers({
   viewRef,
   caretRef,
   codecRef,
+  autoClosingBracketsRef,
   imagesRef,
   beginImageRef,
   hotkeysRef,
@@ -504,7 +509,18 @@ export function createVisualEditorHandlers({
 
       // 🌟 [슬래시 메뉴 활성 시 최우선 가로채기]: Escape 닫힘, ArrowUp/ArrowDown 이동, Enter/Tab/Space 즉시 실행 (들여쓰기 및 기타 키 가로채기 원천 방어)
       if (slashOpenRef.current) {
-        if (event.key === 'Escape') {
+        if (event.key === 'Backspace' && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && autoClosingBracketsRef?.current) {
+        const { empty, $from } = currentView.state.selection;
+        if (empty && $from.parentOffset > 0 && $from.parentOffset < $from.parent.content.size) {
+          const around = currentView.state.doc.textBetween($from.pos - 1, Math.min(currentView.state.doc.content.size, $from.pos + 1));
+          if (around === '()' || around === '[]' || around === '{}') {
+            currentView.dispatch(currentView.state.tr.delete($from.pos - 1, $from.pos + 1).scrollIntoView());
+            caretRef.current?.schedule();
+            return true;
+          }
+        }
+      }
+      if (event.key === 'Escape') {
           event.preventDefault();
           event.stopPropagation();
           if (slashNavigatedRef) slashNavigatedRef.current = false;
@@ -1374,6 +1390,17 @@ export function createVisualEditorHandlers({
         }
         return true;
       }
+      if (event.key === 'Backspace' && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && autoClosingBracketsRef?.current) {
+        const { empty, $from } = currentView.state.selection;
+        if (empty && $from.parentOffset > 0 && $from.parentOffset < $from.parent.content.size) {
+          const around = currentView.state.doc.textBetween($from.pos - 1, Math.min(currentView.state.doc.content.size, $from.pos + 1));
+          if (around === '()' || around === '[]' || around === '{}') {
+            currentView.dispatch(currentView.state.tr.delete($from.pos - 1, $from.pos + 1).scrollIntoView());
+            caretRef.current?.schedule();
+            return true;
+          }
+        }
+      }
       if (event.key === 'Escape') {
         manualFloatingRef.current = false;
         slashOpenRef.current = false;
@@ -1386,7 +1413,7 @@ export function createVisualEditorHandlers({
       return false;
     },
 
-    handleTextInput(currentView, _from, _to, text) {
+    handleTextInput(currentView, from, to, text) {
       if (!currentView.editable) return false;
       if (currentView.composing) return false;
       if (
@@ -1397,6 +1424,38 @@ export function createVisualEditorHandlers({
           currentView.dispatch(currentView.state.tr.insertText(text));
           caretRef.current?.schedule();
           return true;
+        }
+      }
+      if (autoClosingBracketsRef?.current) {
+        const openPairs: Record<string, string> = { '(': ')', '[': ']', '{': '}' };
+        const closeChars = new Set([')', ']', '}']);
+        const closeChar = openPairs[text];
+        if (closeChar) {
+          const { state } = currentView;
+          const activeMarks = state.storedMarks || state.doc.resolve(from).marks();
+          if (from < to) {
+            const selectedText = state.doc.textBetween(from, to);
+            let tr = state.tr.insertText(`${text}${selectedText}${closeChar}`, from, to);
+            tr = tr.setSelection(TextSelection.create(tr.doc, from + 1, to + 1));
+            currentView.dispatch(tr.scrollIntoView());
+            caretRef.current?.schedule();
+            return true;
+          }
+          const textNode = visualSchema.text(`${text}${closeChar}`, activeMarks);
+          let tr = state.tr.replaceRangeWith(from, to, textNode);
+          tr = tr.setSelection(TextSelection.create(tr.doc, from + 1));
+          if (activeMarks.length > 0) tr = tr.setStoredMarks(activeMarks);
+          currentView.dispatch(tr.scrollIntoView());
+          caretRef.current?.schedule();
+          return true;
+        }
+        if (closeChars.has(text) && from === to && from < currentView.state.doc.content.size) {
+          const nextChar = currentView.state.doc.textBetween(from, from + 1);
+          if (nextChar === text) {
+            currentView.dispatch(currentView.state.tr.setSelection(TextSelection.create(currentView.state.doc, from + 1)).scrollIntoView());
+            caretRef.current?.schedule();
+            return true;
+          }
         }
       }
       return false;
