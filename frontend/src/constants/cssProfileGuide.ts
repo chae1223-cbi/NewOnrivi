@@ -308,13 +308,13 @@ export const CSS_PROFILE_GUIDE_MD = `# 🎨 온리비 어서(Onrivi Author) 최�
 {
   "id": "profile-1790253429429",
   "name": "Onrivi 기본서식",
-  "description": "온리비 어서(Onrivi Author)의 공식 기본 서식 테마입니다. 정갈한 텍스트 배치와 최적화된 용지 규격을 제공합니다.",
+  "description": "온리비 어서(Onrivi Author)의 공식 기본 서식 테마입니다. 모던 코발트 블루(코발트 신뢰) 악센트와 세련된 정돈감, 최적화된 용지 규격을 제공합니다.",
   "pageStyle": {
     "fontFamily": "'Times New Roman', 'Georgia', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', Arial, sans-serif",
     "fontSize": "16px",
     "lineHeight": "1.75",
     "letterSpacing": "-0.01em",
-    "backgroundColor": "#ffffff",
+    "backgroundColor": "#FFFFFF",
     "paperSize": "a4",
     "marginTop": "18mm",
     "marginBottom": "18mm",
@@ -329,11 +329,12 @@ export const CSS_PROFILE_GUIDE_MD = `# 🎨 온리비 어서(Onrivi Author) 최�
     "h1": {
       "font-size": "32px",
       "font-weight": "700",
-      "color": "#202123",
+      "color": "#1D4ED8",
       "padding-left": "0px",
+      "padding-bottom": "8px",
       "margin-top": "32px",
       "margin-bottom": "18px",
-      "border-bottom": "",
+      "border-bottom": "2px solid #1D4ED8",
       "text-align": "left",
       "line-height": "1.25",
       "letter-spacing": "-0.025em"
@@ -341,8 +342,8 @@ export const CSS_PROFILE_GUIDE_MD = `# 🎨 온리비 어서(Onrivi Author) 최�
     "h2": {
       "font-size": "24px",
       "font-weight": "700",
-      "color": "#202123",
-      "border-bottom": "",
+      "color": "#1E40AF",
+      "border-bottom": "1px solid #BFDBFE",
       "padding-bottom": "8px",
       "margin-top": "28px",
       "margin-bottom": "14px",
@@ -353,7 +354,7 @@ export const CSS_PROFILE_GUIDE_MD = `# 🎨 온리비 어서(Onrivi Author) 최�
     "h3": {
       "font-size": "20px",
       "font-weight": "650",
-      "color": "#202123",
+      "color": "#1E3A8A",
       "margin-top": "24px",
       "margin-bottom": "12px",
       "text-align": "left",
@@ -362,7 +363,7 @@ export const CSS_PROFILE_GUIDE_MD = `# 🎨 온리비 어서(Onrivi Author) 최�
     "h4": {
       "font-size": "18px",
       "font-weight": "650",
-      "color": "#202123",
+      "color": "#0F172A",
       "margin-top": "20px",
       "margin-bottom": "10px",
       "text-align": "left",
@@ -371,7 +372,7 @@ export const CSS_PROFILE_GUIDE_MD = `# 🎨 온리비 어서(Onrivi Author) 최�
     "h5": {
       "font-size": "16px",
       "font-weight": "650",
-      "color": "#202123",
+      "color": "#0F172A",
       "margin-top": "18px",
       "margin-bottom": "8px",
       "text-align": "left",
@@ -380,7 +381,7 @@ export const CSS_PROFILE_GUIDE_MD = `# 🎨 온리비 어서(Onrivi Author) 최�
     "h6": {
       "font-size": "15px",
       "font-weight": "650",
-      "color": "#6b6b6b",
+      "color": "#475569",
       "margin-top": "16px",
       "margin-bottom": "8px",
       "text-align": "left",
@@ -390,27 +391,27 @@ export const CSS_PROFILE_GUIDE_MD = `# 🎨 온리비 어서(Onrivi Author) 최�
       "margin-top": "0px",
       "margin-bottom": "16px",
       "line-height": "1.75",
-      "color": "#2f2f2f",
+      "color": "#0F172A",
       "text-align": "left",
       "text-indent": "0px",
       "letter-spacing": "-0.01em",
       "sentence-gap": "4px"
     },
-    "strong": { "font-weight": "700", "color": "#202123" },
-    "em": { "font-style": "italic", "color": "#2f2f2f" },
+    "strong": { "font-weight": "700", "color": "#1E3A8A" },
+    "em": { "font-style": "italic", "color": "#0F172A" },
     "u": {
       "text-decoration": "underline",
-      "text-decoration-color": "#0d0d0d",
+      "text-decoration-color": "#1D4ED8",
       "text-decoration-style": "solid",
       "text-underline-offset": "3px"
     },
-    "del": { "text-decoration": "line-through", "color": "#6b6b6b" },
-    "ul": { "padding-left": "28px", "list-style-type": "disc", "color": "#2f2f2f" },
-    "ol": { "padding-left": "28px", "list-style-type": "decimal", "color": "#2f2f2f" },
+    "del": { "text-decoration": "line-through", "color": "#64748B" },
+    "ul": { "padding-left": "28px", "list-style-type": "disc", "color": "#0F172A" },
+    "ol": { "padding-left": "28px", "list-style-type": "decimal", "color": "#0F172A" },
     "li": { "margin-bottom": "5px", "padding-inline-start": "3px", "line-height": "1.7" },
-    "taskList": { "boxSize": "16px", "checkedEffect": "none", "textGap": "9px", "color": "#2f2f2f" },
+    "taskList": { "boxSize": "16px", "checkedEffect": "none", "textGap": "9px", "color": "#0F172A" },
     "hr": {
-      "border-top-color": "#e5e5e5",
+      "border-top-color": "#CBD5E1",
       "border-top-width": "1px",
       "border-top-style": "solid",
       "margin-top": "28px",
@@ -422,7 +423,7 @@ export const CSS_PROFILE_GUIDE_MD = `# 🎨 온리비 어서(Onrivi Author) 최�
       "border-collapse": "collapse",
       "border-style": "solid",
       "border-width": "1px",
-      "border-color": "#9ca3af",
+      "border-color": "#93C5FD",
       "margin-top": "22px",
       "margin-bottom": "22px",
       "font-size": "15px",
@@ -430,31 +431,31 @@ export const CSS_PROFILE_GUIDE_MD = `# 🎨 온리비 어서(Onrivi Author) 최�
       "overflow": "hidden"
     },
     "th": {
-      "background-color": "#f7f7f8",
+      "background-color": "#EFF6FF",
       "padding": "5px 8px",
       "border-style": "solid",
       "border-width": "1px",
-      "border-color": "#cbd5e1",
+      "border-color": "#BFDBFE",
       "font-weight": "650",
       "text-align": "left",
-      "color": "#202123"
+      "color": "#1E3A8A"
     },
     "td": {
       "padding": "5px 8px",
       "border-style": "solid",
       "border-width": "1px",
-      "border-color": "#cbd5e1",
-      "color": "#2f2f2f"
+      "border-color": "#CBD5E1",
+      "color": "#0F172A"
     },
     "blockquote": {
-      "padding": "2px 0 2px 18px",
-      "color": "#6b6b6b",
-      "background-color": "transparent",
-      "border-radius": "0",
+      "padding": "12px 18px",
+      "color": "#1E3A8A",
+      "background-color": "#EFF6FF",
+      "border-radius": "6px",
       "margin-top": "20px",
       "margin-bottom": "20px",
       "font-weight": "normal",
-      "border-left": "3px solid #d9d9d9",
+      "border-left": "4px solid #2563EB",
       "font-size": "16px"
     },
     "codeBlock": {

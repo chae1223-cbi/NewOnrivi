@@ -2,6 +2,8 @@
 // 📊 [OMD-STYLE-QUICK-0001] frontend/src/components/style/QuickStylePanel.tsx
 // 🎯 @KICK  : 서식 관리 초보자 및 일반 사용자를 위한 한 페이지 핵심 간편 스타일링 패널
 // 🛡️ @GUARD : Rule 1(단일 주석 관리), Rule 3(컴포넌트 분리 원칙), Rule 6(LDSG & 고대비 가독성 보장)
+// 🚨 @PATCH : **2026-11-14** — [문서 테마(MOOD_THEMES) 매칭 대소문자 무관 비교 보완]:
+//             1) Onrivi 기본서식('코발트 신뢰' 기본 적용) 및 커스텀 서식에서 색상 코드 대소문자(#1D4ED8 vs #1d4ed8)와 무관하게 matchedTheme이 정확히 활성화되도록 개선
 // 🚨 @PATCH : **2026-10-26** — [ESLint React Hook exhaustive-deps 의존성 경고 해소]:
 //             1) matchedTheme useMemo가 매 렌더링마다 새로 생성되는 rules 객체 대신 원시 색상 문자열(pColor, h1Color)을 직접 참조하도록 최적화
 //             2) hasCustomSetting 및 isLawActive useMemo가 매 렌더링마다 새로 생성되는 currentOutline 배열 대신 안정적인 headingNumbering을 참조하도록 정리
@@ -274,7 +276,11 @@ export default function QuickStylePanel({
   const pColor = rules['p']?.color;
   const h1Color = rules['h1']?.color;
   const matchedTheme = useMemo(() => {
-    return MOOD_THEMES.find(t => (pColor === t.textColor) && (h1Color === t.h1Color));
+    const normP = (pColor || '').trim().toUpperCase();
+    const normH1 = (h1Color || '').trim().toUpperCase();
+    return MOOD_THEMES.find(
+      t => normP === t.textColor.toUpperCase() && normH1 === t.h1Color.toUpperCase()
+    );
   }, [pColor, h1Color]);
 
   const isCustomThemeActive = !matchedTheme;

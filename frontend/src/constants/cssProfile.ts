@@ -4,6 +4,8 @@ import { normalizeBookLayout } from '../lib/picturebook';
 // ====================================================================
 // 📊 [OMD-CORE-cssProfile-0006] cssProfile ➔ SYSTEM_PROFILE_IDS
 // 🎯 @KICK  : 시스템 프로필 식별자 목록을 정의한다
+// 🚨 @PATCH : **2026-11-14** — [Onrivi 기본서식(system-1 / DEFAULT_PROFILE) 문서 분위기 '코발트 신뢰(Cobalt Trust)' 전면 적용]:
+//             1) Onrivi 기본서식의 문서 분위기를 '코발트 신뢰(Cobalt Trust)'로 변경하여 H1(#1D4ED8 + 2px solid #1D4ED8 하단선), H2(#1E40AF + 1px solid #BFDBFE 하단선), H3(#1E3A8A), 본문(#0F172A), 인용구(4px solid #2563EB 좌측바 + #EFF6FF 배경), 표 헤더(#EFF6FF 배경 + #1E3A8A 텍스트)의 신뢰감 있는 코발트 블루 컬러 시스템 적용
 // 🚨 @PATCH : **2026-11-14** — [Google Developers 기술 문서 표준 서식(google-dev-docs) 신규 탑재]:
 //             1) Google Developer Documentation Style Guide(https://developers.google.com/style/lists)의 DevSite 디자인 토큰을 15대 카테고리 규격으로 정밀 이식한 'Google Developers 기술 문서 (DevSite 표준)' 시스템 서식(google-dev-docs) 등록
 //             2) Google Sans / Roboto / Roboto Mono 타이포그래피, #202124 본문(16px / line-height 1.5), 40px 들여쓰기 다단계 목록(disc ➔ circle ➔ square), #f1f3f4 헤더 및 #dadce0/#e8eaed 미니멀 가로선 비교표(outer 0px, row 1px, col 0px), #e8f0fe Google Blue Note 콜아웃, #f1f3f4/#37474f 코드블록 및 인라인코드 반영
@@ -143,13 +145,13 @@ export const SYSTEM_PROFILES: CssProfile[] = [
   {
     "id": "system-1",
     "name": "Onrivi 기본서식",
-    "description": "온리비 어서(Onrivi Author)의 공식 기본 서식 테마입니다. 정갈한 텍스트 배치와 최적화된 용지 규격을 제공합니다.",
+    "description": "온리비 어서(Onrivi Author)의 공식 기본 서식 테마입니다. 모던 코발트 블루(코발트 신뢰) 악센트와 세련된 정돈감, 최적화된 용지 규격을 제공합니다.",
     "pageStyle": {
       "fontFamily": "'Times New Roman', 'Georgia', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', Arial, sans-serif",
       "fontSize": "16px",
       "lineHeight": "1.75",
       "letterSpacing": "-0.01em",
-      "backgroundColor": "#ffffff",
+      "backgroundColor": "#FFFFFF",
       "paperSize": "a4",
       "marginTop": "18mm",
       "marginBottom": "18mm",
@@ -164,10 +166,11 @@ export const SYSTEM_PROFILES: CssProfile[] = [
       "h1": {
         "font-size": "32px",
         "font-weight": "700",
-        "color": "#202123",
+        "color": "#1D4ED8",
         "padding-left": "0px",
+        "padding-bottom": "8px",
         "margin-bottom": "18px",
-        "border-bottom": "",
+        "border-bottom": "2px solid #1D4ED8",
         "margin-top": "32px",
         "text-align": "left",
         "text-decoration": "none",
@@ -178,8 +181,8 @@ export const SYSTEM_PROFILES: CssProfile[] = [
       "h2": {
         "font-size": "24px",
         "font-weight": "700",
-        "color": "#202123",
-        "border-bottom": "",
+        "color": "#1E40AF",
+        "border-bottom": "1px solid #BFDBFE",
         "padding-bottom": "8px",
         "margin-top": "28px",
         "text-decoration": "none",
@@ -195,7 +198,7 @@ export const SYSTEM_PROFILES: CssProfile[] = [
         "font-size": "20px",
         "margin-top": "24px",
         "margin-bottom": "12px",
-        "color": "#202123",
+        "color": "#1E3A8A",
         "border-bottom": "",
         "line-height": "1.4"
       },
@@ -205,7 +208,7 @@ export const SYSTEM_PROFILES: CssProfile[] = [
         "font-size": "18px",
         "margin-top": "20px",
         "margin-bottom": "10px",
-        "color": "#202123",
+        "color": "#0F172A",
         "border-bottom": "",
         "line-height": "1.5"
       },
@@ -215,7 +218,7 @@ export const SYSTEM_PROFILES: CssProfile[] = [
         "font-size": "16px",
         "margin-top": "18px",
         "margin-bottom": "8px",
-        "color": "#202123",
+        "color": "#0F172A",
         "border-bottom": "",
         "line-height": "1.55"
       },
@@ -225,7 +228,7 @@ export const SYSTEM_PROFILES: CssProfile[] = [
         "font-size": "15px",
         "margin-top": "16px",
         "margin-bottom": "8px",
-        "color": "#6b6b6b",
+        "color": "#475569",
         "border-bottom": "",
         "line-height": "1.55"
       },
@@ -233,7 +236,7 @@ export const SYSTEM_PROFILES: CssProfile[] = [
         "margin-bottom": "16px",
         "margin-top": "0px",
         "line-height": "1.75",
-        "color": "#2f2f2f",
+        "color": "#0F172A",
         "text-align": "left",
         "text-indent": "0px",
         "letter-spacing": "-0.01em",
@@ -241,30 +244,30 @@ export const SYSTEM_PROFILES: CssProfile[] = [
       },
       "strong": {
         "font-weight": "700",
-        "color": "#202123"
+        "color": "#1E3A8A"
       },
       "em": {
         "font-style": "italic",
-        "color": "#2f2f2f"
+        "color": "#0F172A"
       },
       "u": {
-        "text-decoration-color": "#0d0d0d",
+        "text-decoration-color": "#1D4ED8",
         "text-decoration-style": "solid",
         "text-underline-offset": "3px",
         "text-decoration": "underline"
       },
       "del": {
         "text-decoration": "line-through",
-        "color": "#6b6b6b"
+        "color": "#64748B"
       },
       "ul": {
         "padding-left": "28px",
         "list-style-type": "disc",
-        "color": "#2f2f2f"
+        "color": "#0F172A"
       },
       "ol": {
         "padding-left": "28px",
-        "color": "#2f2f2f",
+        "color": "#0F172A",
         "list-style-type": "decimal"
       },
       "li": {
@@ -276,10 +279,10 @@ export const SYSTEM_PROFILES: CssProfile[] = [
         "boxSize": "16px",
         "checkedEffect": "none",
         "textGap": "9px",
-        "color": "#2f2f2f"
+        "color": "#0F172A"
       },
       "hr": {
-        "border-top-color": "#e5e5e5",
+        "border-top-color": "#CBD5E1",
         "border-top-width": "1px",
         "border-top-style": "solid",
         "margin-top": "28px",
@@ -291,7 +294,7 @@ export const SYSTEM_PROFILES: CssProfile[] = [
         "border-collapse": "collapse",
         "border-style": "solid",
         "border-width": "1px",
-        "border-color": "#9ca3af",
+        "border-color": "#93C5FD",
         "margin-top": "22px",
         "margin-bottom": "22px",
         "font-size": "15px",
@@ -299,31 +302,31 @@ export const SYSTEM_PROFILES: CssProfile[] = [
         "overflow": "hidden"
       },
       "th": {
-        "background-color": "#f7f7f8",
+        "background-color": "#EFF6FF",
         "padding": "5px 8px",
         "border-style": "solid",
         "border-width": "1px",
-        "border-color": "#cbd5e1",
+        "border-color": "#BFDBFE",
         "font-weight": "650",
         "text-align": "left",
-        "color": "#202123"
+        "color": "#1E3A8A"
       },
       "td": {
         "padding": "5px 8px",
         "border-style": "solid",
         "border-width": "1px",
-        "border-color": "#cbd5e1",
-        "color": "#2f2f2f"
+        "border-color": "#CBD5E1",
+        "color": "#0F172A"
       },
       "blockquote": {
-        "padding": "2px 0 2px 18px",
-        "color": "#6b6b6b",
-        "background-color": "transparent",
-        "border-radius": "0",
+        "padding": "12px 18px",
+        "color": "#1E3A8A",
+        "background-color": "#EFF6FF",
+        "border-radius": "6px",
         "margin-top": "20px",
         "margin-bottom": "20px",
         "font-weight": "normal",
-        "border-left": "3px solid #d9d9d9",
+        "border-left": "4px solid #2563EB",
         "font-size": "16px"
       },
       "codeBlock": {
@@ -413,7 +416,7 @@ export const SYSTEM_PROFILES: CssProfile[] = [
       "boxSize": "16px",
       "checkedEffect": "none",
       "textGap": "9px",
-      "color": "#2f2f2f"
+      "color": "#0F172A"
     },
     "tableStructure": {
       "outerBorderWidth": "1px",
