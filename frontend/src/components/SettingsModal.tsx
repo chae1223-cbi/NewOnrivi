@@ -1,5 +1,6 @@
 // ====================================================================
 // 📊 [OMD-EDIT-SettingsModal-0006 ✅ FIXED] SettingsModal.tsx ➔ SettingsModal
+// 🚨 @PATCH : 2026-11-14 — [마크다운 에디터 글꼴/고대비 라벨 명확화] 환경설정의 글꼴 크기·굵기·고대비 텍스트가 마크다운 원본 편집기 전용임을 명시하여 서식 관리 본문 폰트와의 혼동 방지
 // 🚨 @PATCH : 2026-11-12 — [AI 키 백업 제외] 백업 키 포함 선택지를 제거하고 복원 시 키가 이전되지 않음을 안내
 // 🚨 @PATCH : **2026-11-10** — [환경설정 암호화 백업/원복 팝업 클릭 버블링 방어 및 autoFocus 보강]:
 //             1) 부모 모달 및 백업/원복 오버레이에 `e.target === e.currentTarget` 엄격 가드 적용하여 입력창 클릭 또는 드래그 시 모달이 닫히는 현상 원천 차단
@@ -976,8 +977,8 @@ export default function SettingsModal({
                   </select>} />
                 <SettingRow 
                   icon={<Icon name="TypeIcon" size={18} />}
-                  title="에디터 글꼴 크기 (Font Size)"
-                  description="에디터 텍스트의 글자 크기를 조절하여 가독성을 높입니다."
+                  title="마크다운 에디터 글꼴 크기 (Font Size)"
+                  description="마크다운 원본 편집 화면의 글자 크기를 조절합니다. (문서 서식 관리의 본문 글꼴 크기와는 별개)"
                   control={
                     <select
                       value={fontSize}
@@ -1000,8 +1001,8 @@ export default function SettingsModal({
 
                 <SettingRow 
                   icon={<Icon name="Bold" size={18} />}
-                  title="에디터 글꼴 굵기 (Font Weight)"
-                  description="모니터 난반사나 어두운 환경에서 텍스트가 흐릿하게 보이지 않도록 획 굵기를 조절합니다."
+                  title="마크다운 에디터 글꼴 굵기 (Font Weight)"
+                  description="모니터 난반사나 어두운 환경에서 마크다운 편집 텍스트가 흐릿하게 보이지 않도록 획 굵기를 조절합니다."
                   control={
                     <select
                       value={editorFontWeight}
@@ -1020,8 +1021,8 @@ export default function SettingsModal({
 
                 <SettingRow 
                   icon={<Icon name="ThemeLight" size={18} />}
-                  title="고대비 텍스트 (High Contrast)"
-                  description="빛 난반사 방지를 위해 에디터 글씨 색상을 순수 흑백(최대 명암비)으로 또렷하게 표시합니다."
+                  title="마크다운 고대비 텍스트 (High Contrast)"
+                  description="빛 난반사 방지를 위해 마크다운 편집 화면의 글씨 색상을 순수 흑백(최대 명암비)으로 또렷하게 표시합니다."
                   control={
                     <ToggleSwitch 
                       active={!!editorHighContrast} 
