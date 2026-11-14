@@ -4,11 +4,10 @@ import { normalizeBookLayout } from '../lib/picturebook';
 // ====================================================================
 // 📊 [OMD-CORE-cssProfile-0006] cssProfile ➔ SYSTEM_PROFILE_IDS
 // 🎯 @KICK  : 시스템 프로필 식별자 목록을 정의한다
-// 🚨 @PATCH : **2026-11-14** — [Onrivi 기본서식(system-1 / DEFAULT_PROFILE) 문서 분위기 '코발트 신뢰(Cobalt Trust)' 전면 적용]:
-//             1) Onrivi 기본서식의 문서 분위기를 '코발트 신뢰(Cobalt Trust)'로 변경하여 H1(#1D4ED8 + 2px solid #1D4ED8 하단선), H2(#1E40AF + 1px solid #BFDBFE 하단선), H3(#1E3A8A), 본문(#0F172A), 인용구(4px solid #2563EB 좌측바 + #EFF6FF 배경), 표 헤더(#EFF6FF 배경 + #1E3A8A 텍스트)의 신뢰감 있는 코발트 블루 컬러 시스템 적용
-// 🚨 @PATCH : **2026-11-14** — [Google Developers 기술 문서 표준 서식(google-dev-docs) 신규 탑재]:
-//             1) Google Developer Documentation Style Guide(https://developers.google.com/style/lists)의 DevSite 디자인 토큰을 15대 카테고리 규격으로 정밀 이식한 'Google Developers 기술 문서 (DevSite 표준)' 시스템 서식(google-dev-docs) 등록
-//             2) Google Sans / Roboto / Roboto Mono 타이포그래피, #202124 본문(16px / line-height 1.5), 40px 들여쓰기 다단계 목록(disc ➔ circle ➔ square), #f1f3f4 헤더 및 #dadce0/#e8eaed 미니멀 가로선 비교표(outer 0px, row 1px, col 0px), #e8f0fe Google Blue Note 콜아웃, #f1f3f4/#37474f 코드블록 및 인라인코드 반영
+// 🚨 @PATCH : **2026-11-14** — [Google Developers 기술 문서(DevSite 표준)를 'Onrivi 기본서식(system-1 / DEFAULT_PROFILE)'으로 전면 승격 일원화]:
+//             1) Google Developer Documentation Style Guide(https://developers.google.com/style/lists)의 DevSite 디자인 토큰을 'Onrivi 기본서식(system-1 / DEFAULT_PROFILE)'의 공식 표준 규격으로 전면 적용
+//             2) Google Sans / Roboto / Roboto Mono 타이포그래피, #202124 본문(16px / line-height 1.5), 클린 헤딩(H1 34px ~ H6 14px), 40px 들여쓰기 다단계 목록(disc ➔ circle ➔ square), #f1f3f4 헤더 및 #dadce0/#e8eaed 미니멀 가로선 비교표(outer 0px, row 1px, col 0px), #e8f0fe Google Blue Note 콜아웃(4px solid #1a73e8), #f1f3f4/#37474f 코드블록 및 인라인코드 반영
+//             3) 별도 분리되어 있던 중복 'Google Developers 기술 문서' 프로필을 'Onrivi 기본서식' 단일 기본 프로필로 통합하여 새 서식/정규화/초기화의 기준 서식으로 일원화
 // 🚨 @PATCH : **2026-10-27** — [SNS 카드뉴스 공식 시스템 서식(sns-card-news) 신규 탑재 및 제목 단계별 활자 크기 감소폭(headingSizeOffset) 최초 기본값 '3pt' 표준화]:
 //             1) 인스타그램·쓰레드·링크드인 공유에 최적화된 1:1 정사각형(sns_square) 'SNS 카드뉴스 (인스타·링크드인)' 시스템 서식(sns-card-news) 등록
 //             2) DEFAULT_PROFILE, SYSTEM_PROFILES, createEmptyProfile의 headingSizeOffset 기본값을 '3pt'로 표준화
@@ -145,12 +144,13 @@ export const SYSTEM_PROFILES: CssProfile[] = [
   {
     "id": "system-1",
     "name": "Onrivi 기본서식",
-    "description": "온리비 어서(Onrivi Author)의 공식 기본 서식 테마입니다. 모던 코발트 블루(코발트 신뢰) 악센트와 세련된 정돈감, 최적화된 용지 규격을 제공합니다.",
+    "description": "온리비 어서(Onrivi Author)의 공식 기본 서식 테마입니다. Google Developer Documentation Style Guide(DevSite 표준) 기반의 깔끔한 타이포그래피(#202124), 40px 다단계 목록, 미니멀 가로선 표(#F1F3F4 헤더), Google Blue 콜아웃(#E8F0FE)을 제공합니다.",
     "pageStyle": {
-      "fontFamily": "'Times New Roman', 'Georgia', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', Arial, sans-serif",
+      "fontFamily": "'Roboto', 'Google Sans', 'Noto Sans KR', 'Noto Sans', -apple-system, BlinkMacSystemFont, sans-serif",
+      "fontUrl": "https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Roboto+Mono:wght@400;500&family=Roboto:ital,wght@0,300;0,400;0,500;0,700;1,400&display=swap",
       "fontSize": "16px",
-      "lineHeight": "1.75",
-      "letterSpacing": "-0.01em",
+      "lineHeight": "1.5",
+      "letterSpacing": "0em",
       "backgroundColor": "#FFFFFF",
       "paperSize": "a4",
       "marginTop": "18mm",
@@ -164,125 +164,138 @@ export const SYSTEM_PROFILES: CssProfile[] = [
     },
     "rules": {
       "h1": {
-        "font-size": "32px",
-        "font-weight": "700",
-        "color": "#1D4ED8",
+        "font-size": "34px",
+        "font-weight": "400",
+        "color": "#202124",
         "padding-left": "0px",
-        "padding-bottom": "8px",
-        "margin-bottom": "18px",
-        "border-bottom": "2px solid #1D4ED8",
-        "margin-top": "32px",
+        "padding-bottom": "0px",
+        "margin-bottom": "20px",
+        "border-bottom": "",
+        "border-left": "none",
+        "margin-top": "40px",
         "text-align": "left",
         "text-decoration": "none",
         "font-style": "normal",
-        "line-height": "1.25",
-        "letter-spacing": "-0.025em"
+        "line-height": "1.18",
+        "letter-spacing": "-0.01em"
       },
       "h2": {
         "font-size": "24px",
-        "font-weight": "700",
-        "color": "#1E40AF",
-        "border-bottom": "1px solid #BFDBFE",
-        "padding-bottom": "8px",
-        "margin-top": "28px",
+        "font-weight": "400",
+        "color": "#202124",
+        "padding-left": "0px",
+        "border-bottom": "",
+        "border-left": "none",
+        "padding-bottom": "0px",
+        "margin-top": "40px",
         "text-decoration": "none",
         "font-style": "normal",
-        "margin-bottom": "14px",
+        "margin-bottom": "20px",
         "text-align": "left",
-        "line-height": "1.35",
-        "letter-spacing": "-0.02em"
+        "line-height": "1.33",
+        "letter-spacing": "0em"
       },
       "h3": {
         "text-align": "left",
-        "font-weight": "650",
+        "font-weight": "400",
         "font-size": "20px",
-        "margin-top": "24px",
-        "margin-bottom": "12px",
-        "color": "#1E3A8A",
+        "padding-left": "0px",
+        "margin-top": "32px",
+        "margin-bottom": "16px",
+        "color": "#202124",
         "border-bottom": "",
-        "line-height": "1.4"
+        "border-left": "none",
+        "line-height": "1.6"
       },
       "h4": {
         "text-align": "left",
-        "font-weight": "650",
-        "font-size": "18px",
-        "margin-top": "20px",
-        "margin-bottom": "10px",
-        "color": "#0F172A",
+        "font-weight": "500",
+        "font-size": "16px",
+        "margin-top": "24px",
+        "margin-bottom": "12px",
+        "color": "#202124",
         "border-bottom": "",
+        "border-left": "none",
         "line-height": "1.5"
       },
       "h5": {
         "text-align": "left",
-        "font-weight": "650",
-        "font-size": "16px",
-        "margin-top": "18px",
+        "font-weight": "500",
+        "font-size": "15px",
+        "margin-top": "20px",
         "margin-bottom": "8px",
-        "color": "#0F172A",
+        "color": "#202124",
         "border-bottom": "",
-        "line-height": "1.55"
+        "border-left": "none",
+        "line-height": "1.5"
       },
       "h6": {
         "text-align": "left",
-        "font-weight": "650",
-        "font-size": "15px",
+        "font-weight": "500",
+        "font-size": "14px",
         "margin-top": "16px",
         "margin-bottom": "8px",
-        "color": "#475569",
+        "color": "#5f6368",
         "border-bottom": "",
-        "line-height": "1.55"
+        "border-left": "none",
+        "line-height": "1.5"
       },
       "p": {
         "margin-bottom": "16px",
         "margin-top": "0px",
-        "line-height": "1.75",
-        "color": "#0F172A",
+        "line-height": "1.5",
+        "color": "#202124",
         "text-align": "left",
         "text-indent": "0px",
-        "letter-spacing": "-0.01em",
+        "letter-spacing": "0em",
         "sentence-gap": "4px"
       },
       "strong": {
         "font-weight": "700",
-        "color": "#1E3A8A"
+        "color": "#202124"
       },
       "em": {
         "font-style": "italic",
-        "color": "#0F172A"
+        "color": "#202124"
       },
       "u": {
-        "text-decoration-color": "#1D4ED8",
+        "text-decoration-color": "#1a73e8",
         "text-decoration-style": "solid",
         "text-underline-offset": "3px",
         "text-decoration": "underline"
       },
       "del": {
         "text-decoration": "line-through",
-        "color": "#64748B"
+        "color": "#5f6368"
       },
       "ul": {
-        "padding-left": "28px",
+        "padding-left": "40px",
+        "margin-top": "0px",
+        "margin-bottom": "16px",
         "list-style-type": "disc",
-        "color": "#0F172A"
+        "color": "#202124"
       },
       "ol": {
-        "padding-left": "28px",
-        "color": "#0F172A",
+        "padding-left": "40px",
+        "margin-top": "0px",
+        "margin-bottom": "16px",
+        "color": "#202124",
         "list-style-type": "decimal"
       },
       "li": {
-        "margin-bottom": "5px",
-        "padding-inline-start": "3px",
-        "line-height": "1.7"
+        "margin-bottom": "8px",
+        "padding-inline-start": "4px",
+        "line-height": "1.5",
+        "color": "#202124"
       },
       "taskList": {
         "boxSize": "16px",
         "checkedEffect": "none",
         "textGap": "9px",
-        "color": "#0F172A"
+        "color": "#202124"
       },
       "hr": {
-        "border-top-color": "#CBD5E1",
+        "border-top-color": "#dadce0",
         "border-top-width": "1px",
         "border-top-style": "solid",
         "margin-top": "28px",
@@ -293,61 +306,69 @@ export const SYSTEM_PROFILES: CssProfile[] = [
         "width": "100%",
         "border-collapse": "collapse",
         "border-style": "solid",
-        "border-width": "1px",
-        "border-color": "#93C5FD",
-        "margin-top": "22px",
-        "margin-bottom": "22px",
-        "font-size": "15px",
+        "border-width": "0px",
+        "border-color": "#dadce0",
+        "margin-top": "16px",
+        "margin-bottom": "16px",
+        "font-size": "14px",
         "border-radius": "8px",
         "overflow": "hidden"
       },
       "th": {
-        "background-color": "#EFF6FF",
-        "padding": "5px 8px",
+        "background-color": "#f1f3f4",
+        "padding": "12px 16px",
         "border-style": "solid",
         "border-width": "1px",
-        "border-color": "#BFDBFE",
-        "font-weight": "650",
+        "border-color": "#dadce0",
+        "font-weight": "500",
+        "font-size": "14px",
         "text-align": "left",
-        "color": "#1E3A8A"
+        "color": "#202124"
       },
       "td": {
-        "padding": "5px 8px",
+        "background-color": "#ffffff",
+        "padding": "12px 16px",
         "border-style": "solid",
         "border-width": "1px",
-        "border-color": "#CBD5E1",
-        "color": "#0F172A"
+        "border-color": "#e8eaed",
+        "font-size": "14px",
+        "text-align": "left",
+        "color": "#202124"
       },
       "blockquote": {
-        "padding": "12px 18px",
-        "color": "#1E3A8A",
-        "background-color": "#EFF6FF",
-        "border-radius": "6px",
-        "margin-top": "20px",
-        "margin-bottom": "20px",
+        "padding": "15px 24px",
+        "color": "#202124",
+        "background-color": "#e8f0fe",
+        "border-radius": "4px",
+        "margin-top": "16px",
+        "margin-bottom": "16px",
+        "font-style": "normal",
         "font-weight": "normal",
-        "border-left": "4px solid #2563EB",
+        "border-left": "4px solid #1a73e8",
         "font-size": "16px"
       },
       "codeBlock": {
-        "background-color": "#f7f7f8",
-        "color": "#242424",
-        "padding": "16px",
+        "background-color": "#f1f3f4",
+        "color": "#37474f",
+        "padding": "16px 24px",
         "border-radius": "8px",
-        "font-size": "13.5px",
-        "border": "1px solid #e5e5e5"
+        "font-size": "14px",
+        "line-height": "1.45",
+        "margin-top": "16px",
+        "margin-bottom": "16px",
+        "border": "1px solid #dadce0"
       },
       "codeBlockTitle": {
-        "background-color": "#ececec",
-        "color": "#5f5f5f",
+        "background-color": "#e8eaed",
+        "color": "#37474f",
         "padding": "8px 12px",
         "border-radius": "8px 8px 0 0",
-        "border": "1px solid #e5e5e5"
+        "border": "1px solid #dadce0"
       },
       "a": {
-        "color": "#2563eb",
+        "color": "#1a73e8",
         "text-decoration": "underline",
-        "font-weight": "bold"
+        "font-weight": "normal"
       },
       "img": {
         "width": "100%",
@@ -361,12 +382,12 @@ export const SYSTEM_PROFILES: CssProfile[] = [
         "box-shadow": "none"
       },
       "code": {
-        "background-color": "#f7f7f8",
-        "color": "#242424",
-        "padding": "2px 6px",
-        "border-radius": "5px",
+        "background-color": "#f1f3f4",
+        "color": "#37474f",
+        "padding": "2px 4px",
+        "border-radius": "4px",
         "font-weight": "normal",
-        "border": "1px solid #e5e5e5"
+        "border": "none"
       },
       "video": {
         "width": "100%",
@@ -381,7 +402,7 @@ export const SYSTEM_PROFILES: CssProfile[] = [
         "float": "none"
       },
       "math": {
-        "color": "#2f2f2f",
+        "color": "#202124",
         "font-size": "16px",
         "text-align": "center",
         "margin-top": "20px",
@@ -399,7 +420,7 @@ export const SYSTEM_PROFILES: CssProfile[] = [
       },
       "footnote": {
         "font-size": "13px",
-        "color": "#6b6b6b",
+        "color": "#5f6368",
         "line-height": "1.5",
         "margin-top": "12px",
         "margin-bottom": "12px",
@@ -416,10 +437,10 @@ export const SYSTEM_PROFILES: CssProfile[] = [
       "boxSize": "16px",
       "checkedEffect": "none",
       "textGap": "9px",
-      "color": "#0F172A"
+      "color": "#202124"
     },
     "tableStructure": {
-      "outerBorderWidth": "1px",
+      "outerBorderWidth": "0px",
       "rowBorderWidth": "1px",
       "colBorderWidth": "0px"
     },
@@ -433,7 +454,8 @@ export const SYSTEM_PROFILES: CssProfile[] = [
       "level2": "circle",
       "level3": "square"
     },
-    "customCss": ""
+    "headingNumbering": [],
+    "customCss": ".custom-preview-container h1, .custom-preview-container h2, .custom-preview-container h3 { font-family: 'Google Sans', 'Roboto', 'Noto Sans KR', sans-serif !important; }\n.custom-preview-container code, .custom-preview-container pre { font-family: 'Roboto Mono', 'JetBrains Mono', monospace !important; }\n.custom-preview-container ul ol, .custom-preview-container ol ol { list-style-type: lower-alpha !important; }"
   },
   {
     "id": "github-readme-style",
@@ -3238,259 +3260,7 @@ snsCardNewsProfile.rules.blockquote = {
 snsCardNewsProfile.headingNumbering = [];
 SYSTEM_PROFILES.push(snsCardNewsProfile);
 
-// 6. Google Developers 기술 문서 표준 (DevSite Style Guide: https://developers.google.com/style/lists)
-const googleDevDocsProfile: CssProfile = JSON.parse(JSON.stringify(SYSTEM_PROFILES[0]));
-googleDevDocsProfile.id = 'google-dev-docs';
-googleDevDocsProfile.name = 'Google Developers 기술 문서 (DevSite 표준)';
-googleDevDocsProfile.description =
-  'Google Developer Documentation Style Guide(developers.google.com/style/lists) 공식 DevSite 조판 규격입니다. Google Sans·Roboto·Roboto Mono 서체, 40px 들여쓰기 다단계 목록(disc ➔ circle ➔ square), #f1f3f4 헤더 미니멀 가로선 표, #e8f0fe Google Blue Note 콜아웃, #f1f3f4 인라인/블록 코드 스타일을 100% 재현합니다.';
-googleDevDocsProfile.pageStyle = {
-  ...googleDevDocsProfile.pageStyle,
-  fontFamily: "'Roboto', 'Google Sans', 'Noto Sans KR', 'Noto Sans', -apple-system, BlinkMacSystemFont, sans-serif",
-  fontUrl:
-    'https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Roboto+Mono:wght@400;500&family=Roboto:ital,wght@0,300;0,400;0,500;0,700;1,400&display=swap',
-  fontSize: '16px',
-  lineHeight: '1.5',
-  letterSpacing: '0em',
-  backgroundColor: '#ffffff',
-  paperSize: 'a4',
-  marginTop: '18mm',
-  marginBottom: '18mm',
-  marginLeft: '12mm',
-  marginRight: '12mm',
-  orientation: 'portrait',
-  headingSizeOffset: '3pt',
-  tabSize: '2',
-  exportPageBreakLevel: 'none',
-};
-googleDevDocsProfile.rules.h1 = {
-  ...googleDevDocsProfile.rules.h1,
-  'font-size': '34px',
-  'font-weight': '400',
-  'color': '#202124',
-  'padding-left': '0px',
-  'margin-top': '40px',
-  'margin-bottom': '20px',
-  'border-bottom': '',
-  'border-left': 'none',
-  'text-align': 'left',
-  'line-height': '1.18',
-  'letter-spacing': '-0.01em',
-};
-googleDevDocsProfile.rules.h2 = {
-  ...googleDevDocsProfile.rules.h2,
-  'font-size': '24px',
-  'font-weight': '400',
-  'color': '#202124',
-  'padding-left': '0px',
-  'padding-bottom': '0px',
-  'margin-top': '40px',
-  'margin-bottom': '20px',
-  'border-bottom': '',
-  'border-left': 'none',
-  'text-align': 'left',
-  'line-height': '1.33',
-  'letter-spacing': '0em',
-};
-googleDevDocsProfile.rules.h3 = {
-  ...googleDevDocsProfile.rules.h3,
-  'font-size': '20px',
-  'font-weight': '400',
-  'color': '#202124',
-  'padding-left': '0px',
-  'margin-top': '32px',
-  'margin-bottom': '16px',
-  'border-bottom': '',
-  'border-left': 'none',
-  'text-align': 'left',
-  'line-height': '1.6',
-};
-googleDevDocsProfile.rules.h4 = {
-  ...googleDevDocsProfile.rules.h4,
-  'font-size': '16px',
-  'font-weight': '500',
-  'color': '#202124',
-  'margin-top': '24px',
-  'margin-bottom': '12px',
-  'border-bottom': '',
-  'border-left': 'none',
-  'text-align': 'left',
-  'line-height': '1.5',
-};
-googleDevDocsProfile.rules.h5 = {
-  ...googleDevDocsProfile.rules.h5,
-  'font-size': '15px',
-  'font-weight': '500',
-  'color': '#202124',
-  'margin-top': '20px',
-  'margin-bottom': '8px',
-  'border-bottom': '',
-  'border-left': 'none',
-  'text-align': 'left',
-  'line-height': '1.5',
-};
-googleDevDocsProfile.rules.h6 = {
-  ...googleDevDocsProfile.rules.h6,
-  'font-size': '14px',
-  'font-weight': '500',
-  'color': '#5f6368',
-  'margin-top': '16px',
-  'margin-bottom': '8px',
-  'border-bottom': '',
-  'border-left': 'none',
-  'text-align': 'left',
-  'line-height': '1.5',
-};
-googleDevDocsProfile.rules.p = {
-  ...googleDevDocsProfile.rules.p,
-  'margin-top': '0px',
-  'margin-bottom': '16px',
-  'line-height': '1.5',
-  'color': '#202124',
-  'text-align': 'left',
-  'text-indent': '0px',
-  'letter-spacing': '0em',
-  'sentence-gap': '4px',
-};
-googleDevDocsProfile.rules.strong = {
-  'font-weight': '700',
-  'color': '#202124',
-};
-googleDevDocsProfile.rules.em = {
-  'font-style': 'italic',
-  'color': '#202124',
-};
-googleDevDocsProfile.rules.a = {
-  'color': '#1a73e8',
-  'text-decoration': 'underline',
-  'font-weight': 'normal',
-};
-googleDevDocsProfile.rules.ul = {
-  'list-style-type': 'disc',
-  'padding-left': '40px',
-  'margin-top': '0px',
-  'margin-bottom': '16px',
-  'color': '#202124',
-};
-googleDevDocsProfile.rules.ol = {
-  'list-style-type': 'decimal',
-  'padding-left': '40px',
-  'margin-top': '0px',
-  'margin-bottom': '16px',
-  'color': '#202124',
-};
-googleDevDocsProfile.rules.li = {
-  'margin-bottom': '8px',
-  'padding-inline-start': '4px',
-  'line-height': '1.5',
-  'color': '#202124',
-};
-googleDevDocsProfile.bulletStructure = {
-  level1: 'disc',
-  level2: 'circle',
-  level3: 'square',
-};
-googleDevDocsProfile.checkboxStructure = {
-  boxSize: '16px',
-  checkedEffect: 'none',
-  textGap: '9px',
-  color: '#202124',
-};
-googleDevDocsProfile.tableStructure = {
-  outerBorderWidth: '0px',
-  rowBorderWidth: '1px',
-  colBorderWidth: '0px',
-};
-googleDevDocsProfile.rules.table = {
-  ...googleDevDocsProfile.rules.table,
-  'width': '100%',
-  'border-collapse': 'collapse',
-  'margin-top': '16px',
-  'margin-bottom': '16px',
-  'font-size': '14px',
-  'border-style': 'solid',
-  'border-width': '0px',
-  'border-color': '#dadce0',
-};
-googleDevDocsProfile.rules.th = {
-  ...googleDevDocsProfile.rules.th,
-  'background-color': '#f1f3f4',
-  'color': '#202124',
-  'font-weight': '500',
-  'font-size': '14px',
-  'text-align': 'left',
-  'padding': '12px 16px',
-  'border-style': 'solid',
-  'border-width': '1px',
-  'border-color': '#dadce0',
-};
-googleDevDocsProfile.rules.td = {
-  ...googleDevDocsProfile.rules.td,
-  'background-color': '#ffffff',
-  'color': '#202124',
-  'font-size': '14px',
-  'text-align': 'left',
-  'padding': '12px 16px',
-  'border-style': 'solid',
-  'border-width': '1px',
-  'border-color': '#e8eaed',
-};
-googleDevDocsProfile.rules.blockquote = {
-  'padding': '15px 24px',
-  'color': '#202124',
-  'background-color': '#e8f0fe',
-  'border-left': '4px solid #1a73e8',
-  'border-radius': '4px',
-  'font-style': 'normal',
-  'font-weight': 'normal',
-  'margin-top': '16px',
-  'margin-bottom': '16px',
-};
-googleDevDocsProfile.rules.codeBlock = {
-  ...googleDevDocsProfile.rules.codeBlock,
-  'background-color': '#f1f3f4',
-  'color': '#37474f',
-  'padding': '16px 24px',
-  'border-radius': '8px',
-  'font-size': '14px',
-  'line-height': '1.45',
-  'margin-top': '16px',
-  'margin-bottom': '16px',
-  'border': '1px solid #dadce0',
-};
-googleDevDocsProfile.rules.codeBlockTitle = {
-  'background-color': '#e8eaed',
-  'color': '#37474f',
-};
-googleDevDocsProfile.rules.code = {
-  'background-color': '#f1f3f4',
-  'color': '#37474f',
-  'padding': '2px 4px',
-  'border-radius': '4px',
-  'font-weight': 'normal',
-  'border': 'none',
-};
-googleDevDocsProfile.rules.hr = {
-  'border-top-color': '#dadce0',
-};
-googleDevDocsProfile.hrStructure = {
-  borderTopStyle: 'solid',
-  borderTopWidth: '1px',
-  marginTopBottom: '28px',
-  lineWidth: '100%',
-};
-googleDevDocsProfile.mediaCaptionStructure = {
-  position: 'top',
-  format: 'standard',
-  customTemplate: '**{kind} {n}. {title}**',
-};
-googleDevDocsProfile.headingNumbering = [];
-googleDevDocsProfile.customCss = `.custom-preview-container h1, .custom-preview-container h2, .custom-preview-container h3 { font-family: 'Google Sans', 'Roboto', 'Noto Sans KR', sans-serif !important; }
-.custom-preview-container code, .custom-preview-container pre { font-family: 'Roboto Mono', 'JetBrains Mono', monospace !important; }
-.custom-preview-container ul ol, .custom-preview-container ol ol { list-style-type: lower-alpha !important; }`;
-SYSTEM_PROFILES.push(googleDevDocsProfile);
-
-export const DEFAULT_PROFILE: CssProfile = SYSTEM_PROFILES[0]; // system-gov
+export const DEFAULT_PROFILE: CssProfile = SYSTEM_PROFILES[0]; // Onrivi 기본서식 (Google Developers DevSite 표준)
 
 // ====================================================================
 // 📊 [OMD-CORE-cssProfile-0001] cssProfile ➔ createEmptyProfile
@@ -3511,10 +3281,11 @@ export function createEmptyProfile(): CssProfile {
     name: '',
     customCss: '',
     pageStyle: {
-      fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', 'Noto Sans', Arial, sans-serif",
+      fontFamily: "'Roboto', 'Google Sans', 'Noto Sans KR', 'Noto Sans', -apple-system, BlinkMacSystemFont, sans-serif",
+      fontUrl: 'https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Roboto+Mono:wght@400;500&family=Roboto:ital,wght@0,300;0,400;0,500;0,700;1,400&display=swap',
       fontSize: '16px',
-      lineHeight: '1.75',
-      letterSpacing: '-0.01em',
+      lineHeight: '1.5',
+      letterSpacing: '0em',
       backgroundColor: '#ffffff',
       paperSize: 'a4',
       marginTop: '18mm',
@@ -3537,10 +3308,10 @@ export function createEmptyProfile(): CssProfile {
       boxSize: '16px',
       checkedEffect: 'none',
       textGap: '9px',
-      color: '#2f2f2f'
+      color: '#202124'
     },
     tableStructure: {
-      outerBorderWidth: '1px',
+      outerBorderWidth: '0px',
       rowBorderWidth: '1px',
       colBorderWidth: '0px'
     },

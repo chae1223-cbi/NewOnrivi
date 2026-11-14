@@ -2,9 +2,11 @@
 // 📊 [OMD-STYLE-QUICK-0001] frontend/src/components/style/QuickStylePanel.tsx
 // 🎯 @KICK  : 서식 관리 초보자 및 일반 사용자를 위한 한 페이지 핵심 간편 스타일링 패널
 // 🛡️ @GUARD : Rule 1(단일 주석 관리), Rule 3(컴포넌트 분리 원칙), Rule 6(LDSG & 고대비 가독성 보장)
-// 🚨 @PATCH : **2026-11-14** — [문서 분위기 & 테마 컬러 중복 색상 통폐합 및 8대 차별화 컬러·5대 장식 형식(Format) 확장]:
-//             1) 기존 무채색/다크그레이로 색상이 중복되던 '대한민국 관보'·'모던 미니멀'·구 '테크 & 리서치' 및 하단 중복 퀵 조합을 통폐합하고, 색상이 100% 차별화된 8대 테마(코발트 신뢰, 관보·먹색, 인텔리전스 틸, 키네틱 오렌지, 포레스트 에메랄드, 로열 버건디, 크리에이티브 바이올렛, 따뜻한 출판 에세이)로 개편
-//             2) 각 테마마다 고유한 조판 형식(H1/H2 하단 실선, 관보 이중선, 좌측 색깔바, H2하단선+H3좌측바, 형광펜 강조, 박스형 인용구, 표 헤더 틴트)을 연동하고, 현재 색상을 유지한 채 제목·강조 장식 형식만 즉시 전환할 수 있는 '5대 장식 형식 스위치' 신설
+// 🚨 @PATCH : **2026-11-14** — [문서 분위기 & 테마 컬러 최상단에 '온리비 기본(Google Developers 표준)' 신설]:
+//             1) Onrivi 기본서식(Google Developers DevSite 표준: #202124 다크차콜 본문·클린 헤딩, #1A73E8/#E8F0FE Google Blue 콜아웃, #F1F3F4/#DADCE0 표 헤더)과 1:1 매칭되는 '온리비 기본' 테마 카드를 MOOD_THEMES 최상단(1번)에 탑재
+// 🚨 @PATCH : **2026-11-14** — [문서 분위기 & 테마 컬러 중복 색상 통폐합 및 차별화 컬러·5대 장식 형식(Format) 확장]:
+//             1) 기존 무채색/다크그레이로 색상이 중복되던 '대한민국 관보'·'모던 미니멀'·구 '테크 & 리서치' 및 하단 중복 퀵 조합을 통폐합하고, 색상이 100% 차별화된 테마(온리비 기본, 코발트 신뢰, 관보·먹색, 인텔리전스 틸, 키네틱 오렌지, 포레스트 에메랄드, 로열 버건디, 크리에이티브 바이올렛, 따뜻한 출판 에세이)로 개편
+//             2) 각 테마마다 고유한 조판 형식(클린 헤딩, H1/H2 하단 실선, 관보 이중선, 좌측 색깔바, H2하단선+H3좌측바, 형광펜 강조, 박스형 인용구, 표 헤더 틴트)을 연동하고, 현재 색상을 유지한 채 제목·강조 장식 형식만 즉시 전환할 수 있는 '5대 장식 형식 스위치' 신설
 // 🚨 @PATCH : **2026-10-26** — [ESLint React Hook exhaustive-deps 의존성 경고 해소]:
 //             1) matchedTheme useMemo가 매 렌더링마다 새로 생성되는 rules 객체 대신 원시 색상 문자열(pColor, h1Color)을 직접 참조하도록 최적화
 //             2) hasCustomSetting 및 isLawActive useMemo가 매 렌더링마다 새로 생성되는 currentOutline 배열 대신 안정적인 headingNumbering을 참조하도록 정리
@@ -81,6 +83,29 @@ interface MoodTheme {
 }
 
 const MOOD_THEMES: MoodTheme[] = [
+  {
+    id: 'onrivi-default',
+    name: '온리비 기본',
+    desc: 'Google Developers 표준: 다크차콜(#202124) & 블루 콜아웃(#E8F0FE)',
+    badge: '🌐 온리비 기본',
+    formatLabel: '클린 헤딩 + Google Blue 콜아웃 + #F1F3F4 표',
+    textColor: '#202124',
+    bgColor: '#FFFFFF',
+    h1Color: '#202124',
+    h1Border: '',
+    h1LeftBar: 'none',
+    h2Color: '#202124',
+    h2Border: '',
+    h2LeftBar: 'none',
+    h3Color: '#202124',
+    h3LeftBar: 'none',
+    quoteBorder: '#1A73E8',
+    quoteBg: '#E8F0FE',
+    thBg: '#F1F3F4',
+    thBorder: '#DADCE0',
+    strongColor: '#202124',
+    strongBg: 'transparent',
+  },
   {
     id: 'cobalt',
     name: '코발트 신뢰',

@@ -19,12 +19,13 @@
 {
   "id": "profile-1790253429429",
   "name": "Onrivi 기본서식",
-  "description": "온리비 어서(Onrivi Author)의 공식 기본 서식 테마입니다. 모던 코발트 블루(코발트 신뢰) 악센트와 세련된 정돈감, 최적화된 용지 규격을 제공합니다.",
+  "description": "온리비 어서(Onrivi Author)의 공식 기본 서식 테마입니다. Google Developer Documentation Style Guide(DevSite 표준) 기반의 깔끔한 타이포그래피(#202124), 40px 다단계 목록, 미니멀 가로선 표(#F1F3F4 헤더), Google Blue 콜아웃(#E8F0FE)을 제공합니다.",
   "pageStyle": {
-    "fontFamily": "'Times New Roman', 'Georgia', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', Arial, sans-serif",
+    "fontFamily": "'Roboto', 'Google Sans', 'Noto Sans KR', 'Noto Sans', -apple-system, BlinkMacSystemFont, sans-serif",
+    "fontUrl": "https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Roboto+Mono:wght@400;500&family=Roboto:ital,wght@0,300;0,400;0,500;0,700;1,400&display=swap",
     "fontSize": "16px",
-    "lineHeight": "1.75",
-    "letterSpacing": "-0.01em",
+    "lineHeight": "1.5",
+    "letterSpacing": "0em",
     "backgroundColor": "#FFFFFF",
     "paperSize": "a4",
     "marginTop": "18mm",
@@ -38,91 +39,103 @@
   },
   "rules": {
     "h1": {
-      "font-size": "32px",
-      "font-weight": "700",
-      "color": "#1D4ED8",
+      "font-size": "34px",
+      "font-weight": "400",
+      "color": "#202124",
       "padding-left": "0px",
-      "padding-bottom": "8px",
-      "margin-top": "32px",
-      "margin-bottom": "18px",
-      "border-bottom": "2px solid #1D4ED8",
+      "padding-bottom": "0px",
+      "margin-top": "40px",
+      "margin-bottom": "20px",
+      "border-bottom": "",
+      "border-left": "none",
       "text-align": "left",
-      "line-height": "1.25",
-      "letter-spacing": "-0.025em"
+      "line-height": "1.18",
+      "letter-spacing": "-0.01em"
     },
     "h2": {
       "font-size": "24px",
-      "font-weight": "700",
-      "color": "#1E40AF",
-      "border-bottom": "1px solid #BFDBFE",
-      "padding-bottom": "8px",
-      "margin-top": "28px",
-      "margin-bottom": "14px",
+      "font-weight": "400",
+      "color": "#202124",
+      "padding-left": "0px",
+      "border-bottom": "",
+      "border-left": "none",
+      "padding-bottom": "0px",
+      "margin-top": "40px",
+      "margin-bottom": "20px",
       "text-align": "left",
-      "line-height": "1.35",
-      "letter-spacing": "-0.02em"
+      "line-height": "1.33",
+      "letter-spacing": "0em"
     },
     "h3": {
       "font-size": "20px",
-      "font-weight": "650",
-      "color": "#1E3A8A",
-      "margin-top": "24px",
-      "margin-bottom": "12px",
+      "font-weight": "400",
+      "color": "#202124",
+      "padding-left": "0px",
+      "margin-top": "32px",
+      "margin-bottom": "16px",
+      "border-bottom": "",
+      "border-left": "none",
       "text-align": "left",
-      "line-height": "1.4"
+      "line-height": "1.6"
     },
     "h4": {
-      "font-size": "18px",
-      "font-weight": "650",
-      "color": "#0F172A",
-      "margin-top": "20px",
-      "margin-bottom": "10px",
+      "font-size": "16px",
+      "font-weight": "500",
+      "color": "#202124",
+      "margin-top": "24px",
+      "margin-bottom": "12px",
+      "border-bottom": "",
+      "border-left": "none",
       "text-align": "left",
       "line-height": "1.5"
     },
     "h5": {
-      "font-size": "16px",
-      "font-weight": "650",
-      "color": "#0F172A",
-      "margin-top": "18px",
+      "font-size": "15px",
+      "font-weight": "500",
+      "color": "#202124",
+      "margin-top": "20px",
       "margin-bottom": "8px",
+      "border-bottom": "",
+      "border-left": "none",
       "text-align": "left",
-      "line-height": "1.55"
+      "line-height": "1.5"
     },
     "h6": {
-      "font-size": "15px",
-      "font-weight": "650",
-      "color": "#475569",
+      "font-size": "14px",
+      "font-weight": "500",
+      "color": "#5f6368",
       "margin-top": "16px",
       "margin-bottom": "8px",
+      "border-bottom": "",
+      "border-left": "none",
       "text-align": "left",
-      "line-height": "1.55"
+      "line-height": "1.5"
     },
     "p": {
       "margin-top": "0px",
       "margin-bottom": "16px",
-      "line-height": "1.75",
-      "color": "#0F172A",
+      "line-height": "1.5",
+      "color": "#202124",
       "text-align": "left",
       "text-indent": "0px",
-      "letter-spacing": "-0.01em",
+      "letter-spacing": "0em",
       "sentence-gap": "4px"
     },
-    "strong": { "font-weight": "700", "color": "#1E3A8A" },
-    "em": { "font-style": "italic", "color": "#0F172A" },
+    "strong": { "font-weight": "700", "color": "#202124" },
+    "em": { "font-style": "italic", "color": "#202124" },
     "u": {
       "text-decoration": "underline",
-      "text-decoration-color": "#1D4ED8",
+      "text-decoration-color": "#1a73e8",
       "text-decoration-style": "solid",
       "text-underline-offset": "3px"
     },
-    "del": { "text-decoration": "line-through", "color": "#64748B" },
-    "ul": { "padding-left": "28px", "list-style-type": "disc", "color": "#0F172A" },
-    "ol": { "padding-left": "28px", "list-style-type": "decimal", "color": "#0F172A" },
-    "li": { "margin-bottom": "5px", "padding-inline-start": "3px", "line-height": "1.7" },
-    "taskList": { "boxSize": "16px", "checkedEffect": "none", "textGap": "9px", "color": "#0F172A" },
+    "del": { "text-decoration": "line-through", "color": "#5f6368" },
+    "ul": { "padding-left": "40px", "list-style-type": "disc", "color": "#202124" },
+    "ol": { "padding-left": "40px", "list-style-type": "decimal", "color": "#202124" },
+    "li": { "margin-bottom": "8px", "padding-inline-start": "4px", "line-height": "1.5", "color": "#202124" },
+    "taskList": { "boxSize": "16px", "checkedEffect": "none", "textGap": "9px", "color": "#202124" },
     "hr": {
-      "border-top-color": "#CBD5E1",
+      "border-top-color": "#dadce0",
       "border-top-width": "1px",
       "border-top-style": "solid",
       "margin-top": "28px",
@@ -133,58 +146,63 @@
       "width": "100%",
       "border-collapse": "collapse",
       "border-style": "solid",
-      "border-width": "1px",
-      "border-color": "#93C5FD",
-      "margin-top": "22px",
-      "margin-bottom": "22px",
-      "font-size": "15px",
+      "border-width": "0px",
+      "border-color": "#dadce0",
+      "margin-top": "16px",
+      "margin-bottom": "16px",
+      "font-size": "14px",
       "border-radius": "8px",
       "overflow": "hidden"
     },
     "th": {
-      "background-color": "#EFF6FF",
-      "padding": "5px 8px",
+      "background-color": "#f1f3f4",
+      "padding": "12px 16px",
       "border-style": "solid",
       "border-width": "1px",
-      "border-color": "#BFDBFE",
-      "font-weight": "650",
+      "border-color": "#dadce0",
+      "font-weight": "500",
+      "font-size": "14px",
       "text-align": "left",
-      "color": "#1E3A8A"
+      "color": "#202124"
     },
     "td": {
-      "padding": "5px 8px",
+      "background-color": "#ffffff",
+      "padding": "12px 16px",
       "border-style": "solid",
       "border-width": "1px",
-      "border-color": "#CBD5E1",
-      "color": "#0F172A"
+      "border-color": "#e8eaed",
+      "font-size": "14px",
+      "text-align": "left",
+      "color": "#202124"
     },
     "blockquote": {
-      "padding": "12px 18px",
-      "color": "#1E3A8A",
-      "background-color": "#EFF6FF",
-      "border-radius": "6px",
-      "margin-top": "20px",
-      "margin-bottom": "20px",
+      "padding": "15px 24px",
+      "color": "#202124",
+      "background-color": "#e8f0fe",
+      "border-radius": "4px",
+      "margin-top": "16px",
+      "margin-bottom": "16px",
       "font-weight": "normal",
-      "border-left": "4px solid #2563EB",
+      "border-left": "4px solid #1a73e8",
       "font-size": "16px"
     },
     "codeBlock": {
-      "background-color": "#f7f7f8",
-      "color": "#242424",
-      "padding": "16px",
+      "background-color": "#f1f3f4",
+      "color": "#37474f",
+      "padding": "16px 24px",
       "border-radius": "8px",
-      "font-size": "13.5px",
-      "border": "1px solid #e5e5e5"
+      "font-size": "14px",
+      "line-height": "1.45",
+      "border": "1px solid #dadce0"
     },
     "codeBlockTitle": {
-      "background-color": "#ececec",
-      "color": "#5f5f5f",
+      "background-color": "#e8eaed",
+      "color": "#37474f",
       "padding": "8px 12px",
       "border-radius": "8px 8px 0 0",
-      "border": "1px solid #e5e5e5"
+      "border": "1px solid #dadce0"
     },
-    "a": { "color": "#2563eb", "text-decoration": "underline", "font-weight": "bold" },
+    "a": { "color": "#1a73e8", "text-decoration": "underline", "font-weight": "normal" },
     "img": {
       "width": "100%",
       "border-radius": "8px",
@@ -197,12 +215,12 @@
       "box-shadow": "none"
     },
     "code": {
-      "background-color": "#f7f7f8",
-      "color": "#242424",
-      "padding": "2px 6px",
-      "border-radius": "5px",
+      "background-color": "#f1f3f4",
+      "color": "#37474f",
+      "padding": "2px 4px",
+      "border-radius": "4px",
       "font-weight": "normal",
-      "border": "1px solid #e5e5e5"
+      "border": "none"
     },
     "video": {
       "width": "100%",
@@ -216,7 +234,7 @@
       "display": "block"
     },
     "math": {
-      "color": "#2f2f2f",
+      "color": "#202124",
       "font-size": "16px",
       "text-align": "center",
       "margin-top": "20px",
@@ -234,7 +252,7 @@
     },
     "footnote": {
       "font-size": "13px",
-      "color": "#6b6b6b",
+      "color": "#5f6368",
       "line-height": "1.5",
       "margin-top": "12px",
       "margin-bottom": "12px",
@@ -251,10 +269,10 @@
     "boxSize": "16px",
     "checkedEffect": "none",
     "textGap": "9px",
-    "color": "#2f2f2f"
+    "color": "#202124"
   },
   "tableStructure": {
-    "outerBorderWidth": "1px",
+    "outerBorderWidth": "0px",
     "rowBorderWidth": "1px",
     "colBorderWidth": "0px"
   },
@@ -269,7 +287,7 @@
     "customTemplate": "**{kind} {n}. {title}**"
   },
   "headingNumbering": [],
-  "customCss": ""
+  "customCss": ".custom-preview-container h1, .custom-preview-container h2, .custom-preview-container h3 { font-family: 'Google Sans', 'Roboto', 'Noto Sans KR', sans-serif !important; }\n.custom-preview-container code, .custom-preview-container pre { font-family: 'Roboto Mono', 'JetBrains Mono', monospace !important; }\n.custom-preview-container ul ol, .custom-preview-container ol ol { list-style-type: lower-alpha !important; }"
 }
 ```
 
