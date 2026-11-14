@@ -6,6 +6,8 @@
  * 전역 타이포그래피와 각 HTML 태그별 CSS 룰셋(CssRuleSet)을 편집합니다.
  *
  * 🚨 @PATCH
+ *   2026-11-14 — [외부 서식 가져오기 시 normalizeCssProfile 정규화 및 다중 백업 배열 호환 보강]:
+ *     1) importProfileString에서 단일 서식 객체뿐만 아니라 다중 백업 배열([ ... ] / { profiles: [ ... ] })도 자동 인식하고 normalizeCssProfile을 거치도록 개선하여 서식 관리 센터와 100% 동일한 가져오기 무결성 보장
  *   2026-10-26 — [15대 서식 쇼케이스 선택 시 해당 설정 패널 즉시 전환 연동]:
  *     1) targetSection 우선 적용으로 소스코드블록(codeblock), 인라인코드(inlinecode), 하이퍼링크(link), 각주(footnote), 동영상(video), 지도(map) 등 15대 서식 선택 시 좌측 패널이 정확히 전환되도록 보완
  *     2) 문장 텍스트(<p>) 클릭 시 targetSection이 paragraph로 오인되어 엉뚱한 본문 패널로 튕기던 태그 하이재킹 버그 완벽 차단
@@ -550,23 +552,58 @@ export default function CssStyleForm({
     e.target.value = '';
   };
 
-  // 서식 문자열 파싱 및 등록
+  // 서식 문자열 파싱 및 등록 (단일 서식 JSON 및 다중 백업 배열 모두 지원 + normalizeCssProfile 정규화)
   const importProfileString = (jsonStr: string) => {
     try {
-      const parsed = sanitizeAndParseCssProfileJson(jsonStr);
-      if (!parsed || typeof parsed !== 'object') {
+      let cleaned = jsonStr.trim();
+      const fenceMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/i);
+      if (fenceMatch?.[1]) cleaned = fenceMatch[1].trim();
+
+      let rawItems: any[] = [];
+      try {
+        const directParsed = JSON.parse(cleaned);
+        if (Array.isArray(directParsed)) {
+          rawItems = directParsed;
+        } else if (directParsed && Array.isArray(directParsed.profiles)) {
+          rawItems = directParsed.profiles;
+        } else if (directParsed && typeof directParsed === 'object') {
+          rawItems = [directParsed];
+        }
+      } catch {
+        const single = sanitizeAndParseCssProfileJson(jsonStr);
+        if (single && typeof single === 'object') {
+          rawItems = [single];
+        }
+      }
+
+      const validProfiles = rawItems
+        .filter((item) => item && typeof item === 'object' && (item.pageStyle || item.rules || item.name))
+        .map((item, idx) =>
+          normalizeCssProfile({
+            ...item,
+            id: `custom-${Date.now()}-${idx}`,
+            name: item.name
+              ? `${String(item.name).replace(/\s*\(가져옴\)$/, '')} (가져옴)`
+              : `가져온 서식 ${new Date().toLocaleDateString()}`,
+          })
+        );
+
+      if (validProfiles.length === 0) {
         throw new Error('유효한 서식 JSON 형식이 아닙니다.');
       }
-      const imported: CssProfile = {
-        ...parsed,
-        id: `custom-${Date.now()}`,
-        name: parsed.name ? `${parsed.name} (가져옴)` : `가져온 서식 ${new Date().toLocaleDateString()}`,
-      };
-      onImportProfile?.(imported);
-      onSelectProfile(imported.id, imported);
+
+      for (const imported of validProfiles) {
+        onImportProfile?.(imported);
+      }
+      const lastImported = validProfiles[validProfiles.length - 1];
+      onSelectProfile(lastImported.id, lastImported);
       setShowImportModal(false);
       setImportJsonText('');
-      showToast('서식을 성공적으로 가져왔습니다!');
+      showToast(
+        validProfiles.length === 1
+          ? `'${lastImported.name}' 서식을 성공적으로 가져왔습니다!`
+          : `총 ${validProfiles.length}개의 서식을 일괄 가져왔습니다!`
+      );
     } catch (err: any) {
       alert(`서식 가져오기 실패: ${err.message || '파일 내용을 확인해 주세요.'}`);
     }

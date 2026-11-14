@@ -1,6 +1,10 @@
 /**
  * 프로그램명 : OnriviAuthor
  * 파일명 : StyleManagerModal.tsx
+ * 🚨 @PATCH : **2026-11-14** — [서식 관리 센터 가이드·내보내기/가져오기·AI 생성기 15대 카테고리 최신 규격 전면 동기화]:
+ *             1) resolveBulletSymbol에 13종 전체 불릿 기호(white-square, white-diamond, dash, star, dot 등) 매핑 완비
+ *             2) 내장 AI 서식 생성기(handleAiGenerate) 프롬프트를 15대 서식 카테고리 전체 스키마(제목 좌측 색깔바 border-left, headingSizeOffset 3pt 기본값, 문장 간격 sentence-gap, SNS 카드뉴스 sns_square/sns_portrait 용지 규격 등) 기준으로 최신화하고 CSS_PROFILE_GUIDE_MD 단일 진실 공급원과 직결
+ *             3) 서식 생성 가이드 탭의 핵심 구조체 요약에 제목 좌측 색깔바(border-left)·단계별 감소폭(3pt) 및 13종 불릿 기호·6대 국가/기업/출판 표준 프리셋 명세를 현행화
  * 🚨 @PATCH : **2026-10-27** — [SNS 카드뉴스 서식 생성·배지 지원 및 서식 관리 센터 사이드바 액션 일원화·본문 2단 카드 분리]:
  *             1) 좌측 사이드바 '+ 추가' 메뉴에 [📱 SNS 카드뉴스 (인스타·링크드인 1:1)] 생성 옵션을 추가하여 4종(일반문서 / 그림책 전체표지 / 그림책 오른쪽표지 / SNS 카드뉴스) 선택 생성 지원
  *             2) 좌측 사이드바 서식 목록 아이템에 'JSON 복사' 퀵 액션 추가(복제, 파일 내보내기, JSON 복사, 삭제 일원화) 및 본문 상단 중복 버튼 제거
@@ -160,18 +164,23 @@ function parseImportedProfilesPayload(rawText: string): any[] {
   return [];
 }
 
-/** 불릿 설정값을 실제 미니 프리뷰 기호 문자로 변환 */
+/** 불릿 설정값을 실제 미니 프리뷰 기호 문자로 변환 (13종 전체 기호 지원) */
 function resolveBulletSymbol(levelType?: string, customChar?: string, fallback = '•'): string {
   if (!levelType) return fallback;
   if (levelType === 'custom') return customChar?.trim() || fallback;
   switch (levelType) {
     case 'disc': return '•';
     case 'circle': return '○';
-    case 'square': return '▪';
-    case 'hyphen': return '-';
-    case 'check': return '✓';
+    case 'square': return '■';
+    case 'white-square': return '▫';
     case 'diamond': return '◆';
-    case 'arrow': return '▸';
+    case 'white-diamond': return '◇';
+    case 'dash': return '-';
+    case 'hyphen': return '–';
+    case 'arrow': return '▶';
+    case 'check': return '✓';
+    case 'star': return '★';
+    case 'dot': return '·';
     case 'none': return '';
     default: return fallback;
   }
@@ -657,20 +666,14 @@ export default function StyleManagerModal({
     setAiError(null);
 
     try {
-      let guideContent = '';
-      try {
-        const res = await fetch('/CSS_PROFILE_GUIDE.md');
-        if (res.ok) guideContent = await res.text();
-      } catch {}
-
       const promptText = `당신은 최고급 출판/웹 조판 전문 CSS 디자이너입니다. 사용자가 요청한 스타일에 부합하는 완성도 높은 Onrivi Author 최신 서식 프로필(JSON)을 설계해 주세요.
 
 [사용자 요청 스타일]:
 "${aiPromptInput}"
 
 [필수 요구사항]:
-1. 7대 서식 쇼케이스(본문, 제목 h1~h6, 목록 및 체크박스, 표, 인용구, 코드블록, 미디어/수식/각주)를 빠짐없이 조화롭게 구성하세요.
-2. 용지 규격 및 표준 여백(pageStyle)을 반드시 A4 규격(세로, 그림책 요청 시 가로 landscape)과 상하 18mm, 좌우 12mm로 지정하세요:
+1. 15대 서식 카테고리(본문·여백, 제목 h1~h6, 표 table/th/td, 인용구 blockquote, 코드블록 codeBlock/codeBlockTitle, 인라인코드 code, 하이퍼링크 a, 각주 footnote, 목록·체크 ul/ol/li/taskList, 구분선 hr, 이미지 img, 비디오 video, 지도 map, 수식 math, 고급 CSS 및 캡션·번호 구조체)를 빠짐없이 조화롭게 구성하세요.
+2. 용지 규격 및 표준 여백(pageStyle)은 기본적으로 A4 규격("a4", 세로 "portrait", 상하 "18mm", 좌우 "12mm")으로 지정하되, 사용자가 SNS 카드뉴스를 요청한 경우 "paperSize": "sns_square"(1:1 정사각) 또는 "sns_portrait"(4:5 세로형), 소형책/국판은 "b5", 그림책 요청 시 "orientation": "landscape" 및 "layout": { "schemaVersion": 1, "type": "picturebook", "cover": "full-image" | "image-right", "imageRatio": 0.55, "imageFit": "cover", "gap": "24px", "pageNumbers": true }를 설정하세요:
    "pageStyle": {
      "paperSize": "a4",
      "orientation": "portrait",
@@ -687,19 +690,20 @@ export default function StyleManagerModal({
      "tabSize": "2",
      "exportPageBreakLevel": "none"
    }
-3. 표(tableStructure) 구조체를 반드시 포함하여 외곽 테두리 및 행/열 두께를 명확히 지정하세요:
+3. 제목(h1~h6)에 좌측 색깔바(border-left: "3px solid #색상" | "4px solid #색상" | "6px solid #색상")를 적용할 경우 반드시 "padding-left": "12px"를 함께 지정하고, 좌측 색깔바가 없을 때는 "padding-left": "0px"으로 지정하세요. 단계별 크기 감소폭(pageStyle.headingSizeOffset)은 미지정 시 기본 "3pt"로 설정하세요.
+4. 표(tableStructure) 구조체를 반드시 포함하여 외곽 테두리 및 행/열 두께를 명확히 지정하세요:
    "tableStructure": {
      "outerBorderWidth": "1px",  // 표 외곽 테두리 두께 (예: "1px", "2px", "0px")
      "rowBorderWidth": "1px",    // 표 행(가로선) 구분선 두께 (예: "1px", "2px", "0px")
      "colBorderWidth": "0px"     // 표 열(세로선) 구분선 두께 (모든 테두리 격자형은 "1px", 가로선 강조형/논문형은 "0px")
    }
    표 셀(th, td)에 'border-left: none' 또는 'border-right: none' 같은 레거시 방향별 테두리를 절대 개별 선언하지 마세요.
-4. 구분선(hrStructure - 28px/1px/solid/100%), 체크박스(checkboxStructure - boxSize: "16px", checkedEffect: "none", textGap: "9px", color: 본문색과 동일), 글머리 기호 1~3단계 계층(bulletStructure - level1/level2/level3, 필요시 custom1~3), 미디어·표 캡션 구조체(mediaCaptionStructure - position: "top"|"bottom", format: "standard"|"bracket"|"angle"|"plain"|"custom", 필요시 kindOverrides), 제목 번호 체계(headingNumbering - 요청 시 decimal-outline, 장절 체계, 개조식 기호 등 설정)를 포함하세요.
-5. 미디어 객체(rules.img, rules.video, rules.map)는 너비를 100%("width": "100%")로 설정하고, video는 "height": "315px", map은 "height": "400px"으로 지정하세요.
-6. 설명이나 마크다운 코드블록(\`\`\`) 없이 오직 유효한 단일 JSON 객체({ ... })만 출력하세요.
+5. 구분선(hrStructure - 28px/1px/solid/100%), 체크박스(checkboxStructure - boxSize: "16px", checkedEffect: "none", textGap: "9px", color: 본문색과 동일), 글머리 기호 1~3단계 계층(bulletStructure - level1/level2/level3: disc, circle, square, white-square, diamond, white-diamond, dash, hyphen, arrow, check, star, dot, custom, none 및 필요시 custom1~3), 미디어·표 캡션 구조체(mediaCaptionStructure - position: "top"|"bottom", format: "standard"|"bracket"|"angle"|"plain"|"title-only"|"custom", 필요시 kindOverrides), 제목 번호 체계(headingNumbering - 요청 시 decimal-outline, 장절 체계, 개조식 기호 등 설정)를 포함하세요.
+6. 미디어 객체(rules.img, rules.video, rules.map)는 너비를 100%("width": "100%")로 설정하고, video는 "height": "315px", map은 "height": "400px"으로 지정하세요.
+7. 설명이나 마크다운 코드블록(\`\`\`) 없이 오직 유효한 단일 JSON 객체({ ... })만 출력하세요.
 
 --- 공식 가이드라인 참조 ---
-${guideContent || CSS_PROFILE_GUIDE_MD}
+${CSS_PROFILE_GUIDE_MD}
 ---------------------------`;
 
       const cleanKey = ensureDecryptedApiKey(effectiveApiKey);
@@ -956,7 +960,7 @@ ${guideContent || CSS_PROFILE_GUIDE_MD}
                       ? 'bg-[#1d4ed8] text-white'
                       : 'text-[#1d4ed8] dark:text-blue-400 hover:bg-[#1d4ed8]/10'
                   }`}
-                  title="새 서식 추가 (일반문서 / 그림책 전체표지 / 그림책 오른쪽표지 선택)"
+                  title="새 서식 추가 (일반문서 / 그림책 전체표지 / 그림책 오른쪽표지 / SNS 카드뉴스 선택)"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>추가</span>
@@ -965,7 +969,7 @@ ${guideContent || CSS_PROFILE_GUIDE_MD}
               </div>
             </div>
 
-            {/* 사이드바 추가(+) 클릭 시 열리는 3종 문서 타입 선택 패널 */}
+            {/* 사이드바 추가(+) 클릭 시 열리는 4종 문서 타입 선택 패널 */}
             {showAddMenu && (
               <div className={`p-2 rounded-xl border ${hairline} ${dk ? 'bg-slate-900/95' : 'bg-white'} shadow-sm space-y-1 animate-in fade-in duration-150`}>
                 <p className="text-[10.5px] font-extrabold text-zinc-700 dark:text-zinc-300 px-1.5 py-0.5">
@@ -2209,7 +2213,7 @@ ${guideContent || CSS_PROFILE_GUIDE_MD}
 
                 <div className={`p-5 rounded-2xl border ${hairline} ${cardSurface} space-y-2.5`}>
                   <p className="text-[11.5px] text-zinc-700 dark:text-zinc-300 font-medium">
-                    아래 코드는 <b>‘{selectedProfile.name}’</b> 서식의 최신 정규화(7대 쇼케이스 태그 및 <code>tableStructure</code>, <code>bulletStructure</code>, <code>mediaCaptionStructure</code>, <code>headingNumbering</code> 포함) JSON 원본입니다.
+                    아래 코드는 <b>‘{selectedProfile.name}’</b> 서식의 최신 정규화(15대 서식 카테고리 및 <code>tableStructure</code>, <code>bulletStructure</code>, <code>checkboxStructure</code>, <code>hrStructure</code>, <code>mediaCaptionStructure</code>, <code>headingNumbering</code> 포함) JSON 원본입니다.
                   </p>
                   <pre className={`w-full max-h-[420px] overflow-auto p-4 rounded-xl border ${hairline} ${
                     dk ? 'bg-slate-950 text-zinc-200' : 'bg-slate-50 text-slate-800'
@@ -2271,7 +2275,7 @@ ${guideContent || CSS_PROFILE_GUIDE_MD}
                       {
                         step: 'STEP 1',
                         title: '마스터 프롬프트 복사',
-                        desc: '위 [만능 마스터 프롬프트 복사하기] 또는 아래 5대 표준 프리셋 중 하나를 복사합니다.',
+                        desc: '위 [만능 마스터 프롬프트 복사하기] 또는 아래 6대 표준 프리셋 중 하나를 복사합니다.',
                       },
                       {
                         step: 'STEP 2',
@@ -2307,31 +2311,30 @@ ${guideContent || CSS_PROFILE_GUIDE_MD}
                   </pre>
                 </section>
 
-                {/* 2. 최신 핵심 구조체 5종 요약 레퍼런스 */}
+                {/* 2. 최신 핵심 구조체 요약 레퍼런스 */}
                 <section className={`p-6 rounded-2xl border ${hairline} ${cardSurface} space-y-4`}>
                   <h3 className={`text-[14.5px] font-extrabold ${textTitle}`}>
-                    📐 최신 온리비 서식 핵심 구조체 5종 요약 가이드
+                    📐 최신 온리비 서식 핵심 구조체 요약 가이드
                   </h3>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 text-[11.5px]">
                     <div className={`p-3.5 rounded-xl border ${hairline} ${dk ? 'bg-slate-900/50' : 'bg-slate-50/80'} space-y-1`}>
                       <div className="font-extrabold text-[#1d4ed8] dark:text-blue-400">
-                        1. 제목 자동 번호 체계 (headingNumbering)
+                        1. 제목 장식·감소폭 & 자동 번호 체계 (h1~h6 / headingNumbering)
                       </div>
                       <p className={`${textBody} font-medium leading-relaxed`}>
-                        • <b>십진 분류(KS 표준)</b>: <code>[&quot;decimal-outline&quot;, &quot;decimal-outline&quot;, ...]</code> (1. ➔ 1.1 ➔ 1.1.1)<br />
-                        • <b>학술 장절 체계(KDI)</b>: H1 <code>제1장</code>, H2 <code>제1절</code>, H3 <code>1.</code>, H4 <code>가.</code><br />
-                        • <b>대기업 개조식</b>: 커스텀 불릿 기호 <code>□ ➔ ○ ➔ - ➔ ㆍ</code>
+                        • <b>단계별 크기 감소폭</b>: <code>headingSizeOffset</code> 기본값 <code>&quot;3pt&quot;</code> (0~6pt 조절) / <b>좌측 색깔바</b>: <code>border-left: &quot;3px | 4px | 6px solid #색상&quot;</code> + <code>padding-left: &quot;12px&quot;</code><br />
+                        • <b>자동 번호 체계</b>: 십진 분류(<code>decimal-outline</code>: 1. ➔ 1.1 ➔ 1.1.1), 학술 장절(<code>제1장 ➔ 제1절</code>), 대기업 개조식(<code>□ ➔ ○ ➔ - ➔ ㆍ</code>)
                       </p>
                     </div>
 
                     <div className={`p-3.5 rounded-xl border ${hairline} ${dk ? 'bg-slate-900/50' : 'bg-slate-50/80'} space-y-1`}>
                       <div className="font-extrabold text-[#0d9488] dark:text-teal-400">
-                        2. 글머리 기호 1~3단계 계층 (bulletStructure)
+                        2. 글머리 기호 1~3단계 계층 & 숫자 목록 (bulletStructure / ol)
                       </div>
                       <p className={`${textBody} font-medium leading-relaxed`}>
-                        • <code>level1</code>, <code>level2</code>, <code>level3</code>에 <code>disc</code>(•), <code>circle</code>(○), <code>square</code>(▪), <code>hyphen</code>(-), <code>check</code>(✓), <code>diamond</code>(◆), <code>arrow</code>(▸) 지정<br />
-                        • 직접 입력 기호는 <code>level1: &quot;custom&quot;</code> 및 <code>custom1: &quot;□&quot;</code> 형태로 설정
+                        • <b>13종 불릿 기호</b>: <code>disc</code>(•), <code>circle</code>(○), <code>square</code>(■), <code>white-square</code>(▫), <code>diamond</code>(◆), <code>white-diamond</code>(◇), <code>dash</code>(-), <code>hyphen</code>(–), <code>arrow</code>(▶), <code>check</code>(✓), <code>star</code>(★), <code>dot</code>(·), <code>custom</code>(직접 입력)<br />
+                        • <b>숫자 목록 체계</b>: <code>decimal</code>, <code>onrivi-circled-decimal</code>(①②③), <code>onrivi-report</code>(Ⅰ.→1.→가.→1)→가))
                       </p>
                     </div>
 
@@ -2347,20 +2350,20 @@ ${guideContent || CSS_PROFILE_GUIDE_MD}
 
                     <div className={`p-3.5 rounded-xl border ${hairline} ${dk ? 'bg-slate-900/50' : 'bg-slate-50/80'} space-y-1`}>
                       <div className="font-extrabold text-indigo-600 dark:text-indigo-400">
-                        4. 표 외곽·행·열 테두리 & 그림책 레이아웃 (tableStructure / layout)
+                        4. 표 외곽·행·열 테두리 & 문서 타입 규격 (tableStructure / paperSize / layout)
                       </div>
                       <p className={`${textBody} font-medium leading-relaxed`}>
                         • <b>격자형 표</b>: <code>outer: 1px, row: 1px, col: 1px</code> / <b>논문·가로선형 표</b>: <code>outer: 2px, row: 1px, col: 0px</code><br />
-                        • <b>그림책(layout)</b>: <code>type: &quot;picturebook&quot;</code>, <code>cover: &quot;full-image&quot; | &quot;image-right&quot;</code>
+                        • <b>문서 타입</b>: 일반문서(<code>a4</code>/<code>b5</code>/<code>letter</code>), SNS 카드뉴스(<code>sns_square</code> 1:1 / <code>sns_portrait</code> 4:5), 그림책(<code>layout.type: &quot;picturebook&quot;</code>)
                       </p>
                     </div>
                   </div>
                 </section>
 
-                {/* 3. 5대 표준 서식별 맞춤 프롬프트 원클릭 복사 리스트 */}
+                {/* 3. 6대 표준 서식별 맞춤 프롬프트 원클릭 복사 리스트 */}
                 <section className={`p-6 rounded-2xl border ${hairline} ${cardSurface} space-y-3`}>
                   <h3 className={`text-[14.5px] font-extrabold ${textTitle}`}>
-                    🏆 5대 국가·기업 표준 서식 프롬프트 템플릿 (클릭 시 복사 또는 AI 생성기로 이동)
+                    🏆 6대 국가·기업·출판 표준 서식 프롬프트 템플릿 (클릭 시 복사 또는 AI 생성기로 이동)
                   </h3>
                   <div className="space-y-2.5">
                     {AI_STANDARD_PRESETS.map(preset => (
