@@ -2,11 +2,12 @@
 // 📊 [OMD-HOOK-useEditorProfiles] frontend/src/hooks/editor/useEditorProfiles.ts
 // 🎯 @KICK  : 서식 프로필(userCssProfiles.json) 로드/저장/디바운스, Frontmatter 동기화, 제목 번호 넘버링 및 가로형 그림책 프로필 관리 훅
 // 🛡️ @GUARD : 시스템 프로필 보호, 리소스 폴더/웹드라이브 분기 처리, 저장 실패 시 캐시 무효화 및 롤백, IME 조합 중 넘버링 지연 방어
+// 🚨 @PATCH : 2026-11-14 — [3단계 서식 우선순위(파일 지정 ➔ 폴더 지정 ➔ Onrivi 기본서식) 반영]: 문서의 Frontmatter에 css_profile이 없을 때 소속 폴더의 기본 서식을 탐색하고, 폴더에도 지정된 서식이 없으면 항상 Onrivi 기본서식(system-1)을 적용하도록 resolveEffectiveDocumentProfile 및 Frontmatter 동기화 강화
 // 🚨 @PATCH : 2026-11-04 — [웹드라이브 해제/로컬 전환 시 만료 경고 토스트 오발송 차단]: handleDriveTokenExpired에 getResourceEnvironment() === 'cloud' 가드를 추가하여 로컬 모드 전환 시 불필요한 경고 알림 방지
 // 🚨 @PATCH : 2026-11-05 — [첫 로드 원고 자동 변경 방지]: 제목 번호 동기화는 사용자가 실제로 수정한 탭에서만 실행해 도움말을 여는 즉시 저장 대상으로 만드는 일을 차단.
 //             2026-11-04 — [표준화 및 에러 처리 강화] logError 5대 진단 필드 선제 기록 적용 및 내부 함수 JSDoc/식별 배너 표준화
 //             2026-11-04 — [MainEditorApp 모듈화]: 서식 프로필 관리(profiles, activeProfileId, load, save, resolveEffectiveDocumentProfile, handleProfileChange, headingNumbering)를 useEditorProfiles로 분리 위임 (350줄 감축)
-// 🔗 @CALLS : fetchUserProfiles, persistUserProfiles, normalizeCssProfile, extractFrontmatter, updateCssProfileInFrontmatter, syncMarkdownHeadingNumbers, logError
+// 🔗 @CALLS : fetchUserProfiles, persistUserProfiles, normalizeCssProfile, extractFrontmatter, updateCssProfileInFrontmatter, syncMarkdownHeadingNumbers, resolveProfileByPriority, logError
 // ====================================================================
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -19,6 +20,7 @@ import { setProfileReadStatus } from '@/lib/profileReadStatus';
 import { getResourceSettings, saveResourceSettings, getResourceEnvironment } from '@/lib/resourceSettings';
 import { getSavedDriveToken } from '@/lib/gdrive/googleDriveClient';
 import { syncMarkdownHeadingNumbers } from '@/lib/headingNumbering';
+import { resolveProfileByPriority } from '@/lib/folderProfileStorage';
 import { logError } from '@/lib/errorDiagnostics';
 
 export interface UseEditorProfilesProps {
@@ -107,7 +109,23 @@ export function useEditorProfiles({
   );
   const [isProfilesLoaded, setIsProfilesLoaded] = useState(false);
   const [profileStorageRevision, setProfileStorageRevision] = useState(0);
+  const [folderProfilesRevision, setFolderProfilesRevision] = useState(0);
   const profileStorageRef = useRef<{ folder: string; handle: any; hash: string } | null>(null);
+
+  // 전역 서식 목록 스냅샷(폴더 생성 모달, 새 문서 모달, 파일 트리 배지용) 및 폴더 서식 변경 이벤트 동기화
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).__onriviProfiles = profiles;
+      window.dispatchEvent(new CustomEvent('onrivi:profiles_updated'));
+    }
+  }, [profiles]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleFolderProfilesUpdated = () => setFolderProfilesRevision(rev => rev + 1);
+    window.addEventListener('onrivi:folder_profiles_updated', handleFolderProfilesUpdated);
+    return () => window.removeEventListener('onrivi:folder_profiles_updated', handleFolderProfilesUpdated);
+  }, []);
 
   // 🌟 존재하지 않는 삭제된 테마(프로필) ID가 localStorage에 남아있을 경우 시스템 기본 프로필로 자동 복구
   useEffect(() => {
@@ -280,9 +298,12 @@ export function useEditorProfiles({
     }
   }, [activeProfileId, mounted]);
 
+  const activeTab = tabs.find(t => t.id === activeTabId);
+  const activeFileTarget = activeTab?.node || activeTab?.path || currentFileName || '';
+
   /**
    * ========================================================================================
-   * [함수명] resolveEffectiveDocumentProfile - 문서 Frontmatter 및 현재 편집 모드를 기반으로 유효 서식 프로필을 결정합니다.
+   * [함수명] resolveEffectiveDocumentProfile - 문서 Frontmatter, 소속 폴더 기본 서식 및 편집 모드를 기반으로 유효 서식 프로필을 결정합니다.
    *
    * @param {string} docText - 마크다운 문서 본문 텍스트
    * @returns {CssProfile} 문서에 최종 적용될 CSS 서식 프로필 객체
@@ -313,10 +334,17 @@ export function useEditorProfiles({
         return snapshot;
       }
     }
-    return documentBookProfile(docText, stateProfile, false);
-  }, [profiles, activeProfileId, previewMode, isStyleModalOpen]);
+    // 2순위: 소속 폴더에 지정된 기본 서식 ➔ 3순위: Onrivi 기본서식(system-1)
+    const fallbackProfile = resolveProfileByPriority({
+      fileProfileIdOrName: null,
+      fileTarget: activeFileTarget,
+      rootFolder,
+      profiles,
+    });
+    return documentBookProfile(docText, fallbackProfile, false);
+  }, [profiles, activeProfileId, previewMode, isStyleModalOpen, activeFileTarget, rootFolder, folderProfilesRevision]);
 
-  // Frontmatter css_profile 동기화
+  // Frontmatter css_profile 및 폴더 기본 서식 동기화 (1순위: 파일 지정 서식 ➔ 2순위: 폴더 지정 서식 ➔ 3순위: Onrivi 기본서식)
   useEffect(() => {
     if (isStyleModalOpen) return;
     const { data } = extractFrontmatter(content);
@@ -341,16 +369,28 @@ export function useEditorProfiles({
           setActiveProfileId(snapshot.id);
           return;
         }
-        if (activeProfileId !== SYSTEM_PROFILES[0].id) {
-          setActiveProfileId(SYSTEM_PROFILES[0].id);
+        const fallback = resolveProfileByPriority({
+          fileProfileIdOrName: null,
+          fileTarget: activeFileTarget,
+          rootFolder,
+          profiles,
+        });
+        if (activeProfileId !== fallback.id) {
+          setActiveProfileId(fallback.id);
         }
       }
     } else {
-      if (activeProfileId !== SYSTEM_PROFILES[0].id) {
-        setActiveProfileId(SYSTEM_PROFILES[0].id);
+      const fallback = resolveProfileByPriority({
+        fileProfileIdOrName: null,
+        fileTarget: activeFileTarget,
+        rootFolder,
+        profiles,
+      });
+      if (activeProfileId !== fallback.id) {
+        setActiveProfileId(fallback.id);
       }
     }
-  }, [content, activeProfileId, profiles, isStyleModalOpen]);
+  }, [content, activeProfileId, profiles, isStyleModalOpen, activeFileTarget, rootFolder, folderProfilesRevision]);
 
   /**
    * ========================================================================================

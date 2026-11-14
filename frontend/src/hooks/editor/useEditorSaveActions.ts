@@ -2,9 +2,10 @@
 // 📊 [OMD-HOOK-useEditorSaveActions] frontend/src/hooks/editor/useEditorSaveActions.ts
 // 🎯 @KICK  : 에디터 외부 저장(내 PC 로컬 저장, 개인 웹드라이브 저장, 문서 전송 복사, 새 문서 생성) 전담 훅
 // 🛡️ @GUARD : 사용자 작업장(rootFolder, workspaceType) 절대 변경 금지, 중복 전송/저장 잠금(transferBusyRef), 파일명 유효성 및 덮어쓰기 사전 확인
-// 🚨 @PATCH : 2026-11-04 — [표준화 및 에러 처리 강화] 2단계 함수 JSDoc 표준화 및 logError 5대 진단 필드 선제 기록 적용
+// 🚨 @PATCH : 2026-11-14 — [새 문서 생성 시 3단계 서식 우선순위 적용] 새 문서 생성 모달에서 선택한 파일 지정 서식 ➔ 대상 폴더 기본 서식 ➔ Onrivi 기본서식(system-1) 우선순위로 초기 Frontmatter(css_profile) 반영
+//             2026-11-04 — [표준화 및 에러 처리 강화] 2단계 함수 JSDoc 표준화 및 logError 5대 진단 필드 선제 기록 적용
 //             2026-11-04 — [MainEditorApp 모듈화] 파일 저장 및 새 문서 생성 로직을 useEditorSaveActions 훅으로 분리 위임
-// 🔗 @CALLS : prepareGoogleDriveAuth, transferDocument, logError, vfsCreateFile
+// 🔗 @CALLS : prepareGoogleDriveAuth, transferDocument, logError, vfsCreateFile, resolveProfileByPriority, updateCssProfileInFrontmatter
 // ====================================================================
 
 import { useState, useRef, useEffect, useCallback, RefObject } from 'react';
@@ -12,6 +13,9 @@ import { FileNode } from '@/lib/indexedDbHelper';
 import { prepareGoogleDriveAuth } from '@/lib/gdrive/googleDriveClient';
 import { transferDocument } from '@/lib/documentTransfer';
 import { logError } from '@/lib/errorDiagnostics';
+import { resolveProfileByPriority } from '@/lib/folderProfileStorage';
+import { updateCssProfileInFrontmatter } from '@/lib/frontmatter';
+import { SYSTEM_PROFILES } from '@/constants/cssProfile';
 
 export interface UseEditorSaveActionsOptions {
   isRestrictedUser: boolean;
@@ -36,7 +40,7 @@ export interface UseEditorSaveActionsOptions {
 export interface UseEditorSaveActionsReturn {
   handleSaveToLocal: () => Promise<void>;
   handleSaveToWebDrive: () => Promise<void>;
-  handleCreateNewDocument: (fileName: string, targetFolderNode: FileNode | null) => Promise<void>;
+  handleCreateNewDocument: (fileName: string, targetFolderNode: FileNode | null, selectedProfileId?: string) => Promise<void>;
   transferProgress: string;
   transferBusyRef: RefObject<boolean>;
 }
@@ -322,11 +326,12 @@ export function useEditorSaveActions({
    *
    * @param {string} fileName - 생성할 새 문서 파일명
    * @param {FileNode | null} targetFolderNode - 생성 대상 폴더 노드 (없으면 루트 작업장 폴더)
+   * @param {string} [selectedProfileId] - 모달에서 지정한 서식 ID ('AUTO'이면 폴더 기본서식 ➔ Onrivi 기본서식 적용)
    * @returns {Promise<void>}
    * @throws {Error} 권한 부족, 잘못된 파일명, 중복 파일명 또는 파일 생성 실패 시 예외 발생
    * ==========================================================================================
    */
-  const handleCreateNewDocument = useCallback(async (fileName: string, targetFolderNode: FileNode | null) => {
+  const handleCreateNewDocument = useCallback(async (fileName: string, targetFolderNode: FileNode | null, selectedProfileId?: string) => {
     if (isRestrictedUser || isDuplicateInstance || isLicenseChecking) {
       throw new Error('현재 문서를 생성할 수 없습니다. 로그인·사용 권한을 확인해 주세요.');
     }
@@ -338,6 +343,18 @@ export function useEditorSaveActions({
     const folder = targetFolderNode || rootFolder;
     let node: FileNode;
 
+    // 3단계 서식 우선순위 결정: 파일 지정 서식 ➔ 폴더 지정 서식 ➔ Onrivi 기본서식(system-1)
+    const explicitFileProfile = selectedProfileId && selectedProfileId !== 'AUTO' ? selectedProfileId : null;
+    const resolvedProfile = resolveProfileByPriority({
+      fileProfileIdOrName: explicitFileProfile,
+      folderTarget: folder,
+      rootFolder,
+    });
+    const shouldWriteFrontmatter = Boolean(explicitFileProfile) || resolvedProfile.id !== SYSTEM_PROFILES[0].id;
+    const initialContent = shouldWriteFrontmatter
+      ? updateCssProfileInFrontmatter('', resolvedProfile.id, resolvedProfile.name)
+      : '';
+
     try {
       if (rootFolder?.type === 'GDRIVE' || rootFolder?.driveFolderId) {
         const { getSavedDriveToken, getSavedWorkspaceInfo, listDriveChildren, createDriveMarkdownFile } = await import('@/lib/gdrive/googleDriveClient');
@@ -346,22 +363,30 @@ export function useEditorSaveActions({
         if (!token || !folderId) throw new Error('구글 드라이브 연결을 확인해 주세요.');
         const children = await listDriveChildren(token, folderId);
         if (children.some(child => child.name.toLowerCase() === finalName.toLowerCase())) throw new Error('같은 이름의 파일이 있습니다.');
-        const created = await createDriveMarkdownFile(token, folderId, finalName, '');
+        const created = await createDriveMarkdownFile(token, folderId, finalName, initialContent);
         node = { name: finalName, kind: 'file', driveId: created.id, id: created.id, path: `${folder?.path || 'GoogleDrive'}/${finalName}` };
       } else if (folder?.handle) {
         for await (const [existing] of folder.handle.entries()) {
           if (existing.toLowerCase() === finalName.toLowerCase()) throw new Error('같은 이름의 파일이 있습니다.');
         }
         const handle = await folder.handle.getFileHandle(finalName, { create: true });
+        if (initialContent) {
+          const writable = await handle.createWritable();
+          await writable.write(initialContent);
+          await writable.close();
+        }
         node = { name: finalName, kind: 'file', handle, path: `${folder?.path || folder?.name || ''}/${finalName}` };
       } else if ((window as any).electronAPI?.createFile) {
         const parent = folder?.path || rootFolder?.path;
         if (!parent) throw new Error('먼저 작업장 폴더를 선택해 주세요.');
         const created = await (window as any).electronAPI.createFile(parent, finalName);
         if (!created?.success) throw new Error('파일을 생성하지 못했습니다.');
+        if (initialContent && (window as any).electronAPI?.writeFile) {
+          await (window as any).electronAPI.writeFile(created.path, initialContent);
+        }
         node = { name: finalName, kind: 'file', path: created.path };
       } else {
-        const { vfsCreateFile, getVfsFiles } = await import('@/lib/virtualFileSystem');
+        const { vfsCreateFile, vfsWriteFile, getVfsFiles } = await import('@/lib/virtualFileSystem');
         const parent = targetFolderNode?.path || '';
         const allFiles = getVfsFiles();
         const findFolder = (nodes: FileNode[]): FileNode | undefined => {
@@ -373,8 +398,12 @@ export function useEditorSaveActions({
         };
         const siblings = parent ? findFolder(allFiles)?.children || [] : allFiles;
         if (siblings.some((item: any) => item.name?.toLowerCase() === finalName.toLowerCase())) throw new Error('같은 이름의 파일이 있습니다.');
+        const vfsPath = parent ? `${parent}/${finalName}` : finalName;
         vfsCreateFile(parent, finalName);
-        node = { name: finalName, kind: 'file', path: parent ? `${parent}/${finalName}` : finalName };
+        if (initialContent) {
+          vfsWriteFile(vfsPath, initialContent);
+        }
+        node = { name: finalName, kind: 'file', path: vfsPath };
       }
     } catch (err) {
       logError({
@@ -387,16 +416,16 @@ export function useEditorSaveActions({
       throw err;
     }
 
-    createNewTab('', finalName, false, node.path || null, node);
+    createNewTab(initialContent, finalName, false, node.path || null, node);
     setCurrentFileNode(node);
     setCurrentFileName(finalName);
-    if (lastSavedContentRef) (lastSavedContentRef as any).current = '';
+    if (lastSavedContentRef) (lastSavedContentRef as any).current = initialContent;
     setSaveStatus('saved');
     const targetMode = isRestrictedUser ? 'preview' : (lastGeneralPreviewModeRef.current || 'preview');
     setPreviewMode(targetMode);
     setIsNewDocumentModalOpen(false);
     await refreshFileList();
-    showToast('새 문서를 만들었습니다.', 'success');
+    showToast(`새 문서를 만들었습니다. (서식: ${resolvedProfile.name})`, 'success');
   }, [
     createNewTab,
     isDuplicateInstance,

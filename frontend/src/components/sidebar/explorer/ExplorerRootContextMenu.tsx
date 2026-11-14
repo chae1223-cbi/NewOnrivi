@@ -3,6 +3,8 @@
  * 🏷️ 파일명 : ExplorerRootContextMenu.tsx
  * 🎭 역할(Role) : Manager (오버레이 통합 관리 — 탐색기 루트 우클릭 컨텍스트 메뉴 및 문서 가져오기 모달/진행률 포털)
  * 🎯 주요기능 : 루트 워크스페이스 컨텍스트 메뉴 포털·단축키 처리 및 문서 가져오기 위치 선택/이름 입력/진행률 오버레이 렌더링
+ * 🚨 @PATCH : 2026-11-14 — [파일 가져오기 오버레이(ExplorerImportOverlays)에 서식 선택(importProfileIdRef) 전달]:
+ *             1) NewDocumentModal에서 선택한 서식(AUTO / 특정 서식 ID)을 importProfileIdRef에 전달하여 3단계 서식 우선순위 반영 지원
  * 🚨 @PATCH : 2026-11-04 — [FileExplorerPanel 모듈화 분리 및 1·2단계 표준 주석 적용]
  *             1) FileExplorerPanel에서 루트 컨텍스트 메뉴 포털과 문서 가져오기 오버레이(ExplorerImportOverlays)를 전용 컴포넌트로 분리
  *             2) onrivi-source-comments 스킬 규격 준수
@@ -348,6 +350,7 @@ export interface ExplorerImportOverlaysProps {
   targetImportNodeRef: React.MutableRefObject<FileNode | null>;
   targetImportParentHandleRef: React.MutableRefObject<any>;
   importNameRef: React.MutableRefObject<string | null>;
+  importProfileIdRef?: React.MutableRefObject<string | null>;
   handleImportFile: (e: React.ChangeEvent<HTMLInputElement>) => Promise<void>;
   isImporting: boolean;
 }
@@ -374,6 +377,7 @@ export function ExplorerImportOverlays({
   targetImportNodeRef,
   targetImportParentHandleRef,
   importNameRef,
+  importProfileIdRef,
   handleImportFile,
   isImporting,
 }: ExplorerImportOverlaysProps) {
@@ -421,12 +425,15 @@ export function ExplorerImportOverlays({
         initialName={pendingImportFile?.name.replace(/\.[^.]+$/, '') || '문서'}
         dialogTitle="파일 가져올 폴더와 이름"
         initialFolderNode={targetImportNodeRef.current}
-        onConfirm={async (name, node) => {
+        onConfirm={async (name, node, selectedProfileId) => {
           if (!pendingImportFile) return;
           const file = pendingImportFile;
           targetImportNodeRef.current = node;
           targetImportParentHandleRef.current = node?.handle || rootFolder?.handle || null;
           importNameRef.current = name;
+          if (importProfileIdRef) {
+            importProfileIdRef.current = selectedProfileId || 'AUTO';
+          }
           await handleImportFile({ target: { files: [file], value: '' } } as unknown as React.ChangeEvent<HTMLInputElement>);
           setPendingImportFile(null);
         }}

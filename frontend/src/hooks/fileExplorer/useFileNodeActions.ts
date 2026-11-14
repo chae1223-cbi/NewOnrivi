@@ -2,6 +2,9 @@
  * ====================================================================
  * 🏷️ 파일명 : useFileNodeActions.ts
  * 🎯 주요기능 : 파일 탐색기 개별 노드(FileTreeItem)의 생성·이름변경·삭제·드래그앤드롭 이동·컨텍스트 액션 제어 훅
+ * 🚨 @PATCH : 2026-11-14 — [폴더 생성/이름변경/삭제 및 컨텍스트 메뉴 폴더 기본 서식 설정 연동]:
+ *             1) 하위 폴더 생성(createFolder) 및 폴더 서식 설정(folderStyle) 시 setFolderDefaultProfile로 폴더별 디폴트 서식 저장·관리
+ *             2) 폴더 이름 변경(renameFolderDefaultProfile) 및 폴더 삭제(removeFolderDefaultProfile) 시 매핑 자동 동기화
  * 🚨 @PATCH : 2026-11-04 — [FileTreeItem 모듈화 분리 및 1·2단계 표준 주석·오류 진단(logError/logWarn) 적용]
  *             1) FileTreeItem(2,221줄)에서 파일/폴더 CRUD(생성/이름변경/삭제), 드래그앤드롭 이동, 단축키 트리거 액션을 전용 훅으로 분리
  *             2) onrivi-source-comments 및 onrivi-error-handling 스킬 규격에 맞춰 5대 필수 필드(file, func, doing, target, error) 적용
@@ -24,6 +27,12 @@ import {
   moveDriveItemWithUndo
 } from '@/lib/gdrive/googleDriveClient';
 import { logError, logWarn } from '@/lib/errorDiagnostics';
+import {
+  setFolderDefaultProfile,
+  getFolderDefaultProfileId,
+  renameFolderDefaultProfile,
+  removeFolderDefaultProfile,
+} from '@/lib/folderProfileStorage';
 
 /**
  * ==== [snapshotFsaDirectory] ====
@@ -54,7 +63,8 @@ export interface PromptConfigState {
   isOpen: boolean;
   title: string;
   defaultValue: string;
-  type: 'rename' | 'createFile' | 'createFolder' | null;
+  type: 'rename' | 'createFile' | 'createFolder' | 'folderStyle' | null;
+  initialProfileId?: string;
   error?: string;
 }
 
@@ -356,11 +366,18 @@ export function useFileNodeActions({
 
   /**
    * ==== [onPromptConfirm] ====
-   * 🎯 역할 : 이름 변경/파일 생성/폴더 생성 프롬프트 모달 확인 시 실제 파일시스템/드라이브/VFS 반영 수행
+   * 🎯 역할 : 이름 변경/파일 생성/폴더 생성/폴더 기본 서식 설정 프롬프트 모달 확인 시 실제 파일시스템/드라이브/VFS 및 서식 매핑 반영 수행
    */
-  const onPromptConfirm = useCallback(async (name: string) => {
+  const onPromptConfirm = useCallback(async (name: string, selectedProfileId?: string) => {
     const type = promptConfig.type;
     setPromptConfig(prev => ({ ...prev, isOpen: false }));
+
+    if (type === 'folderStyle') {
+      setFolderDefaultProfile(node, selectedProfileId || 'system-1');
+      showToast(`'${node.name}' 폴더의 기본 서식이 저장되었습니다.`, 'success');
+      return;
+    }
+
     if (!name) return;
 
     if (type === 'rename') {
@@ -387,6 +404,9 @@ export function useFileNodeActions({
             const lastSlashIndex = normalizedPath.lastIndexOf('/');
             const parentPath = lastSlashIndex !== -1 ? normalizedPath.substring(0, lastSlashIndex) : '';
             const newPath = parentPath ? `${parentPath}/${finalName}` : finalName;
+            if (node.kind === 'directory') {
+              renameFolderDefaultProfile(oldPath, newPath);
+            }
             node.path = newPath;
             refreshParent();
             window.dispatchEvent(new CustomEvent('file:refresh-all-directories'));
@@ -454,6 +474,7 @@ export function useFileNodeActions({
               node.handle = newDirHandle;
               node.name = finalName;
               node.path = newPath;
+              renameFolderDefaultProfile(oldPath, newPath);
               node.children = [];
               setLocalChildren(null);
 
@@ -487,6 +508,9 @@ export function useFileNodeActions({
             const isDir = node.kind === 'directory';
 
             vfsRename(oldPath, newPath);
+            if (isDir) {
+              renameFolderDefaultProfile(oldPath, newPath);
+            }
             node.path = newPath;
             node.name = finalName;
             if (isDir) {
@@ -529,6 +553,9 @@ export function useFileNodeActions({
             await api.renameFile(cleanOldPath, newPath);
           } else {
             vfsRename(cleanOldPath, newPath);
+          }
+          if (isDir) {
+            renameFolderDefaultProfile(cleanOldPath, newPath);
           }
 
           node.path = newPath;
@@ -666,7 +693,14 @@ export function useFileNodeActions({
           const wsInfo = getSavedWorkspaceInfo();
           const parentDriveId = (node as any).driveId || (node as any).driveFileId || (node as any).id || wsInfo?.workspaceFolderId;
           if (token && parentDriveId) {
-            await createDriveFolder(token, name, parentDriveId);
+            const createdFolderId = await createDriveFolder(token, name, parentDriveId);
+            const newFolderPath = node.path ? `${node.path}/${name}` : name;
+            if (selectedProfileId) {
+              setFolderDefaultProfile(
+                { path: newFolderPath, name, driveId: createdFolderId, id: createdFolderId },
+                selectedProfileId
+              );
+            }
             setIsOpen(true);
             await refreshThisDirectory();
             window.dispatchEvent(new CustomEvent('file:refresh-all-directories'));
@@ -692,6 +726,9 @@ export function useFileNodeActions({
 
         setIsOpen(true);
         const newFolderPath = node.path ? `${node.path}/${name}` : name;
+        if (selectedProfileId) {
+          setFolderDefaultProfile({ path: newFolderPath, name }, selectedProfileId);
+        }
         await refreshThisDirectory();
         window.dispatchEvent(new CustomEvent('file:refresh-all-directories'));
         window.dispatchEvent(new CustomEvent('file:select-node', { detail: { path: newFolderPath } }));
@@ -911,6 +948,9 @@ export function useFileNodeActions({
 
           window.dispatchEvent(new CustomEvent('file:push-undo-action', { detail: undoAction }));
           const targetDriveId = (node as any).driveId || (node as any).driveFileId || (node as any).id;
+          if (isDir) {
+            removeFolderDefaultProfile(node.path || node.name, undefined, targetDriveId);
+          }
           window.dispatchEvent(new CustomEvent('file:tab-deleted', { detail: { deletedPath: node.path || node.name, driveId: targetDriveId } }));
           window.dispatchEvent(new CustomEvent('file:close-tab-by-path', {
             detail: {
@@ -950,13 +990,28 @@ export function useFileNodeActions({
   const triggerCreateFolder = useCallback((e?: any) => {
     if (e?.stopPropagation) e.stopPropagation();
     setContextMenu(null);
+    const parentProfileId = getFolderDefaultProfileId(node) || 'system-1';
     setPromptConfig({
       isOpen: true,
       title: `[${node.name}]에 생성할 새 폴더의 이름을 입력하세요.`,
       defaultValue: '',
       type: 'createFolder',
+      initialProfileId: parentProfileId,
     });
-  }, [node.name, setContextMenu]);
+  }, [node, setContextMenu]);
+
+  const triggerFolderStyle = useCallback((e?: any) => {
+    if (e?.stopPropagation) e.stopPropagation();
+    setContextMenu(null);
+    const currentFolderProfileId = getFolderDefaultProfileId(node, undefined, false) || 'NONE';
+    setPromptConfig({
+      isOpen: true,
+      title: `[${node.name}] 폴더의 기본 서식을 설정합니다.`,
+      defaultValue: node.name,
+      type: 'folderStyle',
+      initialProfileId: currentFolderProfileId,
+    });
+  }, [node, setContextMenu]);
 
   const triggerRename = useCallback((e?: any) => {
     if (e?.stopPropagation) e.stopPropagation();
@@ -1043,6 +1098,7 @@ export function useFileNodeActions({
     handleDelete,
     triggerCreateFile,
     triggerCreateFolder,
+    triggerFolderStyle,
     triggerRename,
     triggerCopy,
     triggerCut,

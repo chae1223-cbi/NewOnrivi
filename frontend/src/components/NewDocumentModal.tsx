@@ -1,12 +1,15 @@
 // ====================================================================
 // 📊 [OMD-MODAL-NewDocumentModal-0001] NewDocumentModal.tsx ➔ 새 문서 생성 모달
-// 🎯 @KICK  : 상단 탭(+) 및 메뉴바(새 문서) 호출 시 원하는 폴더 위치와 파일명을 지정하여 새 마크다운 문서를 생성하는 전문 대화상자
+// 🎯 @KICK  : 상단 탭(+) 및 메뉴바(새 문서/파일 가져오기) 호출 시 원하는 폴더 위치, 파일명, 적용할 서식을 지정하여 마크다운 문서를 생성/가져오는 전문 대화상자
 // 🛡️ @GUARD : 특수문자 살균(Path Traversal 방지), 중복 파일명 사전 검증, 자동 포커스 및 ESC/Enter 키보드 바인딩
+// 🚨 @PATCH : **2026-11-14** — [새 문서 생성 및 외부 파일 가져오기 시 3단계 서식 적용 옵션(파일 지정 ➔ 폴더 지정 ➔ Onrivi 기본서식) 연동]:
+//             1) 선택한 저장 폴더에 지정된 디폴트 서식(getFolderDefaultProfileEntry)을 실시간 감지하여 안내 및 자동 적용 지원
+//             2) 개별 파일에 특정 서식을 직접 지정하거나 폴더와 상관없이 Onrivi 기본서식을 강제 적용할 수 있는 서식 선택 드롭다운 탑재
 // 🚨 @PATCH : **2026-10-11** — [폴더 선택 및 파일명 지정 새 문서 생성 모달 신규 구축]:
 //             1) 상단 탭(+) 및 메뉴바(새 문서 Ctrl+N) 클릭 시 폴더 선택(작업장 루트 및 모든 하위 폴더 트리)과 파일명 입력창 제공
 //             2) .md 확장자 자동 보정, Modern Technical Editorial 코발트 테마 적용, 단축키(ESC/Enter) 및 유효성 검증 탑재
 // 🚨 @PATCH : **2026-11-11** — [지연 로딩 폴더 선택 보존]: 현재 선택 폴더가 목록에 없어도 가져오기 저장 대상으로 유지
-// 🔗 @CALLS : FileNode, Icon
+// 🔗 @CALLS : FileNode, Icon, getAvailableProfilesSnapshot, getFolderDefaultProfileEntry
 // ====================================================================
 "use client";
 
@@ -14,6 +17,8 @@ import { useModalEscape } from '@/hooks/useModalEscape';
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { FileNode } from '@/lib/indexedDbHelper';
 import { Icon } from '@/components/icons/Icon';
+import { SYSTEM_PROFILES, isSystemProfileId } from '@/constants/cssProfile';
+import { getAvailableProfilesSnapshot, getFolderDefaultProfileEntry } from '@/lib/folderProfileStorage';
 
 interface FolderOption {
   id: string;
@@ -29,7 +34,7 @@ interface NewDocumentModalProps {
   fileList: FileNode[];
   rootFolder: any;
   workspaceType: string;
-  onConfirm: (fileName: string, targetFolderNode: FileNode | null) => Promise<void>;
+  onConfirm: (fileName: string, targetFolderNode: FileNode | null, selectedProfileId?: string) => Promise<void>;
   isDarkMode?: boolean;
   initialName?: string;
   dialogTitle?: string;
@@ -55,10 +60,21 @@ export default function NewDocumentModal({
   useModalEscape(isOpen, onClose);
   const [fileName, setFileName] = useState<string>('새 문서');
   const [selectedFolderId, setSelectedFolderId] = useState<string>('ROOT');
+  const [selectedProfileMode, setSelectedProfileMode] = useState<string>('AUTO');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
 
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const availableProfiles = useMemo(() => getAvailableProfilesSnapshot(), [isOpen]);
+  const userProfiles = useMemo(
+    () => availableProfiles.filter(p => p.id !== 'default' && !isSystemProfileId(p.id)),
+    [availableProfiles]
+  );
+  const systemProfiles = useMemo(
+    () => availableProfiles.filter(p => isSystemProfileId(p.id) && p.id !== SYSTEM_PROFILES[0].id),
+    [availableProfiles]
+  );
 
   // 📂 작업장 내 모든 하위 폴더를 재귀적으로 탐색하여 옵션 목록 생성
   const folderOptions = useMemo<FolderOption[]>(() => {
@@ -117,6 +133,7 @@ export default function NewDocumentModal({
     if (isOpen) {
       setFileName(initialName);
       setSelectedFolderId(initialFolderNode?.path || initialFolderNode?.id || initialFolderNode?.driveId || 'ROOT');
+      setSelectedProfileMode('AUTO');
       setErrorMessage('');
       setIsSubmitting(false);
 
@@ -135,6 +152,11 @@ export default function NewDocumentModal({
   // 선택된 대상 폴더 노드 추출
   const selectedFolderOption = folderOptions.find(f => f.id === selectedFolderId);
   const targetFolderNode = selectedFolderOption ? selectedFolderOption.node : null;
+  const targetFolderProfileEntry = getFolderDefaultProfileEntry(targetFolderNode, rootFolder, true);
+  const targetFolderProfile = targetFolderProfileEntry
+    ? availableProfiles.find(p => p.id === targetFolderProfileEntry.profileId)
+    : null;
+  const targetFolderProfileLabel = targetFolderProfile?.name || targetFolderProfileEntry?.profileName || null;
 
   // 폼 제출 처리
   const handleSubmit = async (e?: React.FormEvent) => {
@@ -174,7 +196,7 @@ export default function NewDocumentModal({
     try {
       setIsSubmitting(true);
       setErrorMessage('');
-      await onConfirm(finalName, targetFolderNode);
+      await onConfirm(finalName, targetFolderNode, selectedProfileMode);
       onClose();
     } catch (err: any) {
       console.error('[NewDocumentModal error]', err);
@@ -220,7 +242,7 @@ export default function NewDocumentModal({
                 {dialogTitle || '새 문서 만들기'}
               </h3>
               <p className="text-[12px] text-slate-500 dark:text-zinc-400">
-                원하는 저장 위치와 파일 이름을 지정하세요.
+                원하는 저장 위치와 파일 이름, 적용할 서식을 지정하세요.
               </p>
             </div>
           </div>
@@ -300,9 +322,62 @@ export default function NewDocumentModal({
             {selectedFolderOption && (
               <p className="text-[11px] text-[#1d4ed8] dark:text-blue-400 font-medium truncate">
                 선택 경로: {selectedFolderOption.pathDisplay}
+                {targetFolderProfileLabel ? ` · 폴더 기본 서식: ${targetFolderProfileLabel}` : ''}
               </p>
             )}
           </div>}
+
+          {/* 3. 적용할 문서 서식 선택 */}
+          {!hideFolderSelection && (
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-700 dark:text-zinc-300">
+                적용할 문서 서식
+              </label>
+              <div className="relative">
+                <select
+                  value={selectedProfileMode}
+                  onChange={(e) => setSelectedProfileMode(e.target.value)}
+                  disabled={isSubmitting}
+                  className={`w-full px-3.5 py-2.5 text-sm rounded-xl border outline-none font-medium transition-all appearance-none pr-9 cursor-pointer ${
+                    isDarkMode
+                      ? 'bg-zinc-800/80 border-zinc-700 text-white focus:border-[#1d4ed8] focus:ring-2 focus:ring-[#1d4ed8]/30'
+                      : 'bg-white border-slate-300 text-slate-900 focus:border-[#1d4ed8] focus:ring-2 focus:ring-[#1d4ed8]/20'
+                  }`}
+                >
+                  <option value="AUTO">
+                    {targetFolderProfileLabel
+                      ? `📂 자동 (파일 지정 서식 ➔ 없으면 폴더 서식 '${targetFolderProfileLabel}' 반영)`
+                      : `🌐 자동 (파일 지정 서식 ➔ 없으면 '${SYSTEM_PROFILES[0].name}' 반영)`}
+                  </option>
+                  <option value={SYSTEM_PROFILES[0].id}>
+                    🌐 폴더와 상관없이 {SYSTEM_PROFILES[0].name} 적용
+                  </option>
+                  {userProfiles.length > 0 && (
+                    <optgroup label="✨ 이 파일에 직접 지정할 사용자 정의 서식">
+                      {userProfiles.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          🎨 {p.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  <optgroup label="📚 이 파일에 직접 지정할 시스템 표준 서식">
+                    {systemProfiles.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        📄 {p.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                </select>
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 dark:text-zinc-500">
+                  <Icon name="ArrowDown" size={16} />
+                </div>
+              </div>
+              <p className="text-[11px] text-slate-600 dark:text-zinc-300 leading-relaxed">
+                파일에 지정된 서식이 있으면 해당 서식이 우선 적용되며, 없으면 폴더 기본 서식(미지정 시 Onrivi 기본서식)이 반영됩니다.
+              </p>
+            </div>
+          )}
 
           {/* 에러 메시지 */}
           {errorMessage && (

@@ -2,6 +2,8 @@
 /**
  * 프로그램명 : OnriviAuthor
  * 프로그램 ID : oaar-modal-manager
+ * 🚨 @PATCH : **2026-11-14** — [전역 폴더 생성 모달(createFolder)에 폴더 기본 서식 지정 연동]:
+ *             1) PromptModal에서 폴더 생성 시 showStyleSelector 활성화 및 setFolderDefaultProfile로 선택된 폴더 기본 서식 저장
  * 🚨 @PATCH : **2026-11-10** — [서명/발신인 서식 모달(SignatureModal) 연동 및 실시간 이벤트 리스너 탑재]:
  *             1) onrivi:open-signature-modal 이벤트를 청취하여 정렬(left/right), 날짜, 작성자, 도장 설정 다이얼로그 오픈
  *             2) 기존 서명 블록 수정(raw 마크다운 분해) 및 신규 서명 커서 위치(INSERT_SIGNATURE: / Monaco) 자동 삽입 지원
@@ -33,6 +35,7 @@
  * -----------------------------------------------------------------------
  */
 import { requireResourceSettings } from '@/lib/resourceSettings';
+import { setFolderDefaultProfile } from '@/lib/folderProfileStorage';
 import React, {useEffect} from 'react';
 
 // 각종 모달 컴포넌트 임포트
@@ -289,7 +292,10 @@ export default function ModalManager({ modals, deps }: ModalManagerProps) {
           title={promptConfig.title}
           defaultValue={promptConfig.defaultValue}
           error={promptConfig.error}
-          onConfirm={async (value: string) => {
+          showStyleSelector={promptConfig.type === 'createFolder'}
+          initialProfileId="system-1"
+          profiles={profiles}
+          onConfirm={async (value: string, selectedProfileId?: string) => {
             if (!value.trim()) {
               setPromptConfig((prev: any) => ({ ...prev, error: '이름을 입력해주세요.' }));
               return;
@@ -401,7 +407,14 @@ export default function ModalManager({ modals, deps }: ModalManagerProps) {
                   const wsInfo = getSavedWorkspaceInfo();
                   const targetFolderId = rootFolder?.id || rootFolder?.driveFolderId || wsInfo?.workspaceFolderId;
                   if (token && targetFolderId) {
-                    await createDriveFolder(token, safeValue, targetFolderId);
+                    const createdFolderId = await createDriveFolder(token, safeValue, targetFolderId);
+                    if (selectedProfileId) {
+                      setFolderDefaultProfile(
+                        { path: `${rootFolder?.path || 'GoogleDrive'}/${safeValue}`, name: safeValue, driveId: createdFolderId, id: createdFolderId },
+                        selectedProfileId,
+                        rootFolder
+                      );
+                    }
                     setPromptConfig((prev: any) => ({ ...prev, isOpen: false, error: '' }));
                     await refreshFileList();
                     window.dispatchEvent(new CustomEvent('file:refresh-all-directories'));
@@ -424,6 +437,11 @@ export default function ModalManager({ modals, deps }: ModalManagerProps) {
                     // 🛡️ [웹 SaaS 백엔드 미구현 404 원천 차단]: electronAPI가 없는 웹 브라우저 환경에서는 VFS 폴더 생성 수행
                     vfsCreateFolder('', safeValue);
                   }
+                }
+                if (selectedProfileId) {
+                  const rootPath = rootFolder?.path || rootFolder?.name || '';
+                  setFolderDefaultProfile({ path: rootPath ? `${rootPath}/${safeValue}` : safeValue, name: safeValue }, selectedProfileId, rootFolder);
+                  setFolderDefaultProfile({ path: safeValue, name: safeValue }, selectedProfileId, rootFolder);
                 }
                 setPromptConfig((prev: any) => ({ ...prev, isOpen: false, error: '' }));
                 await refreshFileList();

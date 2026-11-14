@@ -2,6 +2,9 @@
  * ====================================================================
  * 🏷️ 파일명 : useDocumentImporter.ts
  * 🎯 주요기능 : 외부 문서(DOC, DOCX, HWP, HWPX, PDF, EPUB, TXT, MD, HTML) 선택·마크다운 변환·이미지 리소스 추출 및 워크스페이스 저장 훅
+ * 🚨 @PATCH : 2026-11-14 — [외부 문서 가져오기 시 3단계 서식 우선순위(파일 지정 ➔ 폴더 지정 ➔ Onrivi 기본서식) 반영]:
+ *             1) 가져오기 모달에서 파일에 적용할 서식을 직접 지정한 경우 해당 서식을 Frontmatter에 즉시 기록
+ *             2) 별도 서식을 지정하지 않은 경우 파일 자체 서식 ➔ 대상 폴더 기본 서식 ➔ Onrivi 기본서식 순으로 자동 적용
  * 🚨 @PATCH : 2026-11-11 — [파일 열기 형식 안내 보완]: DOC 및 HWPX 지원 형식을 검증 안내에 표시
  * 🚨 @PATCH : 2026-11-11 — [사이드바 선택 폴더 저장 복원]: 원본 파일 폴더 강제 저장을 제거하고 탐색기에서 선택한 대상 폴더를 사용
  * 🚨 @PATCH : 2026-11-08 — [useDocumentImporter 다이어트 및 미디어 저장기(saveImportedMedia) 분리]:
@@ -22,6 +25,8 @@ import { getResourceSettings, requireResourceSettings } from '@/lib/resourceSett
 import { FileNode } from '@/lib/indexedDbHelper';
 import { logError } from '@/lib/errorDiagnostics';
 import { saveImportedMedia } from '@/lib/importMediaSaver';
+import { extractFrontmatter, updateCssProfileInFrontmatter } from '@/lib/frontmatter';
+import { resolveProfileByPriority } from '@/lib/folderProfileStorage';
 import {
   uploadDriveImage,
   getSavedDriveToken,
@@ -64,6 +69,7 @@ export function useDocumentImporter({
   const [showImportSource, setShowImportSource] = useState(false);
   const selectingImportRef = useRef(false);
   const importNameRef = useRef<string | null>(null);
+  const importProfileIdRef = useRef<string | null>(null);
   const targetImportNodeRef = useRef<FileNode | null>(null);
   const targetImportParentHandleRef = useRef<any>(null);
   const selectedSidebarFolderRef = useRef<{ node: FileNode; parentHandle?: any } | null>(null);
@@ -249,13 +255,38 @@ export function useDocumentImporter({
       };
 
       const { convertFileToMarkdown } = await import('@/lib/fileImporter');
-      const markdown = await convertFileToMarkdown(file, imageSaveCallback);
+      let markdown = await convertFileToMarkdown(file, imageSaveCallback);
 
       if (!markdown.trim()) throw new Error('문서에서 변환할 내용을 추출할 수 없습니다.');
       const targetNode = targetImportNodeRef.current;
       const targetParentHandle = targetImportParentHandleRef.current;
       targetImportNodeRef.current = null;
       targetImportParentHandleRef.current = null;
+
+      const requestedProfileId = importProfileIdRef.current;
+      importProfileIdRef.current = null;
+
+      // 🎨 3단계 서식 우선순위 적용:
+      // 1) 가져오기 모달에서 해당 파일에 적용할 서식을 직접 지정한 경우 ➔ 지정된 서식 기록
+      // 2) 자동('AUTO')인 경우: 원본 파일에 이미 css_profile이 있으면 유지하고,
+      //    없으면 대상 폴더에 지정된 디폴트 서식(미지정 시 Onrivi 기본서식)으로 결정
+      const { data: fmData } = extractFrontmatter(markdown);
+      if (requestedProfileId && requestedProfileId !== 'AUTO') {
+        const chosenProfile = resolveProfileByPriority({
+          fileProfileIdOrName: requestedProfileId,
+          folderTarget: targetNode,
+          rootFolder,
+        });
+        markdown = updateCssProfileInFrontmatter(markdown, chosenProfile.id, chosenProfile.name);
+      } else if (!fmData.css_profile) {
+        const resolvedFolderOrDefault = resolveProfileByPriority({
+          folderTarget: targetNode,
+          rootFolder,
+        });
+        if (resolvedFolderOrDefault) {
+          markdown = updateCssProfileInFrontmatter(markdown, resolvedFolderOrDefault.id, resolvedFolderOrDefault.name);
+        }
+      }
 
       const requestedName = importNameRef.current;
       importNameRef.current = null;
@@ -396,6 +427,7 @@ export function useDocumentImporter({
     showImportSource,
     setShowImportSource,
     importNameRef,
+    importProfileIdRef,
     targetImportNodeRef,
     targetImportParentHandleRef,
     chooseImportDestination,

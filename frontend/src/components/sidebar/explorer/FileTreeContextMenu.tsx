@@ -3,6 +3,8 @@
  * 🏷️ 파일명 : FileTreeContextMenu.tsx
  * 🎭 역할(Role) : Manager (오버레이 통합 관리 — 파일 트리 노드 우클릭 컨텍스트 메뉴 포털)
  * 🎯 주요기능 : 파일/폴더 우클릭 컨텍스트 메뉴 렌더링, 컨텍스트 단축키 연동, 데스크톱 지식 베이스 등록/재분석/해제 메뉴 제공
+ * 🚨 @PATCH : 2026-11-14 — [폴더 우클릭 컨텍스트 메뉴에 '폴더 기본 서식 설정' 항목 추가]:
+ *             1) 디렉터리 노드 우클릭 시 해당 폴더의 디폴트 서식 프로필을 조회·변경할 수 있는 '폴더 기본 서식 설정' 버튼 및 현재 서식 배지 표시
  * 🚨 @PATCH : 2026-11-04 — [FileTreeItem 모듈화 분리 및 1·2단계 표준 주석·오류 진단(logError) 적용]
  *             1) FileTreeItem에서 컨텍스트 메뉴 포털 및 지식문서 등록/재색인/해제 UI를 전용 컴포넌트로 분리
  *             2) onrivi-source-comments 및 onrivi-error-handling 스킬 규격 적용
@@ -39,6 +41,8 @@ export interface FileTreeContextMenuProps {
   handleMenuMouseLeave: () => void;
   triggerCreateFile: (e?: any) => void;
   triggerCreateFolder: (e?: any) => void;
+  triggerFolderStyle?: (e?: any) => void;
+  folderProfileName?: string | null;
   triggerRename: (e?: any) => void;
   triggerCopy: (e?: any) => void;
   triggerCut: (e?: any) => void;
@@ -76,6 +80,8 @@ export default function FileTreeContextMenu({
   handleMenuMouseLeave,
   triggerCreateFile,
   triggerCreateFolder,
+  triggerFolderStyle,
+  folderProfileName,
   triggerRename,
   triggerCopy,
   triggerCut,
@@ -221,6 +227,22 @@ export default function FileTreeContextMenu({
                 <span className="truncate">새 폴더</span>
               </div>
             </button>
+            {triggerFolderStyle && (
+              <button
+                onClick={(e) => { e.stopPropagation(); triggerFolderStyle(e); }}
+                className="flex items-center justify-between gap-2 px-3 py-1.5 hover:bg-black/5 dark:hover:bg-white/5 hover:text-black dark:hover:text-white w-full text-left transition-colors text-[#1d4ed8] dark:text-blue-400 font-semibold"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Icon name="Palette" size={15} strokeWidth={1.75} className="shrink-0 text-current opacity-85" />
+                  <span className="truncate">폴더 기본 서식 설정</span>
+                </div>
+                {folderProfileName && (
+                  <span className="ml-auto px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-500/10 text-blue-700 dark:bg-blue-400/15 dark:text-blue-300 truncate max-w-[85px] shrink-0">
+                    {folderProfileName}
+                  </span>
+                )}
+              </button>
+            )}
             <button
               onClick={(e) => {
                 e.stopPropagation();

@@ -3,6 +3,9 @@
  * 🏷️ 파일명 : FileExplorerPanel.tsx
  * 🎭 역할(Role) : Core (핵심 도메인 뷰 — 좌측 사이드바 파일 탐색기 패널)
  * 🎯 주요기능 : 워크스페이스 폴더 트리 탐색, 루트 파일/폴더 생성, 지연 로딩 및 하위 훅/컨텍스트 메뉴 위임
+ * 🚨 @PATCH : 2026-11-14 — [루트 폴더 생성 시 디폴트 서식 지정 및 저장 연동]:
+ *             1) 루트에서 새 폴더 생성 시 PromptModal의 폴더 기본 서식 선택(showStyleSelector)을 활성화하고 생성 완료 즉시 setFolderDefaultProfile로 저장
+ *             2) 외부 문서 가져오기 오버레이에 파일별 지정 서식(importProfileIdRef) 전달 연동
  * 🚨 @PATCH : 2026-11-12 — [구글 드라이브 탐색기 새로고침 최적화]:
  *             1) triggerRefreshRoot 시 구글 드라이브 단기 캐시(clearDriveChildrenCache) 소거 및 강제 갱신 연동
  *             2) 사이드바 활성화 시 자동 리프레시를 비강제(false)로 전환하여 불필요한 중복 스캔 제거
@@ -36,6 +39,7 @@ import { knowledgeClient, canAccessKnowledgeDb } from '@/lib/knowledge/knowledge
 import { useExplorerUndoClipboard } from '@/hooks/fileExplorer/useExplorerUndoClipboard';
 import { useDocumentImporter } from '@/hooks/fileExplorer/useDocumentImporter';
 import ExplorerRootContextMenu, { ExplorerImportOverlays } from '@/components/sidebar/explorer/ExplorerRootContextMenu';
+import { setFolderDefaultProfile } from '@/lib/folderProfileStorage';
 
 const BROWSER_STORAGE_NAME = '브라우저 로컬 저장소';
 
@@ -349,6 +353,7 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
     showImportSource,
     setShowImportSource,
     importNameRef,
+    importProfileIdRef,
     targetImportNodeRef,
     targetImportParentHandleRef,
     chooseImportDestination,
@@ -450,9 +455,9 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
 
   /**
    * ==== [onPromptConfirm] ====
-   * 🎯 역할 : PromptModal 확인 시 루트 워크스페이스에 새 파일(.md/.bib) 또는 새 폴더 생성
+   * 🎯 역할 : PromptModal 확인 시 루트 워크스페이스에 새 파일(.md/.bib) 또는 새 폴더 생성 및 폴더 기본 서식 저장
    */
-  const onPromptConfirm = async (name: string) => {
+  const onPromptConfirm = async (name: string, selectedProfileId?: string) => {
     const type = promptConfig.type;
     setPromptConfig({ ...promptConfig, isOpen: false });
     if (!name) return;
@@ -544,7 +549,15 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
           const wsInfo = getSavedWorkspaceInfo();
           const targetFolderId = rootFolder?.id || wsInfo?.workspaceFolderId;
           if (token && targetFolderId) {
-            await createDriveFolder(token, name, targetFolderId);
+            const createdFolder = await createDriveFolder(token, name, targetFolderId);
+            const gdrivePath = `${rootFolder?.path || 'GoogleDrive'}/${name}`;
+            if (selectedProfileId) {
+              setFolderDefaultProfile(
+                { path: gdrivePath, name, driveId: createdFolder?.id, id: createdFolder?.id },
+                selectedProfileId,
+                rootFolder
+              );
+            }
             await refreshFileList();
             window.dispatchEvent(new CustomEvent('file:refresh-all-directories'));
             showToast(`'${name}' 폴더가 구글 드라이브에 생성되었습니다.`, 'success');
@@ -552,6 +565,7 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
           }
         }
 
+        const createdFolderPath = rootPath ? `${rootPath}/${name}` : name;
         if (workspaceType === 'browser') {
           if (rootFolder?.handle) {
             await rootFolder.handle.getDirectoryHandle(name, { create: true });
@@ -567,6 +581,10 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
             const { vfsCreateFolder } = await import('@/lib/virtualFileSystem');
             vfsCreateFolder('', name);
           }
+        }
+        if (selectedProfileId) {
+          setFolderDefaultProfile({ path: createdFolderPath, name }, selectedProfileId, rootFolder);
+          setFolderDefaultProfile({ path: name, name }, selectedProfileId, rootFolder);
         }
         await refreshFileList();
         window.dispatchEvent(new CustomEvent('file:refresh-all-directories'));
@@ -752,6 +770,7 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
         targetImportNodeRef={targetImportNodeRef}
         targetImportParentHandleRef={targetImportParentHandleRef}
         importNameRef={importNameRef}
+        importProfileIdRef={importProfileIdRef}
         handleImportFile={handleImportFile}
         isImporting={isImporting}
       />
@@ -1182,6 +1201,8 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
           title={promptConfig.title}
           defaultValue={promptConfig.defaultValue}
           error={promptConfig.error}
+          showStyleSelector={promptConfig.type === 'createFolder'}
+          initialProfileId="system-1"
           onConfirm={onPromptConfirm}
           onCancel={() => setPromptConfig({ ...promptConfig, isOpen: false, error: '' })}
         />
