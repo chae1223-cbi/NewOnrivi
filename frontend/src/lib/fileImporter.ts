@@ -1,5 +1,6 @@
 // ====================================================================
-// 🚨 @PATCH : 2026-11-14 — [HWP 그림·문자 서식 복원] 본문 그림은 마크다운 이미지로 출력하고 표 안 그림은 HTML로 유지하며 글자 모양 포인터별 굵게·기울임·밑줄·취소선을 보존
+// 🚨 @PATCH : 2026-11-14 — [HWP 마크다운 서식·표 그림 수정] 본문·표 셀의 강조와 이미지를 마크다운으로 출력하고 병합 셀은 빈 격자 칸으로 펼쳐 HTML 태그의 문자 노출을 방지
+// 🚨 @PATCH : 2026-11-14 — [HWP 그림·문자 서식 복원] 본문 그림은 마크다운 이미지로 출력하고 병합 표 안 그림은 HTML로 유지하며 글자 모양 포인터별 굵게·기울임·밑줄·취소선을 보존
 // 🚨 @PATCH : 2026-11-13 — [PDF 표 내부·상단 이미지 단일 HTML <table> 통합]: 페이지 내 이미지 박스를 먼저 크롭하여 pdfRuledTableBlocks에 전달하고, 표 셀로 편입된 이미지(used)는 개별 이미지 블록 중복 생성에서 제외
 // 🚨 @PATCH : 2026-11-13 — [PDF 글꼴 서식 복원] 내장 글꼴 이름을 페이지 변환기에 전달해 강조와 기울임을 원문 위치에 적용
 // 🚨 @PATCH : **2026-11-07** — [PDF 페이지 간 마크다운 개행 분리]: 페이지 경계에서 serializePdfBlocks 반환값 뒤에 \n\n을 부여하여 다음 페이지 요소와 문단 병합 방지
@@ -385,6 +386,7 @@ async function importHwp(
               return '';
             }
             if (Array.isArray(obj.content) && Array.isArray(obj.shapeBuffer) && Array.isArray(obj.controls)) {
+              const styleMask = 1 | 2 | (3 << 2) | (15 << 26);
               let result = '', segment = '', activeAttr = 0, pointer = 0, controlIndex = 0;
               const pointers = obj.shapeBuffer.slice().sort((a: any, b: any) => a.pos - b.pos);
               const flush = () => {
@@ -394,17 +396,18 @@ async function importHwp(
                 const rest = value.slice(leading.length);
                 const trailing = rest.match(/\s*$/)?.[0] || '';
                 let styled = rest.slice(0,rest.length-trailing.length);
-                if (htmlContext || activeAttr) styled = escapeHtmlText(styled);
-                if (styled && (activeAttr & 2)) styled = `<strong>${styled}</strong>`;
-                if (styled && (activeAttr & 1)) styled = `<em>${styled}</em>`;
+                if (htmlContext) styled = escapeHtmlText(styled);
+                else if (activeAttr) styled = styled.replace(/([*~\\])/g, '\\$1');
+                if (styled && (activeAttr & 2)) styled = htmlContext ? `<strong>${styled}</strong>` : `**${styled}**`;
+                if (styled && (activeAttr & 1)) styled = htmlContext ? `<em>${styled}</em>` : `*${styled}*`;
                 if (styled && ((activeAttr >>> 2) & 3)) styled = `<u>${styled}</u>`;
-                if (styled && ((activeAttr >>> 26) & 15)) styled = `<del>${styled}</del>`;
+                if (styled && ((activeAttr >>> 26) & 15)) styled = htmlContext ? `<del>${styled}</del>` : `~~${styled}~~`;
                 result += leading + styled + trailing;
                 segment = '';
               };
               obj.content.forEach((char: any, index: number) => {
                 while (pointer + 1 < pointers.length && pointers[pointer + 1].pos <= index) pointer++;
-                const nextAttr = hwpDoc.info?.charShapes?.[pointers[pointer]?.shapeIndex]?.attr || 0;
+                const nextAttr = (hwpDoc.info?.charShapes?.[pointers[pointer]?.shapeIndex]?.attr || 0) & styleMask;
                 if (nextAttr !== activeAttr) { flush(); activeAttr = nextAttr; }
                 if (char.type === 2) {
                   flush();
@@ -415,6 +418,9 @@ async function importHwp(
                 else if (char.value === 10 || char.value === 13) segment += '\n';
               });
               flush();
+              if (!htmlContext) {
+                result = result.replace(/\*\*([^*\n]+)\*\*([ \t]*)\*\*([^*\n]+)\*\*/g, '**$1$2$3**');
+              }
               return result + '\n\n';
             }
             // Table (id = 543974004)
@@ -435,7 +441,9 @@ async function importHwp(
               const columnCount = Math.max(obj.columnCount || 0, ...cells.map(cell => cell.column + cell.colSpan));
               const hasNestedTable = cells.some(cell => containsNestedTable(cell.value.items));
               if (!htmlContext && rowCount === 1 && columnCount === 1 && !hasNestedTable) return extractTextNode(cells[0]?.value) + '\n\n';
-              const needsHtml = htmlContext || hasNestedTable || cells.some(cell => cell.rowSpan > 1 || cell.colSpan > 1);
+              // Markdown has no cell-span syntax: keep the source cell in its
+              // original grid position and leave its covered positions empty.
+              const needsHtml = htmlContext || hasNestedTable;
               if (needsHtml) {
                 const at = new Map(cells.map(cell => [`${cell.row}:${cell.column}`, cell]));
                 const covered = new Set<string>();
@@ -465,7 +473,7 @@ async function importHwp(
               }
               const grid = Array.from({ length: rowCount }, () => Array(columnCount).fill(''));
               for (const cell of cells) {
-                grid[cell.row][cell.column] = extractTextNode(cell.value, true).trim().replace(/\|/g, '\\|').replace(/\r?\n+/g, '<br>');
+                grid[cell.row][cell.column] = extractTextNode(cell.value).trim().replace(/\|/g, '\\|').replace(/\r?\n+/g, '<br>');
               }
               let mdTable = '\n\n';
               grid.forEach((row: any, rIdx: number) => {
