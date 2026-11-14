@@ -2,6 +2,9 @@
 // 📊 [OMD-CORE-VisualEditor-ProseMirrorHandlers] frontend/src/components/visualEditor/visualEditorProseMirrorHandlers.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 ProseMirror Keymap, 키보드/텍스트 입력, 스마트 붙여넣기(handlePaste), 드롭(handleDrop), 마우스 클릭/링크 이동(handleClick) 및 DOM 이벤트 핸들러 팩토리
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 클립보드 이미지/HTML 붙여넣기 정제, 5대 정밀 진단 로깅(logError/logWarn) 준수
+// 🚨 @PATCH : 2026-11-14 — [Shift+Space 인라인 태그 즉시 중지 및 플로팅 툴바 적용 후 에디터 클릭 시 storedMarks 보존]:
+//             1) Shift+Space 입력 시 현재 커서에 활성화된 인라인 서식(storedMarks/marks)을 즉시 해제하여 일반 텍스트 입력으로 전환
+//             2) 플로팅 툴바에서 인라인 서식을 적용한 뒤 마우스로 에디터 동일 위치를 클릭할 때 setSelection으로 인해 storedMarks가 초기화되던 결함 해결
 // 🚨 @PATCH : 2026-11-14 — [문서 보기(VisualDocumentEditor) 괄호 자동 완성(Auto Closing Brackets) 연동]:
 //             1) 환경설정 '괄호 자동 완성' 옵션이 켜져 있을 때 문서 보기에서도 (, [, { 입력 시 닫는 괄호를 자동 추가하고 커서를 내부에 배치 (드래그 선택 시 선택 영역을 괄호로 감싸기 지원)
 //             2) 닫는 괄호(), ], }) 직전 입력 시 중복 삽입 대신 커서 통과(Overtype) 및 빈 괄호 쌍에서 Backspace 시 쌍 삭제 지원
@@ -483,6 +486,7 @@ export function createVisualEditorHandlers({
   | 'clipboardTextSerializer'
 > {
   let lastMouseDownCoords: { x: number; y: number } | null = null;
+  let pendingStoredMarksOnClick: { pos: number; marks: readonly import('prosemirror-model').Mark[] } | null = null;
   let tableEndMode = false;
   let tableEndTimer: any = null;
 
@@ -509,18 +513,7 @@ export function createVisualEditorHandlers({
 
       // 🌟 [슬래시 메뉴 활성 시 최우선 가로채기]: Escape 닫힘, ArrowUp/ArrowDown 이동, Enter/Tab/Space 즉시 실행 (들여쓰기 및 기타 키 가로채기 원천 방어)
       if (slashOpenRef.current) {
-        if (event.key === 'Backspace' && !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && autoClosingBracketsRef?.current) {
-        const { empty, $from } = currentView.state.selection;
-        if (empty && $from.parentOffset > 0 && $from.parentOffset < $from.parent.content.size) {
-          const around = currentView.state.doc.textBetween($from.pos - 1, Math.min(currentView.state.doc.content.size, $from.pos + 1));
-          if (around === '()' || around === '[]' || around === '{}') {
-            currentView.dispatch(currentView.state.tr.delete($from.pos - 1, $from.pos + 1).scrollIntoView());
-            caretRef.current?.schedule();
-            return true;
-          }
-        }
-      }
-      if (event.key === 'Escape') {
+        if (event.key === 'Escape') {
           event.preventDefault();
           event.stopPropagation();
           if (slashNavigatedRef) slashNavigatedRef.current = false;
@@ -1248,6 +1241,23 @@ export function createVisualEditorHandlers({
         caretRef.current?.schedule();
         return true;
       }
+      if (
+        event.shiftKey &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        (event.code === 'Space' || event.key === ' ') &&
+        !slashOpenRef.current
+      ) {
+        const { $from, empty } = currentView.state.selection;
+        const activeMarks = currentView.state.storedMarks ?? $from.marks();
+        if (empty && activeMarks && activeMarks.length > 0) {
+          event.preventDefault();
+          currentView.dispatch(currentView.state.tr.setStoredMarks([]));
+          caretRef.current?.schedule();
+          return true;
+        }
+      }
       const configured = configuredHotkeyItem(event, hotkeysRef.current);
       if (configured) {
         event.preventDefault();
@@ -1863,12 +1873,16 @@ export function createVisualEditorHandlers({
         caretRef.current?.schedule();
         return true;
       }
+      const savedMarksForClick = pendingStoredMarksOnClick;
+      pendingStoredMarksOnClick = null;
       const emptyParagraphPos = emptyParagraphAtClick(currentView, event);
       if (emptyParagraphPos !== null && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
         event.preventDefault();
-        currentView.dispatch(
-          currentView.state.tr.setSelection(TextSelection.create(currentView.state.doc, emptyParagraphPos))
-        );
+        let tr = currentView.state.tr.setSelection(TextSelection.create(currentView.state.doc, emptyParagraphPos));
+        if (savedMarksForClick && savedMarksForClick.pos === emptyParagraphPos) {
+          tr = tr.setStoredMarks(savedMarksForClick.marks);
+        }
+        currentView.dispatch(tr);
         currentView.focus();
         caretRef.current?.schedule();
         return true;
@@ -1876,9 +1890,11 @@ export function createVisualEditorHandlers({
       const lineEndPos = paragraphLineEndAtClick(currentView, event);
       if (lineEndPos !== null && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
         event.preventDefault();
-        currentView.dispatch(
-          currentView.state.tr.setSelection(TextSelection.create(currentView.state.doc, lineEndPos))
-        );
+        let tr = currentView.state.tr.setSelection(TextSelection.create(currentView.state.doc, lineEndPos));
+        if (savedMarksForClick && savedMarksForClick.pos === lineEndPos) {
+          tr = tr.setStoredMarks(savedMarksForClick.marks);
+        }
+        currentView.dispatch(tr);
         currentView.focus();
         caretRef.current?.schedule();
         return true;
@@ -1913,7 +1929,12 @@ export function createVisualEditorHandlers({
             if (targetPos !== null) {
               const clamped = Math.max(0, Math.min(targetPos, currentView.state.doc.content.size));
               const $targetPos = currentView.state.doc.resolve(clamped);
-              currentView.dispatch(currentView.state.tr.setSelection(TextSelection.near($targetPos)));
+              const nextSel = TextSelection.near($targetPos);
+              let tr = currentView.state.tr.setSelection(nextSel);
+              if (savedMarksForClick && savedMarksForClick.pos === nextSel.from) {
+                tr = tr.setStoredMarks(savedMarksForClick.marks);
+              }
+              currentView.dispatch(tr);
               currentView.focus();
               caretRef.current?.schedule();
               return true;
@@ -2159,6 +2180,10 @@ export function createVisualEditorHandlers({
         if (!currentView.editable) return false;
         const e = event as MouseEvent;
         lastMouseDownCoords = { x: e.clientX, y: e.clientY };
+        pendingStoredMarksOnClick =
+          currentView.state.selection.empty && currentView.state.storedMarks && currentView.state.storedMarks.length > 0
+            ? { pos: currentView.state.selection.from, marks: currentView.state.storedMarks }
+            : null;
         if (manualFloatingRef.current || selectionVisibleRef.current) {
           manualFloatingRef.current = false;
           setSelection(false);
