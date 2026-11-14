@@ -3,6 +3,9 @@
  * 버전 정보 : 1.1.0
  * 프로그램 ID : oaar-footnote-cleanup
  * -----------------------------------------------------------------------
+ * 🚨 @PATCH : **2026-11-14** — [다중 스텝 트랜잭션 nodesBetween 범위 초과 크래시 방어]:
+ *             1) removeOrphanFootnotes의 스텝 순회 시 transaction.before 대신 해당 스텝 직전 문서(transaction.docs[i])를 기준으로 nodesBetween 호출
+ *             2) 다중 스텝(예: 다중 문단 리스트 변환 + 인접 리스트 병합)에서 step.to가 이전 문서 크기를 초과해 발생하던 TypeError(reading 'nodeSize') 원천 차단
  * 🚨 @PATCH : **2026-11-10** — [각주 고아 정리 트랜잭션 전수 순회 제거 및 step 구간 가드 최적화]:
  *             1) removeOrphanFootnotes 실행 시 트랜잭션 스텝의 삭제 구간(nodesBetween)에 각주 노드가 없을 경우 전체 AST 전수 순회를 즉시 패스하도록 가드 적용
  *             2) 일반 텍스트 입력 및 타이핑 도중 발생하던 매 트랜잭션당 4회의 전체 AST 순회 오버헤드를 0ms로 단축
@@ -99,13 +102,18 @@ export function removeOrphanFootnotes(transaction: Transaction): void {
   let hasFootnoteDeleted = false;
   for (let i = 0; i < transaction.steps.length; i++) {
     const step = transaction.steps[i] as any;
+    const stepDoc = transaction.docs[i] || transaction.before;
     if (step.from !== undefined && step.to !== undefined && step.from < step.to) {
-      transaction.before.nodesBetween(step.from, step.to, node => {
-        if (node.type.name === 'visual_footnote_ref' || node.type.name === 'visual_footnote_def') {
-          hasFootnoteDeleted = true;
-          return false;
-        }
-      });
+      const from = Math.max(0, Math.min(step.from, stepDoc.content.size));
+      const to = Math.max(from, Math.min(step.to, stepDoc.content.size));
+      if (from < to) {
+        stepDoc.nodesBetween(from, to, node => {
+          if (node.type.name === 'visual_footnote_ref' || node.type.name === 'visual_footnote_def') {
+            hasFootnoteDeleted = true;
+            return false;
+          }
+        });
+      }
       if (hasFootnoteDeleted) break;
     }
   }

@@ -1,6 +1,7 @@
 // ====================================================================
 // 📊 [OMD-CORE-SlashCommands-0001] slashCommands.ts ➔ Default Slash Commands & Hotkeys
 // 🎯 @KICK  : 기본 슬래시 명령어 목록 및 단축키 기본 매핑 정의
+// 🚨 @PATCH : **2026-11-14** — [참조문헌 슬래시 명령어 제거 및 태그 취소 단축키 Ctrl+. 변경]: DEFAULT_SLASH_COMMANDS에서 cite 항목 제거 및 DEFAULT_HOTKEYS.clear를 Ctrl+.으로 변경
 // 🚨 @PATCH : **2026-10-01** — [서명/발신인 붉은색 인감도장 태그 적용]: 기본 템플릿의 도장 표식을 붉은색 원형 인감도장 태그(<span style="color:#dc2626; border:1.5px solid #dc2626; border-radius:50%; padding:0 3px; font-size:0.85em; font-weight:bold;">인</span>)로 업그레이드
 // 🚨 @PATCH : **2026-10-01** — [서명/발신인 단축키 변경]: 다른 이름으로 저장과의 충돌 방지를 위해 서명/발신인 단축키를 Ctrl+Alt+R로 변경 및 /sign, /사인 슬래시 명령어 탑재
 // ====================================================================
@@ -19,7 +20,7 @@ export const DEFAULT_HOTKEYS: Record<string, string> = {
   quoteCaution: 'Ctrl+Shift+5',
   inlineCode: 'Ctrl+E',
   codeblock: 'Ctrl+Shift+E',
-  clear: 'Ctrl+\\',
+  clear: 'Ctrl+.',
   signature: 'Ctrl+Alt+R'
 };
 
@@ -38,11 +39,9 @@ export const DEFAULT_SLASH_COMMANDS = [
   { id: 'orderedlist', label: 'Ordered List (숫자 목록)', kind: 17, insertText: '1. ', detail: '숫자 목록', actionId: 'AUTO_RENUMBER' },
   { id: 'list', label: 'List (글머리 기호)', kind: 17, insertText: '- ', detail: '기호 목록' },
   { id: 'checklist', label: 'Checklist (체크리스트)', kind: 17, insertText: '- [ ] ', detail: '할 일 목록' },
-  { id: 'clear', label: 'Clear Tag (태그 취소)', kind: 17, insertText: '', detail: '서식 마크다운 태그 취소', actionId: 'clear' },
   { id: 'signature', label: 'Sign / 사인 (서명/발신인)', kind: 15, insertText: '', detail: '서명 및 발신인 서식 설정 (Ctrl+Alt+R)', actionId: 'signature' },
   { id: 'image', label: 'Image (이미지)', kind: 15, insertText: '![대체 텍스트](이미지_URL)', detail: '이미지 삽입' },
   { id: 'link', label: 'Link (링크)', kind: 15, insertText: '[링크 텍스트](URL)', detail: '링크 삽입' },
-  { id: 'cite', label: 'Cite (참조문헌 인용)', kind: 15, insertText: '', detail: '참조문헌(bib) 선택 및 인용 삽입', actionId: 'custom-action-citation' },
   { id: 'knowledge', label: 'Knowledge (지식 베이스 보관함)', kind: 15, insertText: '', detail: '지식 보관함 관리자 열기 (Ctrl+Shift+K)', actionId: 'custom-action-knowledge-manager' }
 ];
 

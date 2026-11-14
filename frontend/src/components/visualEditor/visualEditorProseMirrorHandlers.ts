@@ -2,6 +2,9 @@
 // 📊 [OMD-CORE-VisualEditor-ProseMirrorHandlers] frontend/src/components/visualEditor/visualEditorProseMirrorHandlers.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 ProseMirror Keymap, 키보드/텍스트 입력, 스마트 붙여넣기(handlePaste), 드롭(handleDrop), 마우스 클릭/링크 이동(handleClick) 및 DOM 이벤트 핸들러 팩토리
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 클립보드 이미지/HTML 붙여넣기 정제, 5대 정밀 진단 로깅(logError/logWarn) 준수
+// 🚨 @PATCH : 2026-11-14 — [태그 취소 기본 단축키 Ctrl+. 변경]: 비주얼 에디터 기본 clearCommand 직통 단축키를 Ctrl+\에서 Ctrl+.으로 변경
+// 🚨 @PATCH : 2026-11-14 — [괄호 자동 완성 중 닫는 대괄호(']') 통과 시 콜아웃 태그([!IMPORTANT], [!WARNING], [!CAUTION] 등) 즉시 변환]:
+//             1) autoClosingBrackets에서 ']' 입력으로 커서만 이동시킬 때 tryConvertCalloutAtCursor를 연쇄 실행하여 인용문 콜아웃 태그가 일반 텍스트로 남지 않도록 개선
 // 🚨 @PATCH : 2026-11-14 — [Shift+Space 인라인 태그 즉시 중지 및 플로팅 툴바 적용 후 에디터 클릭 시 storedMarks 보존]:
 //             1) Shift+Space 입력 시 현재 커서에 활성화된 인라인 서식(storedMarks/marks)을 즉시 해제하여 일반 텍스트 입력으로 전환
 //             2) 플로팅 툴바에서 인라인 서식을 적용한 뒤 마우스로 에디터 동일 위치를 클릭할 때 setSelection으로 인해 storedMarks가 초기화되던 결함 해결
@@ -126,6 +129,7 @@ import {
 } from '@/lib/visualTableCommands';
 import { desktopClipboardImage } from '@/lib/desktopClipboard';
 import { markdownPasteInTableCellTransaction, markdownPasteTransaction } from '@/lib/visualMarkdownPaste';
+import { tryConvertCalloutAtCursor } from '@/lib/visualMarkdownInputRules';
 import { htmlToImportMarkdown, importHtmlWithImages } from '@/lib/importHtmlMarkdown';
 import { sanitizePastedText } from '@/utils/pasteHandlers';
 import { configuredHotkeyItem } from '@/lib/toolbarConfig';
@@ -1233,7 +1237,8 @@ export function createVisualEditorHandlers({
         (event.ctrlKey || event.metaKey) &&
         !event.shiftKey &&
         !event.altKey &&
-        (event.key === '\\' || event.key === '₩' || event.code === 'Backslash')
+        (event.key === '.' || event.code === 'Period') &&
+        (!hotkeysRef.current?.clear || hotkeysRef.current.clear.replace(/\s+/g, '').toUpperCase().replace('CTRLCMD', 'CTRL') === 'CTRL+.')
       ) {
         event.preventDefault();
         synchronizeTextSelection(currentView);
@@ -1462,7 +1467,9 @@ export function createVisualEditorHandlers({
         if (closeChars.has(text) && from === to && from < currentView.state.doc.content.size) {
           const nextChar = currentView.state.doc.textBetween(from, from + 1);
           if (nextChar === text) {
-            currentView.dispatch(currentView.state.tr.setSelection(TextSelection.create(currentView.state.doc, from + 1)).scrollIntoView());
+            const moveTr = currentView.state.tr.setSelection(TextSelection.create(currentView.state.doc, from + 1));
+            const calloutTr = text === ']' ? tryConvertCalloutAtCursor(currentView.state.apply(moveTr)) : null;
+            currentView.dispatch((calloutTr || moveTr).scrollIntoView());
             caretRef.current?.schedule();
             return true;
           }

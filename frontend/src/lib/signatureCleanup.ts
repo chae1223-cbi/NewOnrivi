@@ -1,6 +1,8 @@
 /**
  * 프로그램명 : OnriviAuthor 
  * 파일명 : signatureCleanup.ts
+ * 🚨 @PATCH : **2026-11-14** — [다중 스텝 트랜잭션 nodesBetween 범위 초과 크래시 방어]:
+ *             1) removeEmptySignatureBlocks의 스텝 순회 시 transaction.before 대신 해당 스텝 직전 문서(transaction.docs[i]) 및 범위 클램핑 적용
  * 🚨 @PATCH : **2026-11-10** — [서명 블록 정리 트랜잭션 스텝 범위 가드 최적화]:
  *             1) removeEmptySignatureBlocks 실행 시 삭제 스텝 구간에 source_block이나 div 태그가 없을 경우 emptyNodeRanges 전수 검사를 즉각 바이패스
  *             2) 일반 백스페이스 삭제 시 정규식 파싱 오버헤드를 0ms로 소거
@@ -69,13 +71,18 @@ export function removeEmptySignatureBlocks(transaction: Transaction): void {
   let mayHaveSignature = false;
   for (let i = 0; i < transaction.steps.length; i++) {
     const step = transaction.steps[i] as any;
+    const stepDoc = transaction.docs[i] || transaction.before;
     if (step.from !== undefined && step.to !== undefined && step.from < step.to) {
-      transaction.before.nodesBetween(step.from, step.to, node => {
-        if (node.type.name === 'source_block' || (node.isText && /<\/?div/i.test(node.text || ''))) {
-          mayHaveSignature = true;
-          return false;
-        }
-      });
+      const from = Math.max(0, Math.min(step.from, stepDoc.content.size));
+      const to = Math.max(from, Math.min(step.to, stepDoc.content.size));
+      if (from < to) {
+        stepDoc.nodesBetween(from, to, node => {
+          if (node.type.name === 'source_block' || (node.isText && /<\/?div/i.test(node.text || ''))) {
+            mayHaveSignature = true;
+            return false;
+          }
+        });
+      }
       if (mayHaveSignature) break;
     }
   }

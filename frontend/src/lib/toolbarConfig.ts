@@ -1,6 +1,7 @@
 // ====================================================================
 // 📊 [OMD-CORE-ToolbarConfig-0001] toolbarConfig.ts ➔ Toolbar Items Configuration
 // 🎯 @KICK  : 에디터 툴바, 플로팅 툴바 및 단축키/슬래시 커맨드 전역 설정 메타데이터
+// 🚨 @PATCH : **2026-11-14** — [각주·참조문헌 슬래시 명령어 제외 및 태그 취소 단축키 Ctrl+. 변경]: EXCLUDED_FROM_SLASH에 footnote/citation/bibliography를 추가해 슬래시 자동완성에서 제외하고, clear 기본 단축키를 Ctrl+.으로 변경 및 Period 키 정규화 추가
 // 🚨 @PATCH : **2026-11-11** — [각주 슬래시 명령어 /fn 별칭 및 자동완성 검색 확장]: SLASH_ALIASES 및 filterText에 'fn', '각주', 'footnote', '주석'을 연동하여 플로팅 툴바·단축키·슬래시 명령어 통합 보장
 // 🚨 @PATCH : **2026-10-25** — [서식·태그 지우기(clear/태그 취소) 기본 단축키 Ctrl+\\ 변경 및 한글 키보드(₩) 정규화]:
 //             1) TOOLBAR_ITEMS 태그 취소(clear) 기본 단축키를 Ctrl+Shift+0에서 Ctrl+\\로 변경
@@ -20,8 +21,8 @@ export const TOOLBAR_ITEMS = [
   { id: 'inlineCode', icon: '</>', name: '인라인 코드', group: '서식', tagFormat: '`텍스트`', defaultHotkey: 'Ctrl+E', defaultCommand: 'inlinecode', insertText: '`텍스트`', kind: 15 },
   { id: 'underline', icon: 'U', name: '밑줄', group: '서식', tagFormat: '<u>텍스트</u>', defaultHotkey: 'Ctrl+U', defaultCommand: 'underline', insertText: '<u>텍스트</u>', kind: 15 },
   { id: 'strikethrough', icon: 'S', name: '취소선', group: '서식', tagFormat: '~~텍스트~~', defaultHotkey: 'Ctrl+Shift+X', defaultCommand: 'strike', insertText: '~~텍스트~~', kind: 15 },
-  { id: 'footnote', icon: 'fn', name: '각주', group: '서식', tagFormat: '[^1]', defaultHotkey: 'Ctrl+Alt+F', defaultCommand: 'footnote', insertText: '', kind: 15 },
-  { id: 'citation', icon: '📝', name: '인용(참조문헌)', group: '서식', tagFormat: '[@]', defaultHotkey: 'Ctrl+Alt+C', defaultCommand: 'cite', insertText: '[@]', kind: 15 },
+  { id: 'footnote', icon: 'fn', name: '각주', group: '서식', tagFormat: '[^1]', defaultHotkey: 'Ctrl+Alt+F', defaultCommand: '', insertText: '', kind: 15 },
+  { id: 'citation', icon: '📝', name: '인용(참조문헌)', group: '서식', tagFormat: '[@]', defaultHotkey: 'Ctrl+Alt+C', defaultCommand: '', insertText: '[@]', kind: 15 },
 
   // 2. 제목 (Title)
   { id: 'h1', icon: 'H1', name: '제목 1', group: '제목', tagFormat: '# 제목', defaultHotkey: 'Ctrl+1', defaultCommand: 'h1', insertText: '# ', kind: 17 },
@@ -42,9 +43,9 @@ export const TOOLBAR_ITEMS = [
   { id: 'quoteWarning', icon: '⚠️', name: '인용(주의·Warning)', group: '목록', tagFormat: '> [!WARNING]', defaultHotkey: 'Ctrl+Shift+4', defaultCommand: 'warning', insertText: '> [!WARNING]\n> \n\n', kind: 17 },
   { id: 'quoteCaution', icon: '🚨', name: '인용(경고·Caution)', group: '목록', tagFormat: '> [!CAUTION]', defaultHotkey: 'Ctrl+Shift+5', defaultCommand: 'caution', insertText: '> [!CAUTION]\n> \n\n', kind: 17 },
   { id: 'checklist', icon: '☑️', name: '체크리스트', group: '목록', tagFormat: '- [ ] ', defaultHotkey: 'Ctrl+Shift+C', defaultCommand: 'check', insertText: '- [ ] ', kind: 17 },
-  { id: 'clear', icon: '🧹', name: '태그 취소', group: '목록', tagFormat: '서식 취소', defaultHotkey: 'Ctrl+\\', defaultCommand: 'clear', insertText: '', kind: 17 },
-  { id: 'cleanDoc', icon: '✨', name: '문서 서식 일괄 정리', group: '목록', tagFormat: '없음', defaultHotkey: 'Ctrl+Shift+L', defaultCommand: 'cleandoc', insertText: '', kind: 17 },
-  { id: 'bibliography', icon: '📖', name: '참고문헌(목록 추가)', group: '목록', tagFormat: '## 참고문헌', defaultHotkey: '', defaultCommand: 'bibliography', insertText: '\n\n## 참고문헌\n- ', kind: 17 },
+  { id: 'clear', icon: '🧹', name: '태그 취소', group: '목록', tagFormat: '서식 취소', defaultHotkey: 'Ctrl+.', defaultCommand: '', insertText: '', kind: 17 },
+  { id: 'cleanDoc', icon: '✨', name: '문서 서식 일괄 정리', group: '목록', tagFormat: '없음', defaultHotkey: 'Ctrl+Shift+L', defaultCommand: '', insertText: '', kind: 17 },
+  { id: 'bibliography', icon: '📖', name: '참고문헌(목록 추가)', group: '목록', tagFormat: '## 참고문헌', defaultHotkey: '', defaultCommand: '', insertText: '\n\n## 참고문헌\n- ', kind: 17 },
 
   // 4. 미디어 (Media)
   { id: 'link', icon: '🔗', name: '링크', group: '미디어', tagFormat: '[홈페이지명](https://)', defaultHotkey: 'Ctrl+K', defaultCommand: 'link', insertText: '[홈페이지명](https://)', kind: 15 },
@@ -149,6 +150,8 @@ export function configuredHotkeyItem(event: KeyboardEvent, custom: Record<string
     ? 'SPACE'
     : event.code === 'Backslash' || event.key === '\\' || event.key === '₩'
     ? '\\'
+    : event.code === 'Period' || event.key === '.'
+    ? '.'
     : event.key.toUpperCase();
   const parts = [];
   if (event.ctrlKey || (mac && event.metaKey)) parts.push('CTRL');
@@ -167,7 +170,8 @@ export const getSlashCommands = (monaco: any, customCommands: Record<string, str
   const EXCLUDED_FROM_SLASH = new Set([
     'toggleFloatingToolbar', 'toggleToolbar', 'toggleSidebar',
     'toggleMode', 'toggleTheme',
-    'wrap-h1', 'wrap-h2', 'wrap-h3', 'wrap-quote', 'wrap-code'
+    'wrap-h1', 'wrap-h2', 'wrap-h3', 'wrap-quote', 'wrap-code',
+    'footnote', 'citation', 'bibliography', 'clear', 'cleanDoc'
   ]);
 
   return TOOLBAR_ITEMS

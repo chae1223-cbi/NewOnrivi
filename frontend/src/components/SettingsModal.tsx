@@ -1,5 +1,6 @@
 // ====================================================================
 // 📊 [OMD-EDIT-SettingsModal-0006 ✅ FIXED] SettingsModal.tsx ➔ SettingsModal
+// 🚨 @PATCH : 2026-11-14 — [단축키 테이블 '인라인 태그 중지(Shift+Space)' 기록 추가 및 각주/참조문헌 슬래시 미지원 표기·Period 키 정규화]
 // 🚨 @PATCH : 2026-11-14 — [마크다운 에디터 글꼴/고대비 라벨 명확화] 환경설정의 글꼴 크기·굵기·고대비 텍스트가 마크다운 원본 편집기 전용임을 명시하여 서식 관리 본문 폰트와의 혼동 방지
 // 🚨 @PATCH : 2026-11-12 — [AI 키 백업 제외] 백업 키 포함 선택지를 제거하고 복원 시 키가 이전되지 않음을 안내
 // 🚨 @PATCH : **2026-11-10** — [환경설정 암호화 백업/원복 팝업 클릭 버블링 방어 및 autoFocus 보강]:
@@ -1633,11 +1634,15 @@ export default function SettingsModal({
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => {
-                      const textLines = ['[단축키 및 명령어 매핑]'];
+                      const textLines = [
+                        '[단축키 및 명령어 매핑]',
+                        '- [서식] 인라인 태그 중지 (일반 텍스트 전환): 단축키 [Shift+Space], 명령어 [없음]',
+                      ];
                       TOOLBAR_ITEMS.forEach(item => {
                         const hk = customHotkeys[item.id] || '없음';
-                        const cmd = customSlashCommands[item.id] || '없음';
-                        textLines.push(`- [${item.group}] ${item.name}: 단축키 [${hk}], 명령어 [/${cmd}]`);
+                        const isSlashExcluded = ['footnote', 'citation', 'bibliography', 'clear', 'cleanDoc'].includes(item.id);
+                        const cmd = isSlashExcluded ? '없음' : (customSlashCommands[item.id] ? `/${customSlashCommands[item.id]}` : '없음');
+                        textLines.push(`- [${item.group}] ${item.name}: 단축키 [${hk}], 명령어 [${cmd}]`);
                       });
                       navigator.clipboard.writeText(textLines.join('\n')).then(() => {
                         showToast('단축키 및 명령어가 복사되었습니다.', 'success');
@@ -1680,6 +1685,23 @@ export default function SettingsModal({
                     </tr>
                   </thead>
                   <tbody className={`divide-y text-[14px] ${isDarkMode ? 'divide-white/5 text-zinc-200' : 'divide-outline-variant/10 text-on-surface'}`}>
+                    <tr className={`transition-colors ${isDarkMode ? 'bg-white/[0.02] hover:bg-white/5' : 'bg-blue-50/40 hover:bg-black/5'}`}>
+                      <td className="px-4 py-3 text-center">
+                        <span className="inline-block px-2 py-0.5 rounded text-[11px] font-bold tracking-tight bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                          서식
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-center text-lg">↵</td>
+                      <td className="px-4 py-3 font-medium">인라인 태그 중지 <span className="text-[11px] text-on-surface-variant">(일반 텍스트 전환)</span></td>
+                      <td className="px-5 py-3 text-center">
+                        <span className={`inline-block w-full max-w-[120px] mx-auto px-3 py-1.5 text-[12px] font-mono font-bold text-center rounded-lg border ${
+                          isDarkMode ? 'bg-zinc-900/60 border-zinc-700/70 text-zinc-300' : 'bg-surface-container-low border-outline-variant/20 text-on-surface-variant'
+                        }`}>
+                          Shift+Space
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 text-center text-[12px] text-on-surface-variant">고정 단축키</td>
+                    </tr>
                     {TOOLBAR_ITEMS.map((item) => (
                       <tr key={item.id} className={`transition-colors ${isDarkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'}`}>
                         <td className="px-4 py-3 text-center">
@@ -1721,6 +1743,8 @@ export default function SettingsModal({
                               let key = e.key.toUpperCase();
                               if (e.code && e.code.startsWith('Key')) key = e.code.substring(3).toUpperCase();
                               else if (e.code && e.code.startsWith('Digit')) key = e.code.substring(5);
+                              else if (e.code === 'Period' || e.key === '.') key = '.';
+                              else if (e.code === 'Backslash' || e.key === '\\' || e.key === '₩') key = '\\';
                               
                               const parts = [];
                               if (isCtrl) parts.push('Ctrl');
@@ -1746,22 +1770,26 @@ export default function SettingsModal({
                           />
                         </td>
                         <td className="px-5 py-3 text-center">
-                          <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border focus-within:border-primary-container transition-all ${
-                            isDarkMode ? 'bg-zinc-900 border-zinc-700 focus-within:border-primary-fixed-dim' : 'bg-white border-outline-variant/30 shadow-sm'
-                          }`}>
-                            <span className="font-mono font-bold opacity-40">/</span>
-                            <input
-                              type="text"
-                              value={customSlashCommands[item.id] !== undefined ? customSlashCommands[item.id] : ''}
-                              onChange={(e) => {
-                                const newCmds = { ...customSlashCommands, [item.id]: e.target.value };
-                                setCustomSlashCommands(newCmds);
-                                localStorage.setItem('customSlashCommands', JSON.stringify(newCmds));
-                              }}
-                              className="w-[80px] text-[12px] font-mono font-bold outline-none bg-transparent"
-                              placeholder="명령어"
-                            />
-                          </div>
+                          {['footnote', 'citation', 'bibliography', 'clear', 'cleanDoc'].includes(item.id) ? (
+                            <span className="text-[12px] text-on-surface-variant">사용 안함</span>
+                          ) : (
+                            <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border focus-within:border-primary-container transition-all ${
+                              isDarkMode ? 'bg-zinc-900 border-zinc-700 focus-within:border-primary-fixed-dim' : 'bg-white border-outline-variant/30 shadow-sm'
+                            }`}>
+                              <span className="font-mono font-bold opacity-40">/</span>
+                              <input
+                                type="text"
+                                value={customSlashCommands[item.id] !== undefined ? customSlashCommands[item.id] : ''}
+                                onChange={(e) => {
+                                  const newCmds = { ...customSlashCommands, [item.id]: e.target.value };
+                                  setCustomSlashCommands(newCmds);
+                                  localStorage.setItem('customSlashCommands', JSON.stringify(newCmds));
+                                }}
+                                className="w-[80px] text-[12px] font-mono font-bold outline-none bg-transparent"
+                                placeholder="명령어"
+                              />
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))}

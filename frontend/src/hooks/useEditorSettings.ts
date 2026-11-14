@@ -21,6 +21,7 @@ import { readResourceShortcodes, writeResourceShortcodes } from '@/lib/resourceJ
 // ====================================================================
 // 📊 [OMD-EDIT-USEEDITORSETTINGS-0005] useEditorSettings.ts ➔ useEditorSettings
 // 🎯 @KICK  : 에디터 사용자 설정(테마, 단축키, 폰트크기 등)을 관리하고 영구 저장소에 동기화
+// 🚨 @PATCH : **2026-11-14** — [태그 취소 기본 단축키 Ctrl+. 마이그레이션]: 기존 저장소에 잔존하던 구 기본 단축키(Ctrl+\, Ctrl+Shift+0)를 새 기본값 Ctrl+.으로 자동 이관하여 단축키 미동작 해결
 // 🚨 @PATCH : **2026-11-05** — [구글 드라이브 작업장 상태 보존 및 로컬 잔존 rootFolder 오버라이드 차단]:
 //             1) savedWorkspaceType이 'cloud'/'gdrive'일 때 로컬 rootFolder 캐시로 인해 클라우드 작업장이 'browser'/'local'로 변질되던 결함 원천 해결
 //             2) 클라우드 작업장 부팅 시 onrivi_active_resource_environment를 'cloud'로 확정하여 로컬 폴더 접근 만료 에러 차단
@@ -347,6 +348,12 @@ export const useEditorSettings = (
       setQuoteStyle(baseSettings.quoteStyle);
       // Migrate the former default while preserving deliberately customized shortcuts.
       if (baseSettings.customHotkeys.math === 'Ctrl+M') baseSettings.customHotkeys.math = 'Ctrl+Shift+T';
+      if (baseSettings.customHotkeys.clear === 'Ctrl+\\' || baseSettings.customHotkeys.clear === 'Ctrl+Shift+0') {
+        baseSettings.customHotkeys.clear = 'Ctrl+.';
+        try {
+          localStorage.setItem('customHotkeys', JSON.stringify(baseSettings.customHotkeys));
+        } catch {}
+      }
       setCustomHotkeys(baseSettings.customHotkeys);
       setCustomSlashCommands(baseSettings.customSlashCommands);
       setThemePalette(baseSettings.themePalette);

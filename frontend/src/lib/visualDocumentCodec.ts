@@ -2,6 +2,7 @@
  * 프로그램명 : OnriviAuthor 
  * 버전 정보 : 1.0.1
  * 프로그램 ID : oaar-visual-codec
+ * 🚨 @PATCH : **2026-11-14** — [각주 정의([^1]: ...)의 참조 링크 오인식 방지]: 공백 없는 단일어·URL 형태의 각주 정의를 CommonMark 참조 링크로 해석해 본문 각주([^1], [Ctrl+Alt+F][^2])가 ^1·Ctrl+Alt+F 하이퍼링크로 왜곡되던 현상 차단 (references에서 `^` 접두어 각주 키 제외)
  * 🚨 @PATCH : **2026-11-14** — [개별 이동된 평탄화 리스트(indentPx)의 단계별 레벨 속성(data-onrivi-list-level) 및 직렬화 경계 강화]:
  *             1) bullet_list 및 ordered_list의 toDOM에 data-onrivi-list-level(2단계: indentPx > 0, 3단계: indentPx >= 50)을 부여하여 개별 들여쓰기/내어쓰기 시에도 1·2·3단계 불릿/번호 서식이 정확히 렌더링되도록 연동
  *             2) onrivi:list-indent 및 onrivi:list-boundary 주석 행을 블록 시작 경계(starts)에 명시 등록하고, 편집 분할된 인접 리스트 직렬화 시 개행(\n\n) 및 list-boundary 보존 강화
@@ -618,7 +619,10 @@ export function createVisualDocumentCodec(markdown: string) {
   const tokenizer = defaultMarkdownParser.tokenizer;
   const referenceEnvironment: { references?: Record<string, unknown> } = {};
   const tokens = tokenizer.parse(body, referenceEnvironment);
-  const references = referenceEnvironment.references || {};
+  // [^1]: ... 형태의 각주 정의가 CommonMark 참조 링크([label]: url)로 오인식되어 본문 [^1]·[텍스트][^2]가 링크로 변환되는 현상 차단
+  const references = Object.fromEntries(
+    Object.entries(referenceEnvironment.references || {}).filter(([key]) => !key.startsWith('^'))
+  );
   const starts = Array.from(new Set(tokens.filter(token => token.level === 0 && token.map).map(token => token.map![0])));
   lines.forEach((line, index) => {
     const footnote = /^\s*\[\^[^\]]+\]:/.test(line);
@@ -761,7 +765,7 @@ export function createVisualDocumentCodec(markdown: string) {
         inline.type==='html_inline' || (inline.type==='text' && /==/.test(inline.content))));
       const unsupportedSyntax = /(^|\n)\s*(:::|\|)/m.test(textWithoutCode)
         || /<\/?(?![a-zA-Z][a-zA-Z0-9+.-]*:)[a-zA-Z][a-zA-Z0-9-]*(?=[\s/>])[^>]*>/m.test(textWithoutCode)
-        || Object.keys(rawReferenceEnvironment.references || {}).length > 0
+        || Object.keys(rawReferenceEnvironment.references || {}).some(key => !key.startsWith('^'))
         || unsupportedInline
         || /^\s*```\s*mermaid/m.test(safeRaw);
       const unsupported = unsupportedSyntax || /!\[[^\]]*\]\([^)]+\)/.test(textWithoutCode);

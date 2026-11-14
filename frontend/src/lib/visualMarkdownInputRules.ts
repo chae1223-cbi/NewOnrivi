@@ -2,6 +2,8 @@
  * 프로그램명 : OnriviAuthor 
  * 버전 정보 : 1.0.1
  * 프로그램 ID : oaar-vm-inputrules
+ * 🚨 @PATCH : **2026-11-14** — [괄호 자동 완성 중 인용문 콜아웃 태그([!IMPORTANT], [!WARNING], [!CAUTION] 등) 즉시 변환 연동]:
+ *             1) tryConvertCalloutAtCursor 헬퍼를 추출·내보내어 autoClosingBrackets의 닫는 괄호(']') 통과 입력 시에도 인용문/문단 콜아웃 변환이 즉각 실행되도록 개선
  * 🚨 @PATCH : **2026-11-10** — [리스트 직접 타이핑 변환 시 문단 내부 정밀 텍스트 캐럿 포커싱 (+3)]:
  *             1) 글머리 기호(-, *, +) 및 번호 리스트(1.) 타이핑으로 리스트 노드 생성 시 TextSelection 위치를 listPos + 3 / blockPos + 3으로 정밀 지정하여 list_item 태그 경계가 아닌 실제 p 텍스트블록 내부로 즉각 안착
  * 🚨 @PATCH : **2026-11-07** — [기본 인용문 '> ' 입력 규칙 신설]: 줄 시작에서 '> ' 입력 시 기본 인용문으로 즉시 변환하고, 인용문 안에서 다시 입력하면 최대 6단계까지 중첩 인용문으로 감싸도록 지원 (코드/표 셀 내부 제외)
@@ -45,6 +47,99 @@ import { EditorState, Transaction, TextSelection } from 'prosemirror-state';
 import { findWrapping } from 'prosemirror-transform';
 import { visualSchema } from '@/lib/visualDocumentCodec';
 import { independentIndentListItem, selectedList } from '@/lib/visualListCommands';
+
+const BLOCKQUOTE_CALLOUT_RE = /(?:^|\ufffc)\s*\[!([^\]]+)\](?:[ \t](.*))?$/;
+const PARAGRAPH_CALLOUT_RE = /(?:^|\ufffc)\s*>\s*\[!([^\]]+)\](?:[ \t](.*))?$/;
+
+function normalizeCalloutAlertType(rawTag: string): string {
+  const upper = rawTag.toUpperCase();
+  return ['NOTE', 'TIP', 'IMPORTANT', 'WARNING', 'CAUTION'].includes(upper) ? upper : rawTag;
+}
+
+function applyBlockquoteCalloutRule(
+  state: EditorState,
+  match: RegExpMatchArray,
+  start: number,
+  end: number,
+): Transaction | null {
+  const nodes = visualSchema.nodes;
+  const position = state.selection.$from;
+  for (let depth = position.depth; depth > 0; depth--) {
+    if (position.node(depth).type === nodes.blockquote) {
+      const rawTag = match[1].trim();
+      if (!rawTag) return null;
+      const alertType = normalizeCalloutAlertType(rawTag);
+      const remainingText = match[2] || '';
+      const bqPos = position.before(depth);
+      let tr = state.tr;
+      if (remainingText) {
+        tr = tr.delete(start, end).insertText(remainingText, start);
+      } else {
+        tr = tr.delete(start, end);
+      }
+      tr = tr.setNodeMarkup(bqPos, undefined, { alertType });
+      const afterPos = tr.mapping.map(position.after(depth));
+      if (afterPos === tr.doc.content.size || tr.doc.nodeAt(afterPos)?.type !== nodes.paragraph) {
+        const savedPos = tr.selection.from;
+        tr = tr.insert(afterPos, nodes.paragraph.create());
+        tr = tr.setSelection(TextSelection.create(tr.doc, savedPos));
+      }
+      return tr;
+    }
+  }
+  return null;
+}
+
+function applyParagraphCalloutRule(
+  state: EditorState,
+  match: RegExpMatchArray,
+): Transaction | null {
+  const nodes = visualSchema.nodes;
+  const position = state.selection.$from;
+  const parent = position.parent;
+  if (parent.type !== nodes.paragraph) return null;
+  const rawTag = match[1].trim();
+  if (!rawTag) return null;
+  const alertType = normalizeCalloutAlertType(rawTag);
+  const remainingText = match[2] || '';
+  const blockPos = position.before();
+
+  const newParagraph = nodes.paragraph.create(null, remainingText ? state.schema.text(remainingText) : null);
+  const newBlockquote = nodes.blockquote.create({ alertType }, [newParagraph]);
+
+  const tr = state.tr.replaceWith(blockPos, blockPos + parent.nodeSize, [newBlockquote, nodes.paragraph.create()]);
+  return tr.setSelection(TextSelection.create(tr.doc, blockPos + 2 + remainingText.length));
+}
+
+/**
+ * ========================================================================================
+ * [tryConvertCalloutAtCursor]
+ * 괄호 자동 완성(]) 통과 등 InputRule이 직접 발동하지 않는 직후에도 현재 커서 앞의 콜아웃 태그([!NOTE] 등)를 즉시 변환합니다.
+ *
+ * @param {EditorState} state - 현재 ProseMirror 에디터 상태
+ * @returns {Transaction | null} 변환된 트랜잭션 (매칭 없으면 null)
+ * ========================================================================================
+ */
+export function tryConvertCalloutAtCursor(state: EditorState): Transaction | null {
+  const { empty, $from } = state.selection;
+  if (!empty || !$from.parent.isTextblock || isInsideCode(state, $from.pos)) return null;
+  for (let d = $from.depth; d > 0; d--) {
+    const typeName = $from.node(d).type.name;
+    if (typeName === 'table_cell' || typeName === 'table_header') return null;
+  }
+  const textBefore = $from.parent.textBetween(0, $from.parentOffset, undefined, '\ufffc');
+  const bqMatch = textBefore.match(BLOCKQUOTE_CALLOUT_RE);
+  if (bqMatch && bqMatch.index !== undefined) {
+    const matchStart = $from.start() + bqMatch.index;
+    const tr = applyBlockquoteCalloutRule(state, bqMatch, matchStart, $from.pos);
+    if (tr) return tr;
+  }
+  const paraMatch = textBefore.match(PARAGRAPH_CALLOUT_RE);
+  if (paraMatch) {
+    return applyParagraphCalloutRule(state, paraMatch);
+  }
+  return null;
+}
 
 function convertExistingList(state: EditorState, kind:'bullet'|'ordered', start:number,end:number, order=1, shouldIndent=false):Transaction|null {
   const {$from}=state.selection;
@@ -146,53 +241,14 @@ export function buildVisualMarkdownRules(): InputRule[] {
     }),
     new InputRule(/^ $/, (state,_match,start,end)=>state.selection.$from.parent.type===nodes.heading && !state.selection.$from.parent.content.size ? state.tr.delete(start,end) : null),
     // 인용문(blockquote) 내부에서 [!태그] 또는 [!태그]공백 입력 즉시 콜아웃(Alert)으로 자동 변환
-    new InputRule(/(?:^|\ufffc)\s*\[!([^\]]+)\](?:[ \t](.*))?$/, (state, match, start, end) => {
+    new InputRule(BLOCKQUOTE_CALLOUT_RE, (state, match, start, end) => {
       if (insideCell(state)) return null;
-      const position = state.selection.$from;
-      for (let depth = position.depth; depth > 0; depth--) {
-        if (position.node(depth).type === nodes.blockquote) {
-          const rawTag = match[1].trim();
-          if (!rawTag) return null;
-          const upper = rawTag.toUpperCase();
-          const alertType = ['NOTE', 'TIP', 'IMPORTANT', 'WARNING', 'CAUTION'].includes(upper) ? upper : rawTag;
-          const remainingText = match[2] || '';
-          const bqPos = position.before(depth);
-          let tr = state.tr;
-          if (remainingText) {
-            tr = tr.delete(start, end).insertText(remainingText, start);
-          } else {
-            tr = tr.delete(start, end);
-          }
-          tr = tr.setNodeMarkup(bqPos, undefined, { alertType });
-          const afterPos = tr.mapping.map(position.after(depth));
-          if (afterPos === tr.doc.content.size || tr.doc.nodeAt(afterPos)?.type !== nodes.paragraph) {
-            const savedPos = tr.selection.from;
-            tr = tr.insert(afterPos, nodes.paragraph.create());
-            tr = tr.setSelection(TextSelection.create(tr.doc, savedPos));
-          }
-          return tr;
-        }
-      }
-      return null;
+      return applyBlockquoteCalloutRule(state, match, start, end);
     }),
     // 일반 문단에서 > [!태그] 또는 > [!태그]공백 타이핑 즉시 콜아웃 박스로 즉시 변환
-    paragraphOnly(new InputRule(/(?:^|\ufffc)\s*>\s*\[!([^\]]+)\](?:[ \t](.*))?$/, (state, match, start, end) => {
+    paragraphOnly(new InputRule(PARAGRAPH_CALLOUT_RE, (state, match) => {
       if (insideCell(state)) return null;
-      const position = state.selection.$from;
-      const parent = position.parent;
-      if (parent.type !== nodes.paragraph) return null;
-      const rawTag = match[1].trim();
-      if (!rawTag) return null;
-      const upper = rawTag.toUpperCase();
-      const alertType = ['NOTE', 'TIP', 'IMPORTANT', 'WARNING', 'CAUTION'].includes(upper) ? upper : rawTag;
-      const remainingText = match[2] || '';
-      const blockPos = position.before();
-
-      const newParagraph = nodes.paragraph.create(null, remainingText ? state.schema.text(remainingText) : null);
-      const newBlockquote = nodes.blockquote.create({ alertType }, [newParagraph]);
-
-      const tr = state.tr.replaceWith(blockPos, blockPos + parent.nodeSize, [newBlockquote, nodes.paragraph.create()]);
-      return tr.setSelection(TextSelection.create(tr.doc, blockPos + 2 + remainingText.length));
+      return applyParagraphCalloutRule(state, match);
     })),
     // 줄 시작에서 '> ' 입력 시 기본 인용문(blockquote)으로 변환. 인용문 안에서 다시 입력하면 한 단계 중첩 인용문이 된다.
     new InputRule(/^\s*>\s$/, (state, _match, start, end) => {
