@@ -2,8 +2,9 @@
 // 📊 [OMD-STYLE-QUICK-0001] frontend/src/components/style/QuickStylePanel.tsx
 // 🎯 @KICK  : 서식 관리 초보자 및 일반 사용자를 위한 한 페이지 핵심 간편 스타일링 패널
 // 🛡️ @GUARD : Rule 1(단일 주석 관리), Rule 3(컴포넌트 분리 원칙), Rule 6(LDSG & 고대비 가독성 보장)
-// 🚨 @PATCH : **2026-11-14** — [문서 테마(MOOD_THEMES) 매칭 대소문자 무관 비교 보완]:
-//             1) Onrivi 기본서식('코발트 신뢰' 기본 적용) 및 커스텀 서식에서 색상 코드 대소문자(#1D4ED8 vs #1d4ed8)와 무관하게 matchedTheme이 정확히 활성화되도록 개선
+// 🚨 @PATCH : **2026-11-14** — [문서 분위기 & 테마 컬러 중복 색상 통폐합 및 8대 차별화 컬러·5대 장식 형식(Format) 확장]:
+//             1) 기존 무채색/다크그레이로 색상이 중복되던 '대한민국 관보'·'모던 미니멀'·구 '테크 & 리서치' 및 하단 중복 퀵 조합을 통폐합하고, 색상이 100% 차별화된 8대 테마(코발트 신뢰, 관보·먹색, 인텔리전스 틸, 키네틱 오렌지, 포레스트 에메랄드, 로열 버건디, 크리에이티브 바이올렛, 따뜻한 출판 에세이)로 개편
+//             2) 각 테마마다 고유한 조판 형식(H1/H2 하단 실선, 관보 이중선, 좌측 색깔바, H2하단선+H3좌측바, 형광펜 강조, 박스형 인용구, 표 헤더 틴트)을 연동하고, 현재 색상을 유지한 채 제목·강조 장식 형식만 즉시 전환할 수 있는 '5대 장식 형식 스위치' 신설
 // 🚨 @PATCH : **2026-10-26** — [ESLint React Hook exhaustive-deps 의존성 경고 해소]:
 //             1) matchedTheme useMemo가 매 렌더링마다 새로 생성되는 rules 객체 대신 원시 색상 문자열(pColor, h1Color)을 직접 참조하도록 최적화
 //             2) hasCustomSetting 및 isLawActive useMemo가 매 렌더링마다 새로 생성되는 currentOutline 배열 대신 안정적인 headingNumbering을 참조하도록 정리
@@ -53,93 +54,228 @@ const FONT_PRESETS = [
   { id: 'mono', name: '기술/코딩', font: "'JetBrains Mono', 'D2Coding', monospace", sample: 'Code' },
 ];
 
-// 2. 5대 문서 테마 프리셋
+// 2. 8대 문서 분위기 & 테마 컬러 프리셋 (중복 색상 통폐합 + 테마별 고유 장식 형식 내장)
 interface MoodTheme {
   id: string;
   name: string;
   desc: string;
   badge: string;
+  formatLabel: string;
   textColor: string;
   bgColor: string;
   h1Color: string;
   h1Border: string;
+  h1LeftBar?: string;
   h2Color: string;
   h2Border: string;
+  h2LeftBar?: string;
+  h3Color?: string;
+  h3LeftBar?: string;
   quoteBorder: string;
   quoteBg: string;
+  quoteFullBox?: boolean;
+  thBg?: string;
+  thBorder?: string;
+  strongColor?: string;
+  strongBg?: string;
 }
 
 const MOOD_THEMES: MoodTheme[] = [
   {
-    id: 'gov',
-    name: '대한민국 관보',
-    desc: '클래식 먹색 & 이중 관보선',
-    badge: '🏛️ 공문서',
-    textColor: '#111827',
-    bgColor: '#FFFFFF',
-    h1Color: '#111827',
-    h1Border: '3px double #111827',
-    h2Color: '#1F2937',
-    h2Border: '1px solid #9CA3AF',
-    quoteBorder: '#4B5563',
-    quoteBg: '#F9FAFB'
-  },
-  {
     id: 'cobalt',
     name: '코발트 신뢰',
-    desc: '모던 블루 악센트 & 세련된 정돈감',
-    badge: '💼 비즈니스',
+    desc: '모던 블루 악센트 & 세련된 비즈니스 정돈감',
+    badge: '💼 비즈니스 표준',
+    formatLabel: 'H1·H2 하단 실선 + 블루 표/인용구',
     textColor: '#0F172A',
     bgColor: '#FFFFFF',
     h1Color: '#1D4ED8',
     h1Border: '2px solid #1D4ED8',
+    h1LeftBar: 'none',
     h2Color: '#1E40AF',
     h2Border: '1px solid #BFDBFE',
+    h2LeftBar: 'none',
+    h3Color: '#1E3A8A',
+    h3LeftBar: 'none',
     quoteBorder: '#2563EB',
-    quoteBg: '#EFF6FF'
+    quoteBg: '#EFF6FF',
+    thBg: '#EFF6FF',
+    thBorder: '#BFDBFE',
+    strongColor: '#1E3A8A',
+    strongBg: 'transparent',
+  },
+  {
+    id: 'gov',
+    name: '대한민국 관보 & 먹색',
+    desc: '클래식 먹색 & 격식 있는 관보 이중선 (흑백 통합)',
+    badge: '🏛️ 공문서·흑백',
+    formatLabel: 'H1 관보 이중선 + H2 실선',
+    textColor: '#111827',
+    bgColor: '#FFFFFF',
+    h1Color: '#111827',
+    h1Border: '3px double #111827',
+    h1LeftBar: 'none',
+    h2Color: '#1F2937',
+    h2Border: '1px solid #9CA3AF',
+    h2LeftBar: 'none',
+    h3Color: '#374151',
+    h3LeftBar: 'none',
+    quoteBorder: '#4B5563',
+    quoteBg: '#F9FAFB',
+    thBg: '#F3F4F6',
+    thBorder: '#D1D5DB',
+    strongColor: '#111827',
+    strongBg: 'transparent',
   },
   {
     id: 'tech',
-    name: '테크 & 리서치',
-    desc: '지적인 틸 & 단단한 다크 그레이',
+    name: '인텔리전스 틸',
+    desc: '지적인 청록색(Teal) 포인트 & 좌측 색깔바 위계',
     badge: '🔬 연구·기술',
+    formatLabel: 'H1 하단선 + H2 좌측 틸 색깔바',
     textColor: '#0F172A',
     bgColor: '#FFFFFF',
-    h1Color: '#0F172A',
-    h1Border: '1.5px solid #0F172A',
-    h2Color: '#1E293B',
-    h2Border: '1px solid #CBD5E1',
-    quoteBorder: '#334155',
-    quoteBg: '#F8FAFC'
+    h1Color: '#0F766E',
+    h1Border: '2px solid #0D9488',
+    h1LeftBar: 'none',
+    h2Color: '#115E59',
+    h2Border: 'none',
+    h2LeftBar: '4px solid #0D9488',
+    h3Color: '#0F766E',
+    h3LeftBar: 'none',
+    quoteBorder: '#0D9488',
+    quoteBg: '#F0FDFA',
+    thBg: '#F0FDFA',
+    thBorder: '#99F6E4',
+    strongColor: '#0F766E',
+    strongBg: 'transparent',
+  },
+  {
+    id: 'coral',
+    name: '키네틱 오렌지',
+    desc: '생동감 있는 오렌지 코랄 & 모던 테크 블로그 감성',
+    badge: '🔥 블로그·트렌드',
+    formatLabel: 'H1 클린 + H2 하단선 + H3 좌측바',
+    textColor: '#18181B',
+    bgColor: '#FFFFFF',
+    h1Color: '#C2410C',
+    h1Border: 'none',
+    h1LeftBar: 'none',
+    h2Color: '#EA580C',
+    h2Border: '2px solid #F97316',
+    h2LeftBar: 'none',
+    h3Color: '#9A3412',
+    h3LeftBar: '4px solid #F97316',
+    quoteBorder: '#F97316',
+    quoteBg: '#FFF7ED',
+    thBg: '#FFF7ED',
+    thBorder: '#FED7AA',
+    strongColor: '#C2410C',
+    strongBg: 'transparent',
+  },
+  {
+    id: 'emerald',
+    name: '포레스트 에메랄드',
+    desc: '신뢰와 안정감의 딥 그린 & 박스형 콜아웃',
+    badge: '🌿 ESG·교육',
+    formatLabel: 'H1 굵은 좌측바 + 박스형 인용구',
+    textColor: '#022C22',
+    bgColor: '#FBFDFB',
+    h1Color: '#065F46',
+    h1Border: 'none',
+    h1LeftBar: '6px solid #059669',
+    h2Color: '#047857',
+    h2Border: '1px solid #A7F3D0',
+    h2LeftBar: 'none',
+    h3Color: '#065F46',
+    h3LeftBar: 'none',
+    quoteBorder: '#059669',
+    quoteBg: '#ECFDF5',
+    quoteFullBox: true,
+    thBg: '#ECFDF5',
+    thBorder: '#A7F3D0',
+    strongColor: '#065F46',
+    strongBg: 'transparent',
+  },
+  {
+    id: 'burgundy',
+    name: '로열 버건디 와인',
+    desc: '품격 있는 크림슨 와인 & 클래식 이중선 조판',
+    badge: '🍷 법률·인문',
+    formatLabel: 'H1 버건디 이중선 + 로즈 표/인용구',
+    textColor: '#2A1015',
+    bgColor: '#FFFDFC',
+    h1Color: '#881337',
+    h1Border: '3px double #9F1239',
+    h1LeftBar: 'none',
+    h2Color: '#9F1239',
+    h2Border: '1px solid #FECDD3',
+    h2LeftBar: 'none',
+    h3Color: '#881337',
+    h3LeftBar: 'none',
+    quoteBorder: '#BE123C',
+    quoteBg: '#FFF1F2',
+    thBg: '#FFF1F2',
+    thBorder: '#FECDD3',
+    strongColor: '#881337',
+    strongBg: 'transparent',
+  },
+  {
+    id: 'violet',
+    name: '크리에이티브 바이올렛',
+    desc: '세련된 로열 퍼플 좌측바 & 형광펜 하이라이트',
+    badge: '✨ 기획·SNS',
+    formatLabel: 'H1·H2 좌측바 + 굵은글씨 형광펜',
+    textColor: '#1E1B4B',
+    bgColor: '#FFFFFF',
+    h1Color: '#5B21B6',
+    h1Border: 'none',
+    h1LeftBar: '6px solid #7C3AED',
+    h2Color: '#6D28D9',
+    h2Border: 'none',
+    h2LeftBar: '4px solid #8B5CF6',
+    h3Color: '#4C1D95',
+    h3LeftBar: 'none',
+    quoteBorder: '#7C3AED',
+    quoteBg: '#F5F3FF',
+    thBg: '#F5F3FF',
+    thBorder: '#DDD6FE',
+    strongColor: '#4C1D95',
+    strongBg: '#EDE9FE',
   },
   {
     id: 'editorial',
-    name: '따뜻한 에세이',
-    desc: '온화한 베이지 톤 & 부드러운 여백',
-    badge: '☕ 출판·수필',
+    name: '따뜻한 출판 에세이',
+    desc: '아이보리 미색 지류(#FAF6ED) & 앤틱 브라운 감성',
+    badge: '☕ 문학·북디자인',
+    formatLabel: '미색 용지 + H1 잔선 + 앰버 인용구',
     textColor: '#292524',
-    bgColor: '#FCFBF9',
-    h1Color: '#44403C',
-    h1Border: '1px solid #E7E5E4',
-    h2Color: '#57534E',
+    bgColor: '#FAF6ED',
+    h1Color: '#78350F',
+    h1Border: '1px solid #D6D3D1',
+    h1LeftBar: 'none',
+    h2Color: '#92400E',
     h2Border: 'none',
-    quoteBorder: '#D6D3D1',
-    quoteBg: '#F5F5F4'
+    h2LeftBar: 'none',
+    h3Color: '#78350F',
+    h3LeftBar: 'none',
+    quoteBorder: '#D97706',
+    quoteBg: '#FEF3C7',
+    thBg: '#F5F0E6',
+    thBorder: '#E7E5E4',
+    strongColor: '#78350F',
+    strongBg: 'transparent',
   },
-  {
-    id: 'minimal',
-    name: '모던 미니멀',
-    desc: '군더더기 없는 흑백 & 깔끔한 선',
-    badge: '⬛ 미니멀',
-    textColor: '#18181B',
-    bgColor: '#FFFFFF',
-    h1Color: '#18181B',
-    h1Border: 'none',
-    h2Color: '#27272A',
-    h2Border: 'none',
-    quoteBorder: '#71717A',
-    quoteBg: '#FAFAFA'
-  }
+];
+
+// 2-B. 현재 색상을 유지한 채 제목·강조 장식 구조만 바꾸는 5대 형식 스위치
+type MoodFormatType = 'underline' | 'left-bar' | 'hybrid' | 'double-gov' | 'highlight-clean';
+const MOOD_FORMAT_PRESETS: { id: MoodFormatType; label: string; desc: string }[] = [
+  { id: 'underline', label: '📏 하단 밑줄형', desc: 'H1 2px 실선 · H2 1px 실선' },
+  { id: 'left-bar', label: '▋ 좌측 색깔바형', desc: 'H1 6px 좌측바 · H2 4px 좌측바' },
+  { id: 'hybrid', label: '🔀 H2밑줄+H3바형', desc: 'H1 클린 · H2 밑줄 · H3 좌측바' },
+  { id: 'double-gov', label: '🏛️ 관보 이중선형', desc: 'H1 3px 이중선 · H2 1px 실선' },
+  { id: 'highlight-clean', label: '🖍️ 형광펜·미니멀형', desc: '무테두리 제목 + 굵은글씨 형광펜' },
 ];
 
 // 3. 4대 대표 활자 크기 (출판/행정 표준 pt 단위)
@@ -320,38 +456,237 @@ export default function QuickStylePanel({
     if (isSystemProfile) return;
     const nextRules = { ...rules };
 
+    const h1Left = theme.h1LeftBar || 'none';
+    const h2Left = theme.h2LeftBar || 'none';
+    const h3Left = theme.h3LeftBar || 'none';
+
     nextRules['h1'] = {
       ...(nextRules['h1'] || {}),
       color: theme.h1Color,
-      'border-bottom': theme.h1Border
+      'border-bottom': theme.h1Border,
+      'padding-bottom': theme.h1Border && theme.h1Border !== 'none' ? '8px' : '0px',
+      'border-left': h1Left,
+      'padding-left': h1Left !== 'none' ? '12px' : '0px',
     };
 
     nextRules['h2'] = {
       ...(nextRules['h2'] || {}),
       color: theme.h2Color,
-      'border-bottom': theme.h2Border
+      'border-bottom': theme.h2Border,
+      'padding-bottom': theme.h2Border && theme.h2Border !== 'none' ? '8px' : '0px',
+      'border-left': h2Left,
+      'padding-left': h2Left !== 'none' ? '12px' : '0px',
+    };
+
+    nextRules['h3'] = {
+      ...(nextRules['h3'] || {}),
+      color: theme.h3Color || theme.h2Color,
+      'border-left': h3Left,
+      'padding-left': h3Left !== 'none' ? '12px' : '0px',
     };
 
     nextRules['blockquote'] = {
       ...(nextRules['blockquote'] || {}),
-      'border-left': `4px solid ${theme.quoteBorder}`,
-      'background-color': theme.quoteBg
+      color: theme.h3Color || theme.textColor,
+      'border-left': theme.quoteFullBox ? 'none' : `4px solid ${theme.quoteBorder}`,
+      border: theme.quoteFullBox ? `1px solid ${theme.quoteBorder}` : 'none',
+      'background-color': theme.quoteBg,
+      'border-radius': theme.quoteFullBox ? '8px' : '6px',
+      padding: '12px 18px',
     };
 
     nextRules['p'] = {
       ...(nextRules['p'] || {}),
-      color: theme.textColor
+      color: theme.textColor,
     };
+
+    nextRules['strong'] = {
+      ...(nextRules['strong'] || {}),
+      'font-weight': '700',
+      color: theme.strongColor || theme.h2Color,
+      'background-color': theme.strongBg || 'transparent',
+    };
+
+    if (theme.thBg) {
+      nextRules['th'] = {
+        ...(nextRules['th'] || {}),
+        'background-color': theme.thBg,
+        color: theme.h3Color || theme.h1Color,
+        'border-color': theme.thBorder || '#CBD5E1',
+      };
+      nextRules['table'] = {
+        ...(nextRules['table'] || {}),
+        'border-color': theme.thBorder || '#9CA3AF',
+      };
+    }
 
     onUpdateProfile({
       ...currentProfile,
       pageStyle: {
         ...pageStyle,
-        backgroundColor: theme.bgColor
+        backgroundColor: theme.bgColor,
       },
-      rules: nextRules
+      rules: nextRules,
     });
   };
+
+  /** 현재 테마 색상을 유지하면서 제목·강조 장식 형식(Format)만 즉시 변경 */
+  const handleMoodFormatSelect = (formatType: MoodFormatType) => {
+    if (isSystemProfile) return;
+    const nextRules = { ...rules };
+    const accentH1 = rules['h1']?.color || '#1D4ED8';
+    const accentH2 = rules['h2']?.color || accentH1;
+    const accentH3 = rules['h3']?.color || accentH2;
+
+    if (formatType === 'underline') {
+      nextRules['h1'] = {
+        ...(nextRules['h1'] || {}),
+        'border-bottom': `2px solid ${accentH1}`,
+        'padding-bottom': '8px',
+        'border-left': 'none',
+        'padding-left': '0px',
+      };
+      nextRules['h2'] = {
+        ...(nextRules['h2'] || {}),
+        'border-bottom': `1px solid ${accentH2}`,
+        'padding-bottom': '8px',
+        'border-left': 'none',
+        'padding-left': '0px',
+      };
+      nextRules['h3'] = {
+        ...(nextRules['h3'] || {}),
+        'border-left': 'none',
+        'padding-left': '0px',
+      };
+      nextRules['strong'] = {
+        ...(nextRules['strong'] || {}),
+        'background-color': 'transparent',
+      };
+    } else if (formatType === 'left-bar') {
+      nextRules['h1'] = {
+        ...(nextRules['h1'] || {}),
+        'border-bottom': 'none',
+        'padding-bottom': '0px',
+        'border-left': `6px solid ${accentH1}`,
+        'padding-left': '12px',
+      };
+      nextRules['h2'] = {
+        ...(nextRules['h2'] || {}),
+        'border-bottom': 'none',
+        'padding-bottom': '0px',
+        'border-left': `4px solid ${accentH2}`,
+        'padding-left': '12px',
+      };
+      nextRules['h3'] = {
+        ...(nextRules['h3'] || {}),
+        'border-left': 'none',
+        'padding-left': '0px',
+      };
+    } else if (formatType === 'hybrid') {
+      nextRules['h1'] = {
+        ...(nextRules['h1'] || {}),
+        'border-bottom': 'none',
+        'padding-bottom': '0px',
+        'border-left': 'none',
+        'padding-left': '0px',
+      };
+      nextRules['h2'] = {
+        ...(nextRules['h2'] || {}),
+        'border-bottom': `2px solid ${accentH2}`,
+        'padding-bottom': '8px',
+        'border-left': 'none',
+        'padding-left': '0px',
+      };
+      nextRules['h3'] = {
+        ...(nextRules['h3'] || {}),
+        'border-left': `4px solid ${accentH3}`,
+        'padding-left': '12px',
+      };
+    } else if (formatType === 'double-gov') {
+      nextRules['h1'] = {
+        ...(nextRules['h1'] || {}),
+        'border-bottom': `3px double ${accentH1}`,
+        'padding-bottom': '8px',
+        'border-left': 'none',
+        'padding-left': '0px',
+      };
+      nextRules['h2'] = {
+        ...(nextRules['h2'] || {}),
+        'border-bottom': `1px solid ${accentH2}`,
+        'padding-bottom': '8px',
+        'border-left': 'none',
+        'padding-left': '0px',
+      };
+      nextRules['h3'] = {
+        ...(nextRules['h3'] || {}),
+        'border-left': 'none',
+        'padding-left': '0px',
+      };
+    } else if (formatType === 'highlight-clean') {
+      nextRules['h1'] = {
+        ...(nextRules['h1'] || {}),
+        'border-bottom': 'none',
+        'padding-bottom': '0px',
+        'border-left': 'none',
+        'padding-left': '0px',
+      };
+      nextRules['h2'] = {
+        ...(nextRules['h2'] || {}),
+        'border-bottom': 'none',
+        'padding-bottom': '0px',
+        'border-left': 'none',
+        'padding-left': '0px',
+      };
+      nextRules['h3'] = {
+        ...(nextRules['h3'] || {}),
+        'border-left': 'none',
+        'padding-left': '0px',
+      };
+      nextRules['strong'] = {
+        ...(nextRules['strong'] || {}),
+        'font-weight': '700',
+        color: accentH1,
+        'background-color': '#FEF08A',
+      };
+    }
+
+    onUpdateProfile({
+      ...currentProfile,
+      rules: nextRules,
+    });
+  };
+
+  /** 현재 적용된 제목·강조 장식 형식 판별 */
+  const h1BottomRaw = rules['h1']?.['border-bottom'];
+  const h1LeftRaw = rules['h1']?.['border-left'];
+  const h2BottomRaw = rules['h2']?.['border-bottom'];
+  const h2LeftRaw = rules['h2']?.['border-left'];
+  const h3LeftRaw = rules['h3']?.['border-left'];
+  const strongBgRaw = rules['strong']?.['background-color'];
+
+  const activeMoodFormat: MoodFormatType | null = useMemo(() => {
+    const h1Bottom = String(h1BottomRaw || '').trim();
+    const h1Left = String(h1LeftRaw || '').trim();
+    const h2Bottom = String(h2BottomRaw || '').trim();
+    const h2Left = String(h2LeftRaw || '').trim();
+    const h3Left = String(h3LeftRaw || '').trim();
+    const strongBg = String(strongBgRaw || '').trim();
+
+    if (h1Bottom.includes('double')) return 'double-gov';
+    if (h1Left && h1Left !== 'none' && h2Left && h2Left !== 'none') return 'left-bar';
+    if (h2Bottom && h2Bottom !== 'none' && h3Left && h3Left !== 'none') return 'hybrid';
+    if (
+      (!h1Bottom || h1Bottom === 'none') &&
+      (!h1Left || h1Left === 'none') &&
+      strongBg &&
+      strongBg !== 'transparent' &&
+      strongBg !== 'none'
+    ) {
+      return 'highlight-clean';
+    }
+    if (h1Bottom && h1Bottom !== 'none' && (!h1Left || h1Left === 'none')) return 'underline';
+    return null;
+  }, [h1BottomRaw, h1LeftRaw, h2BottomRaw, h2LeftRaw, h3LeftRaw, strongBgRaw]);
 
   // ── 3. 활자 크기(pt) & 행간 핸들러 ──
   const currentPt = useMemo(() => parsePt(pageStyle.fontSize), [pageStyle.fontSize]);
@@ -697,50 +1032,65 @@ export default function QuickStylePanel({
             <span>{matchedTheme ? matchedTheme.name : '전문가 직접 지정'}</span>
           </span>
         </div>
-        <div className="grid grid-cols-1 gap-2">
+        <div className="grid grid-cols-2 gap-2">
           {MOOD_THEMES.map((theme) => {
-            const active = (rules['p']?.color === theme.textColor) && (rules['h1']?.color === theme.h1Color);
+            const active =
+              (rules['p']?.color || '').toUpperCase() === theme.textColor.toUpperCase() &&
+              (rules['h1']?.color || '').toUpperCase() === theme.h1Color.toUpperCase();
             return (
               <button
                 key={theme.id}
                 type="button"
                 disabled={isSystemProfile}
                 onClick={() => handleMoodSelect(theme)}
-                className={`p-3 rounded-xl border text-left transition-all relative flex items-center justify-between ${
+                className={`p-2.5 rounded-xl border text-left transition-all relative flex flex-col justify-between gap-1.5 ${
                   active
                     ? 'border-blue-600 bg-blue-500/10 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 shadow-sm ring-1 ring-blue-500/30'
                     : 'border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/60 hover:border-zinc-300 dark:hover:border-zinc-700 text-zinc-800 dark:text-zinc-200'
                 } ${isSystemProfile ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
               >
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center -space-x-1 shrink-0">
-                    <span className="w-4 h-4 rounded-full border border-white dark:border-zinc-900 shadow-xs" style={{ backgroundColor: theme.h1Color }} />
-                    <span className="w-4 h-4 rounded-full border border-white dark:border-zinc-900 shadow-xs" style={{ backgroundColor: theme.textColor }} />
-                    <span className="w-4 h-4 rounded-full border border-white dark:border-zinc-900 shadow-xs" style={{ backgroundColor: theme.quoteBorder }} />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs font-extrabold">{theme.name}</span>
-                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400">
-                        {theme.badge}
-                      </span>
+                <div className="flex items-center justify-between gap-1.5 w-full">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <div className="flex items-center -space-x-1 shrink-0">
+                      <span
+                        className="w-3.5 h-3.5 rounded-full border border-white dark:border-zinc-900 shadow-xs"
+                        style={{ backgroundColor: theme.h1Color }}
+                      />
+                      <span
+                        className="w-3.5 h-3.5 rounded-full border border-white dark:border-zinc-900 shadow-xs"
+                        style={{ backgroundColor: theme.h2Color }}
+                      />
+                      <span
+                        className="w-3.5 h-3.5 rounded-full border border-white dark:border-zinc-900 shadow-xs"
+                        style={{ backgroundColor: theme.quoteBg, borderColor: theme.quoteBorder }}
+                      />
                     </div>
-                    <div className="text-[11px] text-zinc-400 mt-0.5">
-                      {theme.desc}
-                    </div>
+                    <span className="text-xs font-extrabold truncate">{theme.name}</span>
                   </div>
+                  {active ? (
+                    <Check size={14} className="text-blue-600 dark:text-blue-400 shrink-0" />
+                  ) : (
+                    <span className="text-[9.5px] px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 font-bold shrink-0">
+                      {theme.badge}
+                    </span>
+                  )}
                 </div>
-                {active && <Check size={16} className="text-blue-600 dark:text-blue-400 shrink-0 ml-2" />}
+                <div className="text-[10.5px] text-zinc-600 dark:text-zinc-300 font-medium truncate">
+                  {theme.desc}
+                </div>
+                <div className="text-[10px] font-bold text-blue-700 dark:text-blue-300 bg-blue-50/80 dark:bg-blue-950/50 px-1.5 py-0.5 rounded border border-blue-200/60 dark:border-blue-800/50 truncate">
+                  📐 {theme.formatLabel}
+                </div>
               </button>
             );
           })}
 
-          {/* 6번째: 사용자 정의 테마 (Custom Theme) 카드 */}
+          {/* 9번째: 사용자 정의 테마 (Custom Theme) 카드 (2열 확장) */}
           <button
             type="button"
             disabled={isSystemProfile}
             onClick={() => setShowCustomThemePanel(!showCustomThemePanel)}
-            className={`p-3 rounded-xl border text-left transition-all relative flex items-center justify-between ${
+            className={`col-span-2 p-3 rounded-xl border text-left transition-all relative flex items-center justify-between ${
               isCustomThemeActive || showCustomThemePanel
                 ? 'border-blue-600 bg-blue-500/10 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 shadow-sm ring-1 ring-blue-500/30'
                 : 'border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/60 hover:border-zinc-300 dark:hover:border-zinc-700 text-zinc-800 dark:text-zinc-200'
@@ -759,7 +1109,7 @@ export default function QuickStylePanel({
                     </span>
                   )}
                 </div>
-                <div className="text-[11px] text-zinc-400 mt-0.5">
+                <div className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
                   본문·배경·대제목·중제목·인용구 5대 핵심 색상을 직접 조색하여 나만의 테마 생성
                 </div>
               </div>
@@ -771,6 +1121,38 @@ export default function QuickStylePanel({
               </span>
             </div>
           </button>
+        </div>
+
+        {/* ── 📐 제목·강조 장식 형식 (5종 원클릭 스위치) ── */}
+        <div className="p-2.5 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50/70 dark:bg-zinc-900/50 space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-extrabold text-zinc-700 dark:text-zinc-300">
+              📐 제목·강조 장식 형식 (현재 색상 유지 · 형식만 빠르게 전환)
+            </span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+            {MOOD_FORMAT_PRESETS.map((fmt) => {
+              const isFmtActive = activeMoodFormat === fmt.id;
+              return (
+                <button
+                  key={fmt.id}
+                  type="button"
+                  disabled={isSystemProfile}
+                  onClick={() => handleMoodFormatSelect(fmt.id)}
+                  className={`px-2 py-1.5 rounded-lg border text-left transition-all ${
+                    isFmtActive
+                      ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                      : 'bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:border-blue-400'
+                  } ${isSystemProfile ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                >
+                  <div className="text-[11px] font-extrabold truncate">{fmt.label}</div>
+                  <div className={`text-[9.5px] truncate mt-0.5 ${isFmtActive ? 'text-blue-100' : 'text-zinc-500 dark:text-zinc-400'}`}>
+                    {fmt.desc}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* ── ✨ 사용자 정의 테마 상세 조색 패널 ── */}
@@ -891,45 +1273,6 @@ export default function QuickStylePanel({
                     className="w-full text-xs font-mono font-bold text-zinc-800 dark:text-zinc-200 bg-transparent outline-none uppercase"
                   />
                 </div>
-              </div>
-            </div>
-
-            {/* 추천 프리셋 원클릭 팔레트 */}
-            <div className="pt-1">
-              <span className="text-[10px] font-semibold text-zinc-500 block mb-1">추천 컬러 테마 퀵 조합:</span>
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  { name: '🍷 버건디 와인', h1: '#881337', h2: '#9F1239', text: '#2A1015', bg: '#FFFDFC', qBorder: '#BE123C', qBg: '#FFF1F2' },
-                  { name: '🌲 에메랄드 숲', h1: '#064E3B', h2: '#065F46', text: '#022C22', bg: '#FBFDFB', qBorder: '#059669', qBg: '#ECFDF5' },
-                  { name: '🍂 앤틱 앰버', h1: '#78350F', h2: '#92400E', text: '#2D1B0D', bg: '#FCFAF7', qBorder: '#D97706', qBg: '#FEF3C7' },
-                  { name: '🌌 딥 네이비', h1: '#0F172A', h2: '#1E293B', text: '#090D16', bg: '#F8FAFC', qBorder: '#3B82F6', qBg: '#EFF6FF' },
-                ].map((preset) => (
-                  <button
-                    key={preset.name}
-                    type="button"
-                    disabled={isSystemProfile}
-                    onClick={() => {
-                      if (isSystemProfile) return;
-                      handleMoodSelect({
-                        id: 'custom-preset',
-                        name: preset.name,
-                        desc: '추천 커스텀 조합',
-                        badge: '추천',
-                        textColor: preset.text,
-                        bgColor: preset.bg,
-                        h1Color: preset.h1,
-                        h1Border: `2px solid ${preset.h1}`,
-                        h2Color: preset.h2,
-                        h2Border: `1px solid ${preset.h2}40`,
-                        quoteBorder: preset.qBorder,
-                        quoteBg: preset.qBg
-                      });
-                    }}
-                    className="px-2 py-1 rounded bg-white dark:bg-zinc-800 hover:bg-blue-50 dark:hover:bg-blue-950/40 border border-zinc-200 dark:border-zinc-700 text-[11px] font-bold text-zinc-700 dark:text-zinc-300 transition-colors cursor-pointer"
-                  >
-                    {preset.name}
-                  </button>
-                ))}
               </div>
             </div>
           </div>
