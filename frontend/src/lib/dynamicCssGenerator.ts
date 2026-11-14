@@ -5,6 +5,7 @@
  *   - 활성 서식 프로필(CssProfile) 기반 동적 CSS(타이포그래피, 코드블록, 표, 체크박스, 구분선, 다크모드 재정의 등) 생성 엔진
  *   - @layer 캐스케이드 격리 및 그림책(Story Book) 프로필 연동
  * 🚨 @PATCH :
+ *   - 2026-11-14 : 인용구(blockquote) 브라우저 기본 40px 좌우 여백(margin-inline-start/end)으로 인한 우측 밀림·넘침 결함 수정(margin-left/right: 0, box-sizing: border-box 보장) 및 인용구 내부 문단 text-indent: 0 격리
  *   - 2026-11-12 : 코드블록 자동 줄바꿈(white-space: pre-wrap) 적용으로 가로 스크롤 없이 컨테이너 너비에 맞게 텍스트 자동 줄바꿈
  *   - 2026-11-10 : 중첩 서브리스트(li ul, li ol) 상단 여백(margin-top: 0.25em)을 0으로 통일하여 제한사용자(MarkdownViewer)와 전체사용자(VisualDocumentEditor) 간의 다중 리스트 간격을 100% 일치
  *   - 2026-11-10 : ProseMirror 센티널 이미지(img.ProseMirror-separator) 스타일 격리 및 일반 img 규칙 제외로 각주 삽입 후 행간 86px 폭발 및 문자 입력 시 축소 결함 완벽 해결
@@ -451,6 +452,7 @@ export function generateDynamicCss(
 .onrivi-content-root blockquote p,
 blockquote p {
   line-height: 1.55 !important;
+  text-indent: 0 !important;
 }
 .custom-preview-container blockquote p:first-child,
 .onrivi-content-root blockquote p:first-child,
@@ -896,11 +898,14 @@ blockquote li p {
   margin-bottom: 6px !important;
 }
 
-/* 💬 인용구(blockquote) 여백 정밀 제어: BFC 및 인라인 블록 격리로 마진 상쇄 원천 차단 */
+/* 💬 인용구(blockquote) 여백 정밀 제어: BFC 및 인라인 블록 격리로 마진 상쇄 원천 차단 + 브라우저 기본 40px 좌우 여백(margin-inline) 방어 */
 .custom-preview-container blockquote,
 .onrivi-content-root blockquote {
   display: inline-block !important;
   width: 100% !important;
+  box-sizing: border-box !important;
+  margin-left: ${(prof.rules.blockquote && prof.rules.blockquote['margin-left']) || '0'} !important;
+  margin-right: ${(prof.rules.blockquote && prof.rules.blockquote['margin-right']) || '0'} !important;
   vertical-align: top !important;
 }
 
