@@ -2,6 +2,9 @@
 // 📊 [OMD-CORE-VisualEditor-ProseMirrorHandlers] frontend/src/components/visualEditor/visualEditorProseMirrorHandlers.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 ProseMirror Keymap, 키보드/텍스트 입력, 스마트 붙여넣기(handlePaste), 드롭(handleDrop), 마우스 클릭/링크 이동(handleClick) 및 DOM 이벤트 핸들러 팩토리
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 클립보드 이미지/HTML 붙여넣기 정제, 5대 정밀 진단 로깅(logError/logWarn) 준수
+// 🚨 @PATCH : 2026-11-14 — [인라인 마크다운 태그(굵게/기울임/밑줄/취소선/코드) 적용 문장 Enter 시 줄바꿈 분리 및 storedMarks 보존]:
+//             1) Enter 입력으로 hard_break(<br>) 삽입 시 replaceSelectionWith(..., false)를 사용하여 <br> 노드가 인라인 마크 태그 내부에 갇히지 않도록 분리하고, 활성 마크(activeMarks)를 setStoredMarks로 보존하여 다음 줄에서도 태그 서식이 그대로 유지되도록 개선
+//             2) 연속 Enter(2번째 Enter)로 문단 분할 시에도 직전 인라인 마크(activeMarks)를 새 문단의 storedMarks로 승계
 // 🚨 @PATCH : 2026-11-14 — [리스트 항목 Enter 분할 시 하위 리스트 끌림 방어(independentSplitListItem 연동)]:
 //             1) Enter 키맵에서 기본 splitListItem 대신 independentSplitListItem을 호출하여, 하위 리스트를 가진 부모 리스트 항목에서 Enter 입력 시 하위 리스트가 새 항목으로 끌려가지 않고 현재 항목만 독립 분할되도록 개선
 // 🚨 @PATCH : 2026-11-13 — [행 시작 Tab 들여쓰기 / Shift+Tab 내어쓰기 및 좌측 경계 정지 보장]:
@@ -314,12 +317,16 @@ export function createVisualEditorKeymap({
       newlineInCode,
       (state, dispatch) => {
         const { $from, empty } = state.selection;
+        const activeMarks = (state.storedMarks || $from.marks()).filter(m => m.type.name !== 'link');
         // 🌟 [빈 문단에서 Enter: 불필요한 hard_break 주입 없이 깨끗한 새 빈 문단 분할]
         if (empty && $from.parent.isTextblock && $from.parent.content.size === 0) {
           if (dispatch) {
             const afterPos = $from.after();
-            const tr = state.tr.insert(afterPos, visualSchema.nodes.paragraph.create());
-            tr.setSelection(TextSelection.create(tr.doc, afterPos + 1));
+            let tr = state.tr.insert(afterPos, visualSchema.nodes.paragraph.create());
+            tr = tr.setSelection(TextSelection.create(tr.doc, afterPos + 1));
+            if (activeMarks.length > 0) {
+              tr = tr.setStoredMarks(activeMarks);
+            }
             dispatch(tr.scrollIntoView());
           }
           return true;
@@ -332,15 +339,26 @@ export function createVisualEditorKeymap({
         if (isAtHardBreak && nodeBefore) {
           if (dispatch) {
             const breakPos = $from.pos - nodeBefore.nodeSize;
+            const marksBeforeBreak = breakPos > $from.start() ? state.doc.resolve(breakPos).marks() : [];
+            const carryMarks = (activeMarks.length > 0 ? activeMarks : marksBeforeBreak).filter(m => m.type.name !== 'link');
             let tr = state.tr.delete(breakPos, $from.pos);
             tr = tr.split(breakPos);
             const targetPos = Math.min(tr.doc.content.size, breakPos + 2);
             tr = tr.setSelection(TextSelection.create(tr.doc, targetPos));
+            if (carryMarks.length > 0) {
+              tr = tr.setStoredMarks(carryMarks);
+            }
             dispatch(tr.scrollIntoView());
           }
           return true;
         }
-        if (dispatch) dispatch(state.tr.replaceSelectionWith(visualSchema.nodes.hard_break.create()).scrollIntoView());
+        if (dispatch) {
+          let tr = state.tr.replaceSelectionWith(visualSchema.nodes.hard_break.create(), false);
+          if (activeMarks.length > 0) {
+            tr = tr.setStoredMarks(activeMarks);
+          }
+          dispatch(tr.scrollIntoView());
+        }
         return true;
       }
     ),

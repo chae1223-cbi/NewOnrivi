@@ -2,6 +2,8 @@
 // 📊 [OMD-TABLE-CMDS-0001] frontend/src/lib/visualTableCommands.ts
 // 🎯 @KICK  : 위지윅 에디터 표(Table) 셀 이동, 편집, 구조 변경 및 선택 영역 명령 처리
 // 🛡️ @GUARD : Rule 1(단일 주석 관리), 불규칙 행(Ragged Table) 및 범위 초과(RangeError) 완전 방어
+// 🚨 @PATCH : 2026-11-14 — [표 셀 내 인라인 태그 문장 Enter 시 줄바꿈 분리 및 storedMarks 보존]:
+//             1) tableEnter에서 hard_break 삽입 시 replaceSelectionWith(..., false)로 <br>의 마크 상속을 방지하고 setStoredMarks로 활성 인라인 태그를 다음 줄에 유지
 // 🚨 @PATCH : 2026-11-14 — [표 정렬(본문 왼쪽/중앙/오른쪽) 및 행·열 편집 시 수동 조정된 칼럼 너비(widths) 보존]:
 //             1) tableAction에서 visualSchema.nodes.table.create(null, ...)로 표 재생성 시 table.attrs.widths가 null로 초기화되어 조정한 칼럼 위치가 리셋되던 결함 수정
 //             2) 본문 왼쪽/중앙/오른쪽 정렬 및 행 추가/삭제 시 기존 table.attrs.widths를 그대로 유지하고, 열 추가/삭제 시에는 기존 열 비율을 비례 재계산하여 칼럼 위치 변동을 방지
@@ -314,10 +316,19 @@ export function moveTableCell(backward = false): Command {
 }
 
 export function tableEnter(): Command {
-  return (state, dispatch, view) =>
-    tableContext(state)
-      ? (dispatch?.(state.tr.replaceSelectionWith(visualSchema.nodes.hard_break.create()).scrollIntoView()), true)
-      : false;
+  return (state, dispatch) => {
+    if (!tableContext(state)) return false;
+    if (dispatch) {
+      const { $from } = state.selection;
+      const activeMarks = (state.storedMarks || $from.marks()).filter(m => m.type.name !== 'link');
+      let tr = state.tr.replaceSelectionWith(visualSchema.nodes.hard_break.create(), false);
+      if (activeMarks.length > 0) {
+        tr = tr.setStoredMarks(activeMarks);
+      }
+      dispatch(tr.scrollIntoView());
+    }
+    return true;
+  };
 }
 
 export interface TableCellInfo {

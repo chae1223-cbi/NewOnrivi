@@ -3,6 +3,9 @@
  * 버전 정보 : 1.0.1
  * 프로그램 ID : oaar-vm-caret
  * -----------------------------------------------------------------------
+ * 🚨 @PATCH : **2026-11-14** — [인라인 마크다운 태그 적용 문장 Enter 줄바꿈 시 캐럿이 윗줄에 머무는 결함 해결]:
+ *             1) 커서 직전 노드가 hard_break(<br>)일 때(isAfterHardBreak) trailingBreak 방어 로직이 이전 줄의 coordsBefore로 캐럿 좌표를 덮어쓰던 결함 차단
+ *             2) hard_break 직후 새 줄에 텍스트가 있으면 다음 노드 시작 좌표(coordsAtPos(pos, 1))로, 빈 줄이면 trailingBreak 또는 이전 줄 + lineHeight 및 블록 좌측 시작점(box.left + paddingLeft)으로 캐럿을 즉시 하강 배치
  * 🚨 @PATCH : **2026-11-11** — [각주(visual_footnote_ref) 위첨자 캐럿 수직 상승 방어 및 본문 베이스라인 완전 동기화]:
  *             1) 각주 참조 뱃지 직후 또는 각주 뒤 공백에서 위첨자(<sup>)의 작은 높이(12px) 및 상단 Y좌표로 인해 커서가 각주 뱃지 상단에 매달려 위로 떠 있는 결함 원천 해결
  *             2) 각주 직전 본문 단어(textCoords)의 실제 렌더링 line-box 기하학을 획득하여 커서 높이(22~24px)와 Y좌표를 본문 기준선으로 100% 완전 동기화
@@ -193,13 +196,111 @@ export function installVisualCaret(view: EditorView) {
 
       // 🛡️ [trailingBreak 결함 방어 1]: 텍스트 끝 공백 입력 시 domRect가 다음 행(trailingBreak)으로 떨어지는 현상 교정
       // 이때 문자 우측(coordsBefore.right)에 캐럿을 위치시켜 공백 입력 시 커서가 우측으로 자연스럽게 전진하도록 보장
-      if (coordsBefore && domRect && domRect.top > coordsBefore.top + 10) {
+      // 단, Enter(hard_break) 직후에는 커서가 실제로 다음 행으로 내려가야 하므로 방어 대상에서 제외
+      const isAfterHardBreak = Boolean(
+        $from.nodeBefore && ($from.nodeBefore.type.name === 'hard_break' || $from.nodeBefore.type.name === 'visual_hard_break')
+      );
+      if (!isAfterHardBreak && coordsBefore && domRect && domRect.top > coordsBefore.top + 10) {
         rect = {
           left: coordsBefore.right,
           right: coordsBefore.right + 3,
           top: coordsBefore.top,
           bottom: coordsBefore.bottom,
         };
+      }
+
+      // 🌟 [Enter(hard_break) 직후 다음 행 캐럿 즉시 하강 보장]:
+      // 인라인 마크다운 태그(굵게, 기울임, 밑줄, 취소선, 인라인코드 등)가 적용된 문구/문장에서 Enter 입력 시
+      // coordsBefore가 이전 줄의 <br>을 가리켜 커서가 윗줄 끝에 머무는 현상을 방지하고 다음 줄 시작 위치로 즉시 이동
+      if (isAfterHardBreak) {
+        const hasNextInlineContent = Boolean(
+          $from.nodeAfter && $from.nodeAfter.type.name !== 'hard_break' && $from.nodeAfter.type.name !== 'visual_hard_break'
+        );
+        if (hasNextInlineContent) {
+          try {
+            const coordsAfter = view.coordsAtPos($from.pos, 1);
+            if (coordsAfter && coordsAfter.bottom > coordsAfter.top) {
+              if (!domRect || domRect.height === 0 || (coordsBefore && domRect.top <= coordsBefore.top + 4)) {
+                rect = {
+                  left: coordsAfter.left,
+                  right: coordsAfter.left + 3,
+                  top: coordsAfter.top,
+                  bottom: coordsAfter.bottom,
+                };
+              }
+            }
+          } catch { /* ignore */ }
+        } else {
+          const targetNode = view.domAtPos($from.pos).node;
+          const targetEl = targetNode instanceof Element ? targetNode : targetNode.parentElement;
+          const blockEl = targetEl?.closest('p, h1, h2, h3, h4, h5, h6, li, td, th') || (view.nodeDOM($from.before()) as HTMLElement | null) || null;
+          if (blockEl && view.dom.contains(blockEl)) {
+            const effectiveEl = (blockEl.tagName === 'LI' ? (blockEl.querySelector('p') || blockEl) : blockEl) as HTMLElement;
+            const box = effectiveEl.getBoundingClientRect();
+            const style = getComputedStyle(effectiveEl);
+            const fontSize = parseFloat(style.fontSize) || 16;
+            const lineHeight = parseFloat(style.lineHeight) || fontSize * 1.5;
+            const paddingTop = parseFloat(style.paddingTop) || 0;
+            const paddingLeft = parseFloat(style.paddingLeft) || 0;
+            const left = box.left + paddingLeft;
+
+            let caretHeight = Math.max(22, Math.round(fontSize * 1.45));
+            let top = box.top + paddingTop + Math.round((lineHeight - caretHeight) / 2);
+            let resolvedNewLine = false;
+
+            if ($from.pos === $from.end()) {
+              const trailingBr = effectiveEl.querySelector('br.ProseMirror-trailingBreak');
+              if (trailingBr) {
+                try {
+                  const brRange = document.createRange();
+                  brRange.selectNode(trailingBr);
+                  const brRect = brRange.getClientRects()[0];
+                  if (brRect && brRect.height > 0 && (!coordsBefore || brRect.top > coordsBefore.top + 4)) {
+                    top = brRect.top;
+                    caretHeight = brRect.height;
+                    resolvedNewLine = true;
+                  }
+                } catch { /* ignore */ }
+              }
+            }
+
+            if (!resolvedNewLine && domRect && domRect.height > 0 && (!coordsBefore || domRect.top > coordsBefore.top + 4)) {
+              top = domRect.top;
+              caretHeight = domRect.height;
+              resolvedNewLine = true;
+            }
+
+            if (!resolvedNewLine) {
+              try {
+                const coordsAfter = view.coordsAtPos($from.pos, 1);
+                if (coordsAfter && coordsAfter.bottom > coordsAfter.top && (!coordsBefore || coordsAfter.top > coordsBefore.top + 4)) {
+                  top = coordsAfter.top;
+                  caretHeight = coordsAfter.bottom - coordsAfter.top;
+                  resolvedNewLine = true;
+                }
+              } catch { /* ignore */ }
+            }
+
+            if (!resolvedNewLine) {
+              let prevLineTop = coordsBefore ? coordsBefore.top : null;
+              const breakPos = $from.pos - ($from.nodeBefore?.nodeSize || 1);
+              if (breakPos > $from.start()) {
+                try {
+                  const textBeforeBreak = view.coordsAtPos(breakPos, -1);
+                  if (textBeforeBreak && textBeforeBreak.bottom > textBeforeBreak.top) {
+                    prevLineTop = textBeforeBreak.top;
+                    caretHeight = textBeforeBreak.bottom - textBeforeBreak.top;
+                  }
+                } catch { /* ignore */ }
+              }
+              if (prevLineTop !== null) {
+                top = prevLineTop + lineHeight;
+              }
+            }
+
+            rect = { left, right: left + 3, top, bottom: top + caretHeight };
+          }
+        }
       }
 
       // 🛡️ [trailingBreak 결함 방어 2]: 빈 문단 또는 공백만 있는 문단/리스트에서 커서가 다음 행(Line 2)으로 추락하는 현상 100% 차단
