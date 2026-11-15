@@ -1,6 +1,7 @@
 // @ts-nocheck
 // ====================================================================
 // 📊 [OMD-CORE-useMonacoSetup-0001] useMonacoSetup ➔ Monaco Setup & Lifecycle Engine
+// 🚨 @PATCH : 2026-11-15 — [수동 페이지 나누기(onrivi_pagination) 에디터 숨김 및 복사 제외]: setHiddenAreas로 마크다운 편집기에서 숨기고, Ctrl+C 복사 시 메타정보 제거
 // 🚨 @PATCH : 2026-11-05 — [초기 모델 수정 오판 방지]: 비활성 탭 모델 이벤트가 활성 문서 본문과 저장 상태를 덮어쓰지 않도록 차단.
 // 🚨 @PATCH : 2026-11-05 — [시작 렌더링 부담 축소]: 에디터 마운트 시 활성 탭의 모델만 만들고 나머지는 선택할 때 생성한다.
 // 🚨 @PATCH : **2026-11-04** — [useMonacoSetup.ts 1순위 모듈 분리 리팩토링 (2,617라인 ➔ 슬림화)]:
@@ -30,6 +31,7 @@ import { applySafeMarkdownMonarchTokenizer } from '@/lib/editorThemes';
 import { registerMonacoTableAndListCommands } from './monacoTableAndListCommands';
 import { registerMonacoClipboardAndDrop } from './monacoClipboardAndDrop';
 import { injectMonacoSuggestStyles, registerMonacoCompletionProviders } from './monacoCompletionProviders';
+import { getPaginationHiddenLineRange, stripPaginationSettings } from '@/lib/documentPaginationSettings';
 
 /**
  * ----------------------------------------------------------------------------
@@ -168,6 +170,58 @@ export function useMonacoSetup(deps: any) {
     } else {
       editor.setValue(contentRef.current);
     }
+
+    const syncPaginationHiddenAreas = () => {
+      try {
+        const model = editor.getModel();
+        if (!model || typeof (editor as any).setHiddenAreas !== 'function') return;
+        const hiddenRange = getPaginationHiddenLineRange(model.getValue());
+        if (hiddenRange) {
+          (editor as any).setHiddenAreas(
+            [new monaco.Range(hiddenRange.startLine, 1, hiddenRange.endLine, 1)],
+            'onrivi-pagination'
+          );
+        } else {
+          (editor as any).setHiddenAreas([], 'onrivi-pagination');
+        }
+      } catch (_) { }
+    };
+
+    syncPaginationHiddenAreas();
+    editor.onDidChangeModel(() => syncPaginationHiddenAreas());
+    editor.onDidChangeModelContent(() => syncPaginationHiddenAreas());
+    editor.onDidChangeCursorPosition((e) => {
+      try {
+        const model = editor.getModel();
+        if (!model) return;
+        const hiddenRange = getPaginationHiddenLineRange(model.getValue());
+        if (
+          hiddenRange &&
+          e.position.lineNumber >= hiddenRange.startLine &&
+          e.position.lineNumber <= hiddenRange.endLine &&
+          hiddenRange.endLine < model.getLineCount()
+        ) {
+          editor.setPosition({ lineNumber: hiddenRange.endLine + 1, column: 1 });
+        }
+      } catch (_) { }
+    });
+
+    editorDomNode?.addEventListener('copy', (e: ClipboardEvent) => {
+      try {
+        if (!editor.hasTextFocus?.()) return;
+        const model = editor.getModel();
+        const selection = editor.getSelection();
+        if (!model || !selection || selection.isEmpty()) return;
+        const selectedText = model.getValueInRange(selection);
+        if (!/^onrivi_pagination\s*:/m.test(selectedText)) return;
+        const cleaned = stripPaginationSettings(selectedText);
+        if (e.clipboardData) {
+          e.clipboardData.setData('text/plain', cleaned);
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      } catch (_) { }
+    }, true);
 
     // IME 조합 감지 락
     setTimeout(() => {
@@ -580,6 +634,17 @@ export function useMonacoSetup(deps: any) {
     };
 
     editor.onKeyDown((e) => {
+      if (e.keyCode === monaco.KeyCode.Backspace && !isComposingRef.current) {
+        const model = editor.getModel();
+        const pos = editor.getPosition();
+        const hiddenRange = model ? getPaginationHiddenLineRange(model.getValue()) : null;
+        if (hiddenRange && hiddenRange.startLine === 1 && pos && pos.lineNumber === hiddenRange.endLine + 1 && pos.column === 1) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+      }
+
       if (handleWordWrapArrowNavigation(e)) {
         return;
       }

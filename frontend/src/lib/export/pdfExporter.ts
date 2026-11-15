@@ -2,6 +2,7 @@
 // 📊 [OMD-IO-export-pdf-0001] frontend/src/lib/export/pdfExporter.ts
 // 🎯 @KICK  : PagedJS 조판 및 브라우저/Electron 인쇄 기반 PDF 내보내기 엔진
 // 🛡️ @GUARD : 페이지 나누기 마커 정규화, 워터마크 안전 폴백, 원격 폰트/이미지 장애 내결함성
+// 🚨 @PATCH : **2026-11-15** — [paginatedPrint 정적 import 전환]: 개발 서버 HMR/리빌드 시 동적 청크 404(ChunkLoadError) 방지를 위해 paginatedPrint 및 documentPaginationSettings를 정적 import로 변경
 // 🚨 @PATCH : **2026-11-04** — [모듈화 분리 & 에러/주석 표준화]: exportHandlers.ts에서 PDF 내보내기 전용 모듈 분리 및 2단계 함수 JSDoc·logError 적용
 // 🔗 @CALLS : Paged.js, clonePreview, injectExportStyles, generateExportCss
 // ====================================================================
@@ -12,6 +13,8 @@ import { cssPx, EXPORT_FIGURE_HEIGHT_RATIO, EXPORT_LEAD_FIGURE_HEIGHT_RATIO, mar
 import { PAPER_SIZES } from '@/constants/paperSizes';
 import { DEFAULT_PROFILE } from '@/constants/cssProfile';
 import { resolvePageGeometry } from '../pageGeometry';
+import { paginatePrintHtml } from '../paginatedPrint';
+import { readPaginationSettings } from '../documentPaginationSettings';
 import { DEFAULT_PRINT_SETTINGS, readEffectivePrintSettings, DocumentPrintSettings } from '../documentPrintSettings';
 import { logError } from '@/lib/errorDiagnostics';
 import { msg } from '@/lib/systemMessages';
@@ -681,8 +684,6 @@ export async function exportPDF({
       const resolved = await resolveExportWatermark(effectiveSettings);
       progress.update('용지에 맞춰 페이지 계산 중');
       try {
-        const {paginatePrintHtml}=await import('../paginatedPrint');
-        const {readPaginationSettings}=await import('../documentPaginationSettings');
         const paginatedResult = await withExportTimeout(
           paginatePrintHtml(finalHtml, activeProfile?.pageStyle || {paperSize,orientation,marginTop,marginBottom,marginLeft,marginRight}, resolved, signal,paginationSettings || readPaginationSettings(markdownContent || ''),stage=>progress?.update(stage)),
           '페이지 계산',

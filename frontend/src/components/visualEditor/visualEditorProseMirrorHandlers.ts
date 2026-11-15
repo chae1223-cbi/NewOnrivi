@@ -72,6 +72,7 @@
 //             1) 문단 맨 시작($from.parentOffset === 0)에서 Enter 입력 시 문단이 밀리지 않고 반응 없이 커서를 제자리에 유지
 //             2) Enter 입력 후 한 글자도 입력하지 않은 빈 행(hard_break)에서 Shift+Enter 입력 시 hard_break를 제거하고 독립된 새 문단(paragraph) 행으로 전환
 //             3) 글이 있는 상태에서 Shift+Enter 입력 시 다음 줄에 새로운 문단(paragraph) 생성 분리
+// 🚨 @PATCH : 2026-11-15 — [위지윅 붙여넣기 시 페이지 나누기 메타(onrivi_pagination) 제외]: 서식관리 메타는 유지하고 onrivi_pagination만 stripPaginationSettings로 제거
 // 🚨 @PATCH : 2026-11-08 — [표 셀 Shift 연속 누적 선택 한 칸 멈춤 결함 완전 해결]:
 //             1) Shift 선택 시 $from(시작 셀 고정) 대신 tableContextAt($head)를 통해 현재 이동 중인 활성 헤드 좌표를 실시간 추적하도록 전환
 //             2) Shift+방향키 입력 시 불필요한 endOfTextblock(텍스트 블록 끝) 조건을 배제하고 엑셀처럼 2행, 3행 이상 무제한 연속 누적 선택이 매끄럽게 확장되도록 개선
@@ -101,6 +102,7 @@ import { undo, redo, closeHistory } from 'prosemirror-history';
 import { keymap } from 'prosemirror-keymap';
 import { undoInputRule } from 'prosemirror-inputrules';
 import { createVisualDocumentCodec, visualSchema, visualSerializer } from '@/lib/visualDocumentCodec';
+import { stripPaginationSettings } from '@/lib/documentPaginationSettings';
 import { withIndependentQuotes, protectQuoteBoundary, liftQuoteAtStart } from '@/lib/visualQuoteCommands';
 import {
   removeListMarkerAtStart,
@@ -1483,7 +1485,7 @@ export function createVisualEditorHandlers({
       const inCode = currentView.state.selection.$from.parent.type.name === 'code_block';
       if (inCode) return false;
 
-      const text = event.clipboardData?.getData('text/plain') || '';
+      const text = stripPaginationSettings(event.clipboardData?.getData('text/plain') || '');
       const html = event.clipboardData?.getData('text/html') || '';
       const hasRichHtml =
         !!html &&

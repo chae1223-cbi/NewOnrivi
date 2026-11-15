@@ -17,6 +17,7 @@ import { syncVisualSourceModel } from '@/lib/incrementalVisualModel';
 // 📊 [OMD-HOOK-0003] useEditorTabs.ts ➔ useEditorTabs
 // 🎯 @KICK  : Monaco 에디터 가상 모델 다중 탭 관리 — 탭 전환·생성·콘텐츠 동기화
 // 🛡️ @GUARD : tabs/setTabs/activeTabId/setActiveTabId 외부 주입으로 TDZ 원천 차단
+// 🚨 @PATCH : 2026-11-15 — [새 문서 생성 시 ReferenceError(isModified is not defined) 해결]: createNewTab 내부에서 미정의 식별자 isModified 대신 newTab.isModified(false)를 참조하도록 수정
 // 🚨 @PATCH : 2026-11-08 — [다중 탭 전환 시 위지윅 에디터 본문 덮어쓰기 및 문서 뒤바뀜 결함 해결]:
 //             1) switchTab에서 preview(위지윅) 모드일 때 Monaco editor.getValue()로 현재 탭 content를 덮어쓰던 치명적 결함 제거 (위지윅 모드 탭 본문 100% 보존)
 //             2) editor.getModel()이 현재 활성 탭의 model과 일치할 때만 에디터 값 동기화 및 updateContent syncVisualSourceModel을 수행하도록 모델 검증 가드 탑재하여 타 탭 본문 오염 원천 차단
@@ -324,11 +325,11 @@ export const useEditorTabs = (
         setContent(contentVal);
     setCurrentFileName(tabName);
     setCurrentFileNode(effectiveNode);
-    if (lastSavedContentRef && !isModified) {
+    if (lastSavedContentRef && !newTab.isModified) {
       lastSavedContentRef.current = (contentVal || '').replace(/\r\n/g, '\n');
     }
     if (setSaveStatus) {
-      setSaveStatus(isModified ? 'unsaved' : 'saved');
+      setSaveStatus(newTab.isModified ? 'unsaved' : 'saved');
     }
 
     if (editorRef.current && model) {

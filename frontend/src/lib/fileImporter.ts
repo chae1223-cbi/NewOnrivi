@@ -1,4 +1,6 @@
 // ====================================================================
+// 🚨 @PATCH : 2026-11-15 — [워드(DOCX) 및 한글(HWP) 페이지 나누기 보존]: DOCX br[type='page']를 hr.onrivi-page-break로 매핑하고, HWP 다중 구역(sections) 경계에 PAGE_BREAK_MARKER 삽입
+// 🚨 @PATCH : 2026-11-15 — [다중 페이지 PDF 가져오기 시 페이지 구분 마커(<!-- onrivi:page-break -->) 삽입]: 2페이지 이상 PDF 변환 시 각 페이지 경계에 Onrivi 표준 페이지 나누기 마커를 삽입하여 페이지 구분 보장
 // 🚨 @PATCH : 2026-11-14 — [HWP 마크다운 서식·표 그림 수정] 본문·표 셀의 강조와 이미지를 마크다운으로 출력하고 병합 셀은 빈 격자 칸으로 펼쳐 HTML 태그의 문자 노출을 방지
 // 🚨 @PATCH : 2026-11-14 — [HWP 그림·문자 서식 복원] 본문 그림은 마크다운 이미지로 출력하고 병합 표 안 그림은 HTML로 유지하며 글자 모양 포인터별 굵게·기울임·밑줄·취소선을 보존
 // 🚨 @PATCH : 2026-11-13 — [PDF 표 내부·상단 이미지 단일 HTML <table> 통합]: 페이지 내 이미지 박스를 먼저 크롭하여 pdfRuledTableBlocks에 전달하고, 표 셀로 편입된 이미지(used)는 개별 이미지 블록 중복 생성에서 제외
@@ -27,6 +29,7 @@ import { readDocxImageSizes } from './docxImageSizes';
 import { prepareDocxLockedCanvasImages } from './docxLockedCanvasImages';
 import { pdfImageBoxes, serializePdfBlocks } from './pdfImportLayout';
 import { pdfRuledTableBlocks, type PdfEmbeddedImage } from './pdfImportTables';
+import { PAGE_BREAK_MARKER } from './pageGeometry';
 import { readHwpCompression, decodeHwpBody, decodeHwpParagraph, isRawHwpImage } from './hwpStreams';
 import { importHwpx } from './hwpxImporter';
 import { importDoc } from './docImporter';
@@ -155,7 +158,7 @@ async function importDocx(
       const lockedCanvas = await prepareDocxLockedCanvasImages(arrayBuffer);
       const imageSizes = await readDocxImageSizes(arrayBuffer);
       const options = {
-        styleMap: ["p[style-name='Caption'] => figcaption:fresh"],
+        styleMap: ["p[style-name='Caption'] => figcaption:fresh", "br[type='page'] => hr.onrivi-page-break:fresh"],
         convertImage: mammoth.images.imgElement(function(image) {
           return image.read("base64").then(function(imageBuffer) {
             const width = imageSizes.get(imageBuffer)?.shift();
@@ -176,7 +179,7 @@ async function importDocx(
     } else {
       // 텍스트 추출 방식 사용
       result = await mammoth.convertToHtml({ arrayBuffer }, {
-        styleMap: ["p[style-name='Caption'] => figcaption:fresh"],
+        styleMap: ["p[style-name='Caption'] => figcaption:fresh", "br[type='page'] => hr.onrivi-page-break:fresh"],
         convertImage: mammoth.images.imgElement(async () => {
           throw new Error('DOCX 이미지를 저장할 공통 자원 폴더를 연결해 주세요.');
         })
@@ -201,7 +204,7 @@ async function importPdf(
       throw new Error(`PDF 문서가 너무 큽니다. (현재 ${pdf.numPages}페이지 / 최대 허용 ${MAX_PAGES}페이지). 분할하여 가져와주세요.`);
     }
 
-    let text = '';
+    const pages: string[] = [];
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
       const content = await page.getTextContent();
@@ -284,7 +287,8 @@ async function importPdf(
         crop.width = crop.height = 0;
         const prose = blocks.filter(block => block.y > cropTopY + 2);
         prose.push({ y: cropTopY, markdown: `![PDF ${i}페이지 도표](${src})` });
-        text += serializePdfBlocks(prose.sort((a, b) => b.y - a.y), true) + '\n\n';
+        const pageMarkdown = serializePdfBlocks(prose.sort((a, b) => b.y - a.y), true).trim();
+        if (pageMarkdown) pages.push(pageMarkdown);
         continue;
       }
       for (const img of embeddedImages) {
@@ -292,12 +296,13 @@ async function importPdf(
           blocks.push({ y: img.y + img.height, markdown: `![${img.alt}](${img.src})` });
         }
       }
-      text += serializePdfBlocks(blocks.sort((a,b)=>b.y-a.y), true) + '\n\n';
+      const pageMarkdown = serializePdfBlocks(blocks.sort((a,b)=>b.y-a.y), true).trim();
+      if (pageMarkdown) pages.push(pageMarkdown);
 
 
     }
     
-    return text.trim();
+    return pages.join(`\n\n${PAGE_BREAK_MARKER}\n\n`);
   } catch (error: any) {
     console.error('PDF Import Error:', error);
     throw new Error(error.message || 'PDF 파일을 읽는 중 오류가 발생했습니다.');
@@ -521,7 +526,10 @@ async function importHwp(
         };
         
         if (hwpDoc && hwpDoc.sections) {
-          text = extractTextNode(hwpDoc.sections);
+          text = (Array.isArray(hwpDoc.sections) ? hwpDoc.sections : [hwpDoc.sections])
+            .map((section: any) => extractTextNode(section).trim())
+            .filter(Boolean)
+            .join(`\n\n${PAGE_BREAK_MARKER}\n\n`);
           // hwpDoc 객체를 외부에 노출하여 이미지 맵핑에 활용할 수 있도록 함
           (view as any)._parsedHwpDoc = hwpDoc;
         }
@@ -552,9 +560,10 @@ async function importHwp(
       // Section 엔트리 이름 정렬 (Section0, Section1 ... 순)
       sectionEntries.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
       
-      let fallbackText = '';
+      const sectionTexts: string[] = [];
       
       for (const entry of sectionEntries) {
+        let sectionText = '';
         const streamData = new Uint8Array(entry.content);
         let decrypted: Uint8Array;
         
@@ -593,16 +602,17 @@ async function importHwp(
           
           if (tagId === 67) {
             const segment = decodeHwpParagraph(recordData).trimEnd();
-            if (segment.trim()) fallbackText += segment + '\n\n';
+            if (segment.trim()) sectionText += segment + '\n\n';
           } else if (tagId === 85 && recordData.length >= 73) {
             // Picture record: BinData ID follows the 68-byte geometry and
             // three image-effect bytes. Use the actual ID, never file order.
             const binId = recordData[71] | (recordData[72] << 8);
-            if (binId > 0) fallbackText += `\n\n::HWP_IMAGE_PLACEHOLDER_${binId-1}::\n\n`;
+            if (binId > 0) sectionText += `\n\n::HWP_IMAGE_PLACEHOLDER_${binId-1}::\n\n`;
           }
         }
+        if (sectionText.trim()) sectionTexts.push(sectionText.trim());
       }
-      text = fallbackText;
+      text = sectionTexts.join(`\n\n${PAGE_BREAK_MARKER}\n\n`);
       console.info('[HWP import] 본문 복구 완료', { inputCompressed: compressed, sections: sectionEntries.length, textChars: text.length });
     }
 

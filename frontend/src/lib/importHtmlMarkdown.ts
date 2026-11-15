@@ -2,11 +2,15 @@
 // 📊 [OMD-IMPORT-HTML-MD-0001] frontend/src/lib/importHtmlMarkdown.ts
 // 🎯 @KICK  : 외부 HTML 및 클립보드 서식을 마크다운 표준으로 변환 (표, 이미지, 제목, 리스트 등)
 // 🛡️ @GUARD : Rule 1(소스 주석 표준화), 스크립트/핸들러 악성 속성 정제
+// 🚨 @PATCH : **2026-11-15** — [페이지 나누기 요소(hr.onrivi-page-break/div.page-break) PAGE_BREAK_MARKER 변환]: 워드/HTML 가져오기 시 페이지 나누기 마커 보존
+// 🚨 @PATCH : **2026-11-15** — [강조·서식 태그(u/ins/strike/mark 및 span 인라인 스타일) 적용 가능 태그 변환]: <u>·<ins> → <u>, <strike> → ~~, <mark> → **, span(font-weight/italic/underline/line-through)을 현재 에디터 적용 가능 태그(**, *, <u>, ~~)로 보존 변환
 // 🚨 @PATCH : **2026-11-08** — [외부 표(엑셀/구글스프레드시트/웹) 붙여넣기 시 네이티브 마크다운 표 변환 연동]:
 //             1) 엑셀의 td[colspan=1] 속성으로 인해 모든 외부 표가 원시 HTML 및 source_block 드로어로 떨어지던 결함 수정
 //             2) 오직 중첩된 표(table 내부 table)만 HTML을 유지하고, 엑셀/웹 표는 온전한 마크다운 파이프 표(|---|)로 변환하여 시각적 위지윅 표로 즉시 편집 가능하도록 개선
 // 🚨 @PATCH : **2026-11-11** — [DOCX 병합 표 보존]: rowspan/colspan이 있는 표는 셀 병합 정보가 사라지는 파이프 표 대신 HTML 표로 유지
 // ====================================================================
+
+import { PAGE_BREAK_MARKER } from './pageGeometry';
 
 /** Deterministic document conversion. No AI request or server dependency. */
 export async function importHtmlWithImages(
@@ -93,6 +97,12 @@ export function htmlToImportMarkdown(html: string): string {
     if (node.nodeType !== 1) return '';
     const el = node as HTMLElement;
     const tag = el.tagName.toLowerCase();
+    const isPageBreak =
+      el.hasAttribute('data-onrivi-page-break') ||
+      el.classList.contains('onrivi-page-break') ||
+      el.classList.contains('page-break') ||
+      /page-break-before\s*:\s*always|break-before\s*:\s*page/i.test(el.getAttribute('style') || '');
+    if (isPageBreak) return `\n\n${PAGE_BREAK_MARKER}\n\n`;
     const content = () => Array.from(el.childNodes).map(child => walk(child, depth)).join('');
     if (/^h[1-6]$/.test(tag)) return `\n\n${'#'.repeat(Number(tag[1]))} ${content().trim()}\n\n`;
     if (tag === 'br') return '  \n';
@@ -108,7 +118,21 @@ export function htmlToImportMarkdown(html: string): string {
       return (value.match(/^\s+/)?.[0]||(needsLeadingSpace?' ':''))+`**${trimmed}**`+(value.match(/\s+$/)?.[0]||(needsSpace?' ':''));
     }
     if (tag === 'em' || tag === 'i') { const value=content(); return value.trim() ? (value.match(/^\s+/)?.[0]||'')+`*${value.trim()}*`+(value.match(/\s+$/)?.[0]||'') : value; }
-    if (tag === 'del' || tag === 's') return `~~${content()}~~`;
+    if (tag === 'u' || tag === 'ins') { const value=content(); return value.trim() ? (value.match(/^\s+/)?.[0]||'')+`<u>${value.trim()}</u>`+(value.match(/\s+$/)?.[0]||'') : value; }
+    if (tag === 'del' || tag === 's' || tag === 'strike') { const value=content(); return value.trim() ? (value.match(/^\s+/)?.[0]||'')+`~~${value.trim()}~~`+(value.match(/\s+$/)?.[0]||'') : value; }
+    if (tag === 'mark') { const value=content(); return value.trim() ? (value.match(/^\s+/)?.[0]||'')+`**${value.trim()}**`+(value.match(/\s+$/)?.[0]||'') : value; }
+    if (tag === 'span') {
+      const style = (el.getAttribute('style') || '').toLowerCase();
+      const value = content();
+      const trimmed = value.trim();
+      if (!trimmed || !style) return value;
+      let styled = trimmed;
+      if (/text-decoration[^;]*underline/.test(style)) styled = `<u>${styled}</u>`;
+      if (/font-weight\s*:\s*(?:bold|bolder|[6-9]\d{2})/.test(style)) styled = `**${styled}**`;
+      if (/font-style\s*:\s*italic/.test(style)) styled = `*${styled}*`;
+      if (/text-decoration[^;]*line-through/.test(style)) styled = `~~${styled}~~`;
+      return (value.match(/^\s+/)?.[0] || '') + styled + (value.match(/\s+$/)?.[0] || '');
+    }
     if (tag === 'pre') {
       const code=el.querySelector('code')||el;
       const lines=Array.from(code.children);

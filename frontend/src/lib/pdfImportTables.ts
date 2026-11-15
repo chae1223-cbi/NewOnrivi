@@ -1,6 +1,8 @@
 /**
  * 프로그램명 : OnriviAuthor
  * 프로그램 ID : oaar-pdf-import-tables
+ * 🚨 @PATCH : 2026-11-15 — [PDF 수평 구분선(---) 추출 복원]: separators 필터에서 과도한 2.5줄 인접 텍스트 제외 조건(pageBodySize*2.5)을 제거해 제목·부제 바로 아래에 그려진 가로선도 --- 구분선으로 정상 변환
+ * 🚨 @PATCH : 2026-11-15 — [마크다운 표 내부 인라인 강조 태그 보존]: 파이프 마크다운 표(| ... |) 생성 시 escapeStyled 호출을 제거하여 **, *, ~~, <u> 태그가 <strong>/<em>/<del>로 변환되지 않도록 수정
  * 🚨 @PATCH : **2026-11-12** — [PDF 중복 표 제거 및 HTML 변환]: 큰 표에 포함된 셀별 중복 블록을 제거하고 복합 열 표를 HTML로 출력해 원래 열 배치를 유지
  * 🚨 @PATCH : **2026-11-12** — [번호 안내 상자 HTML 표 복원]: 제목 아래 연속된 ①·② 안내 항목을 독립 목록 대신 번호 열과 내용 열을 가진 HTML 표로 구성
  * 🚨 @PATCH : **2026-11-12** — [제목·내용 1열 2행 마크다운 표]: 안내·제외대상 상자의 제목과 번호 항목들을 한 열의 머리행·내용행으로 직렬화
@@ -322,8 +324,6 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
     !roots.some(grid=>rule.x>=grid.x-1 && rule.x+rule.width<=grid.x+grid.width+1 &&
       rule.y>=grid.y-1 && rule.y<=grid.y+grid.height+1) &&
     !distinctRecovered.some(recovered=>inside(rule,recovered.box)) &&
-    !runs.some(run=>Math.abs(run.transform[5]-rule.y)<pageBodySize*2.5 &&
-      run.transform[4]<rule.x+rule.width && run.transform[4]+run.width>rule.x) &&
     !runs.some(run=>Math.abs(run.transform[5]-rule.y)<run.height*0.8 &&
       run.transform[4]<rule.x+rule.width && run.transform[4]+run.width>rule.x))
     .filter((rule,index,array)=>!array.slice(0,index).some(previous=>Math.abs(previous.y-rule.y)<2));
@@ -354,8 +354,8 @@ export function pdfRuledTableBlocks(items: readonly unknown[], fnArray: number[]
       cursor++;
     }
     if(entries.length<2) continue;
-    const cell=entries.map(entry=>escapeStyled(entry).replace(/\|/g,'\\|')).join('<br>');
-    const header=escapeStyled(title.markdown.trim()).replace(/\|/g,'\\|');
+    const cell=entries.map(entry=>entry.trim().replace(/\|/g,'\\|')).join('<br>');
+    const header=title.markdown.trim().replace(/\|/g,'\\|');
     textBlocks.splice(index,cursor-index,{y:title.y,markdown:`| ${header} |\n| --- |\n| ${cell} |`});
   }
   return [...textBlocks,...separators.map(rule=>({y:rule.y,markdown:'---'})),...roots.map(g=>({y:g.y+g.height,markdown:table(g)})),

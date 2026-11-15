@@ -1,3 +1,10 @@
+/**
+ * 프로그램명 : OnriviAuthor
+ * 프로그램 ID : oaar-print-breaks
+ * 🚨 @PATCH : **2026-11-15** — [수동 페이지 나누기(onrivi_pagination) 프론트매터 경량화]:
+ *             1) previous/next/context 원문(최대 1,200~1,800자)을 그대로 저장하지 않고 짧은 해시(digest)로 압축 저장하여 본문 전체가 프론트매터에 중복 노출되는 현상 제거
+ *             2) text는 UI 툴팁용 50자만 보존하되 id는 원문 기준 digest를 유지해 기존 저장 문서와 100% 하위 호환
+ */
 import { type PrintBreakAnchor, type DocumentPaginationSettings } from './documentPaginationSettings';
 
 export const ANCHOR_ATTRIBUTE = 'data-onrivi-print-anchor';
@@ -67,11 +74,19 @@ export function collectPrintCandidates(root: HTMLElement): PrintCandidate[] {
     else if(element.hasAttribute('data-onrivi-code-line'))kind='code';
     else if(element.closest('td,th,li,pre'))return;
     else if(element.closest('blockquote'))kind='quote';
-    const text=clean(tag==='TR'?Array.from((element as HTMLTableRowElement).cells).map(cell=>cell.textContent).join(' '):element.textContent) || clean(element.querySelector('img')?.getAttribute('src') || '');
-    if(!text && tag!=='HR' && kind!=='code')return;
+    const rawText=clean(tag==='TR'?Array.from((element as HTMLTableRowElement).cells).map(cell=>cell.textContent).join(' '):element.textContent) || clean(element.querySelector('img')?.getAttribute('src') || '');
+    if(!rawText && tag!=='HR' && kind!=='code')return;
     const siblingText=(direction:'previousElementSibling'|'nextElementSibling')=>clean(element[direction]?.textContent || '');
-    const anchor={id:'',kind,text,context:context(element),previous:siblingText('previousElementSibling'),next:siblingText('nextElementSibling')};
-    anchor.id=digest(JSON.stringify(anchor));
+    const rawContext=context(element), rawPrev=siblingText('previousElementSibling'), rawNext=siblingText('nextElementSibling');
+    const id=digest(JSON.stringify({id:'',kind,text:rawText,context:rawContext,previous:rawPrev,next:rawNext}));
+    const anchor:PrintBreakAnchor={
+      id,
+      kind,
+      text:rawText.slice(0,50),
+      context:rawContext?digest(rawContext):'',
+      previous:rawPrev?digest(rawPrev):'',
+      next:rawNext?digest(rawNext):'',
+    };
     let disabled:string|undefined;
     const range=root.ownerDocument.createRange();range.selectNodeContents(root);range.setEndBefore(element);
     const preceding=range.cloneContents();
@@ -94,9 +109,10 @@ export function collectPrintCandidates(root: HTMLElement): PrintCandidate[] {
 function locate(anchor:PrintBreakAnchor,candidates:PrintCandidate[]) {
   const exact=candidates.filter(c=>c.anchor.id===anchor.id);
   if(exact.length===1)return exact[0];
-  const same=candidates.filter(c=>c.anchor.kind===anchor.kind && c.anchor.text===anchor.text && c.anchor.context===anchor.context);
+  const matchHash=(candidateVal:string,savedVal:string)=>candidateVal===savedVal || (!!savedVal && candidateVal===digest(savedVal));
+  const same=candidates.filter(c=>c.anchor.kind===anchor.kind && c.anchor.text===anchor.text.slice(0,50) && matchHash(c.anchor.context,anchor.context));
   if(same.length===1)return same[0];
-  const neighbors=same.filter(c=>c.anchor.previous===anchor.previous && c.anchor.next===anchor.next);
+  const neighbors=same.filter(c=>matchHash(c.anchor.previous,anchor.previous) && matchHash(c.anchor.next,anchor.next));
   return neighbors.length===1?neighbors[0]:undefined;
 }
 const removeIds=(node:HTMLElement)=>{node.removeAttribute('id');node.querySelectorAll('[id]').forEach(el=>el.removeAttribute('id'));};

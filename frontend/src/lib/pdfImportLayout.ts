@@ -1,6 +1,7 @@
 /**
  * 프로그램명 : OnriviAuthor
  * 프로그램 ID : oaar-pdf-import-layout
+ * 🚨 @PATCH : **2026-11-15** — [PDF 구분선(---) 앞뒤 빈 줄(\n\n) 보장]: serializePdfBlocks에서 --- 구분선 앞뒤에 반드시 빈 줄(\n\n)을 두어 직전 텍스트가 Setext 제목(##)으로 오인식되지 않도록 방어
  * 🚨 @PATCH : **2026-11-07** — [PDF 이미지 블록 독립 문단 분리]:
  *             1) serializePdfBlocks에서 이미지 블록(![...](...)) 또는 직전 블록이 이미지인 경우 반드시 개행 2개(\n\n)를 부여하여 앞뒤 일반 텍스트나 연속된 이미지와 문단이 뭉쳐 깨지는 현상 원천 차단
  * 🚨 @PATCH : **2026-11-12** — [PDF 겹친 글자 및 목록 단계 복원]: 같은 위치의 중복 글자층을 제거하고 위첨자 기호를 본문 줄에 합치며 절 제목·하위 목록의 단계를 명시적으로 정리
@@ -93,15 +94,17 @@ export function serializePdfBlocks(blocks: PdfImportBlock[], compact = false): s
   return blocks.map((block, index) => {
     const isImage = /^\s*!\[/.test(block.markdown);
     const isTable = /^(?:\|[^\n]+\n\|\s*:?-{3}|<table(?:\s|>))/i.test(block.markdown);
+    const isRule = block.markdown.trim() === '---';
     const prevBlock = blocks[index - 1];
     const prevIsImage = prevBlock && /^\s*!\[/.test(prevBlock.markdown);
     const prevIsTable = prevBlock && /^(?:\|[^\n]+\n\|\s*:?-{3}|<table(?:\s|>))/i.test(prevBlock.markdown);
+    const prevIsRule = prevBlock && prevBlock.markdown.trim() === '---';
     const current = block.markdown.match(/^(\d+)\. /);
     const previous = prevBlock?.markdown.match(/^(\d+)\. /);
 
-    // 🛡️ 이미지는 앞뒤로 반드시 빈 줄(\n\n)을 보장하여 일반 텍스트 문단 또는 연속 이미지와 뭉치지 않고 독립 블록으로 분리
+    // 🛡️ 이미지, 표, 구분선(---)은 앞뒤로 반드시 빈 줄(\n\n)을 보장하여 Setext 제목(##) 오인식 및 문단 뭉침을 원천 차단
     let separator = '\n\n';
-    if (isImage || prevIsImage || isTable || prevIsTable) {
+    if (isImage || prevIsImage || isTable || prevIsTable || isRule || prevIsRule) {
       separator = '\n\n';
     } else if (compact || (current && previous && Number(current[1]) === Number(previous[1]) + 1)) {
       separator = '\n';

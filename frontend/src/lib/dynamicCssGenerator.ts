@@ -5,6 +5,7 @@
  *   - 활성 서식 프로필(CssProfile) 기반 동적 CSS(타이포그래피, 코드블록, 표, 체크박스, 구분선, 다크모드 재정의 등) 생성 엔진
  *   - @layer 캐스케이드 격리 및 그림책(Story Book) 프로필 연동
  * 🚨 @PATCH :
+ *   - 2026-11-15 : 페이지 나누기 요소(.onrivi-page-break, [data-onrivi-page-break])를 화면(@media screen)에서 활성 프로필의 hr(---) 구분선 스타일과 동일하게 렌더링하도록 연동
  *   - 2026-11-14 : 인용구(blockquote) 브라우저 기본 40px 좌우 여백(margin-inline-start/end)으로 인한 우측 밀림·넘침 결함 수정(margin-left/right: 0, box-sizing: border-box 보장) 및 인용구 내부 문단 text-indent: 0 격리
  *   - 2026-11-12 : 코드블록 자동 줄바꿈(white-space: pre-wrap) 적용으로 가로 스크롤 없이 컨테이너 너비에 맞게 텍스트 자동 줄바꿈
  *   - 2026-11-10 : 중첩 서브리스트(li ul, li ol) 상단 여백(margin-top: 0.25em)을 0으로 통일하여 제한사용자(MarkdownViewer)와 전체사용자(VisualDocumentEditor) 간의 다중 리스트 간격을 100% 일치
@@ -963,6 +964,27 @@ blockquote li p {
   margin-bottom: ${hrMargin} !important;
   width: ${hrLen} !important;
   ${hrLen !== '100%' ? 'margin-left: auto !important;\n  margin-right: auto !important;' : ''}
+}
+@media screen {
+  .custom-preview-container :is(.onrivi-page-break, [data-onrivi-page-break]),
+  .onrivi-content-root :is(.onrivi-page-break, [data-onrivi-page-break]) {
+    border: none !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    color: transparent !important;
+    font-size: 0 !important;
+    line-height: 0 !important;
+    overflow: hidden !important;
+    border-top-width: ${hrWidth} !important;
+    border-top-style: ${hrStyle} !important;
+    border-top-color: ${hrColor} !important;
+    margin-top: ${hrMargin} !important;
+    margin-bottom: ${hrMargin} !important;
+    width: ${hrLen} !important;
+    ${hrLen !== '100%' ? 'margin-left: auto !important;\n    margin-right: auto !important;' : ''}
+  }
 }
 `;
 

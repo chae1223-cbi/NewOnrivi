@@ -2,6 +2,7 @@
 // 📊 [OMD-EDIT-markdownCleaner-0001 ✅ FIXED] markdownCleaner.ts ➔ cleanMarkdownDocument
 // 🎯 @KICK  : 마크다운 문서 내 서식 및 문법을 지능적으로 교정하고 표를 수직 정렬하는 뷰티파이어 엔진
 // 🛡️ @GUARD : 코드블록/수식/Frontmatter 마스킹 보호, 동아시아 문자 폭 계산, 실행 취소 안전성 보장
+// 🚨 @PATCH : **2026-11-15** — [비지원 강조 태그(<ins>, <mark>, ==...==) 적용 가능 태그 자동 전환]: <ins> → <u>, <mark> 및 ==강조== → **강조**로 자동 변환하여 비주얼/소스 에디터 호환 보장
 // 🚨 @PATCH : **2026-10-20** — [Frontmatter 마스킹 오탐 결함 해소 및 <p></p> 선행 완전 제거]:
 //             1) 본문 중간의 수평선(---)으로 인해 첫 번째 ---부터 본문 전체(# 헤딩, <p></p>)가 프론트매터로 오인되어 서식 정리가 무시되던 결함 해결
 //             2) 마스킹 이전 0단계에서 단독 라인 및 인라인 빈 문단 태그(<p></p>, <p\b[^>]*>(?:\s|&nbsp;|<br\s*\/?>)*<\/p>)를 100% 선행 소거
@@ -356,6 +357,26 @@ export function cleanMarkdownDocument(
       return `~~${text.trim()}~~`;
     });
 
+    // <ins> -> <u>텍스트</u>
+    const insRegex = /<ins\b[^>]*>([\s\S]*?)<\/ins>/gi;
+    let insMatches = 0;
+    working = working.replace(insRegex, (_, text) => {
+      insMatches++;
+      return `<u>${text.trim()}</u>`;
+    });
+
+    // <mark> 및 ==텍스트== -> **텍스트**
+    const markRegex = /<mark\b[^>]*>([\s\S]*?)<\/mark>/gi;
+    let markMatches = 0;
+    working = working.replace(markRegex, (_, text) => {
+      markMatches++;
+      return `**${text.trim()}**`;
+    });
+    working = working.replace(/(?<![=!])==([^=\n]+)==(?!=)/g, (_, text) => {
+      markMatches++;
+      return `**${text.trim()}**`;
+    });
+
     // 불필요한 빈 문단 HTML 태그 (<p></p>, <p> </p> 등) 제거 및 순수 마크다운 개행으로 정돈
     const emptyPRegex = /<p\b[^>]*>(?:\s|&nbsp;|<br\s*\/?>)*<\/p>/gi;
     working = working.replace(emptyPRegex, () => {
@@ -370,7 +391,7 @@ export function cleanMarkdownDocument(
       return '';
     });
 
-    stats.htmlConverted += strongMatches + emMatches + delMatches;
+    stats.htmlConverted += strongMatches + emMatches + delMatches + insMatches + markMatches;
   }
 
   // -------------------------------------------------------------

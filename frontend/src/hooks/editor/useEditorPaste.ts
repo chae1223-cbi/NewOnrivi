@@ -2,6 +2,7 @@
 // 📊 [OMD-HOOK-useEditorPaste] frontend/src/hooks/editor/useEditorPaste.ts
 // 🎯 @KICK  : 에디터 클립보드 붙여넣기(HTML 표, 리치 텍스트, 이미지 파일/Blob) 및 리소스/R2 저장 파이프라인
 // 🛡️ @GUARD : 비동기 DataTransferItem 즉시 추출, CSP connect-src 대응 base64 변환, 동일 이미지 반복 삽입 보장
+// 🚨 @PATCH : 2026-11-15 — [붙여넣기 시 페이지 나누기 메타(onrivi_pagination) 제외]: 서식관리 메타는 유지하고 onrivi_pagination 메타만 stripPaginationSettings로 제거
 // 🚨 @PATCH : 2026-11-04 — [표준화 및 에러 처리 강화] logError 5대 진단 필드 선제 기록 적용 및 1·2단계 주석 표준화
 //             2026-11-04 — [isImageLikeFile 반환 추가] EditorCore 이미지 필터링에 필요한 isImageLikeFile 헬퍼 반환 및 미정의 런타임 크래시 방지
 //             2026-11-04 — [MainEditorApp 모듈화] MainEditorApp에서 450여 줄의 붙여넣기 및 이미지 업로드 파이프라인을 독립 훅으로 분리
@@ -18,6 +19,7 @@ import { saveResourceMedia } from '@/lib/resourceMedia';
 import { imageResourceName } from '@/lib/imageResourceName';
 import * as utilsEditorActions from '@/utils/editorActions';
 import { logError } from '@/lib/errorDiagnostics';
+import { stripPaginationSettings } from '@/lib/documentPaginationSettings';
 
 export interface UseEditorPasteOptions {
   editorRef: React.MutableRefObject<any>;
@@ -326,7 +328,7 @@ export function useEditorPaste({
     let processedText = textData;
     let textChanged = false;
     if (textData) {
-      processedText = sanitizePastedText(textData);
+      processedText = sanitizePastedText(stripPaginationSettings(textData));
       if (processedText.includes('|')) {
         processedText = fixMarkdownTable(processedText);
       }

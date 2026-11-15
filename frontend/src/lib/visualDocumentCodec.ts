@@ -2,6 +2,7 @@
  * 프로그램명 : OnriviAuthor 
  * 버전 정보 : 1.0.1
  * 프로그램 ID : oaar-visual-codec
+ * 🚨 @PATCH : **2026-11-15** — [페이지 나누기 노드 텍스트 제거]: page_break toDOM에서 '수동 페이지 나누기' 문구를 제거해 순수 구분선으로 표시
  * 🚨 @PATCH : **2026-11-14** — [각주 정의([^1]: ...)의 참조 링크 오인식 방지]: 공백 없는 단일어·URL 형태의 각주 정의를 CommonMark 참조 링크로 해석해 본문 각주([^1], [Ctrl+Alt+F][^2])가 ^1·Ctrl+Alt+F 하이퍼링크로 왜곡되던 현상 차단 (references에서 `^` 접두어 각주 키 제외)
  * 🚨 @PATCH : **2026-11-14** — [개별 이동된 평탄화 리스트(indentPx)의 단계별 레벨 속성(data-onrivi-list-level) 및 직렬화 경계 강화]:
  *             1) bullet_list 및 ordered_list의 toDOM에 data-onrivi-list-level(2단계: indentPx > 0, 3단계: indentPx >= 50)을 부여하여 개별 들여쓰기/내어쓰기 시에도 1·2·3단계 불릿/번호 서식이 정확히 렌더링되도록 연동
@@ -221,7 +222,7 @@ export const visualSchema = new Schema({
     },
   }).addToEnd('page_break', {
     group:'block',atom:true,selectable:true,
-    toDOM:()=>['div',{'data-onrivi-page-break':'true',class:'onrivi-page-break',contenteditable:'false','aria-label':'수동 페이지 나누기'},'수동 페이지 나누기'],
+    toDOM:()=>['div',{'data-onrivi-page-break':'true',class:'onrivi-page-break',contenteditable:'false','aria-label':'페이지 나누기'}],
     parseDOM:[{tag:'div[data-onrivi-page-break]'}],
   }).addToEnd('source_block', {
     group: 'block', atom: true, selectable: true,

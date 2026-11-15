@@ -18,6 +18,7 @@
 }
 
 /* ===================================================================
+ * 🚨 @PATCH : 2026-11-15 — [페이지 나누기(onrivi-page-break/hr.page-break) 화면 구분선 상시 표시]: html:not([data-onrivi-page-guides="true"]) 숨김 규칙을 제거하고 모든 문서 화면에서 일반 구분선(---/hr)과 동일한 실선으로 표시
  * 🚨 @PATCH : 2026-11-13 — [전역 블록 액션 버튼(.onrivi-media-control) 24x24px 소형 아이콘 배지 규격화]: 패딩·크기를 24x24px 소형 아이콘 버튼 규격으로 축소하여 표·이미지·코드블록 내 본문 가림 해소
  * 🚨 @PATCH : **2026-11-08** — [인용문 내부 문단 간격(p + p: 0.85em) 및 첫 문단 상단 여백 소거]: Shift+Enter 문단 개행 가독성 정상화
  * 🚨 @PATCH : **2026-10-26** — [확장 리스트(Loose List) 내부 p 및 .onrivi-line 인라인 일원화]:
@@ -2514,16 +2515,53 @@ input::-ms-clear {
   display: none !important;
 }
 
-/* Manual page breaks stay editable/selectable and never become ordinary rules. */
-.onrivi-page-break { display:block; border-top:2px dashed #f97316; color:#c2410c; background:#fff7ed; text-align:center; font:12px/24px system-ui; margin:16px 0; min-height:24px; user-select:none; }
-.dark .onrivi-page-break { color:#fdba74; background:#431407; border-color:#fb923c; }
-/* This is a screen display preference; keep the marker in the document for export. */
+/* Manual page breaks stay editable/selectable, always show a visual divider on screen, and break cleanly in print. */
 @media screen {
-  html:not([data-onrivi-page-guides="true"]) :is(.onrivi-page-break, [data-onrivi-page-break], hr.page-break) {
-    display: none !important;
+  .onrivi-page-break,
+  [data-onrivi-page-break] {
+    display: block !important;
+    width: 100%;
+    height: 0 !important;
+    min-height: 0 !important;
+    margin: 32px 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    border-top: 1px solid #e5e7eb !important;
+    background: transparent !important;
+    color: transparent !important;
+    font-size: 0 !important;
+    line-height: 0 !important;
+    overflow: hidden !important;
+    user-select: none;
+  }
+  .dark .onrivi-page-break,
+  .dark [data-onrivi-page-break] {
+    border-top-color: #374151 !important;
   }
 }
-@media print { .onrivi-page-break { break-before:page;page-break-before:always;height:0;min-height:0;margin:0;border:0;font-size:0;line-height:0; } }
+@media print {
+  .onrivi-page-break,
+  [data-onrivi-page-break] {
+    display: block !important;
+    break-before: page !important;
+    page-break-before: always !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    font-size: 0 !important;
+    line-height: 0 !important;
+    overflow: hidden !important;
+  }
+  .onrivi-page-break::before,
+  .onrivi-page-break::after,
+  [data-onrivi-page-break]::before,
+  [data-onrivi-page-break]::after {
+    display: none !important;
+    content: none !important;
+  }
+}
 /* Explicit emphasis remains visible when an inline code profile sets defaults. */
 :is(.visual-document-surface,.onrivi-content-root) :is(strong,b) code { font-weight:inherit!important; }
 :is(.visual-document-surface,.onrivi-content-root) :is(em,i) code { font-style:inherit!important; }

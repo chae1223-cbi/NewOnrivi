@@ -2,6 +2,7 @@
 // 📊 [OMD-CORE-Viewer-Pipeline] frontend/src/components/viewer/markdownViewerPipeline.ts
 // 🎯 @KICK  : 마크다운 뷰어(MarkdownViewer)의 경로 보안 가드(isPathInsideWorkspace), 마크다운 원문 전처리(preprocessMarkdownContent), 줄 번호/개행 Rehype 플러그인 및 전용 CSS 스타일 시트
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 작업장 외부 경로 순회 차단, CommonMark 중첩 코드블록/인용구/위키링크 무결성 보존
+// 🚨 @PATCH : 2026-11-15 — [페이지 나누기 구분선 텍스트 제거]: .onrivi-page-break 렌더링에서 '수동 페이지 나누기' 문구를 제거해 순수 구분선으로 표시
 // 🚨 @PATCH : 2026-11-13 — [문단 들여쓰기(onrivi:para-indent) 주석 정제]: preprocessMarkdownContent에서 최상위 및 인용문 내부의 <!-- onrivi:para-indent=N --> 주석을 깔끔하게 소거하여 미리보기 화면에 원문 주석이 노출되지 않도록 방어
 // 🚨 @PATCH : 2026-11-12 — [코드블록 자동 줄바꿈(white-space: pre-wrap) 적용]:
 //             1) .onrivi-content-root pre 및 pre code에 white-space: pre-wrap, word-break: break-all, overflow-wrap: anywhere를 적용하여 긴 문장이 가로 스크롤 없이 자동 줄바꿈되도록 개선
@@ -397,7 +398,7 @@ export function preprocessMarkdownContent(content: string): string {
 
   processed = processed.replace(
     /(^[ \t]*)(?:<!--\s*(?:onrivi:)?page-?break\s*-->|<!--\s*\[page-?break\]\s*-->|\\pagebreak\b|\\newpage\b|<(?:div|hr)[^>]*class=["'][^"']*page-break[^"']*["'][^>]*>[\s\S]*?(?:<\/(?:div|hr)>)?)(?=[ \t]*$)/gim,
-    '\n\n<div data-onrivi-page-break="true" class="onrivi-page-break page-break" aria-label="수동 페이지 나누기">수동 페이지 나누기</div>\n\n'
+    '\n\n<div data-onrivi-page-break="true" class="onrivi-page-break page-break" aria-label="페이지 나누기"></div>\n\n'
   );
 
   processed = processed.replace(/(^[ \t]*)-([ \t]*)$/gm, '$1\\-$2');
