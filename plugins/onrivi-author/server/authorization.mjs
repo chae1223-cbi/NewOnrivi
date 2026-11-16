@@ -1,3 +1,9 @@
+// ====================================================================
+// 📊 [OMD-MCP-AUTH-0001] plugins/onrivi-author/server/authorization.mjs
+// 🎯 @KICK  : 온리비 어서 MCP 서버 구독/세션 권한 검증
+// 🛡️ @GUARD : Rule 1(단일 주석 관리), Rule 2(코드값 대문자 통일), 활성 유료 요금제(웹/데스크톱) 검증
+// 🚨 @PATCH : 2026-11-16 — [웹 유료 요금제 MCP 권한 확장] ELITE/DESKTOP 외 REGULAR, BASIC, PRO, PREMIUM 유료 플랜도 MCP 허용
+// ====================================================================
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { getCurrentFolders } from './context.mjs';
@@ -37,11 +43,18 @@ export async function requireMcpAccess() {
   const result = await response.json();
   const plan = String(result.plan_name || '').toUpperCase();
   const status = String(result.plan_status || '').toUpperCase();
+  const allowedPlan =
+    plan.includes('ELITE') ||
+    plan.includes('DESKTOP') ||
+    plan.includes('REGULAR') ||
+    plan.includes('BASIC') ||
+    plan.includes('PRO') ||
+    plan.includes('PREMIUM');
   if (result.success !== true || result.has_session !== true || result.is_restricted === true ||
       status !== 'ACTIVE' ||
-      (!plan.includes('ELITE') && !plan.includes('DESKTOP'))) {
+      !allowedPlan) {
     cachedAuth = { key: '', verifiedAt: 0 };
-    throw new Error('현재 라이선스에 온리비 어서 MCP 사용 권한이 없습니다. 활성 유료 데스크톱 구독과 기기 세션을 확인해 주세요.');
+    throw new Error('현재 라이선스에 온리비 어서 MCP 사용 권한이 없습니다. 활성 유료 구독과 기기 세션을 확인해 주세요.');
   }
   cachedAuth = { key: cacheKey, verifiedAt: Date.now() };
   return context;

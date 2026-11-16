@@ -1,4 +1,10 @@
-// Document-work shortlist: 3 Gemini + 2 Gemma 4 + 3 GPT + 3 Claude.
+// ====================================================================
+// 📊 [OMD-AI-RecommendedModels-0001] src/lib/ai/recommendedModels.ts
+// 🎯 @KICK  : 제공사별 추천 AI 모델 카탈로그 및 정렬/매칭 유틸리티
+// 🛡️ @GUARD : Rule 1(단일 주석 관리)
+// 🚨 @PATCH : 2026-11-16 — [LG K-EXAONE 2.5 지원] EXAONE 모델 카탈로그('k-exaone_v2.5') 및 패밀리 순서 추가
+// ====================================================================
+// Document-work shortlist: 3 Gemini + 2 Gemma 4 + 3 GPT + 3 Claude + 1 EXAONE.
 // Only exact catalog IDs confirmed by the provider list may be offered.
 // Release dates were checked against official release notes on 2026-10-20.
 import type { AIModel, AIProvider } from './types';
@@ -16,9 +22,10 @@ const MODEL_CATALOG: { provider: AIProvider; id: string; name: string; family: s
   {provider:'anthropic',id:'claude-haiku-5-5',name:'Claude Haiku 5.5',family:'Claude',releasedAt:'2026-10-07'},
   {provider:'anthropic',id:'claude-sonnet-5-5',name:'Claude Sonnet 5.5',family:'Claude',releasedAt:'2026-09-28'},
   {provider:'anthropic',id:'claude-opus-5-5',name:'Claude Opus 5.5',family:'Claude',releasedAt:'2026-09-22'},
+  {provider:'exaone',id:'k-exaone_v2.5',name:'K-EXAONE 2.5',family:'EXAONE',releasedAt:'2026-11-09'},
 ];
 
-const familyOrder = ['Gemini', 'Gemma', 'GPT', 'Claude'];
+const familyOrder = ['Gemini', 'Gemma', 'GPT', 'Claude', 'EXAONE'];
 
 export const RECOMMENDED_MODELS = [...MODEL_CATALOG].sort(
   (a, b) => familyOrder.indexOf(a.family) - familyOrder.indexOf(b.family) || b.releasedAt.localeCompare(a.releasedAt) || b.id.localeCompare(a.id, undefined, { numeric: true })
@@ -39,7 +46,7 @@ export function recommendedModels(provider: AIProvider, available: AIModel[] = [
   const matched = shortlist.filter(model => {
     return available.some(row => {
       const id = String(row.id || '').trim().toLowerCase().replace(/^models\//, '');
-      return id === model.id.toLowerCase() || id.includes(model.family.toLowerCase()) || id.startsWith('gpt-') || id.startsWith('claude-') || id.startsWith('gemini-') || id.startsWith('gemma-');
+      return id === model.id.toLowerCase() || id.includes(model.family.toLowerCase()) || id.startsWith('gpt-') || id.startsWith('claude-') || id.startsWith('gemini-') || id.startsWith('gemma-') || id.startsWith('k-exaone') || id.startsWith('exaone');
     });
   });
   return matched.length > 0 ? matched : shortlist;

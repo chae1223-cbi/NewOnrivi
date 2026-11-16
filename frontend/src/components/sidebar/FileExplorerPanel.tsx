@@ -3,6 +3,7 @@
  * 🏷️ 파일명 : FileExplorerPanel.tsx
  * 🎭 역할(Role) : Core (핵심 도메인 뷰 — 좌측 사이드바 파일 탐색기 패널)
  * 🎯 주요기능 : 워크스페이스 폴더 트리 탐색, 루트 파일/폴더 생성, 지연 로딩 및 하위 훅/컨텍스트 메뉴 위임
+ * 🚨 @PATCH : 2026-11-16 — [구글 드라이브 동명 파일 React key 중복 경고 해결] FileTreeItem key를 고유 ID(driveId/id) 우선 및 인덱스 결합으로 변경
  * 🚨 @PATCH : 2026-11-14 — [루트 폴더 생성 시 디폴트 서식 지정 및 저장 연동]:
  *             1) 루트에서 새 폴더 생성 시 PromptModal의 폴더 기본 서식 선택(showStyleSelector)을 활성화하고 생성 완료 즉시 setFolderDefaultProfile로 저장
  *             2) 외부 문서 가져오기 오버레이에 파일별 지정 서식(importProfileIdRef) 전달 연동
@@ -1121,7 +1122,7 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
                     .filter((node: any) => node.kind === 'directory' || node.name.toLowerCase().endsWith('.md') || node.name.toLowerCase().endsWith('.markdown') || node.name.toLowerCase().endsWith('.bib'))
                     .map((node: any, i: number) => (
                       <FileTreeItem
-                        key={node.path || node.name + i}
+                        key={node.driveId || node.id || `${node.path || node.name}::${i}`}
                         node={node}
                         parentHandle={rootFolder?.handle || null}
                         level={0}

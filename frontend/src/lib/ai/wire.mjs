@@ -1,7 +1,10 @@
 // ====================================================================
 // 📊 [OMD-AI-Wire-0001] src/lib/ai/wire.mjs
-// 🎯 @KICK  : 다중 AI(Google, OpenAI, Claude) 프로토콜 및 스트리밍 엔진
+// 🎯 @KICK  : 다중 AI(Google, OpenAI, Claude, EXAONE) 프로토콜 및 스트리밍 엔진
 // 🛡️ @GUARD : Rule 1(단일 주석 관리), Google Gemma/Gemini 실전 API 호환성 보장
+// 🚨 @PATCH : **2026-11-16** — [직접 연결(OpenAI 호환 · Custom) 지원]: 'custom' 프로바이더, normalizeBaseUrl 검증 및 임의 Base URL 기반 chat/completions·models 호출 추가
+// 🚨 @PATCH : **2026-11-16** — [LG K-EXAONE 2.5 추론 속도 최적화]: 기본 reasoning_effort 'low' 적용으로 120초 타임아웃 방어 (접미사 :high/:max 지정 시 제외)
+// 🚨 @PATCH : **2026-11-16** — [LG K-EXAONE 2.5 지원]: 'exaone' 프로바이더 추가 (OpenAI 호환 엔드포인트 https://api.exaone.ai/v1/chat/completions, 모델 k-exaone_v2.5)
 // 🚨 @PATCH : **2026-10-21** — [Google 서버 고부하(503/Timeout) 방어 및 초고속 모델(gemini-3.5-flash-lite) 실시간 라우팅]:
 //             1) Google Gemini 3.8/4.0 서버의 일시적 503 과부하(High Demand) 및 응답 멈춤 사태를 해결하기 위해 구글 공인 초고속 모델(gemini-3.5-flash-lite, 700ms 응답)로 실시간 안정 매핑
 //             2) 503 High Demand 또는 404 발생 시 1회 자동 자가치유 폴백(gemini-3.5-flash-lite) 파이프라인 탑재로 답변 대기 멈춤 현상 원천 해결
@@ -21,7 +24,26 @@
 //             3) generate 함수에 Google API 404 / 'not found' / 'not supported for generateContent' 발생 시 1회 자동 자가치유 폴백(gemini-2.0-flash) 파이프라인 탑재
 // ====================================================================
 // Shared provider protocol for Cloudflare and Electron. No credentials or bodies are logged.
-export const PROVIDERS = ['google', 'openai', 'anthropic'];
+export const PROVIDERS = ['google', 'openai', 'anthropic', 'exaone', 'custom'];
+export function normalizeBaseUrl(baseUrl) {
+  if (typeof baseUrl !== 'string' || !baseUrl.trim() || baseUrl.length > 500 || /[\r\n]/.test(baseUrl)) {
+    throw Error('API Base URL을 확인해 주세요.');
+  }
+  let parsed;
+  try {
+    parsed = new URL(baseUrl.trim());
+  } catch {
+    throw Error('올바른 형식의 API Base URL(https://... 또는 http://...)을 입력해 주세요.');
+  }
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw Error('API Base URL은 http:// 또는 https:// 로 시작해야 합니다.');
+  }
+  return parsed.toString()
+    .replace(/\/+$/, '')
+    .replace(/\/chat\/completions$/i, '')
+    .replace(/\/models$/i, '')
+    .replace(/\/+$/, '');
+}
 export function validateConnection(provider, key) {
   if (!PROVIDERS.includes(provider) || typeof key !== 'string' || !key.trim() || key.length > 1024 || /[\r\n]/.test(key)) throw Error('AI 연결 정보를 확인해 주세요.');
 }
@@ -93,7 +115,7 @@ export function requestSpec(provider,key,input) {
     },
     headers:headers(provider,key)
   };
-  if (provider === 'openai') {
+  if (provider === 'openai' || provider === 'exaone' || provider === 'custom') {
     const messages = [
       {
         role: 'user',
@@ -105,13 +127,22 @@ export function requestSpec(provider,key,input) {
           : input.prompt
       }
     ];
+    const body = {
+      model: targetModel,
+      stream: true,
+      messages
+    };
+    if (provider === 'exaone' && !/:(low|high|max)$/i.test(targetModel)) {
+      body.reasoning_effort = 'low';
+    }
+    const url = provider === 'custom'
+      ? `${normalizeBaseUrl(input.baseUrl)}/chat/completions`
+      : provider === 'exaone'
+      ? 'https://api.exaone.ai/v1/chat/completions'
+      : 'https://api.openai.com/v1/chat/completions';
     return {
-      url: 'https://api.openai.com/v1/chat/completions',
-      body: {
-        model: targetModel,
-        stream: true,
-        messages
-      },
+      url,
+      body,
       headers: headers(provider, key)
     };
   }
@@ -135,8 +166,55 @@ export function requestSpec(provider,key,input) {
 function statusError(status) {
   return Error(status===401||status===403?'AI 키 또는 모델 접근 권한을 확인해 주세요.':status===429?'AI 호출 한도 또는 API 결제 상태를 확인해 주세요.':status===404?'선택한 모델을 사용할 수 없습니다. 모델 목록을 새로고침해 주세요.':`AI 연결에 실패했습니다 (${status}).`);
 }
-export async function listModels(provider,key,signal,fetcher=fetch) {
+export async function listModels(provider,key,signal,fetcher=fetch,baseUrl='') {
   validateConnection(provider,key);
+  if (provider === 'custom') {
+    const base = normalizeBaseUrl(baseUrl);
+    const response = await fetcher(`${base}/models`, { headers: headers(provider, key), signal });
+    if (response.ok) {
+      const data = await response.json().catch(() => ({}));
+      const rows = (data.models || data.data || [])
+        .map(m => String(m.name || m.id || '').replace(/^models\//, ''))
+        .filter(Boolean)
+        .map(id => ({ id, name: id, family: 'Custom' }));
+      return [...new Map(rows.map(m => [m.id, m])).values()];
+    }
+    if (response.status === 404 || response.status === 405) {
+      return [];
+    }
+    const errBody = await response.json().catch(() => ({}));
+    const rawMsg = errBody?.error?.message || errBody?.message || '';
+    if (rawMsg) throw Error(`AI (CUSTOM): ${rawMsg}`);
+    throw statusError(response.status);
+  }
+  if (provider === 'exaone') {
+    const response = await fetcher('https://api.exaone.ai/v1/models', { headers: headers(provider, key), signal });
+    if (response.ok) {
+      const data = await response.json().catch(() => ({}));
+      const rows = (data.models || data.data || [])
+        .map(m => String(m.name || m.id || '').replace(/^models\//, ''))
+        .filter(Boolean)
+        .map(id => ({ id, name: id === 'k-exaone_v2.5' ? 'K-EXAONE 2.5' : id, family: 'EXAONE' }));
+      return rows.length > 0 ? [...new Map(rows.map(m => [m.id, m])).values()] : [{ id: 'k-exaone_v2.5', name: 'K-EXAONE 2.5', family: 'EXAONE' }];
+    }
+    if (response.status === 404) {
+      const probe = await fetcher('https://api.exaone.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...headers(provider, key) },
+        body: JSON.stringify({ model: 'k-exaone_v2.5', reasoning_effort: 'low', max_tokens: 1, messages: [{ role: 'user', content: 'hi' }] }),
+        signal,
+      });
+      if (probe.ok) return [{ id: 'k-exaone_v2.5', name: 'K-EXAONE 2.5', family: 'EXAONE' }];
+      const errBody = await probe.json().catch(() => ({}));
+      const rawMsg = errBody?.error?.message || errBody?.message || '';
+      if (rawMsg) throw Error(`AI (EXAONE): ${rawMsg}`);
+      throw statusError(probe.status);
+    }
+    const errBody = await response.json().catch(() => ({}));
+    const rawMsg = errBody?.error?.message || errBody?.message || '';
+    if (rawMsg) throw Error(`AI (EXAONE): ${rawMsg}`);
+    throw statusError(response.status);
+  }
   let url=provider==='google'?'https://generativelanguage.googleapis.com/v1beta/models?pageSize=100':provider==='openai'?'https://api.openai.com/v1/models':'https://api.anthropic.com/v1/models?limit=1000';
   const rows=[];
   for(let page=0;url&&page<30;page++){
@@ -205,7 +283,7 @@ export async function* generate(provider,key,input,signal,fetcher=fetch) {
       text=(c?.content?.parts||[]).filter(p=>!p.thought).map(p=>p.text||'').join('');
       if(c?.finishReason){if(c.finishReason!=='STOP')throw Error('AI 응답이 완료되지 않았습니다. 입력을 줄여 다시 요청해 주세요.');completed=true;}
       if(item.promptFeedback?.blockReason)throw Error('AI가 요청을 처리하지 못했습니다. 요청 내용을 확인해 주세요.');
-    }else if(provider==='openai'){
+    }else if(provider==='openai'||provider==='exaone'||provider==='custom'){
       const delta=item.choices?.[0]?.delta?.content;
       if(typeof delta==='string')text=delta;
       if(item.choices?.[0]?.finish_reason)completed=true;

@@ -1,7 +1,8 @@
 // ====================================================================
 // 📊 [OMD-MCP-AI-TEMPLATES-0001] server/ai-templates.mjs
-// 🎯 @KICK  : 로컬 리소스 폴더 AI 템플릿 조회·열람·채팅 실행 입력 구성 및 신규 템플릿 등록
+// 🎯 @KICK  : 로컬 리소스 폴더 AI 템플릿 조회·열람·채팅 실행 입력 구성 및 등록·수정·삭제
 // 🛡️ @GUARD : 경로 고정, 심볼릭 링크 거부, 크기 제한, 조회 후 변경 감지, 원자적 쓰기(atomicReplace)
+// 🚨 @PATCH : 2026-11-16 — [AI 템플릿 수정/삭제 MCP 도구 추가] updateAITemplate, deleteAITemplate 신설
 // 🚨 @PATCH : 2026-10-31 — [AI 프롬프트를 템플릿/프리셋으로 등록하는 createAITemplate MCP 도구 신설]
 // 🚨 @PATCH : 2026-10-30 — AI 프리셋과 문서 프롬프트를 MCP에서 읽고 실행 입력으로 구성
 // ====================================================================
@@ -248,4 +249,153 @@ export async function createAITemplate(resourcePath, {
     userInputTemplate: userTpl,
     sha256: newSha
   };
+}
+
+/**
+ * ========================================================================================
+ * [함수명] updateAITemplate - 기존 AI 프리셋 또는 문서 템플릿을 수정합니다.
+ * ==========================================================================================
+ */
+export async function updateAITemplate(resourcePath, {
+  kind = 'preset',
+  id,
+  name,
+  prompt,
+  editorialCommand,
+  systemPrompt,
+  userInputTemplate,
+  folder,
+  domain,
+  docType,
+  expectedSha256
+} = {}, beforeWrite) {
+  if (kind !== 'preset' && kind !== 'prompt') throw new Error('kind는 preset 또는 prompt여야 합니다.');
+  if (!/^[a-f0-9]{64}$/i.test(expectedSha256 || '')) throw new Error('get_ai_template 또는 list_ai_templates에서 받은 SHA-256 값이 필요합니다.');
+
+  const source = await loadSource(resourcePath, kind);
+  if (source.sha256 !== expectedSha256.toLowerCase()) {
+    throw new Error('AI 템플릿 파일이 조회 후 변경되었습니다. 다시 조회해 주세요.');
+  }
+
+  if (kind === 'preset') {
+    if (typeof id !== 'string' || !id.trim()) throw new Error('수정할 프리셋 ID를 지정하세요.');
+    const index = source.data.findIndex((row, i) => String(row?.id || `preset-${i}`) === id);
+    if (index < 0) throw new Error('수정할 AI 프리셋을 찾지 못했습니다.');
+
+    const nextRow = structuredClone(source.data[index]);
+    if (name !== undefined) {
+      if (typeof name !== 'string' || !name.trim() || name.trim().length > 100) throw new Error('프리셋 이름은 1~100자로 지정하세요.');
+      const trimmedName = name.trim();
+      if (source.data.some((row, i) => i !== index && String(row.name || '').trim().toLowerCase() === trimmedName.toLowerCase())) {
+        throw new Error(`'${trimmedName}' 이름의 AI 프리셋이 이미 존재합니다.`);
+      }
+      nextRow.name = trimmedName;
+    }
+    if (folder !== undefined) {
+      nextRow.folder = (typeof folder === 'string' && folder.trim() ? folder.trim() : 'AI작성').slice(0, 50);
+    }
+    const nextPrompt = prompt !== undefined ? prompt : editorialCommand;
+    if (nextPrompt !== undefined) {
+      const cleanPrompt = String(nextPrompt).trim();
+      if (!cleanPrompt) throw new Error('프롬프트 내용을 입력하세요.');
+      if (cleanPrompt.length > MAX_PROMPT_CHARS) throw new Error(`프롬프트 내용이 너무 깁니다. (최대 ${MAX_PROMPT_CHARS}자)`);
+      nextRow.editorialCommand = cleanPrompt;
+    }
+    nextRow.updatedAt = new Date().toISOString();
+
+    const nextData = [...source.data];
+    nextData[index] = nextRow;
+    const nextBytes = Buffer.from(JSON.stringify(nextData, null, 2), 'utf8');
+    if (nextBytes.length > MAX_FILE_BYTES) throw new Error('수정 후 AI 프리셋 파일이 4 MiB 제한을 초과합니다.');
+
+    await atomicReplace(source.file, nextBytes, async () => {
+      if (beforeWrite) await beforeWrite();
+      const latest = await fs.readFile(source.file).catch(() => null);
+      if (!latest || sha256(latest) !== source.sha256) throw new Error('AI 프리셋 파일이 저장 도중 변경되었습니다.');
+    });
+
+    return { success: true, kind: 'preset', id, name: nextRow.name, folder: nextRow.folder || '', sha256: sha256(nextBytes) };
+  }
+
+  const cleanDomain = typeof domain === 'string' ? domain.trim() : '';
+  const cleanDocType = typeof docType === 'string' ? docType.trim() : '';
+  if (!cleanDomain || !cleanDocType) throw new Error('수정할 문서 템플릿의 domain과 docType을 지정하세요.');
+  if (!source.data[cleanDomain]?.[cleanDocType]) throw new Error('수정할 문서 템플릿을 찾지 못했습니다.');
+
+  const nextData = structuredClone(source.data);
+  const target = nextData[cleanDomain][cleanDocType];
+  const nextSys = systemPrompt !== undefined ? systemPrompt : prompt;
+  if (nextSys !== undefined) {
+    const cleanSys = String(nextSys).trim();
+    if (!cleanSys) throw new Error('시스템 프롬프트 내용을 입력하세요.');
+    if (cleanSys.length > MAX_PROMPT_CHARS) throw new Error(`프롬프트 내용이 너무 깁니다. (최대 ${MAX_PROMPT_CHARS}자)`);
+    target.systemPrompt = cleanSys;
+  }
+  if (userInputTemplate !== undefined) {
+    target.userInputTemplate = String(userInputTemplate).trim() || '문서 내용 또는 작성 요청 사항을 입력하세요.';
+  }
+
+  const nextBytes = Buffer.from(JSON.stringify(nextData, null, 2), 'utf8');
+  if (nextBytes.length > MAX_FILE_BYTES) throw new Error('수정 후 AI 템플릿 파일이 4 MiB 제한을 초과합니다.');
+
+  await atomicReplace(source.file, nextBytes, async () => {
+    if (beforeWrite) await beforeWrite();
+    const latest = await fs.readFile(source.file).catch(() => null);
+    if (!latest || sha256(latest) !== source.sha256) throw new Error('AI 문서 템플릿 파일이 저장 도중 변경되었습니다.');
+  });
+
+  return { success: true, kind: 'prompt', domain: cleanDomain, docType: cleanDocType, sha256: sha256(nextBytes) };
+}
+
+/**
+ * ========================================================================================
+ * [함수명] deleteAITemplate - 기존 AI 프리셋 또는 문서 템플릿을 삭제합니다.
+ * ==========================================================================================
+ */
+export async function deleteAITemplate(resourcePath, { kind = 'preset', id, domain, docType, expectedSha256 } = {}, beforeWrite) {
+  if (kind !== 'preset' && kind !== 'prompt') throw new Error('kind는 preset 또는 prompt여야 합니다.');
+  if (!/^[a-f0-9]{64}$/i.test(expectedSha256 || '')) throw new Error('get_ai_template 또는 list_ai_templates에서 받은 SHA-256 값이 필요합니다.');
+
+  const source = await loadSource(resourcePath, kind);
+  if (source.sha256 !== expectedSha256.toLowerCase()) {
+    throw new Error('AI 템플릿 파일이 조회 후 변경되었습니다. 다시 조회해 주세요.');
+  }
+
+  if (kind === 'preset') {
+    if (typeof id !== 'string' || !id.trim()) throw new Error('삭제할 프리셋 ID를 지정하세요.');
+    const index = source.data.findIndex((row, i) => String(row?.id || `preset-${i}`) === id);
+    if (index < 0) throw new Error('삭제할 AI 프리셋을 찾지 못했습니다.');
+
+    const deletedName = String(source.data[index]?.name || '');
+    const nextData = source.data.filter((_, i) => i !== index);
+    const nextBytes = Buffer.from(JSON.stringify(nextData, null, 2), 'utf8');
+
+    await atomicReplace(source.file, nextBytes, async () => {
+      if (beforeWrite) await beforeWrite();
+      const latest = await fs.readFile(source.file).catch(() => null);
+      if (!latest || sha256(latest) !== source.sha256) throw new Error('AI 프리셋 파일이 저장 도중 변경되었습니다.');
+    });
+
+    return { success: true, kind: 'preset', id, name: deletedName, sha256: sha256(nextBytes), totalCount: nextData.length };
+  }
+
+  const cleanDomain = typeof domain === 'string' ? domain.trim() : '';
+  const cleanDocType = typeof docType === 'string' ? docType.trim() : '';
+  if (!cleanDomain || !cleanDocType) throw new Error('삭제할 문서 템플릿의 domain과 docType을 지정하세요.');
+  if (!source.data[cleanDomain]?.[cleanDocType]) throw new Error('삭제할 문서 템플릿을 찾지 못했습니다.');
+
+  const nextData = structuredClone(source.data);
+  delete nextData[cleanDomain][cleanDocType];
+  if (Object.keys(nextData[cleanDomain]).length === 0) {
+    delete nextData[cleanDomain];
+  }
+  const nextBytes = Buffer.from(JSON.stringify(nextData, null, 2), 'utf8');
+
+  await atomicReplace(source.file, nextBytes, async () => {
+    if (beforeWrite) await beforeWrite();
+    const latest = await fs.readFile(source.file).catch(() => null);
+    if (!latest || sha256(latest) !== source.sha256) throw new Error('AI 문서 템플릿 파일이 저장 도중 변경되었습니다.');
+  });
+
+  return { success: true, kind: 'prompt', domain: cleanDomain, docType: cleanDocType, sha256: sha256(nextBytes) };
 }

@@ -19,6 +19,9 @@ try {
   await writeLicense('PAID');
   globalThis.fetch = async () => ({ ok: true, json: async () => ({ success: true, has_session: true, is_restricted: false, plan_name: 'ELITEPRO', plan_status: 'ACTIVE' }) });
   assert.equal((await requireMcpAccess()).deviceId, context.deviceId);
+  await writeLicense('PAID-REGULAR');
+  globalThis.fetch = async () => ({ ok: true, json: async () => ({ success: true, has_session: true, is_restricted: false, plan_name: 'REGULAR', plan_status: 'ACTIVE' }) });
+  assert.equal((await requireMcpAccess()).deviceId, context.deviceId);
   await writeLicense('PAID-FREE');
   globalThis.fetch = async () => ({ ok: true, json: async () => ({ success: true, has_session: true, plan_name: 'ELITEPRO', plan_status: 'FREE' }) });
   await assert.rejects(requireMcpAccess(), /권한이 없습니다/);

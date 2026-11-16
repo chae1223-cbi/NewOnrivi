@@ -1,3 +1,9 @@
+// ====================================================================
+// 📊 [OMD-MCP-PROFILES-0001] server/profiles.mjs
+// 🎯 @KICK  : 로컬 리소스 폴더 사용자 서식(CSS 프로필) 조회·생성·수정·삭제
+// 🛡️ @GUARD : Rule 1(단일 주석 관리), 시스템 서식 보호, SHA-256 동시성 검증, atomicReplace
+// 🚨 @PATCH : 2026-11-16 — [서식 템플릿 삭제 MCP 도구 추가] deleteProfile 신설
+// ====================================================================
 import { createHash, randomUUID } from 'node:crypto';
 import { promises as fs, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -173,4 +179,31 @@ export async function updateProfile({ resourceFolder, expectedSha256, profileId,
     if (sha256(await fs.readFile(file)) !== expectedSha256.toLowerCase()) throw new Error('서식 파일이 조회 후 변경되었습니다. 목록을 다시 읽어 주세요.');
   });
   return { file, profile, sha256: sha256(next), count: nextProfiles.length };
+}
+
+/**
+ * ========================================================================================
+ * [함수명] deleteProfile - 사용자 정의 서식 프로필을 삭제합니다. (시스템 서식은 삭제 불가)
+ * ==========================================================================================
+ */
+export async function deleteProfile({ resourceFolder, expectedSha256, profileId }, beforeWrite) {
+  if (!/^[a-f0-9]{64}$/i.test(expectedSha256 ?? '')) throw new Error('list_style_profiles에서 받은 SHA-256 값이 필요합니다.');
+  if (typeof profileId !== 'string' || !profileId.trim()) throw new Error('삭제할 사용자 서식 ID를 지정하세요.');
+  const file = await profileFile(resourceFolder);
+  const bytes = await fs.readFile(file);
+  if (sha256(bytes) !== expectedSha256.toLowerCase()) throw new Error('서식 파일이 조회 후 변경되었습니다. 목록을 다시 읽어 주세요.');
+  const profiles = parseProfiles(bytes);
+  const systemList = getSystemProfiles();
+  if (systemList.some(item => item.id === profileId)) throw new Error('시스템 기본 서식은 삭제할 수 없습니다.');
+  const index = profiles.findIndex(item => item.id === profileId);
+  if (index < 0) throw new Error('삭제할 사용자 서식을 찾지 못했습니다.');
+  const deletedName = String(profiles[index]?.name || '');
+  const nextProfiles = profiles.filter((_, i) => i !== index);
+  const next = Buffer.from(JSON.stringify(nextProfiles, null, 2), 'utf8');
+  await atomicReplace(file, next, async () => {
+    if (beforeWrite) await beforeWrite();
+    await profileFile(resourceFolder);
+    if (sha256(await fs.readFile(file)) !== expectedSha256.toLowerCase()) throw new Error('서식 파일이 조회 후 변경되었습니다. 목록을 다시 읽어 주세요.');
+  });
+  return { success: true, file, deletedId: profileId, deletedName, sha256: sha256(next), count: nextProfiles.length };
 }

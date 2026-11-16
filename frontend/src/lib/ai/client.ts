@@ -1,7 +1,9 @@
 // ====================================================================
 // 📊 [OMD-AI-Client-0001] src/lib/ai/client.ts
-// 🎯 @KICK  : 다중 AI(Google, OpenAI, Claude) 클라이언트 통신 및 키 영구 보존 엔진
+// 🎯 @KICK  : 다중 AI(Google, OpenAI, Claude, EXAONE) 클라이언트 통신 및 키 영구 보존 엔진
 // 🛡️ @GUARD : Rule 1(주석 최신화), AES-256 보안 저장소 영구 연동, 멀티 스코프 탐색
+// 🚨 @PATCH : **2026-11-16** — [직접 연결(OpenAI 호환 · Custom) 지원]: readCustomConnections/saveCustomConnection/removeCustomConnection 및 aiRequest 내 customId/baseUrl 라우팅 추가
+// 🚨 @PATCH : **2026-11-16** — [LG K-EXAONE 2.5 지원]: AI_LABELS 및 프로바이더 목록/키 조회에 'exaone' 추가
 // 🚨 @PATCH : **2026-10-21** — [Google/OpenAI/Claude 키 형식 엄격 검증 및 비정상 키 메모리 캐시 배제]:
 //             1) getProviderApiKey & useLegacyGoogleKey: Google 키에 sk- 또는 googleusercontent.com 유입 시 즉시 차단 및 메모리 삭제
 // 🚨 @PATCH : **2026-10-21** — [키 미등록 제공사 유령 모델 노출 차단 및 리소스 폴더 연동 강화]:
@@ -17,11 +19,11 @@
 import {browserAccountStorage as storage,getBrowserAccountScope} from '../browserAccountStorage';
 import {supabase} from '../supabaseClient';
 import {saveSecureData,loadSecureData} from '../secureStorage';
-import { getActiveResourceApiKey, getProviderResourceApiKey, getProviderResourceModel, getProviderResourceModels, saveProviderResourceCredentials, deleteProviderResourceCredentials, purgeLocalStorageAICredentials } from './resourceAICredentials';
+import { getActiveResourceApiKey, getProviderResourceApiKey, getProviderResourceModel, getProviderResourceModels, saveProviderResourceCredentials, deleteProviderResourceCredentials, purgeLocalStorageAICredentials, getCustomResourceProviders, saveCustomResourceProvider, deleteCustomResourceProvider } from './resourceAICredentials';
 import { RECOMMENDED_MODELS } from './recommendedModels';
 import { ONRIVI_AI_MODELS } from '../gemini';
-import type {AIProvider,AIModel,AIInput} from './types';
-export const AI_LABELS:Record<AIProvider,string>={google:'Google · Gemini / Gemma',openai:'OpenAI',anthropic:'Claude'};
+import type {AIProvider,AIModel,AIInput,CustomAIProviderConfig} from './types';
+export const AI_LABELS:Record<AIProvider,string>={google:'Google · Gemini / Gemma',openai:'OpenAI',anthropic:'Claude',exaone:'LG AI · K-EXAONE 2.5',custom:'직접 연결 (OpenAI 호환)'};
 const STORE='onrivi_ai_connections';
 type Connection={model:string;models:AIModel[];updatedAt?:number};
 const memoryKeys=new Map<string,string>();
@@ -65,7 +67,7 @@ export function getProviderApiKey(scope:string,provider:AIProvider):string{
 export function readConnections():Partial<Record<AIProvider,Connection>>{
   try{
     const result:Partial<Record<AIProvider,Connection>>={};
-    for (const provider of ['google', 'openai', 'anthropic'] as AIProvider[]) {
+    for (const provider of ['google', 'openai', 'anthropic', 'exaone'] as AIProvider[]) {
       if (!getProviderApiKey(aiAccountScope(), provider)) continue;
       const models = getProviderResourceModels(provider);
       result[provider] = {
@@ -78,8 +80,11 @@ export function readConnections():Partial<Record<AIProvider,Connection>>{
 }
 export async function saveConnection(provider:AIProvider,connection:Connection){await saveProviderResourceCredentials(provider, { model: connection.model, models: connection.models });window.dispatchEvent(new Event('onrivi:ai-connections'));}
 export function removeConnection(provider:AIProvider){void deleteProviderResourceCredentials(provider);window.dispatchEvent(new Event('onrivi:ai-connections'));}
-export function selectedConnection():{provider:AIProvider;model:string}{try{const v=JSON.parse(storage.getItem(selectedKey())||'{}');return {provider:['google','openai','anthropic'].includes(v?.provider)?v.provider:'google',model:typeof v?.model==='string'?v.model:''};}catch{return {provider:'google',model:''};}}
-export function selectConnection(provider:AIProvider,model:string){storage.setItem(selectedKey(),JSON.stringify({provider,model}));window.dispatchEvent(new Event('onrivi:ai-connections'));}
+export function readCustomConnections():CustomAIProviderConfig[]{return getCustomResourceProviders();}
+export async function saveCustomConnection(config:CustomAIProviderConfig){const saved=await saveCustomResourceProvider(config);if(!saved.success)throw Error('커스텀 AI 연결을 저장하지 못했습니다.');window.dispatchEvent(new Event('onrivi:ai-connections'));}
+export async function removeCustomConnection(customId:string){await deleteCustomResourceProvider(customId);window.dispatchEvent(new Event('onrivi:ai-connections'));}
+export function selectedConnection():{provider:AIProvider;model:string;customId?:string}{try{const v=JSON.parse(storage.getItem(selectedKey())||'{}');return {provider:['google','openai','anthropic','exaone','custom'].includes(v?.provider)?v.provider:'google',model:typeof v?.model==='string'?v.model:'',customId:typeof v?.customId==='string'?v.customId:undefined};}catch{return {provider:'google',model:''};}}
+export function selectConnection(provider:AIProvider,model:string,customId?:string){storage.setItem(selectedKey(),JSON.stringify({provider,model,customId}));window.dispatchEvent(new Event('onrivi:ai-connections'));}
 export async function configureAI(scope:string,provider:AIProvider,key:string,remember=true,remove=false){
   const cleanKey=key.trim();
   if(remove){
@@ -119,24 +124,42 @@ export function useLegacyGoogleKey(scope:string,key:string){
 }
 export async function aiRequest(scope:string,provider:AIProvider,action:'models'|'generate',input:AIInput|undefined,signal:AbortSignal,onText?:(text:string)=>void):Promise<AIModel[]>{
   const id=crypto.randomUUID();signal.throwIfAborted();
+  let effectiveInput=input;
+  let customKey='';
+  if(provider==='custom'){
+    const customList=getCustomResourceProviders();
+    const sel=selectedConnection();
+    const targetCustomId=input?.customId||sel.customId;
+    const customCfg=customList.find(c=>c.id===targetCustomId)||customList[0];
+    const resolvedBaseUrl=input?.baseUrl||customCfg?.baseUrl||'';
+    if(!resolvedBaseUrl)throw Error('직접 연결(OpenAI 호환)의 API Base URL을 입력해 주세요.');
+    customKey=(customCfg?.apiKey||'').trim()||'not-needed';
+    effectiveInput={
+      model:input?.model||customCfg?.model||'',
+      prompt:input?.prompt||'',
+      images:input?.images||[],
+      baseUrl:resolvedBaseUrl,
+      customId:customCfg?.id||targetCustomId,
+    };
+  }
   if(api()&&!api().inlineAIRun)throw Error('설치형 앱을 새 버전으로 업데이트한 뒤 AI 연결을 설정해 주세요.');
   if(api()?.inlineAIRun){
     // Transfer a key into the desktop session vault, never persist it implicitly unless remembered.
-    const effectiveKey=getProviderApiKey(scope,provider);
-    if(effectiveKey&&!Boolean((await api().inlineAIKey({scope,provider})).connected))await api().inlineAIKey({scope,provider,key:effectiveKey,remember:true});
+    const effectiveKey=provider==='custom'?customKey:getProviderApiKey(scope,provider);
+    if(effectiveKey&&(provider==='custom'||!Boolean((await api().inlineAIKey({scope,provider})).connected)))await api().inlineAIKey({scope,provider,key:effectiveKey,remember:provider!=='custom'});
     let complete=false;
     const unsubscribe=api().onInlineAIEvent((event:any)=>{if(event.id!==id||signal.aborted)return;if(event.type==='textDelta')onText?.(event.text);if(event.type==='complete')complete=true;});
     const abort=()=>{void api().inlineAICancel(id);};signal.addEventListener('abort',abort,{once:true});
-    try{signal.throwIfAborted();const result=await api().inlineAIRun({scope,provider,id,action,input});signal.throwIfAborted();if(action==='generate'&&!complete)throw Error('AI 응답이 완료되지 않았습니다.');return result.models||[];}
+    try{signal.throwIfAborted();const result=await api().inlineAIRun({scope,provider,id,action,input:effectiveInput});signal.throwIfAborted();if(action==='generate'&&!complete)throw Error('AI 응답이 완료되지 않았습니다.');return result.models||[];}
     finally{unsubscribe();signal.removeEventListener('abort',abort);}
   }
-  const key=getProviderApiKey(scope,provider);
+  const key=provider==='custom'?customKey:getProviderApiKey(scope,provider);
   if(!key){
-    const providerName=provider==='openai'?'OpenAI':provider==='google'?'Google':provider==='anthropic'?'Claude':provider;
+    const providerName=provider==='openai'?'OpenAI':provider==='google'?'Google':provider==='anthropic'?'Claude':provider==='exaone'?'EXAONE':provider==='custom'?'직접 연결 AI':provider;
     throw Error(`환경설정에서 ${providerName} API 키를 등록해 주세요.`);
   }
   const {data}=await supabase.auth.getSession();const token=data.session?.access_token;if(!token)throw Error('웹 AI를 사용하려면 로그인해 주세요.');
-  const response=await fetch('/api/ai/request',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({provider,key,action,input}),signal});
+  const response=await fetch('/api/ai/request',{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${token}`},body:JSON.stringify({provider,key,action,input:effectiveInput}),signal});
   if(!response.ok){const body=await response.json().catch(()=>({}));throw Error(body.error||'AI 서버 연결을 확인해 주세요.');}
   if(action==='models')return (await response.json()).models;
   if(!response.body)throw Error('AI 응답이 비어 있습니다.');

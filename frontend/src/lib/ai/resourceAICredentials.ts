@@ -2,6 +2,8 @@
 // 📊 [OMD-AI-resourceAICredentials-0001] src/lib/ai/resourceAICredentials.ts
 // 🎯 @KICK  : 로컬 스토리지 보관을 전면 배제하고 리소스 폴더({resourceFolder}/settings/ai_credentials.enc) 전용 AES-256 암호화 및 다중 기기/드라이브 자동 격리 관리
 // 🛡️ @GUARD : Rule 1(단일 주석 관리), Rule 2(코드값 대문자 통일), 평문 유출 방지 및 기기/드라이브별 충돌 방어
+// 🚨 @PATCH : **2026-11-16** — [직접 연결(OpenAI 호환 · Custom) 지원]: customProviders 배열 저장/조회/삭제 및 메모리 캐시 동기화
+// 🚨 @PATCH : **2026-11-16** — [LG K-EXAONE 2.5 지원]: getProviderResourceApiKey에서 'exaone' 프로바이더 키 조회 허용
 // 🚨 @PATCH : **2026-10-21** — [Google Gemini/OpenAI/Claude API 키 엄격 검증 및 OAuth 클라이언트 ID 오유입 박멸]:
 //             1) sanitizeProfileCredentials 도입: 모든 프로필의 Google 키에 유입된 OpenAI(sk-) 키는 OpenAI로 정상 이동, OAuth 클라이언트 ID(googleusercontent.com)는 완전 소거
 //             2) getProviderResourceApiKey: 제공사별 접두어(Google: AIza, OpenAI: sk-, Claude: sk-ant-) 불일치 키는 유효하지 않은 키('')로 차단
@@ -15,7 +17,7 @@
 // ====================================================================
 
 import CryptoJS from 'crypto-js';
-import type { AIProvider } from './types';
+import type { AIProvider, CustomAIProviderConfig } from './types';
 import { getResourceSettings } from '../resourceSettings';
 import { idb } from '../indexedDbHelper';
 import { loadSecureData } from '../secureStorage';
@@ -39,6 +41,7 @@ export interface AICredentialProfile {
   apiKey: string; // Google Gemini API key (하위 호환)
   aiModelName: string;
   providers?: Partial<Record<AIProvider, AIProviderCredential>>;
+  customProviders?: CustomAIProviderConfig[];
   updatedAt: string;
 }
 
@@ -57,12 +60,14 @@ let activeMemoryCredentials: {
   profileId: string;
   profileLabel: string;
   providers: Partial<Record<AIProvider, AIProviderCredential>>;
+  customProviders: CustomAIProviderConfig[];
 } = {
   apiKey: '',
   aiModelName: 'gemini-3.8-flash',
   profileId: '',
   profileLabel: '',
   providers: {},
+  customProviders: [],
 };
 
 export function getActiveResourceApiKey(): string {
@@ -87,6 +92,7 @@ export function getProviderResourceApiKey(provider: AIProvider): string {
     if (provider === 'google' && k.startsWith('AIza') && !k.includes('googleusercontent.com') && !k.startsWith('sk-')) return k;
     if (provider === 'openai' && k.startsWith('sk-') && !k.startsWith('sk-ant-')) return k;
     if (provider === 'anthropic' && k.startsWith('sk-ant-')) return k;
+    if (provider === 'exaone') return k;
   }
   if (provider === 'google' && activeMemoryCredentials.apiKey) {
     const k = activeMemoryCredentials.apiKey.trim();
@@ -585,6 +591,7 @@ export async function loadResourceAICredentials(resourceFolder?: string, resourc
     profileId: profileInfo.profileId,
     profileLabel: profileInfo.profileLabel,
     providers: activeProviders,
+    customProviders: Array.isArray(active?.customProviders) ? active.customProviders : [],
   };
 
   return {
@@ -652,6 +659,7 @@ export async function saveResourceAICredentials(
     profileId: profileInfo.profileId,
     profileLabel: profileInfo.profileLabel,
     providers: updatedProviders,
+    customProviders: activeMemoryCredentials.customProviders,
   };
 
   // 로컬 스토리지 완전 소거 (로컬 스토리지 미보관 원칙)
@@ -697,6 +705,7 @@ export async function deleteResourceAICredentials(
     profileId: profileInfo.profileId,
     profileLabel: profileInfo.profileLabel,
     providers: {},
+    customProviders: [],
   };
 
   purgeLocalStorageAICredentials();
@@ -778,6 +787,7 @@ export async function saveProviderResourceCredentials(
     profileId: profileInfo.profileId,
     profileLabel: profileInfo.profileLabel,
     providers: profile.providers,
+    customProviders: Array.isArray(profile.customProviders) ? profile.customProviders : activeMemoryCredentials.customProviders,
   };
 
   purgeLocalStorageAICredentials();
@@ -831,6 +841,7 @@ export async function deleteProviderResourceCredentials(
       profileId: profileInfo.profileId,
       profileLabel: profileInfo.profileLabel,
       providers: profile.providers,
+      customProviders: Array.isArray(profile.customProviders) ? profile.customProviders : activeMemoryCredentials.customProviders,
     };
 
     purgeLocalStorageAICredentials();
@@ -854,4 +865,124 @@ export async function deleteProviderResourceCredentials(
   }
 
   return { success: true, profileLabel: profileInfo.profileLabel };
+}
+
+/**
+ * ========================================================================================
+ * [함수명] getCustomResourceProviders - 현재 활성 프로필의 사용자 정의(OpenAI 호환) AI 제공사 목록을 반환합니다.
+ * ==========================================================================================
+ */
+export function getCustomResourceProviders(): CustomAIProviderConfig[] {
+  return Array.isArray(activeMemoryCredentials.customProviders)
+    ? activeMemoryCredentials.customProviders
+    : [];
+}
+
+/**
+ * ========================================================================================
+ * [함수명] saveCustomResourceProvider - 사용자 정의(OpenAI 호환) AI 제공사를 리소스 폴더 암호화 파일에 저장/갱신합니다.
+ * ==========================================================================================
+ */
+export async function saveCustomResourceProvider(
+  config: CustomAIProviderConfig,
+  resourceFolder?: string,
+  resourceHandle?: any
+): Promise<{ success: boolean; profileLabel: string }> {
+  const profileInfo = await resolveCurrentProfile(resourceFolder);
+  const loaded = await loadResourceAICredentials(resourceFolder, resourceHandle);
+  const container = loaded.container;
+
+  let profile = container.profiles[profileInfo.profileId];
+  if (!profile) {
+    profile = {
+      type: profileInfo.type,
+      id: profileInfo.profileId,
+      label: profileInfo.profileLabel,
+      hostName: profileInfo.hostName,
+      deviceId: profileInfo.deviceId,
+      account: profileInfo.account,
+      apiKey: '',
+      aiModelName: 'gemini-3.8-flash',
+      providers: {},
+      customProviders: [],
+      updatedAt: new Date().toISOString(),
+    };
+    container.profiles[profileInfo.profileId] = profile;
+  }
+
+  const list = Array.isArray(profile.customProviders) ? [...profile.customProviders] : [];
+  const nextItem: CustomAIProviderConfig = {
+    ...config,
+    name: config.name.trim(),
+    baseUrl: config.baseUrl.trim(),
+    apiKey: config.apiKey.trim(),
+    model: config.model.trim(),
+    updatedAt: new Date().toISOString(),
+  };
+  const idx = list.findIndex((item) => item.id === nextItem.id);
+  if (idx >= 0) {
+    list[idx] = nextItem;
+  } else {
+    list.push(nextItem);
+  }
+  profile.customProviders = list;
+  profile.updatedAt = new Date().toISOString();
+  container.updatedAt = new Date().toISOString();
+
+  const cipher = CryptoJS.AES.encrypt(JSON.stringify(container), SECRET_SALT).toString();
+  const ok = await writeRawCredentialsToResource(cipher, resourceFolder, resourceHandle);
+  if (!ok) throw new Error('커스텀 AI 설정을 리소스 폴더에 저장하지 못했습니다. 연결 및 쓰기 권한을 확인해 주세요.');
+
+  activeMemoryCredentials = {
+    ...activeMemoryCredentials,
+    profileId: profileInfo.profileId,
+    profileLabel: profileInfo.profileLabel,
+    customProviders: list,
+  };
+
+  purgeLocalStorageAICredentials();
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('onrivi:ai-connections'));
+  }
+
+  return { success: ok, profileLabel: profileInfo.profileLabel };
+}
+
+/**
+ * ========================================================================================
+ * [함수명] deleteCustomResourceProvider - 특정 사용자 정의(OpenAI 호환) AI 제공사를 삭제합니다.
+ * ==========================================================================================
+ */
+export async function deleteCustomResourceProvider(
+  customId: string,
+  resourceFolder?: string,
+  resourceHandle?: any
+): Promise<{ success: boolean }> {
+  const profileInfo = await resolveCurrentProfile(resourceFolder);
+  const loaded = await loadResourceAICredentials(resourceFolder, resourceHandle);
+  const container = loaded.container;
+  const profile = container.profiles[profileInfo.profileId];
+  if (!profile) return { success: true };
+
+  const list = (Array.isArray(profile.customProviders) ? profile.customProviders : []).filter(
+    (item) => item.id !== customId
+  );
+  profile.customProviders = list;
+  profile.updatedAt = new Date().toISOString();
+  container.updatedAt = new Date().toISOString();
+
+  const cipher = CryptoJS.AES.encrypt(JSON.stringify(container), SECRET_SALT).toString();
+  const ok = await writeRawCredentialsToResource(cipher, resourceFolder, resourceHandle);
+  if (!ok) throw new Error('커스텀 AI 설정을 삭제하지 못했습니다. 리소스 폴더 연결을 확인해 주세요.');
+
+  activeMemoryCredentials = {
+    ...activeMemoryCredentials,
+    customProviders: list,
+  };
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('onrivi:ai-connections'));
+  }
+
+  return { success: ok };
 }

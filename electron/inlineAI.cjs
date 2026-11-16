@@ -1,3 +1,10 @@
+// ====================================================================
+// 📊 [OMD-ELECTRON-InlineAI-0001] electron/inlineAI.cjs
+// 🎯 @KICK  : Electron 데스크톱 앱용 인라인 AI IPC 핸들러 및 OS 안전 키 저장소
+// 🛡️ @GUARD : Rule 1(단일 주석 관리), 발신 프레임 검증, OS safeStorage 암호화
+// 🚨 @PATCH : 2026-11-16 — [직접 연결(OpenAI 호환 · Custom) 지원] 허용 프로바이더에 'custom' 추가 및 listModels baseUrl 전달
+// 🚨 @PATCH : 2026-11-16 — [LG K-EXAONE 2.5 지원] 허용 AI 프로바이더 목록에 'exaone' 추가
+// ====================================================================
 const {createHash}=require('node:crypto');
 const fs=require('node:fs/promises');
 const path=require('node:path');
@@ -9,7 +16,7 @@ function registerInlineAI({ipcMain,app,safeStorage}){
   const check=(event,scope,provider)=>{
     const url=event.senderFrame?.url||'';
     if(!/^(app:|file:|https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/)/.test(url)||event.senderFrame!==event.sender.mainFrame)throw Error('허용되지 않은 AI 요청입니다.');
-    if(typeof scope!=='string'||!scope||scope.length>200||!['google','openai','anthropic'].includes(provider))throw Error('AI 계정 연결을 확인해 주세요.');
+    if(typeof scope!=='string'||!scope||scope.length>200||!['google','openai','anthropic','exaone','custom'].includes(provider))throw Error('AI 계정 연결을 확인해 주세요.');
   };
   const fileFor=(scope,provider)=>path.join(app.getPath('userData'),'ai-credentials',createHash('sha256').update(scope+':'+provider).digest('hex')+'.bin');
   const keyFor=async(event,scope,provider)=>{
@@ -35,10 +42,10 @@ function registerInlineAI({ipcMain,app,safeStorage}){
     const owner=event.sender.id,requestKey=`${owner}:${id}`;
     if([...requests.keys()].some(key=>key.startsWith(owner+':')))throw Error('진행 중인 AI 요청을 먼저 중지해 주세요.');
     const key=await keyFor(event,scope,provider);if(!key)throw Error('AI 연결을 등록해 주세요.');
-    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),120000);requests.set(requestKey,controller);
+    const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),(provider==='exaone'||provider==='custom')?300000:120000);requests.set(requestKey,controller);
     const destroyed=()=>controller.abort();event.sender.once('destroyed',destroyed);
     try{
-      if(action==='models')return {models:await (await protocol).listModels(provider,key,controller.signal)};
+      if(action==='models')return {models:await (await protocol).listModels(provider,key,controller.signal,fetch,input?.baseUrl)};
       if(action!=='generate')throw Error('지원하지 않는 작업입니다.');
       for await(const item of (await protocol).generate(provider,key,input,controller.signal)){
         if(!event.sender.isDestroyed())event.sender.send('inline-ai:event',{id,...item});

@@ -1,5 +1,6 @@
 /**
  * @type {import('next').NextConfig}
+ * 🚨 @PATCH : 2026-11-16 — [웹 원격 MCP 개발 프록시 추가] cloudApiSegments에 'mcp' 추가하여 /api/mcp 및 /api/mcp/token을 Wrangler(8788)로 전달
  * 🚨 @PATCH : 2026-11-02 — 클라우드 업무 API를 로컬 Wrangler로 전달하고 PC 전용 API는 Next에서 유지
  * 🚨 @PATCH : **2026-10-02** — [프로덕션 소스맵 비활성화로 번들 다이어트]: productionBrowserSourceMaps를 false로 전환하여 빌드 산출물 용량 약 18MB 절감
  */
@@ -17,7 +18,7 @@ const nextConfig = {
         async rewrites() {
           const cloudApiSegments = [
             'admin', 'ai', 'beta', 'blog', 'client-log', 'common-codes', 'device',
-            'faqs', 'gdrive', 'help', 'license', 'password', 'plans', 'rpc',
+            'faqs', 'gdrive', 'help', 'license', 'mcp', 'password', 'plans', 'rpc',
             'subscription', 'upload-image', 'user',
           ];
           return {

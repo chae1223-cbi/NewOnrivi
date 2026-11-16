@@ -2,10 +2,10 @@ const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('n
 const root=path.resolve('.'),front=path.join(root,'frontend'),req=require('node:module').createRequire(path.join(front,'package.json'));
 async function protocols(){
   const wire=await import('../frontend/src/lib/ai/wire.mjs'),{handleAIRequest}=await import('../frontend/src/lib/ai/server.mjs');
-  const input={model:'test-model',prompt:'교정',images:[]};
+  const input={model:'test-model',prompt:'교정',images:[],baseUrl:'https://api.example.com/v1'};
   assert.throws(()=>wire.requestSpec('other','secret',input));
   assert.throws(()=>wire.requestSpec('google','secret',{...input,model:'../bad?key=x'}));
-  const events={google:[{candidates:[{content:{parts:[{text:'수정'},{thought:true,text:'숨김'}]}}]},{candidates:[{content:{parts:[{text:' 완료'}]},finishReason:'STOP'}]}],openai:[{type:'response.output_text.delta',delta:'수정 완료'},{type:'response.completed'}],anthropic:[{type:'content_block_delta',delta:{type:'text_delta',text:'수정 완료'}},{type:'message_delta',delta:{stop_reason:'end_turn'}},{type:'message_stop'}]};
+  const events={google:[{candidates:[{content:{parts:[{text:'수정'},{thought:true,text:'숨김'}]}}]},{candidates:[{content:{parts:[{text:' 완료'}]},finishReason:'STOP'}]}],openai:[{type:'response.output_text.delta',delta:'수정 완료'},{type:'response.completed'}],anthropic:[{type:'content_block_delta',delta:{type:'text_delta',text:'수정 완료'}},{type:'message_delta',delta:{stop_reason:'end_turn'}},{type:'message_stop'}],exaone:[{choices:[{delta:{content:'수정 완료'}}]},{choices:[{delta:{},finish_reason:'stop'}]}],custom:[{choices:[{delta:{content:'수정 완료'}}]},{choices:[{delta:{},finish_reason:'stop'}]}]};
   for(const provider of wire.PROVIDERS){
     const spec=wire.requestSpec(provider,'TEST_KEY',input);assert.ok(!spec.url.includes('TEST_KEY'));
     const sse=events[provider].map(value=>'data: '+JSON.stringify(value)+'\r\n\r\n').join('');

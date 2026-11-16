@@ -2,14 +2,15 @@
 // 📊 [OMD-MCP-SERVER-0001] server/index.mjs
 // 🎯 @KICK  : 온리비 어서 로컬 MCP 서버 진입점 및 도구 디스패처
 // 🛡️ @GUARD : Rule 1(단일 주석 관리), 로컬 라이선스/세션 검증, 원자적 I/O
+// 🚨 @PATCH : 2026-11-16 — [AI/서식 템플릿 CRUD 완성] delete_style_profile, update_ai_template, delete_ai_template MCP 도구 등록
 // 🚨 @PATCH : 2026-10-31 — [AI 프롬프트 템플릿 신규 등록 create_ai_template MCP 도구 등록 및 디스패치 연동]
 // ====================================================================
 import { readDocument, replaceDocument, editMarkdownSection } from './documents.mjs';
-import { listProfiles, createProfile, updateProfile } from './profiles.mjs';
+import { listProfiles, createProfile, updateProfile, deleteProfile } from './profiles.mjs';
 import { getCurrentFolders, requireLocalFolders } from './context.mjs';
 import { requireMcpAccess } from './authorization.mjs';
 import { listWorkspaceFiles, searchWorkspace, createMarkdown } from './workspace.mjs';
-import { listAITemplates, getAITemplate, executeAITemplate, createAITemplate } from './ai-templates.mjs';
+import { listAITemplates, getAITemplate, executeAITemplate, createAITemplate, updateAITemplate, deleteAITemplate } from './ai-templates.mjs';
 
 const tools = [
   {
@@ -94,6 +95,57 @@ const tools = [
         expectedSha256: { type: 'string', description: '선택 사항. list_ai_templates에서 확인한 기존 파일의 SHA-256 해시' }
       },
       required: ['name', 'prompt'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'update_ai_template',
+    description: '기존 AI 프리셋(preset) 또는 분야별 문서 템플릿(prompt)의 이름, 폴더, 프롬프트 내용을 수정합니다.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        kind: { type: 'string', enum: ['preset', 'prompt'] },
+        id: { type: 'string', description: 'preset일 때 수정할 프리셋 ID' },
+        domain: { type: 'string', description: 'prompt일 때 분야' },
+        docType: { type: 'string', description: 'prompt일 때 문서 종류명' },
+        name: { type: 'string' },
+        prompt: { type: 'string' },
+        folder: { type: 'string' },
+        systemPrompt: { type: 'string' },
+        userInputTemplate: { type: 'string' },
+        expectedSha256: { type: 'string', description: 'list_ai_templates 또는 get_ai_template에서 받은 SHA-256 해시' }
+      },
+      required: ['expectedSha256'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'delete_ai_template',
+    description: '기존 AI 프리셋(preset) 또는 분야별 문서 템플릿(prompt)을 삭제합니다.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        kind: { type: 'string', enum: ['preset', 'prompt'] },
+        id: { type: 'string', description: 'preset일 때 삭제할 프리셋 ID' },
+        domain: { type: 'string', description: 'prompt일 때 분야' },
+        docType: { type: 'string', description: 'prompt일 때 문서 종류명' },
+        expectedSha256: { type: 'string', description: 'list_ai_templates 또는 get_ai_template에서 받은 SHA-256 해시' }
+      },
+      required: ['expectedSha256'],
+      additionalProperties: false
+    }
+  },
+  {
+    name: 'delete_style_profile',
+    description: '사용자 정의 서식 프로필을 삭제합니다. 시스템 기본 서식은 삭제할 수 없습니다.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        expectedContextSha256: { type: 'string' },
+        expectedSha256: { type: 'string' },
+        profileId: { type: 'string' }
+      },
+      required: ['expectedContextSha256', 'expectedSha256', 'profileId'],
       additionalProperties: false
     }
   }
@@ -188,6 +240,32 @@ async function dispatch(message) {
                   return createAITemplate(context.resourcePath, params.arguments ?? {}, async () => {
                     await requireMcpAccess();
                     await requireLocalFolders(context.contextSha256);
+                  });
+                })()
+              : params.name === 'update_ai_template'
+                ? await (async () => {
+                  const context = await requireLocalFolders();
+                  return updateAITemplate(context.resourcePath, params.arguments ?? {}, async () => {
+                    await requireMcpAccess();
+                    await requireLocalFolders(context.contextSha256);
+                  });
+                })()
+              : params.name === 'delete_ai_template'
+                ? await (async () => {
+                  const context = await requireLocalFolders();
+                  return deleteAITemplate(context.resourcePath, params.arguments ?? {}, async () => {
+                    await requireMcpAccess();
+                    await requireLocalFolders(context.contextSha256);
+                  });
+                })()
+              : params.name === 'delete_style_profile'
+                ? await (async () => {
+                  const context = await requireLocalFolders(params.arguments?.expectedContextSha256);
+                  if (!/^[a-f0-9]{64}$/i.test(params.arguments?.expectedContextSha256 ?? '')) throw new Error('현재 폴더 조회에서 받은 컨텍스트 SHA-256 값이 필요합니다.');
+                  return deleteProfile({ ...params.arguments, resourceFolder: context.resourcePath }, async () => {
+                    await requireMcpAccess();
+                    const latest = await requireLocalFolders(params.arguments.expectedContextSha256);
+                    if (latest.resourcePath !== context.resourcePath) throw new Error('리소스 폴더가 변경되었습니다. 다시 조회해 주세요.');
                   });
                 })()
             : null;

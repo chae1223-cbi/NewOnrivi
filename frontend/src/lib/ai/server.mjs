@@ -2,6 +2,8 @@
 // 📊 [OMD-AI-Server-0001] src/lib/ai/server.mjs
 // 🎯 @KICK  : Next.js API /api/ai/request 서버 핸들러 및 스트리밍 안전 프록시
 // 🛡️ @GUARD : Rule 1(단일 주석 관리), 인증 토큰 및 민감 키 유출 차단, 에러 투명화
+// 🚨 @PATCH : 2026-11-16 — [직접 연결(OpenAI 호환 · Custom) 지원] models 액션 시 input.baseUrl 전달 및 타임아웃 300초 확장
+// 🚨 @PATCH : 2026-11-16 — [로컬 개발 AI 연결 복구] Next 개발 서버 3100 포트에서 Wrangler 8788 포트로 전달된 동일 PC 요청만 출처 검사에 허용
 // 🚨 @PATCH : 2026-11-04 — [AI/지식문서 정밀 진단 로깅 연계] 4xx 클라이언트 경고 pre-logging 추가 및 doing 구조화 진단 적용
 // 🚨 @PATCH : **2026-10-20** — [safeError 에러 투명화 및 민감 파라미터 안전 마스킹]:
 //             1) URL(https://) 포함 에러 메시지 차단 결함 수정: 도움말 링크가 포함된 AI 공식 에러 메시지 정상 전달
@@ -17,7 +19,10 @@ const json = (data, status = 200) => {
 export async function handleAIRequest(request,env,fetcher=fetch){
   if(request.method!=='POST')return json({error:'POST 요청만 지원합니다.'},405);
   const origin=request.headers.get('origin');
-  if(origin&&origin!==new URL(request.url).origin)return json({error:'허용되지 않은 요청입니다.'},403);
+  const requestUrl=new URL(request.url);
+  const localDevProxy=['localhost','127.0.0.1'].includes(requestUrl.hostname)&&requestUrl.port==='8788'&&
+    ['http://localhost:3100','http://127.0.0.1:3100'].includes(origin);
+  if(origin&&origin!==requestUrl.origin&&!localDevProxy)return json({error:'허용되지 않은 요청입니다.'},403);
   const token=request.headers.get('authorization');
   const authUrl=env.NEXT_PUBLIC_SUPABASE_URL,anon=env.NEXT_PUBLIC_SUPABASE_ANON_KEY||env.SUPABASE_ANON_KEY;
   if(!authUrl||!anon)return json({error:'서버 AI 인증 설정이 필요합니다.'},503);
@@ -33,10 +38,10 @@ export async function handleAIRequest(request,env,fetcher=fetch){
     const bytes=new Uint8Array(size);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.byteLength;}
     const data=JSON.parse(new TextDecoder().decode(bytes));validateConnection(data.provider,data.key);
     const controller=new AbortController(),abort=()=>controller.abort();request.signal.addEventListener('abort',abort,{once:true});
-    const timer=setTimeout(abort,120000);
+    const timer=setTimeout(abort,(data.provider==='exaone'||data.provider==='custom')?300000:120000);
     const cleanup=()=>{clearTimeout(timer);request.signal.removeEventListener('abort',abort);};
     if(data.action==='models'){
-      try{return json({models:await listModels(data.provider,data.key,controller.signal,fetcher)});}finally{cleanup();}
+      try{return json({models:await listModels(data.provider,data.key,controller.signal,fetcher,data.input?.baseUrl)});}finally{cleanup();}
     }
     if(data.action!=='generate'){cleanup();return json({error:'지원하지 않는 작업입니다.'},400);}
     const iterator=generate(data.provider,data.key,data.input,controller.signal,fetcher);

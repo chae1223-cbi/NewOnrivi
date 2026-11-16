@@ -2,6 +2,7 @@
 // 📊 [OMD-API-gdrive-oauth-0001] functions/api/gdrive/_oauth.js
 // 🎯 @KICK  : Google Drive 서버 사이드 OAuth 인증 및 토큰 자동 연장 핸들러
 // 🛡️ @GUARD : Cloudflare Pages 미리보기(dev01 등 *.pages.dev) 및 프로덕션/로컬 다중 오리진 동적 허용, 리프레시 토큰 AES-GCM 암호화
+// 🚨 @PATCH : 2026-11-16 — [원격 MCP 연동] readDriveOAuthSession 헬퍼 내보내기 추가 (MCP 토큰 발급 시 Drive 리프레시 토큰 안전 연계)
 // 🚨 @PATCH : 2026-11-04 — [COOP(Cross-Origin-Opener-Policy) 대응 BroadcastChannel 연동]: 구글 OAuth 리디렉션 시 COOP에 의해 window.opener가 단절되더라도 동일 오리진 BroadcastChannel('onrivi-drive-oauth')을 통해 토큰 및 취소 이벤트를 즉시 전달하고 팝업 스스로 닫히도록 개선
 // 🚨 @PATCH : 2026-11-04 — [오류 진단 로깅 4단계]: 클라이언트 내부 스택 노출 차단(details 제거) 및 4xx 사전 로깅 정돈
 // 🚨 @PATCH : 2026-11-03 — [도메인 환경변수화] GOOGLE_DRIVE_ALLOWED_DOMAINS 환경변수 지원 (미설정 시 기본 도메인 안전 폴백)
@@ -284,6 +285,13 @@ export async function handleDriveOAuth(request, env) {
       await env.R2_BUCKET.delete(`_drive-oauth/${key}`);
       return json({ success: true }, 200, { 'Set-Cookie': cookie(sessionCookie, '', 0, secure) });
     }
+    if (route === 'oauth/mcp-ticket') {
+      const session = await load(env, key);
+      if (!session?.refreshToken) return json({ code: 'REAUTH_REQUIRED', error: 'Google Drive를 다시 연결해 주세요.' }, 401);
+      const ticket = random();
+      await store(env, `mcp-tickets/${await digest(ticket)}`, { refreshToken: session.refreshToken, expires: Date.now() + 60_000 });
+      return json({ ticket });
+    }
     if (route !== 'oauth/refresh') return json({ error: '경로를 찾지 못했습니다.' }, 404);
     if (!refreshes.has(key)) {
       const operation = (async () => {
@@ -311,4 +319,34 @@ export async function handleDriveOAuth(request, env) {
     console.error('[Google OAuth Handle Error]', error);
     return json({ error: 'Google Drive 인증 처리에 실패했습니다.', code: 'OAUTH_FAILED' }, 502);
   }
+}
+
+/**
+ * ========================================================================================
+ * [함수명] readDriveOAuthSession - 현재 요청의 쿠키 또는 세션 토큰으로 저장된 Google Drive OAuth 세션을 복호화 조회합니다.
+ * ========================================================================================
+ */
+export async function readDriveOAuthSession(request, env, explicitSessionToken = '') {
+  if (!env?.R2_BUCKET || !env?.GOOGLE_CLIENT_SECRET) return null;
+  const requestCookies = cookies(request);
+  const sessionId = (typeof explicitSessionToken === 'string' && /^[\w-]{43}$/.test(explicitSessionToken))
+    ? explicitSessionToken
+    : requestCookies[sessionCookie];
+  if (!/^[\w-]{43}$/.test(sessionId || '')) return null;
+  return await load(env, `sessions/${await digest(sessionId)}`);
+}
+
+/**
+ * ========================================================================================
+ * [함수명] consumeMcpDriveTicket - 1회성 MCP Drive 연계 티켓을 검증·소비하고 Refresh Token을 반환합니다.
+ * ========================================================================================
+ */
+export async function consumeMcpDriveTicket(env, ticket) {
+  if (!env?.R2_BUCKET || !env?.GOOGLE_CLIENT_SECRET || typeof ticket !== 'string' || !/^[\w-]{43}$/.test(ticket)) {
+    return null;
+  }
+  const key = `mcp-tickets/${await digest(ticket)}`;
+  const record = await load(env, key);
+  await env.R2_BUCKET.delete(`_drive-oauth/${key}`).catch(() => {});
+  return record?.refreshToken ? record : null;
 }

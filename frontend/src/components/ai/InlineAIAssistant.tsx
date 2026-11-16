@@ -2,6 +2,12 @@
 // 📊 [OMD-AI-0003] InlineAIAssistant.tsx
 // 🎯 @KICK  : 에디터 인라인 및 우측 사이드바 AI 어시스턴트 (질문·요약·수정)
 // 🛡️ @GUARD : Rule 1(소스코드 주석 관리), Rule 3(컴포넌트 분리), Rule 6(Modern Technical Editorial), 에디터 선택 영역 안전 검증
+// 🚨 @PATCH : **2026-11-16** — [직접 연결(OpenAI 호환 · Custom) 및 자유 모델 지원]: customConnections 모델 목록 통합 및 customId 기반 요청 라우팅
+// 🚨 @PATCH : **2026-11-16** — [AI 결과 화면 공간 극대화]: 문구 수정 '작업 선택' 접기/자동 접힘 및 결과 완료 시 하단 질의 입력창 1줄 접기/펼치기 토글 추가
+// 🚨 @PATCH : **2026-11-16** — [AI 답변 온리비 마크다운/HTML 태그 렌더링]: remarkGfm, remarkBreaks, remarkMath, remarkKoreanStrong, rehypeRaw, rehypeSanitize, rehypeKatex 적용으로 표·<br>·수식·한글강조 등 온리비 태그 완벽 렌더링
+// 🚨 @PATCH : **2026-11-16** — [AI 답변 자동 스크롤]: 답변 스트리밍 및 완료 시 대화 영역 하단으로 자연스럽게 자동 스크롤(사용자 수동 상향 스크롤 시 일시 정지)
+// 🚨 @PATCH : **2026-11-16** — [AI 답변 가독성 개선]: 이중 카드/고정 높이 스크롤 박스 제거(전체 대화 영역에서 자연스럽게 확장) 및 ReactMarkdown 기반 서식 렌더링·원본 편집 토글 적용
+// 🚨 @PATCH : **2026-11-16** — [LG K-EXAONE 2.5 지원]: refreshProviders 및 availableList 제공사 목록에 'exaone' 추가
 // 🚨 @PATCH : **2026-10-21** — [AI 질문 모드 시 프롬프트 최적화 및 일반 질문에 대한 자연스러운 지식 답변 보장]:
 //             1) 질문 모드(mode === 'ask') 프롬프트 구성 최적화: 첨부자료가 없을 때 불필요한 첨부 요구 착각을 유발하던 빈 [첨부 참고자료] 블록 제거
 //             2) 일반 지식 질문 시 AI가 보유한 풍부한 상식과 사실 정보를 바탕으로 즉시 친절하고 자세하게 답변하도록 안내 지침 정상화
@@ -85,13 +91,21 @@
 'use client';
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { AI_LABELS, aiAccountScope, aiRequest, connectedAI, readConnections, saveConnection, selectedConnection, selectConnection, useLegacyGoogleKey, getProviderApiKey } from '@/lib/ai/client';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkBreaks from 'remark-breaks';
+import remarkMath from 'remark-math';
+import rehypeRaw from 'rehype-raw';
+import rehypeSanitize from 'rehype-sanitize';
+import rehypeKatex from 'rehype-katex';
+import { remarkKoreanStrong } from '@/lib/remarkKoreanStrong';
+import { AI_LABELS, aiAccountScope, aiRequest, connectedAI, readConnections, saveConnection, selectedConnection, selectConnection, useLegacyGoogleKey, getProviderApiKey, readCustomConnections, saveCustomConnection } from '@/lib/ai/client';
 import { ATTACH_ACCEPT, readAIAttachment, buildAIPrompt } from '@/lib/ai/attachments';
 import { loadAITemplates, saveAITemplates, templateVariables, fillTemplate, type AITemplate } from '@/lib/ai/templates';
 import { groupAISections, buildDocumentPrompt, readDocumentChanges } from '@/lib/ai/documentBatch';
 import { RECOMMENDED_MODELS, recommendedModels, compareRecommendedModels } from '@/lib/ai/recommendedModels';
 import { getPromptTemplates } from '@/lib/promptTemplates';
-import type { AIProvider, AITarget, AIAttachment } from '@/lib/ai/types';
+import type { AIProvider, AITarget, AIAttachment, CustomAIProviderConfig } from '@/lib/ai/types';
 import PromptStudioModal from './PromptStudioModal';
 
 const TASK_INSTRUCTIONS: Record<string, string> = {
@@ -171,6 +185,8 @@ export default function InlineAIAssistant({
   const [provider, setProvider] = useState<AIProvider>('google');
   const [model, setModel] = useState('');
   const [connections, setConnections] = useState(readConnections);
+  const [customConnections, setCustomConnections] = useState<CustomAIProviderConfig[]>(() => readCustomConnections());
+  const [selectedCustomId, setSelectedCustomId] = useState<string | undefined>(() => selectedConnection().customId);
 
   const [prompt, setPrompt] = useState('');
   const [selectedTasks, setSelectedTasks] = useState<string[]>([]);
@@ -189,6 +205,7 @@ export default function InlineAIAssistant({
     generatedTaskPrompt.current = generated;
   };
   const [result, setResult] = useState('');
+  const [showRawResult, setShowRawResult] = useState(false);
   const [lastQuestion, setLastQuestion] = useState('');
   const [complete, setComplete] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -205,8 +222,10 @@ export default function InlineAIAssistant({
   const [targetLabel, setTargetLabel] = useState('');
   const [original, setOriginal] = useState('');
 
-  // 질의 입력창 크게 보기(확장) 상태
+  // 질의 입력창 크게 보기(확장) 상태 및 결과 확인용 접기 상태
   const [isPromptExpanded, setIsPromptExpanded] = useState(false);
+  const [isTaskPickerCollapsed, setIsTaskPickerCollapsed] = useState(false);
+  const [isInputCollapsed, setIsInputCollapsed] = useState(false);
 
   // 에디터 선택 상태 및 글자 수 감지
   const [hasSelection, setHasSelection] = useState(false);
@@ -277,6 +296,15 @@ export default function InlineAIAssistant({
     adjustTextareaHeight();
   }, [prompt, isPromptExpanded, adjustTextareaHeight]);
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef(true);
+
+  useEffect(() => {
+    const el = chatScrollRef.current;
+    if (!el || !shouldAutoScrollRef.current || (!busy && !result)) return;
+    requestAnimationFrame(() => {
+      el.scrollTo({ top: el.scrollHeight, behavior: busy ? 'auto' : 'smooth' });
+    });
+  }, [result, busy, complete]);
   const live = useRef(true);
   const readingRef = useRef(false);
   const root = useRef<HTMLDivElement>(null);
@@ -372,8 +400,9 @@ export default function InlineAIAssistant({
     try {
       const conn = readConnections();
       setConnections(conn);
+      setCustomConnections(readCustomConnections());
       const rows = await Promise.all(
-        (['google', 'openai', 'anthropic'] as AIProvider[]).map(async (p) => {
+        (['google', 'openai', 'anthropic', 'exaone'] as AIProvider[]).map(async (p) => {
           const isConnected = await connectedAI(scope, p).catch(() => false);
           return [p, isConnected] as const;
         })
@@ -494,6 +523,9 @@ export default function InlineAIAssistant({
     setMode('ask');
     setMessage('');
     setResult('');
+    setShowRawResult(false);
+    setIsTaskPickerCollapsed(false);
+    setIsInputCollapsed(false);
     setLastQuestion('');
     setSectionResults({});
     setChosenSections({});
@@ -515,9 +547,11 @@ export default function InlineAIAssistant({
     live.current = true;
     const sync = () => {
       setConnections(readConnections());
+      setCustomConnections(readCustomConnections());
       const selected = selectedConnection();
       const p = selected.provider;
       setProvider(p);
+      setSelectedCustomId(selected.customId);
       let m = selected.model;
       const providerModels = RECOMMENDED_MODELS.filter((item) => item.provider === p);
       if (!m || !providerModels.some((item) => item.id === m)) {
@@ -706,11 +740,13 @@ export default function InlineAIAssistant({
     const abort = new AbortController();
     controller.current = abort;
     const id = ++generation.current,
-      timer = setTimeout(() => abort.abort(), current?.sections ? 600000 : 120000);
+      timer = setTimeout(() => abort.abort(), current?.sections ? 600000 : provider === 'exaone' ? 300000 : 120000);
     setBusy(true);
 
+    shouldAutoScrollRef.current = true;
+    if (mode === 'edit') setIsTaskPickerCollapsed(true);
     requestAnimationFrame(() => {
-      chatScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+      chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight, behavior: 'smooth' });
     });
 
     try {
@@ -726,7 +762,7 @@ export default function InlineAIAssistant({
           setResult('');
           let text = '';
           const sectionPrompt = buildDocumentPrompt(instruction, batch, attachments, task);
-          await aiRequest(scope, provider, 'generate', { model, prompt: sectionPrompt, images }, abort.signal, (delta) => {
+          await aiRequest(scope, provider, 'generate', { model, prompt: sectionPrompt, images, customId: provider === 'custom' ? selectedCustomId : undefined }, abort.signal, (delta) => {
             text += delta;
           });
           if (id !== generation.current) return;
@@ -743,7 +779,7 @@ export default function InlineAIAssistant({
         }
         setProgress(current.sections.length + '개 문단 확인 완료 · '+ batches.length + '회 요청. 수정안을 확인하고 적용하세요.');
       } else {
-        await aiRequest(scope, provider, 'generate', { model, prompt: combined, images }, abort.signal, (text) => {
+        await aiRequest(scope, provider, 'generate', { model, prompt: combined, images, customId: provider === 'custom' ? selectedCustomId : undefined }, abort.signal, (text) => {
           if (id === generation.current && live.current) {
             setResult((previous) => previous + text);
           }
@@ -751,6 +787,7 @@ export default function InlineAIAssistant({
       }
       if (id === generation.current) {
         setComplete(mode !== 'edit' || !!current?.valid());
+        setIsInputCollapsed(true);
         if (mode === 'edit' && !current?.valid()) {
           setMessage('대상이 변경되어 적용할 수 없습니다. 원문은 변경하지 않았습니다.');
         }
@@ -778,6 +815,9 @@ export default function InlineAIAssistant({
     releaseQuestion();
     setMode(next);
     setResult('');
+    setShowRawResult(false);
+    setIsTaskPickerCollapsed(false);
+    setIsInputCollapsed(false);
     setLastQuestion('');
     setSectionResults({});
     setChosenSections({});
@@ -841,6 +881,9 @@ export default function InlineAIAssistant({
     }
     target.current = null;
     setResult('');
+    setShowRawResult(false);
+    setIsTaskPickerCollapsed(false);
+    setIsInputCollapsed(false);
     setLastQuestion('');
     setComplete(false);
     setPanel(null);
@@ -855,6 +898,9 @@ export default function InlineAIAssistant({
     target.current = null;
     setSectionResults({});
     setResult('');
+    setShowRawResult(false);
+    setIsTaskPickerCollapsed(false);
+    setIsInputCollapsed(false);
     setLastQuestion('');
     setComplete(false);
     setPanel(null);
@@ -972,6 +1018,9 @@ export default function InlineAIAssistant({
     generatedTaskPrompt.current = '';
     setSelectedTasks([]);
     setResult('');
+    setShowRawResult(false);
+    setIsTaskPickerCollapsed(false);
+    setIsInputCollapsed(false);
     setLastQuestion('');
     setQuestionContext('');
     setAttachments([]);
@@ -988,14 +1037,18 @@ export default function InlineAIAssistant({
 
   const field = 'w-full rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-purple-500';
 
-  // Require a live credential and exact shortlist membership; cached metadata alone is not a connection.
+  // Require a live credential and exact shortlist membership; also include user-selected custom/fetched models and custom OpenAI-compatible providers.
   const availableList = useMemo(() => {
-    const list: Array<{ provider: AIProvider; id: string; name: string; family: string; releasedAt?: string }> = [];
-    const providers: AIProvider[] = ['google', 'openai', 'anthropic'];
+    const list: Array<{ provider: AIProvider; customId?: string; id: string; name: string; family: string; releasedAt?: string }> = [];
+    const providers: AIProvider[] = ['google', 'openai', 'anthropic', 'exaone'];
 
     for (const p of providers) {
       if (!activeProviders[p]) continue;
-      const targetModels = recommendedModels(p, connections[p]?.models || []);
+      const targetModels = [...recommendedModels(p, connections[p]?.models || [])];
+      const savedModel = connections[p]?.model;
+      if (savedModel && !targetModels.some((m) => m.id.toLowerCase() === savedModel.toLowerCase())) {
+        targetModels.push({ id: savedModel, name: savedModel, family: AI_LABELS[p] });
+      }
 
       const seen = new Set<string>();
       for (const m of targetModels) {
@@ -1011,8 +1064,21 @@ export default function InlineAIAssistant({
       }
     }
 
-    return list.sort(compareRecommendedModels);
-  }, [activeProviders, connections]);
+    const sortedBuiltins = list.sort(compareRecommendedModels);
+    const customItems: Array<{ provider: AIProvider; customId?: string; id: string; name: string; family: string }> = [];
+    for (const cp of customConnections) {
+      if (!cp.baseUrl?.trim() || !cp.model?.trim()) continue;
+      customItems.push({
+        provider: 'custom',
+        customId: cp.id,
+        id: cp.model,
+        name: cp.model,
+        family: cp.name || '직접 연결',
+      });
+    }
+
+    return [...sortedBuiltins, ...customItems];
+  }, [activeProviders, connections, customConnections]);
 
   if (!mounted) return null;
 
@@ -1059,7 +1125,7 @@ export default function InlineAIAssistant({
               {checkingModels&&<p className="px-2 py-2 text-xs text-zinc-500">연결 확인 중…</p>}
               {!checkingModels&&!availableList.length&&<p className="px-2 py-2 text-xs text-zinc-500">연결된 추천 모델이 없습니다. API 연결 설정에서 확인해 주세요.</p>}
               {availableList.map((item, index) => (
-                <React.Fragment key={item.id}>
+                <React.Fragment key={`${item.provider}:${item.customId || ''}:${item.id}`}>
                   {(index === 0 || availableList[index - 1].family !== item.family) && (
                     <div className="px-2 pt-2 pb-1 text-[11px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">
                       {item.family}
@@ -1069,24 +1135,30 @@ export default function InlineAIAssistant({
                     type="button"
                     role="menuitemradio"
                     aria-label={item.name}
-                    aria-checked={model === item.id}
+                    aria-checked={model === item.id && (item.provider !== 'custom' || selectedCustomId === item.customId)}
                     className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-xs transition cursor-pointer ${
-                      model === item.id
+                      model === item.id && (item.provider !== 'custom' || selectedCustomId === item.customId)
                         ? 'bg-purple-100 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 font-bold'
                         : 'hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200'
                     }`}
                     onClick={() => {
                       setProvider(item.provider);
                       setModel(item.id);
-                      selectConnection(item.provider, item.id);
-                      const currentConn = connections[item.provider] || { model: item.id, models: [] };
-                      void saveConnection(item.provider, { ...currentConn, model: item.id }).catch(error => setMessage(`모델 저장 실패: ${error instanceof Error ? error.message : '리소스 연결을 확인해 주세요.'}`));
+                      setSelectedCustomId(item.customId);
+                      selectConnection(item.provider, item.id, item.customId);
+                      if (item.provider !== 'custom') {
+                        const currentConn = connections[item.provider] || { model: item.id, models: [] };
+                        void saveConnection(item.provider, { ...currentConn, model: item.id }).catch(error => setMessage(`모델 저장 실패: ${error instanceof Error ? error.message : '리소스 연결을 확인해 주세요.'}`));
+                      } else if (item.customId) {
+                        const cp = customConnections.find((c) => c.id === item.customId);
+                        if (cp) void saveCustomConnection({ ...cp, model: item.id }).catch(() => {});
+                      }
                       setModelMenu(false);
                       modelButtonRef.current?.focus();
                     }}
                   >
                     <span>{item.name}</span>
-                    {model === item.id && <span className="text-purple-600 font-bold">✓</span>}
+                    {model === item.id && (item.provider !== 'custom' || selectedCustomId === item.customId) && <span className="text-purple-600 font-bold">✓</span>}
                   </button>
                 </React.Fragment>
               ))}
@@ -1215,7 +1287,7 @@ export default function InlineAIAssistant({
                   </div>
                   <div className="max-h-56 overflow-y-auto">
                     {availableList.map((item, index) => (
-                      <React.Fragment key={item.id}>
+                      <React.Fragment key={`${item.provider}:${item.customId || ''}:${item.id}`}>
                         {(index === 0 || availableList[index - 1].family !== item.family) && (
                           <div className="px-2 pt-2 pb-1 text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider">
                             {item.family}
@@ -1224,21 +1296,27 @@ export default function InlineAIAssistant({
                         <button
                           type="button"
                           className={`flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-xs text-left cursor-pointer transition ${
-                            model === item.id
+                            model === item.id && (item.provider !== 'custom' || selectedCustomId === item.customId)
                               ? 'bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 font-bold'
                               : 'hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300'
                           }`}
                           onClick={() => {
                             setProvider(item.provider);
                             setModel(item.id);
-                            selectConnection(item.provider, item.id);
-                            const currentConn = connections[item.provider] || { model: item.id, models: [] };
-                            void saveConnection(item.provider, { ...currentConn, model: item.id }).catch(error => setMessage(`모델 저장 실패: ${error instanceof Error ? error.message : '리소스 연결을 확인해 주세요.'}`));
+                            setSelectedCustomId(item.customId);
+                            selectConnection(item.provider, item.id, item.customId);
+                            if (item.provider !== 'custom') {
+                              const currentConn = connections[item.provider] || { model: item.id, models: [] };
+                              void saveConnection(item.provider, { ...currentConn, model: item.id }).catch(error => setMessage(`모델 저장 실패: ${error instanceof Error ? error.message : '리소스 연결을 확인해 주세요.'}`));
+                            } else if (item.customId) {
+                              const cp = customConnections.find((c) => c.id === item.customId);
+                              if (cp) void saveCustomConnection({ ...cp, model: item.id }).catch(() => {});
+                            }
                             setSidebarModelOpen(false);
                           }}
                         >
                           <span className="truncate pr-2">{item.name}</span>
-                          {model === item.id && <span className="text-purple-600 font-bold">✓</span>}
+                          {model === item.id && (item.provider !== 'custom' || selectedCustomId === item.customId) && <span className="text-purple-600 font-bold">✓</span>}
                         </button>
                       </React.Fragment>
                     ))}
@@ -1362,24 +1440,47 @@ export default function InlineAIAssistant({
                 )}
 
                 <fieldset disabled={busy} className="space-y-2">
-                  <legend className="text-xs font-semibold text-zinc-600 dark:text-zinc-300">작업 선택 · 여러 개 선택 가능</legend>
-                  <div className="flex flex-wrap gap-1.5">
-                    <button type="button" aria-pressed={selectedTasks.length === 0} onClick={() => changeTasks([])} className={`rounded-full border px-2.5 py-1.5 text-xs ${selectedTasks.length === 0 ? 'border-purple-400 bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-200' : 'border-zinc-200 dark:border-zinc-700'}`}>직접 요청</button>
-                    {TASKS.slice(1).map(item => (
-                      <label key={item} className={`flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-xs cursor-pointer ${selectedTasks.includes(item) ? 'border-purple-400 bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-200' : 'border-zinc-200 dark:border-zinc-700'}`}>
-                        <input type="checkbox" checked={selectedTasks.includes(item)} onChange={() => changeTasks(selectedTasks.includes(item) ? selectedTasks.filter(value => value !== item) : [...selectedTasks, item])} className="accent-purple-600" />
-                        {item}
-                      </label>
-                    ))}
+                  <div className="flex items-center justify-between gap-2">
+                    <legend className="text-xs font-semibold text-zinc-600 dark:text-zinc-300">
+                      작업 선택 {selectedTasks.length > 0 ? `(${selectedTasks.length}개 선택됨)` : '· 여러 개 선택 가능'}
+                    </legend>
+                    <button
+                      type="button"
+                      onClick={() => setIsTaskPickerCollapsed((v) => !v)}
+                      className="text-[11px] font-semibold text-purple-600 dark:text-purple-400 hover:underline cursor-pointer shrink-0"
+                    >
+                      {isTaskPickerCollapsed ? '옵션 펼치기 ▾' : '옵션 접기 ▴'}
+                    </button>
                   </div>
-                  <p className="text-[11px] text-zinc-500">{selectedTasks.length ? `함께 적용: ${selectedTasks.join(' + ')}` : '아래 입력창에 원하는 수정 내용을 적어 주세요.'}</p>
+                  {!isTaskPickerCollapsed && (
+                    <>
+                      <div className="flex flex-wrap gap-1.5">
+                        <button type="button" aria-pressed={selectedTasks.length === 0} onClick={() => changeTasks([])} className={`rounded-full border px-2.5 py-1.5 text-xs ${selectedTasks.length === 0 ? 'border-purple-400 bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-200' : 'border-zinc-200 dark:border-zinc-700'}`}>직접 요청</button>
+                        {TASKS.slice(1).map(item => (
+                          <label key={item} className={`flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-xs cursor-pointer ${selectedTasks.includes(item) ? 'border-purple-400 bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-200' : 'border-zinc-200 dark:border-zinc-700'}`}>
+                            <input type="checkbox" checked={selectedTasks.includes(item)} onChange={() => changeTasks(selectedTasks.includes(item) ? selectedTasks.filter(value => value !== item) : [...selectedTasks, item])} className="accent-purple-600" />
+                            {item}
+                          </label>
+                        ))}
+                      </div>
+                      <p className="text-[11px] text-zinc-500">{selectedTasks.length ? `함께 적용: ${selectedTasks.join(' + ')}` : '아래 입력창에 원하는 수정 내용을 적어 주세요.'}</p>
+                    </>
+                  )}
                 </fieldset>
               </div>
             )}
           </div>
 
           {/* ── 2. [중앙 스크롤 답변 / 대화 결과 영역] (위로 배치) ── */}
-          <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-4 space-y-3">
+          <div
+            ref={chatScrollRef}
+            onScroll={(e) => {
+              const el = e.currentTarget;
+              const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+              shouldAutoScrollRef.current = distanceFromBottom <= 80;
+            }}
+            className="flex-1 overflow-y-auto p-4 space-y-3"
+          >
             {/* 이전 질의 요약 말풍선 */}
             {lastQuestion && (
               <div className="flex justify-end">
@@ -1405,8 +1506,8 @@ export default function InlineAIAssistant({
                   </details>
                 )}
 
-                {/* AI 답변/결과 텍스트 본문 (적용예정본) */}
-                <div className="rounded-xl border border-zinc-200 dark:border-zinc-700/80 bg-zinc-50 dark:bg-zinc-800/40 p-3 space-y-2 shadow-xs">
+                {/* AI 답변/결과 텍스트 본문 (전체 스크롤 영역 내 자연 확장 레이아웃) */}
+                <div className="space-y-2.5 pt-1">
                   <div className="flex items-center justify-between text-xs font-bold text-zinc-700 dark:text-zinc-300">
                     <span className="flex items-center gap-1.5">
                       <span className="w-2 h-2 rounded-full bg-purple-500" />
@@ -1415,6 +1516,15 @@ export default function InlineAIAssistant({
                         : (busy ? '수정안 생성 중…' : '✏️ 적용예정본')}
                     </span>
                     <div className="flex items-center gap-1.5">
+                      {!busy && result.trim() && (
+                        <button
+                          type="button"
+                          onClick={() => setShowRawResult((v) => !v)}
+                          className="text-[11px] font-semibold text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-200/70 dark:hover:bg-zinc-700 px-2 py-0.5 rounded-md transition cursor-pointer"
+                        >
+                          {showRawResult ? '보기 모드' : '원본 편집'}
+                        </button>
+                      )}
                       {mode === 'edit' && !busy && (
                         <span className="text-[11px] font-semibold text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800 px-2 py-0.5 rounded-md">
                           직접 수정 가능
@@ -1424,18 +1534,38 @@ export default function InlineAIAssistant({
                     </div>
                   </div>
 
-                  <textarea
-                    aria-label={mode === 'edit' ? 'AI 수정안' : 'AI 응답 본문'}
-                    rows={8}
-                    className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-2.5 text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none leading-relaxed"
-                    value={result}
-                    disabled={busy}
-                    onChange={(e) => setResult(e.target.value)}
-                    placeholder={mode === 'edit' ? '문서에 실제로 적용될 최종 글입니다. 필요시 직접 수정할 수 있습니다.' : 'AI 응답 내용이 여기에 표시됩니다.'}
-                  />
+                  {showRawResult ? (
+                    <textarea
+                      aria-label={mode === 'edit' ? 'AI 수정안' : 'AI 응답 본문'}
+                      rows={14}
+                      className="w-full rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-3 text-xs text-zinc-900 dark:text-zinc-100 focus:outline-none leading-relaxed font-mono"
+                      value={result}
+                      disabled={busy}
+                      onChange={(e) => setResult(e.target.value)}
+                      placeholder={mode === 'edit' ? '문서에 실제로 적용될 최종 글입니다. 필요시 직접 수정할 수 있습니다.' : 'AI 응답 내용이 여기에 표시됩니다.'}
+                    />
+                  ) : (
+                    <div
+                      aria-label={mode === 'edit' ? 'AI 수정안 미리보기' : 'AI 응답 본문 미리보기'}
+                      className="w-full text-[13.5px] text-zinc-900 dark:text-zinc-100 leading-relaxed prose prose-sm dark:prose-invert max-w-none prose-headings:mt-3.5 prose-headings:mb-1.5 prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5 prose-strong:text-zinc-900 dark:prose-strong:text-white [&_table]:w-full [&_table]:border-collapse [&_table]:my-3 [&_table]:text-xs [&_th]:border [&_th]:border-zinc-300 dark:[&_th]:border-zinc-700 [&_th]:bg-zinc-100 dark:[&_th]:bg-zinc-800 [&_th]:px-2.5 [&_th]:py-1.5 [&_th]:text-left [&_th]:font-bold [&_td]:border [&_td]:border-zinc-200 dark:[&_td]:border-zinc-700 [&_td]:px-2.5 [&_td]:py-1.5 [&_td]:align-top [&_blockquote]:border-l-4 [&_blockquote]:border-purple-400 [&_blockquote]:bg-purple-50/50 dark:[&_blockquote]:bg-purple-950/20 [&_blockquote]:px-3 [&_blockquote]:py-1.5 [&_blockquote]:rounded-r-lg"
+                    >
+                      {result ? (
+                        <ReactMarkdown
+                          remarkPlugins={[remarkGfm, remarkBreaks, remarkMath, remarkKoreanStrong]}
+                          rehypePlugins={[rehypeRaw, rehypeSanitize, rehypeKatex]}
+                        >
+                          {result}
+                        </ReactMarkdown>
+                      ) : (
+                        <span className="text-xs text-zinc-400">
+                          {mode === 'edit' ? '문서에 실제로 적용될 최종 글입니다.' : 'AI 응답 내용이 여기에 표시됩니다.'}
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                   {/* 결과 적용 액션 버튼 */}
-                  <div className="flex flex-wrap gap-2 pt-1 text-xs">
+                  <div className="flex flex-wrap gap-2 pt-2 border-t border-zinc-100 dark:border-zinc-800/80 text-xs">
                     {mode !== 'edit' ? (
                       <>
                         <button
@@ -1603,6 +1733,28 @@ export default function InlineAIAssistant({
           </div>
 
           {/* ── 3. [하단 고정 질의 입력 영역] (아래로 배치) ── */}
+          {isInputCollapsed ? (
+            <div className="shrink-0 px-3.5 py-2.5 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50/90 dark:bg-zinc-900/90 backdrop-blur flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsInputCollapsed(false);
+                  requestAnimationFrame(() => input.current?.focus());
+                }}
+                className="flex-1 flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-xs font-semibold text-zinc-700 dark:text-zinc-200 transition cursor-pointer"
+              >
+                <span>💬 새 질문 / 다시 입력하기 ▴</span>
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={handleClearResults}
+                className="py-1.5 px-3 rounded-lg border border-zinc-200 dark:border-zinc-700 text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer"
+              >
+                초기화
+              </button>
+            </div>
+          ) : (
           <div className="shrink-0 p-3.5 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50/90 dark:bg-zinc-900/90 backdrop-blur space-y-2.5">
             {/* 템플릿 변수 치환 입력 */}
             {templateVariables(prompt).map((name) => (
@@ -1702,14 +1854,24 @@ export default function InlineAIAssistant({
                   <span className="text-[10px] text-zinc-400 font-normal">({prompt.length.toLocaleString()}자)</span>
                 )}
               </span>
-              <button
-                type="button"
-                onClick={() => setIsPromptExpanded((prev) => !prev)}
-                className="text-[11px] text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-1 font-semibold cursor-pointer px-1.5 py-0.5 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
-                title={isPromptExpanded ? '입력창 기본 크기로 축소' : '입력창 크게 보기'}
-              >
-                <span>{isPromptExpanded ? '⤡ 축소' : '⤢ 크게 보기'}</span>
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setIsPromptExpanded((prev) => !prev)}
+                  className="text-[11px] text-zinc-500 hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-1 font-semibold cursor-pointer px-1.5 py-0.5 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
+                  title={isPromptExpanded ? '입력창 기본 크기로 축소' : '입력창 크게 보기'}
+                >
+                  <span>{isPromptExpanded ? '⤡ 축소' : '⤢ 크게 보기'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsInputCollapsed(true)}
+                  className="text-[11px] text-zinc-500 hover:text-purple-600 dark:hover:text-purple-400 flex items-center gap-1 font-semibold cursor-pointer px-1.5 py-0.5 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 transition"
+                  title="결과를 넓게 보기 위해 입력창 접기"
+                >
+                  <span>접기 ▾</span>
+                </button>
+              </div>
             </div>
 
             {/* 질의 입력창 카드 컨테이너 (텍스트에어리어 100% 가로폭 사용 + 하단 분리 액션바) */}
@@ -1796,6 +1958,7 @@ export default function InlineAIAssistant({
               </div>
             </div>
           </div>
+          )}
         </section>
       )}
 
