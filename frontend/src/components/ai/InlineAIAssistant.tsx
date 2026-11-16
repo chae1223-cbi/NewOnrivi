@@ -278,6 +278,10 @@ export default function InlineAIAssistant({
     return currentNickname ? `${currentNickname} AI` : '온리비 AI';
   }, [currentNickname]);
   const fileInput = useRef<HTMLInputElement>(null);
+  const attachDetailsRef = useRef<HTMLDetailsElement>(null);
+  const attachCloseTimerRef = useRef<number | null>(null);
+  const panelDragDepthRef = useRef(0);
+  const [isPanelDragging, setIsPanelDragging] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
 
   // 💡 [질의란 자동 높이 확장 엔진]: 텍스트가 꽉 차면 최대 300px(확장 시 480px)까지 자동으로 키워줌 (ChatGPT/Gemini 방식)
@@ -577,7 +581,11 @@ export default function InlineAIAssistant({
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (isPromptLibraryOpen) {
+        if (attachDetailsRef.current?.open) {
+          e.preventDefault();
+          e.stopPropagation();
+          attachDetailsRef.current.open = false;
+        } else if (isPromptLibraryOpen) {
           e.preventDefault();
           e.stopPropagation();
           setIsPromptLibraryOpen(false);
@@ -589,6 +597,9 @@ export default function InlineAIAssistant({
       }
     };
     const onPointerDown = (e: MouseEvent) => {
+      if (attachDetailsRef.current?.open && !attachDetailsRef.current.contains(e.target as Node)) {
+        attachDetailsRef.current.open = false;
+      }
       if (templateDetailsRef.current && !templateDetailsRef.current.contains(e.target as Node)) {
         setIsPromptLibraryOpen(false);
       }
@@ -1231,11 +1242,51 @@ export default function InlineAIAssistant({
             rememberQuestionSelection();
             checkSelectionState();
           }}
+          onDragEnter={(e) => {
+            if (e.dataTransfer?.types?.includes('Files')) {
+              e.preventDefault();
+              panelDragDepthRef.current += 1;
+              setIsPanelDragging(true);
+            }
+          }}
+          onDragOver={(e) => {
+            if (e.dataTransfer?.types?.includes('Files')) {
+              e.preventDefault();
+              e.stopPropagation();
+            }
+          }}
+          onDragLeave={(e) => {
+            if (e.dataTransfer?.types?.includes('Files')) {
+              panelDragDepthRef.current = Math.max(0, panelDragDepthRef.current - 1);
+              if (panelDragDepthRef.current === 0) {
+                setIsPanelDragging(false);
+              }
+            }
+          }}
+          onDrop={(e) => {
+            if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+              e.preventDefault();
+              e.stopPropagation();
+              panelDragDepthRef.current = 0;
+              setIsPanelDragging(false);
+              void attach(e.dataTransfer.files);
+            } else {
+              panelDragDepthRef.current = 0;
+              setIsPanelDragging(false);
+            }
+          }}
           className={`onrivi-ai-sidebar fixed z-[90] top-[76px] bottom-12 ${
             isToolbarOpen ? 'right-12' : 'right-0'
           } border-l border-r border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-2xl flex flex-col h-[calc(100vh-124px)]`}
           style={{ width: 'min(440px, calc(100vw - 64px))' }}
         >
+          {isPanelDragging && (
+            <div className="absolute inset-2 z-50 rounded-xl border-2 border-dashed border-blue-600 bg-blue-50/90 dark:bg-blue-950/90 flex flex-col items-center justify-center gap-2 pointer-events-none">
+              <span className="text-2xl">📎</span>
+              <p className="text-sm font-bold text-blue-700 dark:text-blue-300">여기에 파일이나 이미지를 놓아 첨부하세요</p>
+              <p className="text-[11px] text-zinc-600 dark:text-zinc-300">프롬프트 질의 시 참고자료로 함께 반영됩니다</p>
+            </div>
+          )}
           {/* ── 1. [상단 고정 헤더 & 컨트롤 영역] ── */}
           <div className="shrink-0 p-4 pb-3 border-b border-zinc-100 dark:border-zinc-800/80 space-y-2.5 bg-white dark:bg-zinc-900">
             <header className="flex items-center justify-between">
@@ -1771,7 +1822,24 @@ export default function InlineAIAssistant({
 
             {/* 파일 첨부 및 프롬프트 템플릿 아코디언 */}
             <div className="flex items-center gap-3 text-xs text-zinc-500">
-              <details className="relative attachment-details">
+              <details
+                ref={attachDetailsRef}
+                className="relative attachment-details"
+                onMouseEnter={() => {
+                  if (attachCloseTimerRef.current) {
+                    clearTimeout(attachCloseTimerRef.current);
+                    attachCloseTimerRef.current = null;
+                  }
+                }}
+                onMouseLeave={() => {
+                  if (!attachDetailsRef.current?.open || isPanelDragging) return;
+                  if (attachCloseTimerRef.current) clearTimeout(attachCloseTimerRef.current);
+                  attachCloseTimerRef.current = window.setTimeout(() => {
+                    if (attachDetailsRef.current) attachDetailsRef.current.open = false;
+                    attachCloseTimerRef.current = null;
+                  }, 180);
+                }}
+              >
                 <summary className="cursor-pointer hover:text-zinc-800 dark:hover:text-zinc-200 flex items-center gap-1">
                   <span>📎 파일 첨부</span>
                   {attachments.length > 0 && (
@@ -1845,6 +1913,28 @@ export default function InlineAIAssistant({
                 </button>
               </div>
             </div>
+
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {attachments.map((a) => (
+                  <span
+                    key={a.id}
+                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-purple-50 dark:bg-purple-950/50 border border-purple-200 dark:border-purple-800 text-[11px] font-medium text-purple-800 dark:text-purple-200 max-w-full"
+                  >
+                    <span className="truncate max-w-[180px]">📎 {a.name}</span>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => setAttachments((rows) => rows.filter((f) => f.id !== a.id))}
+                      className="text-purple-500 hover:text-red-600 dark:hover:text-red-400 font-bold cursor-pointer"
+                      aria-label={`${a.name} 첨부 제거`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
 
             {/* 질의 입력창 헤더바 (제목, 글자 수, 크게보기/축소 토글) */}
             <div className="flex items-center justify-between text-xs text-zinc-500 pt-0.5">
