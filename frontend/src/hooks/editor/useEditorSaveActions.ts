@@ -13,6 +13,7 @@ import { FileNode } from '@/lib/indexedDbHelper';
 import { prepareGoogleDriveAuth } from '@/lib/gdrive/googleDriveClient';
 import { transferDocument } from '@/lib/documentTransfer';
 import { logError } from '@/lib/errorDiagnostics';
+import { startLogoLoader, stopLogoLoader } from '@/lib/logoLoader';
 import { resolveProfileByPriority } from '@/lib/folderProfileStorage';
 import { updateCssProfileInFrontmatter } from '@/lib/frontmatter';
 import { SYSTEM_PROFILES } from '@/constants/cssProfile';
@@ -231,27 +232,32 @@ export function useEditorSaveActions({
 
       transferBusyRef.current = true;
       setTransferProgress('개인웹드라이브에 저장 중...');
-      const siblings = await listDriveChildren(activeToken, driveDestination.id);
-      const existingFile = siblings.find(item => !item.isFolder && item.name.toLowerCase() === finalName.toLowerCase());
+      startLogoLoader('개인웹드라이브에 저장 중...');
+      try {
+        const siblings = await listDriveChildren(activeToken, driveDestination.id);
+        const existingFile = siblings.find(item => !item.isFolder && item.name.toLowerCase() === finalName.toLowerCase());
 
-      const emailLabel = driveDestination.userEmail ? ` [${driveDestination.userEmail}]` : '';
+        const emailLabel = driveDestination.userEmail ? ` [${driveDestination.userEmail}]` : '';
 
-      if (existingFile) {
-        const overwrite = window.confirm(`선택한 폴더에 '${finalName}' 파일이 이미 존재합니다.\n덮어쓰시겠습니까?`);
-        if (!overwrite) {
-          showToast('저장이 취소되었습니다.', 'info');
-          return;
+        if (existingFile) {
+          const overwrite = window.confirm(`선택한 폴더에 '${finalName}' 파일이 이미 존재합니다.\n덮어쓰시겠습니까?`);
+          if (!overwrite) {
+            showToast('저장이 취소되었습니다.', 'info');
+            return;
+          }
+          await saveDriveFileContent(activeToken, existingFile.id, markdown);
+          showToast(`개인웹드라이브에 저장되었습니다 (덮어쓰기)${emailLabel}: ${driveDestination.name}/${finalName}`, 'success');
+        } else {
+          await createDriveMarkdownFile(activeToken, driveDestination.id, finalName, markdown);
+          showToast(`개인웹드라이브에 저장되었습니다${emailLabel}: ${driveDestination.name}/${finalName}`, 'success');
         }
-        await saveDriveFileContent(activeToken, existingFile.id, markdown);
-        showToast(`개인웹드라이브에 저장되었습니다 (덮어쓰기)${emailLabel}: ${driveDestination.name}/${finalName}`, 'success');
-      } else {
-        await createDriveMarkdownFile(activeToken, driveDestination.id, finalName, markdown);
-        showToast(`개인웹드라이브에 저장되었습니다${emailLabel}: ${driveDestination.name}/${finalName}`, 'success');
-      }
 
-      // ⚠️ [사용자 규칙] 작업장(rootFolder, workspaceType)은 절대 변경하지 않는다!
-      if (rootFolder?.type === 'GDRIVE' && (rootFolder?.id === driveDestination.id || rootFolder?.driveFolderId === driveDestination.id)) {
-        await refreshFileList();
+        // ⚠️ [사용자 규칙] 작업장(rootFolder, workspaceType)은 절대 변경하지 않는다!
+        if (rootFolder?.type === 'GDRIVE' && (rootFolder?.id === driveDestination.id || rootFolder?.driveFolderId === driveDestination.id)) {
+          await refreshFileList();
+        }
+      } finally {
+        stopLogoLoader();
       }
     } catch (e: any) {
       if (e.name !== 'AbortError') {

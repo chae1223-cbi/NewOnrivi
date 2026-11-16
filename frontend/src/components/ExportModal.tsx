@@ -7,6 +7,7 @@ import PrintPaginationPreview from '@/components/PrintPaginationPreview';
 import { readPaginationSettings, emptyPagination, type DocumentPaginationSettings, type PrintBreakAnchor } from '@/lib/documentPaginationSettings';
 import { readEffectivePrintSettings, DocumentPrintSettings, DEFAULT_PRINT_SETTINGS, normalizePrintSettings, saveDefaultWatermarkSettings, hasDocumentPrintSettings } from '@/lib/documentPrintSettings';
 import { createPortal } from 'react-dom';
+import { startLogoLoader, stopLogoLoader } from '@/lib/logoLoader';
 import { Download, Printer, Globe, Image as ImageIcon, X, Check, BookOpen, FileText, Smartphone } from 'lucide-react';
 
 /**
@@ -499,6 +500,7 @@ export default function ExportModal({
             onClick={async () => {
               if (isExporting) return;
               setIsExporting(true);
+              startLogoLoader('문서를 내보내는 중...');
               try {
                 await onExport(
                   selectedFormat as any,
@@ -508,6 +510,7 @@ export default function ExportModal({
                   pagination
                 );
               } finally {
+                stopLogoLoader();
                 setIsExporting(false);
               }
             }}

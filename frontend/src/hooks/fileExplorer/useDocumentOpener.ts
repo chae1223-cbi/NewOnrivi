@@ -19,6 +19,7 @@
 // ====================================================================
 // @ts-nocheck
 import { useRef } from 'react';
+import { startLogoLoader, stopLogoLoader } from '@/lib/logoLoader';
 import { FileNode } from '@/lib/indexedDbHelper';
 import { isBundledDocumentPath } from '@/lib/bundledDocument';
 import { resolveDriveLinkedPath } from '@/lib/driveLinkedPath';
@@ -1299,6 +1300,8 @@ export function useDocumentOpener({
       return; // 이미 로딩 중인 파일 무시 (더블클릭 중복 탭 생성 방지)
     }
     if (fileKey) loadingFilesRef.current.add(fileKey);
+    const isCloudOpen = Boolean((node as any).driveFileId || (node as any).driveId || (node as any).id || rootFolderRef.current?.type === 'GDRIVE' || workspaceType === 'cloud');
+    if (isCloudOpen) startLogoLoader('문서를 불러오는 중...');
 
     try {
       let activeMode = workspaceType;
@@ -1537,6 +1540,7 @@ export function useDocumentOpener({
       });
       showToast("파일을 여는데 실패했습니다.", "error");
     } finally {
+      if (isCloudOpen) stopLogoLoader();
       if (fileKey) loadingFilesRef.current.delete(fileKey);
     }
   };

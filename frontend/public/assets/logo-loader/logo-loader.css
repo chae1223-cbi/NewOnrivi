@@ -1,0 +1,248 @@
+/* 타자스핀로고 (TajaSpinLogo) — LogoLoader-Web CSS
+ * 평상시 기본 마우스 커서는 변경하지 않으며,
+ * 작업/로딩 중에만 로고 로딩 애니메이션을 표시합니다.
+ */
+
+:root {
+  --ll-ring-color: #2AAC52;
+  --ll-ring-track: rgba(42, 172, 82, 0.18);
+  --ll-ring-glow: rgba(42, 172, 82, 0.28);
+  --ll-duration: 1.20s;
+}
+
+.logo-loader-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 99999;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.logo-loader-layer.is-active {
+  opacity: 1;
+}
+
+/* 화면 중앙 표시 모드 */
+.logo-loader-layer.is-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.24);
+  backdrop-filter: blur(2px);
+}
+
+.logo-loader-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 22px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+}
+
+.logo-loader-label {
+  font-family: -apple-system, BlinkMacSystemFont, "Noto Sans KR", sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #191f28;
+  margin: 0;
+}
+
+/* 마우스 주변 따라다니기 모드 */
+.logo-loader-cursor {
+  position: fixed;
+  top: 0;
+  left: 0;
+  transform: translate3d(-9999px, -9999px, 0);
+  will-change: transform;
+  pointer-events: none;
+}
+
+/* 공통 로고 + 로딩 인디케이터 박스 */
+.logo-loader-badge {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.logo-loader-layer.is-cursor .logo-loader-badge {
+  width: 44px;
+  height: 44px;
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 50%;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.15);
+}
+
+.logo-loader-img {
+  width: 56%;
+  height: 56%;
+  object-fit: contain;
+  display: block;
+  filter: none;
+  animation: logo-loader-spin 1.20s linear infinite, logo-loader-blink 1.20s ease-in-out infinite;
+}
+
+.logo-loader-badge.style-logo-only .logo-loader-img {
+  width: 72%;
+  height: 72%;
+}
+
+/* 1) 원형 링 */
+.logo-loader-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3.5px solid var(--ll-ring-track);
+  border-top-color: var(--ll-ring-color);
+  animation: logo-loader-spin var(--ll-duration) linear infinite;
+  box-sizing: border-box;
+}
+
+/* 2) 혜성 꼬리 링 */
+.logo-loader-comet {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 22%, var(--ll-ring-glow) 60%, var(--ll-ring-color) 100%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3.5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 4px), #000 calc(100% - 3.5px));
+  animation: logo-loader-spin var(--ll-duration) linear infinite;
+}
+
+/* 3) 점선 원형 */
+.logo-loader-dashed {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3.5px dashed var(--ll-ring-color);
+  animation: logo-loader-spin var(--ll-duration) linear infinite;
+  box-sizing: border-box;
+}
+
+/* 4) 더블 링 */
+.logo-loader-dual {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3.5px solid var(--ll-ring-track);
+  border-top-color: var(--ll-ring-color);
+  border-bottom-color: var(--ll-ring-color);
+  animation: logo-loader-spin var(--ll-duration) linear infinite;
+  box-sizing: border-box;
+}
+
+/* 5) 회전 도트 */
+.logo-loader-dots {
+  position: absolute;
+  inset: 0;
+  animation: logo-loader-spin var(--ll-duration) steps(8, end) infinite;
+}
+
+.logo-loader-dots span {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 5px;
+  height: 5px;
+  margin: -2.5px;
+  border-radius: 50%;
+  background: var(--ll-ring-color);
+}
+
+/* 6) 파동 링 */
+.logo-loader-pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid var(--ll-ring-color);
+  animation: logo-loader-pulse var(--ll-duration) ease-out infinite;
+  box-sizing: border-box;
+}
+
+/* 7) 반짝이 스파클 */
+.logo-loader-sparkles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.logo-loader-sparkles span {
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  background: var(--ll-ring-color);
+  clip-path: polygon(50% 0%, 62% 38%, 100% 50%, 62% 62%, 50% 100%, 38% 62%, 0% 50%, 38% 38%);
+  animation: logo-loader-twinkle var(--ll-duration) ease-in-out infinite;
+}
+
+.logo-loader-sparkles span:nth-child(1) { top: 0; right: 2px; animation-delay: 0s; }
+.logo-loader-sparkles span:nth-child(2) { bottom: 0; right: 2px; animation-delay: calc(var(--ll-duration) * 0.25); }
+.logo-loader-sparkles span:nth-child(3) { bottom: 0; left: 2px; animation-delay: calc(var(--ll-duration) * 0.5); }
+.logo-loader-sparkles span:nth-child(4) { top: 0; left: 2px; animation-delay: calc(var(--ll-duration) * 0.75); }
+
+@keyframes logo-loader-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes logo-loader-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.22;
+  }
+}
+
+@keyframes logo-loader-heartbeat {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(0.82);
+  }
+}
+
+@keyframes logo-loader-flip {
+  0% {
+    transform: perspective(180px) rotateY(0deg);
+  }
+  100% {
+    transform: perspective(180px) rotateY(360deg);
+  }
+}
+
+@keyframes logo-loader-pulse {
+  0% {
+    transform: scale(0.76);
+    opacity: 0.95;
+  }
+  100% {
+    transform: scale(1.16);
+    opacity: 0;
+  }
+}
+
+@keyframes logo-loader-twinkle {
+  0%,
+  100% {
+    transform: scale(0.4);
+    opacity: 0.25;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}

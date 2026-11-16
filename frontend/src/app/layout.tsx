@@ -98,6 +98,8 @@ export default function RootLayout({
         <meta name="color-scheme" content="light" />
         <meta name="naver-site-verification" content="08215f3797f7f99a9dfe413b0ac38d58" />
         <link rel="icon" href="/icon_onriveauther.png?v=1" type="image/png" />
+        <link rel="stylesheet" href="/assets/logo-loader/logo-loader.css" />
+        <script src="/assets/logo-loader/logo-loader.js" defer />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap" rel="stylesheet" />
