@@ -8,6 +8,7 @@ import { getVfsFiles, vfsReadFile } from '@/lib/virtualFileSystem';
 import { BROWSER_STORAGE_NAME } from '@/constants/storage';
 import { msg } from '@/lib/systemMessages';
 import { logWarn } from '@/lib/errorDiagnostics';
+import { startLogoLoader, stopLogoLoader } from '@/lib/logoLoader';
 
 export interface SearchResult {
   fileName: string;
@@ -346,9 +347,12 @@ export default function GlobalSearch({
     }
 
     let cancelled = false;
+    let loaderStarted = false;
     setIsLoading(true);
 
     const timer = setTimeout(async () => {
+      loaderStarted = true;
+      startLogoLoader('', { mode: 'cursor-follow' });
       try {
         const normalizedTerm = trimmedTerm.normalize('NFC');
         const escaped = normalizedTerm.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
@@ -792,6 +796,10 @@ export default function GlobalSearch({
           msg.error("검색 처리 오류", e);
         }
       } finally {
+        if (loaderStarted) {
+          loaderStarted = false;
+          stopLogoLoader('cursor-follow');
+        }
         if (!cancelled) {
           setIsLoading(false);
         }
@@ -801,6 +809,10 @@ export default function GlobalSearch({
     return () => {
       cancelled = true;
       clearTimeout(timer);
+      if (loaderStarted) {
+        loaderStarted = false;
+        stopLogoLoader('cursor-follow');
+      }
     };
   }, [
     searchTerm,

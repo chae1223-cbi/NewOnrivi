@@ -90,6 +90,7 @@
 // ====================================================================
 'use client';
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { startLogoLoader, stopLogoLoader } from '@/lib/logoLoader';
 import { createPortal } from 'react-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -753,6 +754,7 @@ export default function InlineAIAssistant({
     const id = ++generation.current,
       timer = setTimeout(() => abort.abort(), current?.sections ? 600000 : provider === 'exaone' ? 300000 : 120000);
     setBusy(true);
+    startLogoLoader('', { mode: 'cursor-follow' });
 
     shouldAutoScrollRef.current = true;
     if (mode === 'edit') setIsTaskPickerCollapsed(true);
@@ -809,6 +811,7 @@ export default function InlineAIAssistant({
       }
     } finally {
       clearTimeout(timer);
+      stopLogoLoader('cursor-follow');
       if (id === generation.current) setBusy(false);
     }
   };

@@ -140,8 +140,13 @@
       }
     },
 
-    start: function (message) {
+    start: function (message, options) {
       if (!state.initialized) LogoLoader.init();
+      var nextMode = options && options.mode;
+      if (nextMode && nextMode !== state.mode) {
+        state.mode = nextMode;
+        destroyDom();
+      }
       ensureDom();
       state.active = true;
       if (state.labelEl && message) {
@@ -164,8 +169,8 @@
       }
     },
 
-    wrap: function (promise, message) {
-      LogoLoader.start(message);
+    wrap: function (promise, message, options) {
+      LogoLoader.start(message, options);
       return Promise.resolve(promise).finally(function () {
         LogoLoader.stop();
       });
