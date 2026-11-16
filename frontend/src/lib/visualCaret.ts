@@ -3,6 +3,9 @@
  * 버전 정보 : 1.0.1
  * 프로그램 ID : oaar-vm-caret
  * -----------------------------------------------------------------------
+ * 🚨 @PATCH : **2026-11-17** — [코드블록(code_block) Enter 줄바꿈 시 커서 이전 행 고정 결함 해결]:
+ *             1) 코드블록 내 텍스트 노드 끝 개행(\n) 직후(isAfterNewlineInCode)를 trailingBreak 오차 방어에서 제외하여 커서가 추가된 새 행의 시작 위치로 즉시 내려가도록 교정
+ *             2) 개행 직후 domRect/coordsAfter가 이전 행에 머무는 브라우저 경계에서도 코드블록 좌측 패딩 및 다음 줄 Y좌표를 정밀 산출
  * 🚨 @PATCH : **2026-11-16** — [인라인 수식(visual_inline_math) 직후 캐럿 수직 상승 방어]:
  *             1) visual_footnote_ref와 동일하게 visual_inline_math 직후 및 후행 공백 위치에서도 본문 텍스트 기준선(baseline) Y좌표·높이로 동기화하여 커서가 위첨자처럼 위로 떠 보이지 않도록 교정
  * 🚨 @PATCH : **2026-11-14** — [인라인 마크다운 태그 적용 문장 Enter 줄바꿈 시 캐럿이 윗줄에 머무는 결함 해결]:
@@ -219,13 +222,57 @@ export function installVisualCaret(view: EditorView) {
       const isAfterHardBreak = Boolean(
         $from.nodeBefore && ($from.nodeBefore.type.name === 'hard_break' || $from.nodeBefore.type.name === 'visual_hard_break')
       );
-      if (!isAfterHardBreak && coordsBefore && domRect && domRect.top > coordsBefore.top + 10) {
+      const isAfterNewlineInCode = Boolean(
+        $from.parent.type.spec.code &&
+        $from.nodeBefore?.isText &&
+        $from.nodeBefore.text?.endsWith('\n')
+      );
+      if (!isAfterHardBreak && !isAfterNewlineInCode && coordsBefore && domRect && domRect.top > coordsBefore.top + 10) {
         rect = {
           left: coordsBefore.right,
           right: coordsBefore.right + 3,
           top: coordsBefore.top,
           bottom: coordsBefore.bottom,
         };
+      }
+
+      // 🌟 [코드블록 개행(\n) 직후 다음 행 시작 위치 캐럿 정렬]:
+      if (isAfterNewlineInCode) {
+        let resolvedCodeNewLine = Boolean(domRect && domRect.height > 0 && (!coordsBefore || domRect.top > coordsBefore.top + 4));
+        if (!resolvedCodeNewLine) {
+          try {
+            const coordsAfter = view.coordsAtPos($from.pos, 1);
+            if (coordsAfter && coordsAfter.bottom > coordsAfter.top && (!coordsBefore || coordsAfter.top > coordsBefore.top + 4)) {
+              rect = {
+                left: coordsAfter.left,
+                right: coordsAfter.left + 3,
+                top: coordsAfter.top,
+                bottom: coordsAfter.bottom,
+              };
+              resolvedCodeNewLine = true;
+            }
+          } catch { /* ignore */ }
+        }
+        if (!resolvedCodeNewLine) {
+          const targetNode = view.domAtPos($from.pos).node;
+          const targetEl = targetNode instanceof Element ? targetNode : targetNode.parentElement;
+          const codeEl = (targetEl?.closest('code, pre') || (view.nodeDOM($from.before()) as HTMLElement | null)) as HTMLElement | null;
+          if (codeEl && view.dom.contains(codeEl)) {
+            const box = codeEl.getBoundingClientRect();
+            const style = getComputedStyle(codeEl);
+            const fontSize = parseFloat(style.fontSize) || 14;
+            const lineHeight = parseFloat(style.lineHeight) || fontSize * 1.65;
+            const paddingLeft = parseFloat(style.paddingLeft) || 0;
+            const left = box.left + paddingLeft;
+            const caretHeight = coordsBefore && coordsBefore.bottom > coordsBefore.top
+              ? (coordsBefore.bottom - coordsBefore.top)
+              : Math.max(18, Math.round(fontSize * 1.4));
+            const top = coordsBefore
+              ? coordsBefore.top + lineHeight
+              : box.top + (parseFloat(style.paddingTop) || 0) + lineHeight;
+            rect = { left, right: left + 3, top, bottom: top + caretHeight };
+          }
+        }
       }
 
       // 🌟 [Enter(hard_break) 직후 다음 행 캐럿 즉시 하강 보장]:
@@ -328,7 +375,11 @@ export function installVisualCaret(view: EditorView) {
         ($from.nodeBefore && ($from.nodeBefore.type.name === 'hard_break' || $from.nodeBefore.type.name === 'visual_hard_break')) ||
         ($from.nodeAfter && ($from.nodeAfter.type.name === 'hard_break' || $from.nodeAfter.type.name === 'visual_hard_break'))
       );
-      const isOnlyWhitespace = isTextblock && !$from.parent.textContent.trim() && !hasHardBreak;
+      const isOnlyWhitespace =
+        isTextblock &&
+        !$from.parent.textContent.trim() &&
+        !hasHardBreak &&
+        !($from.parent.type.spec.code && $from.parent.textContent.includes('\n'));
       if (isOnlyWhitespace) {
         const targetNode = view.domAtPos($from.pos).node;
         const targetEl = targetNode instanceof Element ? targetNode : targetNode.parentElement;
