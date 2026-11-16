@@ -279,7 +279,6 @@ export default function InlineAIAssistant({
   }, [currentNickname]);
   const fileInput = useRef<HTMLInputElement>(null);
   const attachDetailsRef = useRef<HTMLDetailsElement>(null);
-  const attachCloseTimerRef = useRef<number | null>(null);
   const panelDragDepthRef = useRef(0);
   const [isPanelDragging, setIsPanelDragging] = useState(false);
   const input = useRef<HTMLTextAreaElement>(null);
@@ -643,10 +642,11 @@ export default function InlineAIAssistant({
     focus?.();
   };
 
-  const attach = async (files: FileList | null) => {
+  const attach = async (files: FileList | File[] | null) => {
     if (!files || readingRef.current || busy) return;
     const selected = Array.from(files),
       current = generation.current;
+    if (selected.length === 0) return;
     if (
       attachments.length + selected.length > 5 ||
       attachments.reduce((n, f) => n + f.size, 0) + selected.reduce((n, f) => n + f.size, 0) > 20 * 1024 * 1024
@@ -1822,24 +1822,7 @@ export default function InlineAIAssistant({
 
             {/* 파일 첨부 및 프롬프트 템플릿 아코디언 */}
             <div className="flex items-center gap-3 text-xs text-zinc-500">
-              <details
-                ref={attachDetailsRef}
-                className="relative attachment-details"
-                onMouseEnter={() => {
-                  if (attachCloseTimerRef.current) {
-                    clearTimeout(attachCloseTimerRef.current);
-                    attachCloseTimerRef.current = null;
-                  }
-                }}
-                onMouseLeave={() => {
-                  if (!attachDetailsRef.current?.open || isPanelDragging) return;
-                  if (attachCloseTimerRef.current) clearTimeout(attachCloseTimerRef.current);
-                  attachCloseTimerRef.current = window.setTimeout(() => {
-                    if (attachDetailsRef.current) attachDetailsRef.current.open = false;
-                    attachCloseTimerRef.current = null;
-                  }, 180);
-                }}
-              >
+              <details ref={attachDetailsRef} className="relative attachment-details">
                 <summary className="cursor-pointer hover:text-zinc-800 dark:hover:text-zinc-200 flex items-center gap-1">
                   <span>📎 파일 첨부</span>
                   {attachments.length > 0 && (
@@ -1919,9 +1902,18 @@ export default function InlineAIAssistant({
                 {attachments.map((a) => (
                   <span
                     key={a.id}
-                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-purple-50 dark:bg-purple-950/50 border border-purple-200 dark:border-purple-800 text-[11px] font-medium text-purple-800 dark:text-purple-200 max-w-full"
+                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-purple-50 dark:bg-purple-950/50 border border-purple-200 dark:border-purple-800 text-[11px] font-medium text-purple-800 dark:text-purple-200 max-w-full"
                   >
-                    <span className="truncate max-w-[180px]">📎 {a.name}</span>
+                    {a.data && a.mime ? (
+                      <img
+                        src={`data:${a.mime};base64,${a.data}`}
+                        alt={a.name}
+                        className="w-5 h-5 rounded object-cover border border-purple-200 dark:border-purple-700 shrink-0"
+                      />
+                    ) : (
+                      <span>📎</span>
+                    )}
+                    <span className="truncate max-w-[180px]">{a.name}</span>
                     <button
                       type="button"
                       disabled={busy}
@@ -1969,6 +1961,23 @@ export default function InlineAIAssistant({
               <textarea
                 ref={input}
                 aria-label="AI 프롬프트 입력"
+                onPaste={(e) => {
+                  const files = e.clipboardData?.files;
+                  if (files && files.length > 0) {
+                    e.preventDefault();
+                    void attach(files);
+                    return;
+                  }
+                  const items = e.clipboardData?.items ? Array.from(e.clipboardData.items) : [];
+                  const pastedFiles = items
+                    .filter((item) => item.kind === 'file')
+                    .map((item) => item.getAsFile())
+                    .filter((f): f is File => Boolean(f));
+                  if (pastedFiles.length > 0) {
+                    e.preventDefault();
+                    void attach(pastedFiles);
+                  }
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing && e.keyCode !== 229) {
                     e.preventDefault();
