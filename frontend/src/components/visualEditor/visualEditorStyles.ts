@@ -2,6 +2,7 @@
 // 🎨 [OMD-CORE-VisualEditorStyles-0001] visualEditorStyles.ts ➔ 시각 에디터 전용 격리 CSS 스타일
 // 🎯 @KICK  : 시각 에디터 본문(.visual-document-surface), 제목 H1~H6 시각화 뱃지, 표 조판, 각주, 코드블록, 머메이드 서랍 등 위지윅 스타일 격리
 // 🛡️ @GUARD : Rule 6(Content Document Scope) 준수 - .visual-document-surface 및 컴포넌트 하위로만 스코핑
+// 🚨 @PATCH : 2026-11-16 — [지도/동영상 iframe 클릭 포커스 및 선택 보장]: 미선택(.visual-media-block:not(.ProseMirror-selectednode)) 상태의 iframe pointer-events를 차단해 클릭 시 ProseMirror 노드 선택 및 에디터 포커스(Delete/Backspace 삭제 가능)가 즉시 잡히도록 개선
 // 🚨 @PATCH : 2026-11-14 — [원문·코드 편집 서랍(HTML 표 / 머메이드 / 기타 원문 블록) 기본 숨김 및 편집 액션 버튼 토글 일원화]: 평소(:not([open]))에는 문서 내에 원문/코드 편집 서랍 바가 노출되지 않도록 숨기고, 우측 상단 편집(✏️) 액션 버튼 클릭 시 펼쳐져 편집 및 닫기(코드 접기·적용 완료·상단 바·편집 버튼)가 가능하도록 통일
 // 🚨 @PATCH : 2026-11-13 — [미디어 및 서명 플로팅 컨트롤 여백·간격 소형화]: 아이콘 전용 액션 버튼 규격에 맞춰 우측 상단 오프셋(6px) 및 버튼 간격(4px) 최적화
 // 🚨 @PATCH : 2026-11-12 — [코드블록 상단 "CODE" 라벨 제거 및 언어 텍스트박스 배경 투명·상시 표시]:
@@ -208,6 +209,7 @@ export const VISUAL_EDITOR_STYLES = `
   .visual-image-block:hover .visual-media-controls,
   .visual-image-block:focus-within .visual-media-controls,
   .visual-image-block.ProseMirror-selectednode .visual-media-controls { opacity:1; pointer-events:auto; }
+  .visual-media-block:not(.ProseMirror-selectednode) iframe { pointer-events:none; }
   .visual-document-surface .onrivi-image-figure[data-caption-position="top"] img { margin-top:0!important; }
   .visual-document-surface .onrivi-image-figure[data-caption-position="bottom"] img { margin-bottom:0!important; }
   .visual-document-surface[contenteditable="false"] .visual-image-edit { display:none; }

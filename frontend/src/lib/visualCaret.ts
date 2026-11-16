@@ -3,6 +3,8 @@
  * 버전 정보 : 1.0.1
  * 프로그램 ID : oaar-vm-caret
  * -----------------------------------------------------------------------
+ * 🚨 @PATCH : **2026-11-16** — [인라인 수식(visual_inline_math) 직후 캐럿 수직 상승 방어]:
+ *             1) visual_footnote_ref와 동일하게 visual_inline_math 직후 및 후행 공백 위치에서도 본문 텍스트 기준선(baseline) Y좌표·높이로 동기화하여 커서가 위첨자처럼 위로 떠 보이지 않도록 교정
  * 🚨 @PATCH : **2026-11-14** — [인라인 마크다운 태그 적용 문장 Enter 줄바꿈 시 캐럿이 윗줄에 머무는 결함 해결]:
  *             1) 커서 직전 노드가 hard_break(<br>)일 때(isAfterHardBreak) trailingBreak 방어 로직이 이전 줄의 coordsBefore로 캐럿 좌표를 덮어쓰던 결함 차단
  *             2) hard_break 직후 새 줄에 텍스트가 있으면 다음 노드 시작 좌표(coordsAtPos(pos, 1))로, 빈 줄이면 trailingBreak 또는 이전 줄 + lineHeight 및 블록 좌측 시작점(box.left + paddingLeft)으로 캐럿을 즉시 하강 배치
@@ -113,24 +115,35 @@ export function installVisualCaret(view: EditorView) {
 
       let rect = domRect && domRect.height > 0 ? domRect : (coordsBefore || view.coordsAtPos(view.state.selection.head));
 
-      // 🛡️ [각주(visual_footnote_ref) 위첨자 캐럿 수직 상승 방어 및 본문 베이스라인 완전 동기화]:
-      // 각주 참조 뱃지 직후(또는 각주 뒤 공백)에 커서가 위치할 때, 위첨자(<sup>)의 작은 높이(12px) 및 상단 솟구침 Y좌표로 인해
-      // 캐럿이 각주에 매달려 위로 떠 있는 현상을 원천 방어하고, 본문 텍스트 기준선(baseline) 높이와 Y좌표로 완전 동기화
+      // 🛡️ [각주(visual_footnote_ref) 및 인라인 수식(visual_inline_math) 캐럿 수직 상승 방어 및 본문 베이스라인 완전 동기화]:
+      // 인라인 애텀 노드 직후(또는 뒤 공백)에 커서가 위치할 때, <sup>/KaTeX 박스의 상단 솟구침 Y좌표로 인해
+      // 캐럿이 위로 떠 있는 현상을 원천 방어하고, 본문 텍스트 기준선(baseline) 높이와 Y좌표로 완전 동기화
+      const nodeBeforeName = $from.nodeBefore?.type.name;
       let footnoteRefPos = -1;
       let spaceCountAfterRef = 0;
-      if ($from.nodeBefore?.type.name === 'visual_footnote_ref') {
-        footnoteRefPos = $from.pos - $from.nodeBefore.nodeSize;
+      let atomKind: 'footnote' | 'math' | null = null;
+      if (nodeBeforeName === 'visual_footnote_ref' || nodeBeforeName === 'visual_inline_math') {
+        footnoteRefPos = $from.pos - $from.nodeBefore!.nodeSize;
+        atomKind = nodeBeforeName === 'visual_footnote_ref' ? 'footnote' : 'math';
       } else if ($from.nodeBefore?.isText && $from.nodeBefore.text && /^\s+$/.test($from.nodeBefore.text)) {
         const spaceLen = $from.nodeBefore.text.length;
         const posBeforeSpace = $from.pos - $from.nodeBefore.nodeSize;
         const resolvedBeforeSpace = view.state.doc.resolve(posBeforeSpace);
-        if (resolvedBeforeSpace.nodeBefore?.type.name === 'visual_footnote_ref') {
-          footnoteRefPos = posBeforeSpace - resolvedBeforeSpace.nodeBefore.nodeSize;
+        const beforeSpaceName = resolvedBeforeSpace.nodeBefore?.type.name;
+        if (beforeSpaceName === 'visual_footnote_ref' || beforeSpaceName === 'visual_inline_math') {
+          footnoteRefPos = posBeforeSpace - resolvedBeforeSpace.nodeBefore!.nodeSize;
           spaceCountAfterRef = spaceLen;
+          atomKind = beforeSpaceName === 'visual_footnote_ref' ? 'footnote' : 'math';
         }
       }
 
-      if (footnoteRefPos >= 0) {
+      // 인라인 수식 뒤 공백 텍스트 노드 내부에서는 브라우저 domRect가 이미 본문 텍스트 기준선에 위치하므로 덮어쓰지 않음
+      const skipMathBaselineOverride =
+        atomKind === 'math' &&
+        spaceCountAfterRef > 0 &&
+        Boolean(domRect && domRect.height > 0 && (!coordsBefore || domRect.top <= coordsBefore.top + 10));
+
+      if (footnoteRefPos >= 0 && !skipMathBaselineOverride) {
         let baselineTop: number | null = null;
         let baselineHeight: number | null = null;
         let refRight: number | null = null;
@@ -175,8 +188,14 @@ export function installVisualCaret(view: EditorView) {
             const box = effectiveEl.getBoundingClientRect();
             const lineHeight = parseFloat(style.lineHeight) || fontSize * 1.5;
             const paddingTop = parseFloat(style.paddingTop) || 0;
+            const paddingBottom = parseFloat(style.paddingBottom) || 0;
             baselineHeight = Math.max(22, Math.round(fontSize * 1.45));
-            baselineTop = box.top + paddingTop + Math.round((lineHeight - baselineHeight) / 2);
+            if (atomKind === 'math') {
+              // 인라인 수식(\sum 등)으로 행 높이가 위로 확장된 경우 상단이 아닌 하단 기준선에 맞춤
+              baselineTop = box.bottom - paddingBottom - baselineHeight - Math.max(0, Math.round((lineHeight - baselineHeight) / 2));
+            } else {
+              baselineTop = box.top + paddingTop + Math.round((lineHeight - baselineHeight) / 2);
+            }
           }
         }
 

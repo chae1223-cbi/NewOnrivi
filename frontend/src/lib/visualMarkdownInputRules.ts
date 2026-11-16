@@ -2,6 +2,7 @@
  * 프로그램명 : OnriviAuthor 
  * 버전 정보 : 1.0.1
  * 프로그램 ID : oaar-vm-inputrules
+ * 🚨 @PATCH : **2026-11-16** — [문서 링크 입력 규칙 보강]: 링크 텍스트 내 대괄호([공고문] 등) 및 꺾쇠 공백 경로(<../폴더/문서.md>) 자동 링크 변환 지원
  * 🚨 @PATCH : **2026-11-14** — [괄호 자동 완성 중 인용문 콜아웃 태그([!IMPORTANT], [!WARNING], [!CAUTION] 등) 즉시 변환 연동]:
  *             1) tryConvertCalloutAtCursor 헬퍼를 추출·내보내어 autoClosingBrackets의 닫는 괄호(']') 통과 입력 시에도 인용문/문단 콜아웃 변환이 즉각 실행되도록 개선
  * 🚨 @PATCH : **2026-11-10** — [리스트 직접 타이핑 변환 시 문단 내부 정밀 텍스트 캐럿 포커싱 (+3)]:
@@ -438,12 +439,13 @@ export function buildVisualMarkdownRules(): InputRule[] {
       const from = start + match[0].length - match[1].length;
       return state.tr.insertText(text, from, end).addMark(from, from + text.length, marks.underline.create()).removeStoredMark(marks.underline);
     }, { inCodeMark: false }),
-    // 마크다운 링크 입력 규칙: [텍스트](url) 및 [텍스트](url] 입력 시 네이티브 link 마크로 즉각 변환
-    new InputRule(/(?:^|[^\\])(\[([^\]\n]+)\]\((https?:\/\/[^\s\)]+|mailto:[^\s\)]+|\/[^\s\)]+|#[^\s\)]+|\.[^\s\)]*)(?:\)|\]))$/, (state, match, start, end) => {
+    // 마크다운 링크 입력 규칙: [텍스트](url), [텍스트](<공백 포함 경로>), [[대괄호] 텍스트](<url>) 입력 시 네이티브 link 마크로 즉각 변환
+    new InputRule(/(?:^|[^\\])(\[((?:[^\[\]\n]|\[[^\]\n]*\])+)\]\((?:<([^>\n]+)>|(https?:\/\/[^\s\)]+|mailto:[^\s\)]+|\/[^\s\)]+|#[^\s\)]+|\.[^\s\)]*))\))$/, (state, match, start, end) => {
       if (isInsideCode(state, start)) return null;
       const fullMatch = match[1];
       const text = match[2];
-      const href = match[3];
+      const href = (match[3] || match[4] || '').trim();
+      if (!href) return null;
       const from = start + match[0].length - fullMatch.length;
       return state.tr
         .insertText(text, from, end)

@@ -1246,12 +1246,31 @@ export function createMarkdownCustomComponents({
       const isMap = typeof src === 'string' && (src.includes('map') || src.includes('google.com/maps'));
       const wrapperClass = isMap ? 'onrivi-map-wrapper map-embed-wrapper' : 'onrivi-iframe-wrapper';
       const figureClass = isMap ? 'onrivi-map-figure' : 'onrivi-iframe-figure';
+      const caption = props['data-caption'] || (node?.properties && (node.properties['data-caption'] || node.properties.dataCaption)) || '';
+      const rawCaptionPos = props['data-caption-position'] || (node?.properties && (node.properties['data-caption-position'] || node.properties.dataCaptionPosition)) || '';
+      const captionPos = rawCaptionPos === 'bottom' ? 'bottom' : rawCaptionPos === 'top' ? 'top' : (
+        picturebookProfile?.mediaCaptionStructure?.kindOverrides?.[isMap ? 'map' : 'video']?.position ||
+        picturebookProfile?.mediaCaptionStructure?.position ||
+        'top'
+      );
 
       return attachMediaActions(
         isMap ? 'map' : 'video',
         src,
         node,
-        <figure data-line={line} style={alignStyle} className={figureClass}>
+        <figure data-line={line} data-caption-position={caption ? captionPos : undefined} style={alignStyle} className={`${figureClass}${caption ? ` caption-${captionPos}` : ''}`}>
+          {caption && captionPos === 'top' && (
+            <figcaption
+              data-position="top"
+              className="text-[0.88em] tracking-tight text-zinc-600 dark:text-zinc-300 mb-1.5 mt-0 font-medium"
+              style={{
+                order: -1,
+                ...(align ? { textAlign: align as any, alignSelf: alignStyle.alignItems } : {}),
+              }}
+            >
+              {caption}
+            </figcaption>
+          )}
           <div
             className={`relative flex flex-col ${wrapperClass}`}
             style={{
@@ -1269,6 +1288,18 @@ export function createMarkdownCustomComponents({
               loading="lazy"
             />
           </div>
+          {caption && captionPos === 'bottom' && (
+            <figcaption
+              data-position="bottom"
+              className="text-[0.88em] tracking-tight text-zinc-500 dark:text-zinc-400 mt-1.5 mb-0 font-medium"
+              style={{
+                order: 1,
+                ...(align ? { textAlign: align as any, alignSelf: alignStyle.alignItems } : {}),
+              }}
+            >
+              {caption}
+            </figcaption>
+          )}
         </figure>
       );
     },

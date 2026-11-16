@@ -2,6 +2,7 @@
 // 📊 [OMD-LIB-mediaMarkup-0001] mediaMarkup.ts ➔ Media Markup & Clipboard Image Copy Engine
 // 🎯 @KICK  : 미디어 태그 생성/파싱 및 클립보드 네이티브 비트맵 이미지 복사 지원
 // 🛡️ @GUARD : Electron IPC (clipboard:writeImage) 및 웹 브라우저 ClipboardItem 2중화
+// 🚨 @PATCH : 2026-11-16 — [지도/동영상 캡션 일체화 속성(data-caption, data-caption-position) 파싱 지원]
 // 🚨 @PATCH : 2026-11-11 — [Drive 이미지 복사]: driveId 원본과 렌더링된 Blob을 이용해 PNG Data URL을 네이티브 클립보드에 전달한다.
 // 🚨 @PATCH : **2026-10-14** — [클립보드 네이티브 이미지 복사 엔진(copyImageToClipboard) 탑재 및 copyMediaSource 지능형 연동]:
 //             1) copyImageToClipboard를 신설하여 Electron 네이티브 IPC 및 브라우저 Canvas/ClipboardItem으로 OS 클립보드에 실제 비트맵 이미지 직접 기록
@@ -23,7 +24,8 @@ export function mediaDetails(source: string) {
   const width = style.match(/(?:^|;)\s*width\s*:\s*([^;]+)/i)?.[1]?.trim() || attrs.width || '';
   const height = style.match(/(?:^|;)\s*height\s*:\s*([^;]+)/i)?.[1]?.trim() || attrs.height || '';
   const kind: MediaKind = /https?:\/\/(?:maps\.google\.[^/]+|(?:www\.)?google\.[^/]+\/maps|(?:www\.)?openstreetmap\.org\/export)/i.test(attrs.src) ? 'map' : 'video';
-  return { kind, element:tag[1].toLowerCase(), path:attrs.src, title:attrs.title || '', width, height, align:attrs['data-align'] || 'center' };
+  const captionPos = attrs['data-caption-position'] === 'bottom' ? 'bottom' : attrs['data-caption-position'] === 'top' ? 'top' : '';
+  return { kind, element:tag[1].toLowerCase(), path:attrs.src, title:attrs.title || '', caption:attrs['data-caption'] || '', captionPosition:captionPos, width, height, align:attrs['data-align'] || 'center' };
 }
 
 const escape = (text: string) => text.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');

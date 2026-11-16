@@ -7,6 +7,7 @@ import { FileNode, scanDirectoryDeep } from '@/lib/indexedDbHelper';
 import { getVfsFiles, vfsReadFile } from '@/lib/virtualFileSystem';
 import { BROWSER_STORAGE_NAME } from '@/constants/storage';
 import { msg } from '@/lib/systemMessages';
+import { logWarn } from '@/lib/errorDiagnostics';
 
 export interface SearchResult {
   fileName: string;
@@ -332,6 +333,7 @@ export default function GlobalSearch({
   // 📊 [OMD-FILE-GlobalSearch-0003] GlobalSearch ➔ useEffect (searchLogic)
   // 🎯 @KICK  : 실시간 하이브리드 검색: 활성 문서(content) & 열린 탭(tabs) 메모리 최우선 반영 + 데스크톱/웹FSA/구글드라이브/VFS 전체 검색 병합
   // 🛡️ @GUARD : 150ms 디바운스, 취소 플래그(cancelled), 다중 환경 무결성 보장, 미저장 편집본 실시간 검색 지원
+  // 🚨 @PATCH : 2026-11-16 — [구글 드라이브 작업장 검색 멈춤/지연 해결]: ensureValidDriveToken 토큰 자동 갱신, 폴더 재귀 및 파일 본문 조회 병렬화(동시 8개), 열린 탭 즉시 선행 결과 표시 적용
   // 🚨 @PATCH : 2026-10-16 — [전 환경 심층 검색 및 중복 파일명 누락 방지]
   // 🔗 @CALLS : electronAPI.searchInFolder, scanDirectoryDeep, searchFile, flattenMdFiles
   // ====================================================================
@@ -439,6 +441,10 @@ export default function GlobalSearch({
           }
         }
 
+        if (!cancelled && memoryResults.length > 0) {
+          setResults([...memoryResults]);
+        }
+
         let workspaceResults: SearchResult[] = [];
         const isGDriveWorkspace = rootFolder?.type === 'GDRIVE' || workspaceType === 'cloud';
         const effectiveHandle = rootFolderHandle || rootFolder?.handle;
@@ -447,8 +453,9 @@ export default function GlobalSearch({
         // 2. 구글 드라이브(Cloud) 작업장 검색
         if (isGDriveWorkspace) {
           try {
-            const { getSavedDriveToken, getSavedWorkspaceInfo, fetchDriveFileNodes, readDriveFileContent } = await import('@/lib/gdrive/googleDriveClient');
-            const token = getSavedDriveToken();
+            const { getSavedDriveToken, ensureValidDriveToken, getSavedWorkspaceInfo, fetchDriveFileNodes, readDriveFileContent } = await import('@/lib/gdrive/googleDriveClient');
+            const rawToken = getSavedDriveToken();
+            const token = await ensureValidDriveToken(rawToken || undefined).catch(() => rawToken);
             const wsInfo = getSavedWorkspaceInfo();
             const rootDriveId = rootFolder?.driveFolderId || (rootFolder as any)?.driveId || wsInfo?.workspaceFolderId;
 
@@ -460,22 +467,34 @@ export default function GlobalSearch({
               } else {
                 const collected: FileNode[] = [];
                 const visitedFolderIds = new Set<string>();
-                const collectDriveNodes = async (folderId: string, parentPath: string, depth: number) => {
+                const collectDriveNodes = async (folderId: string, parentPath: string, depth: number): Promise<void> => {
                   if (depth > 8 || visitedFolderIds.has(folderId) || cancelled) return;
                   visitedFolderIds.add(folderId);
                   try {
                     const children = await fetchDriveFileNodes(token, folderId, parentPath);
+                    const subDirTasks: Promise<void>[] = [];
                     for (const child of children) {
                       if (child.kind === 'file' && isSupportedSearchFile(child.name)) {
                         collected.push(child);
                       } else if (child.kind === 'directory') {
                         const childDriveId = (child as any).driveId || (child as any).driveFileId || (child as any).id;
                         if (childDriveId && !IGNORED_DIRS.has(child.name.toLowerCase())) {
-                          await collectDriveNodes(childDriveId, child.path || `${parentPath}/${child.name}`, depth + 1);
+                          subDirTasks.push(collectDriveNodes(childDriveId, child.path || `${parentPath}/${child.name}`, depth + 1));
                         }
                       }
                     }
-                  } catch {}
+                    if (subDirTasks.length > 0) {
+                      await Promise.all(subDirTasks);
+                    }
+                  } catch (err) {
+                    logWarn({
+                      file: 'frontend/src/components/GlobalSearch.tsx',
+                      func: 'collectDriveNodes',
+                      doing: '구글 드라이브 폴더 목록 재귀 조회 중',
+                      target: parentPath,
+                      error: err,
+                    });
+                  }
                 };
                 await collectDriveNodes(rootDriveId, rootFolder?.path || rootFolder?.name || 'GoogleDrive', 0);
                 if (!cancelled && collected.length > 0) {
@@ -497,37 +516,63 @@ export default function GlobalSearch({
                 }
               }
 
-              for (const file of driveMdFiles) {
-                if (cancelled) break;
+              // 미확인 드라이브 파일만 동시성 제한(8개)으로 병렬 조회
+              const targetFiles = driveMdFiles.filter((file) => {
                 const dId = (file as any).driveFileId || (file as any).driveId || (file as any).id;
-                if (isFileAlreadySeen(file.path, file.name, dId)) continue;
+                if (isFileAlreadySeen(file.path, file.name, dId)) return false;
+                markFileSeen(file.path, file.name, dId);
+                return true;
+              });
 
-                let text = '';
-                if (dId) {
-                  const cached = driveContentCacheRef.current.get(dId);
-                  if (cached && (Date.now() - cached.timestamp < 60000)) {
-                    text = cached.text;
-                  } else {
-                    try {
-                      text = await readDriveFileContent(token, dId);
-                      driveContentCacheRef.current.set(dId, { timestamp: Date.now(), text });
-                    } catch {}
+              const CONCURRENCY = 8;
+              let cursor = 0;
+              const workers = Array.from({ length: Math.min(CONCURRENCY, targetFiles.length) }, async () => {
+                while (!cancelled) {
+                  const idx = cursor++;
+                  if (idx >= targetFiles.length) break;
+                  const file = targetFiles[idx];
+                  const dId = (file as any).driveFileId || (file as any).driveId || (file as any).id;
+                  let text = '';
+                  if (dId) {
+                    const cached = driveContentCacheRef.current.get(dId);
+                    if (cached && (Date.now() - cached.timestamp < 60000)) {
+                      text = cached.text;
+                    } else {
+                      try {
+                        text = await readDriveFileContent(token, dId);
+                        driveContentCacheRef.current.set(dId, { timestamp: Date.now(), text });
+                      } catch (err) {
+                        logWarn({
+                          file: 'frontend/src/components/GlobalSearch.tsx',
+                          func: 'readDriveFileContent',
+                          doing: '구글 드라이브 파일 본문 검색 조회 중',
+                          target: file.name,
+                          error: err,
+                        });
+                      }
+                    }
+                  }
+                  if (text) {
+                    const r = searchFile(text, file.name, file.path || file.name, regex, {
+                      driveFileId: dId,
+                      driveId: dId,
+                    });
+                    if (r) {
+                      workspaceResults.push(r);
+                    }
                   }
                 }
-                if (text) {
-                  const r = searchFile(text, file.name, file.path || file.name, regex, {
-                    driveFileId: dId,
-                    driveId: dId
-                  });
-                  if (r) {
-                    workspaceResults.push(r);
-                    markFileSeen(file.path, file.name, dId);
-                  }
-                }
-              }
+              });
+              await Promise.all(workers);
             }
           } catch (gdriveErr) {
-            console.warn('[GlobalSearch] Google Drive search error:', gdriveErr);
+            logWarn({
+              file: 'frontend/src/components/GlobalSearch.tsx',
+              func: 'searchLogic',
+              doing: '구글 드라이브 작업장 전체 검색 중',
+              target: trimmedTerm,
+              error: gdriveErr,
+            });
           }
         }
 

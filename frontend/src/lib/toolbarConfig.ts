@@ -1,6 +1,9 @@
 // ====================================================================
 // 📊 [OMD-CORE-ToolbarConfig-0001] toolbarConfig.ts ➔ Toolbar Items Configuration
 // 🎯 @KICK  : 에디터 툴바, 플로팅 툴바 및 단축키/슬래시 커맨드 전역 설정 메타데이터
+// 🚨 @PATCH : **2026-11-16** — [서식관리(/style) 및 AI 글쓰기 도우미(/ai) 슬래시 명령어 제거]: styleSettings, aiHelp의 defaultCommand를 빈 문자열('')로 전환하고 EXCLUDED_FROM_SLASH에 추가
+// 🚨 @PATCH : **2026-11-16** — [현재 날짜/시간 슬래시 명령어 변경]: now defaultCommand를 'now'에서 'datetime'으로 변경
+// 🚨 @PATCH : **2026-11-16** — [수식 기본 단축키 변경]: math defaultHotkey를 'Ctrl+Shift+T'에서 'Ctrl+Alt+M'으로 변경
 // 🚨 @PATCH : **2026-11-14** — [각주·참조문헌 슬래시 명령어 제외 및 태그 취소 단축키 Ctrl+. 변경]: EXCLUDED_FROM_SLASH에 footnote/citation/bibliography를 추가해 슬래시 자동완성에서 제외하고, clear 기본 단축키를 Ctrl+.으로 변경 및 Period 키 정규화 추가
 // 🚨 @PATCH : **2026-11-11** — [각주 슬래시 명령어 /fn 별칭 및 자동완성 검색 확장]: SLASH_ALIASES 및 filterText에 'fn', '각주', 'footnote', '주석'을 연동하여 플로팅 툴바·단축키·슬래시 명령어 통합 보장
 // 🚨 @PATCH : **2026-10-25** — [서식·태그 지우기(clear/태그 취소) 기본 단축키 Ctrl+\\ 변경 및 한글 키보드(₩) 정규화]:
@@ -58,12 +61,12 @@ export const TOOLBAR_ITEMS = [
   // 5. 코드 및 고급 (Code & Advanced)
   { id: 'codeblock', icon: '⌨️', name: '코드 블록', group: '코드', tagFormat: '```코드```', defaultHotkey: 'Ctrl+Shift+E', defaultCommand: 'code', insertText: '```markdown\n\n```\n\n', kind: 15 },
   { id: 'table', icon: '📶', name: '표', group: '코드', tagFormat: '| 표 |', defaultHotkey: 'Ctrl+T', defaultCommand: 'table', insertText: '| 열 1 | 열 2 |\n| --- | --- |\n| 내용 | 내용 |\n\n', kind: 15 },
-  { id: 'math', icon: '🧮', name: '수식', group: '코드', tagFormat: '$$수식$$', defaultHotkey: 'Ctrl+Shift+T', defaultCommand: 'math', insertText: '$$수식$$\n\n', kind: 15 },
+  { id: 'math', icon: '🧮', name: '수식', group: '코드', tagFormat: '$$수식$$', defaultHotkey: 'Ctrl+Alt+M', defaultCommand: 'math', insertText: '$$수식$$\n\n', kind: 15 },
 
   // 6. 문서 (Document)
-  { id: 'now', icon: '📅', name: '현재 날짜/시간', group: '문서', tagFormat: '날짜/시간', defaultHotkey: '', defaultCommand: 'now', insertText: '', kind: 15 },
+  { id: 'now', icon: '📅', name: '현재 날짜/시간', group: '문서', tagFormat: '날짜/시간', defaultHotkey: '', defaultCommand: 'datetime', insertText: '', kind: 15 },
   { id: 'signature', icon: '✍️', name: '서명/발신인 서식', group: '문서', tagFormat: '<div align="right|left">...</div>', defaultHotkey: 'Ctrl+Alt+R', defaultCommand: 'sign', insertText: '', kind: 15 },
-  { id: 'styleSettings', icon: '🎨', name: '서식관리', group: '문서', tagFormat: '서식 테마 갤러리', defaultHotkey: '', defaultCommand: 'style', insertText: '', kind: 17 },
+  { id: 'styleSettings', icon: '🎨', name: '서식관리', group: '문서', tagFormat: '서식 테마 갤러리', defaultHotkey: '', defaultCommand: '', insertText: '', kind: 17 },
 
   // 7. 부가기능 (Extra)
   { id: 'save', icon: '💾', name: '저장', group: '부가기능', tagFormat: '', defaultHotkey: 'Ctrl+S', defaultCommand: '', insertText: '', kind: 17 },
@@ -76,7 +79,7 @@ export const TOOLBAR_ITEMS = [
   { id: 'toggleToolbar', icon: '♻️', name: '툴바 토글', group: '부가기능', tagFormat: '', defaultHotkey: '', defaultCommand: '', insertText: '', kind: 17 },
   { id: 'toggleSidebar', icon: '🗃️', name: '사이드바 토글', group: '부가기능', tagFormat: '', defaultHotkey: 'Ctrl+Shift+B', defaultCommand: '', insertText: '', kind: 17 },
   { id: 'toggleMode', icon: '📜', name: '모드 전환', group: '부가기능', tagFormat: '', defaultHotkey: 'Ctrl+Shift+M', defaultCommand: '', insertText: '', kind: 17 },
-  { id: 'aiHelp', icon: '✨', name: 'AI 글쓰기 도우미', group: '부가기능', tagFormat: '/ai [명령어]', defaultHotkey: '', defaultCommand: 'ai', insertText: '', kind: 17 },
+  { id: 'aiHelp', icon: '✨', name: 'AI 글쓰기 도우미', group: '부가기능', tagFormat: '/ai [명령어]', defaultHotkey: '', defaultCommand: '', insertText: '', kind: 17 },
 ];
 
 // ====================================================================
@@ -171,7 +174,7 @@ export const getSlashCommands = (monaco: any, customCommands: Record<string, str
     'toggleFloatingToolbar', 'toggleToolbar', 'toggleSidebar',
     'toggleMode', 'toggleTheme',
     'wrap-h1', 'wrap-h2', 'wrap-h3', 'wrap-quote', 'wrap-code',
-    'footnote', 'citation', 'bibliography', 'clear', 'cleanDoc'
+    'footnote', 'citation', 'bibliography', 'clear', 'cleanDoc', 'styleSettings', 'aiHelp'
   ]);
 
   return TOOLBAR_ITEMS

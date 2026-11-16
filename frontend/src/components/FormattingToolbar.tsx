@@ -47,7 +47,7 @@ const SHORTCUTS: Record<string, string> = {
   link: 'Ctrl+K',
   table: 'Ctrl+T',
   code: 'Ctrl+Shift+E',
-  math: 'Ctrl+Shift+T',
+  math: 'Ctrl+Alt+M',
   signature: 'Ctrl+Alt+R',
 };
 

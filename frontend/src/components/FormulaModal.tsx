@@ -12,6 +12,7 @@ import katex from 'katex';
  * 프로그램명 : OnriviAuthor 
  * 버전 정보 : 1.0.1
  * 프로그램 ID : oaar-formula-modal
+ * 🚨 @PATCH : **2026-11-16** — [수식 템플릿 대폭 확충(10종 → 30종) 및 라벨 시인성 개선]: 미적분(이중적분/선적분/미분/편미분), 행렬(3×3/대괄호/행렬식), 경우 나누기(cases), 연립방정식, 이항계수, 로그·통계·근의 공식 등 실무 수식 템플릿 30종으로 확장
  * 🚨 @PATCH : **2026-10-17** — [블록 수식($$) 생성 시 하단 빈 행 자동 추가]: displayMode(블록 수식) 삽입 시 닫는 $$ 뒤에 빈 행(\n\n)을 자동 추가하여 마우스 클릭으로 다음 작업을 이어갈 수 있도록 개선
  * 🚨 @PATCH : **2026-10-14** — [수식 에디터 실시간 미리보기 크로미움 가상 스크롤바 글리치 제거 및 행렬 개행(\\) 보존]:
  *             1) #formula-live-preview의 중복 overflow-x-auto를 overflow-visible 및 상하 여백(py-2 px-1)으로 개선하여, 분수/루트 등 수식 우측에 회색 막대(|) 스크롤바가 노출되는 렌더링 결함 완전 해소
@@ -140,16 +141,36 @@ export default function FormulaModal({ isOpen, onClose, onInsert, isDarkMode, in
   ];
 
   const templates = [
-    { name: '기본 분수', code: '\\frac{a}{b}', icon: 'n/d' },
-    { name: '제곱근', code: '\\sqrt{x}', icon: '√' },
-    { name: 'n제곱근', code: '\\sqrt[n]{x}', icon: 'n√' },
+    { name: '기본 분수', code: '\\frac{a}{b}', icon: 'a/b' },
+    { name: '큰 분수', code: '\\dfrac{a}{b}', icon: 'A/B' },
+    { name: '제곱근', code: '\\sqrt{x}', icon: '√x' },
+    { name: 'n제곱근', code: '\\sqrt[n]{x}', icon: 'ⁿ√x' },
+    { name: '승수', code: 'x^{a}', icon: 'xᵃ' },
+    { name: '첨자', code: 'x_{i}', icon: 'xᵢ' },
+    { name: '상하 첨자', code: 'x_{i}^{n}', icon: 'xᵢⁿ' },
+    { name: '절댓값', code: '\\left| x \\right|', icon: '|x|' },
+    { name: '괄호 크기맞춤', code: '\\left( \\frac{a}{b} \\right)', icon: '(a/b)' },
     { name: '합계 (Sigma)', code: '\\sum_{i=1}^{n} x_i', icon: 'Σ' },
-    { name: '적분 (Integral)', code: '\\int_{a}^{b} f(x) dx', icon: '∫' },
+    { name: '곱 (Product)', code: '\\prod_{i=1}^{n} x_i', icon: 'Π' },
+    { name: '정적분', code: '\\int_{a}^{b} f(x)\\,dx', icon: '∫' },
+    { name: '이중적분', code: '\\iint_{D} f(x,y)\\,dx\\,dy', icon: '∬' },
+    { name: '선적분', code: '\\oint_{C} \\mathbf{F} \\cdot d\\mathbf{r}', icon: '∮' },
     { name: '극한 (Limit)', code: '\\lim_{x \\to \\infty} f(x)', icon: 'lim' },
-    { name: '승수', code: 'x^{a}', icon: 'x^a' },
-    { name: '첨자', code: 'x_{i}', icon: 'x_i' },
-    { name: '행렬 (2x2)', code: '\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}', icon: '[M]' },
-    { name: '벡터', code: '\\vec{v}', icon: 'v' },
+    { name: '미분', code: '\\frac{dy}{dx}', icon: 'dy/dx' },
+    { name: '편미분', code: '\\frac{\\partial f}{\\partial x}', icon: '∂f/∂x' },
+    { name: '행렬 (2×2)', code: '\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}', icon: '(M)' },
+    { name: '행렬 (3×3)', code: '\\begin{pmatrix} a_{11} & a_{12} & a_{13} \\\\ a_{21} & a_{22} & a_{23} \\\\ a_{31} & a_{32} & a_{33} \\end{pmatrix}', icon: '(3×3)' },
+    { name: '대괄호 행렬', code: '\\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}', icon: '[M]' },
+    { name: '행렬식 (det)', code: '\\begin{vmatrix} a & b \\\\ c & d \\end{vmatrix}', icon: '|M|' },
+    { name: '경우 나누기', code: '\\begin{cases} x, & x \\ge 0 \\\\ -x, & x < 0 \\end{cases}', icon: '{f(x)' },
+    { name: '연립방정식', code: '\\begin{cases} ax + by = c \\\\ dx + ey = f \\end{cases}', icon: '{ax' },
+    { name: '이항계수 (조합)', code: '\\binom{n}{k}', icon: 'nCk' },
+    { name: '벡터', code: '\\vec{v}', icon: 'v⃗' },
+    { name: '평균 (Bar)', code: '\\bar{x}', icon: 'x̄' },
+    { name: '추정치 (Hat)', code: '\\hat{y}', icon: 'ŷ' },
+    { name: '로그 (Log)', code: '\\log_{a} x', icon: 'logₐ' },
+    { name: '근의 공식', code: '\\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}', icon: '±√' },
+    { name: '정규분포', code: '\\frac{1}{\\sigma\\sqrt{2\\pi}} e^{-\\frac{(x-\\mu)^2}{2\\sigma^2}}', icon: 'N(μ,σ)' },
   ];
 
   // ====================================================================
@@ -249,8 +270,8 @@ export default function FormulaModal({ isOpen, onClose, onInsert, isDarkMode, in
                         isDarkMode ? 'bg-[#2d3135] border-[#44474e] hover:border-blue-500/50' : 'bg-white border-[#c1c6d7] hover:border-blue-500 shadow-sm'
                       }`}
                     >
-                      <span className="text-lg font-serif mb-1 text-blue-500">{t.icon}</span>
-                      <span className="text-[10px] opacity-60 font-medium">{t.name}</span>
+                      <span className="text-lg font-serif mb-1 text-blue-600 dark:text-blue-400">{t.icon}</span>
+                      <span className="text-[11px] font-semibold text-zinc-700 dark:text-zinc-200">{t.name}</span>
                     </button>
                   ))}
                 </div>

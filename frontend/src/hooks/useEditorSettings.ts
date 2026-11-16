@@ -32,6 +32,7 @@ import { readResourceShortcodes, writeResourceShortcodes } from '@/lib/resourceJ
 //             1) restoreSettings 시 리소스 폴더(settings/shortcodes.json)에서 사용자 단축키 및 슬래시 명령어를 우선 복원
 //             2) saveSettings 및 onrivi:resource_folder_changed 감지 시 리소스 폴더에 단축코드 정의서를 원자적으로 자동 동기화
 // 🚨 @PATCH : **2026-10-19** — [브라우저 모드 작업장 절대경로 및 메타데이터 복원 정밀화]: rootFolderHandle 복구 시 localStorage의 rootFolder 및 onrivi_workspace_path 메타데이터(path, displayName)를 결합하여 rootFolder에 온전히 주입, 작업장 내부 파일 판별 정상화
+// 🚨 @PATCH : **2026-11-16** — [현재 날짜/시간 슬래시 명령어 마이그레이션]: localStorage에 저장된 기존 'now' 명령어를 'datetime'으로 자동 전환
 // 🚨 @PATCH : **2026-10-19** — [환경설정 일반설정 기본 워터마크(위치/문구/이미지/진하기) 상태 동기화 탑재]: defaultWatermarkSettings 상태 및 localStorage/Electron 영구 동기화 파이프라인 신설
 // 🚨 @PATCH : **2026-10-07** — [최종 구글 드라이브 작업장 상태 영구 복원 강화]: onrivi_last_workspace_mode 및 getSavedWorkspaceInfo 연동으로 재접속 시 구글 드라이브 작업장 상태 및 rootFolder 100% 자동 복구 보장
 // 🚨 @PATCH : **2026-10-03** — [구글 드라이브(GDRIVE) 워크스페이스 세션 자동 복원 지원]: 새로고침 시 activeWorkspaceType === 'gdrive'일 때 localStorage의 rootFolder를 확인하여 구글 드라이브 서재 세션을 자동 복구
@@ -346,12 +347,35 @@ export const useEditorSettings = (
       }
       setPreviewMode('preview');
       setQuoteStyle(baseSettings.quoteStyle);
-      // Migrate the former default while preserving deliberately customized shortcuts.
-      if (baseSettings.customHotkeys.math === 'Ctrl+M') baseSettings.customHotkeys.math = 'Ctrl+Shift+T';
+      // Migrate former math defaults ('Ctrl+M', 'Ctrl+Shift+T') to 'Ctrl+Alt+M'
+      if (baseSettings.customHotkeys.math === 'Ctrl+M' || baseSettings.customHotkeys.math === 'Ctrl+Shift+T') {
+        baseSettings.customHotkeys.math = 'Ctrl+Alt+M';
+        try {
+          localStorage.setItem('customHotkeys', JSON.stringify(baseSettings.customHotkeys));
+        } catch {}
+      }
       if (baseSettings.customHotkeys.clear === 'Ctrl+\\' || baseSettings.customHotkeys.clear === 'Ctrl+Shift+0') {
         baseSettings.customHotkeys.clear = 'Ctrl+.';
         try {
           localStorage.setItem('customHotkeys', JSON.stringify(baseSettings.customHotkeys));
+        } catch {}
+      }
+      let migratedSlash = false;
+      if (baseSettings.customSlashCommands.now === 'now') {
+        baseSettings.customSlashCommands.now = 'datetime';
+        migratedSlash = true;
+      }
+      if (baseSettings.customSlashCommands.styleSettings === 'style') {
+        baseSettings.customSlashCommands.styleSettings = '';
+        migratedSlash = true;
+      }
+      if (baseSettings.customSlashCommands.aiHelp === 'ai') {
+        baseSettings.customSlashCommands.aiHelp = '';
+        migratedSlash = true;
+      }
+      if (migratedSlash) {
+        try {
+          localStorage.setItem('customSlashCommands', JSON.stringify(baseSettings.customSlashCommands));
         } catch {}
       }
       setCustomHotkeys(baseSettings.customHotkeys);

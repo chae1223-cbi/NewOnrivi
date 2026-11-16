@@ -2,6 +2,7 @@
 // 🧩 [OMD-CORE-VisualNodeViews-0001] createVisualNodeViews.ts ➔ 시각 에디터 ProseMirror NodeViews 팩토리
 // 🎯 @KICK  : table, visual_math, visual_inline_math, list_item, code_block, visual_footnote_ref, visual_footnote_def, visual_checkbox, source_block, mediaNodeView 10대 위지윅 NodeView 인스턴스화
 // 🛡️ @GUARD : Rule 3(역할 기반 분리: Core View) 준수 - DOM 렌더링 및 인터랙션 격리
+// 🚨 @PATCH : 2026-11-16 — [미디어(이미지/지도/동영상) 노드뷰 삭제 버튼 추가 및 포커스·삭제 지원]: 우측 상단 컨트롤에 삭제(🗑️) 버튼을 추가하고 지도/미디어 클릭 시 ProseMirror NodeSelection 및 에디터 포커스를 확보하여 Delete/Backspace 삭제 가능하도록 개선
 // 🚨 @PATCH : 2026-11-14 — [머메이드 다이어그램 및 원문(source_block) 편집 서랍 액션 버튼 토글 일원화]: 머메이드(code_block/source_block)와 일반 원문 블록도 HTML 표와 동일하게 평소에는 코드 편집 바를 숨기고 우측 상단 편집(✏️) 아이콘 버튼 클릭 시 펼쳐져 수정 및 닫기(코드 접기/적용 완료)가 가능하도록 통일
 // 🚨 @PATCH : 2026-11-13 — [시각 에디터 전 블록 액션 버튼(미디어/표/코드블록/머메이드/서명) 소형 아이콘화]: 모든 블록 컨트롤 버튼의 텍스트를 제거하고 13x13 SVG 아이콘과 툴팁(title/aria-label)으로 일원화하여 컨텐츠 가림 해소
 // 🚨 @PATCH : 2026-11-12 — [코드블록 상단 "CODE" 라벨 제거 및 언어 입력창 상시 노출]: header.textContent = 'CODE ' 라벨을 제거하고, 코드블록 언어 입력창(input)으로 직접 언어를 표시하도록 개선
@@ -106,11 +107,34 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
           .catch(() => setNotice('클립보드 복사에 실패했습니다.'));
       }
     });
+    const delBtn = document.createElement('button');
+    delBtn.type = 'button';
+    delBtn.innerHTML = ICON_TRASH;
+    delBtn.className = 'visual-media-delete onrivi-media-control';
+    const deleteLabel = (isImage ? '이미지' : node.attrs.kind === 'map' ? '지도' : '동영상') + ' 삭제';
+    delBtn.title = deleteLabel;
+    delBtn.setAttribute('aria-label', deleteLabel);
+    delBtn.addEventListener('mousedown', event => event.preventDefault());
+    delBtn.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+      const position = getPos();
+      const currentView = viewRef.current;
+      if (currentView?.editable && typeof position === 'number') {
+        const tr = currentView.state.tr;
+        if (currentView.state.doc.childCount === 1 && position === 0) {
+          currentView.dispatch(closeHistory(tr.replaceWith(position, position + node.nodeSize, visualSchema.nodes.paragraph.create())));
+        } else {
+          currentView.dispatch(closeHistory(tr.delete(position, position + node.nodeSize)));
+        }
+        currentView.focus();
+      }
+    });
     const id = ++imageSequence.current;
     const render = () => setImageMounts(previous => [...previous.filter(item => item.id !== id), { id, element: picture, source: node.attrs.source }]);
     const controls = document.createElement('div');
     controls.className = 'visual-media-controls no-print';
-    controls.append(copy, button);
+    controls.append(copy, button, delBtn);
     const selectMediaNode = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
       if (target?.closest('button, .onrivi-media-control, input, select, textarea, a')) return;
@@ -136,7 +160,7 @@ export function createVisualNodeViews(options: CreateVisualNodeViewsOptions): No
       selectNode() { dom.classList.add('ProseMirror-selectednode'); },
       deselectNode() { dom.classList.remove('ProseMirror-selectednode'); },
       ignoreMutation: () => true,
-      stopEvent: event => button.contains(event.target as Node) || copy.contains(event.target as Node),
+      stopEvent: event => button.contains(event.target as Node) || copy.contains(event.target as Node) || delBtn.contains(event.target as Node),
       update(next) {
         if (next.type !== node.type) return false;
         if (next.attrs.source !== node.attrs.source) { node = next; render(); } else node = next;
