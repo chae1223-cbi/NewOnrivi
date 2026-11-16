@@ -335,6 +335,7 @@ export function useEditorProfiles({
       }
     }
     // 2순위: 소속 폴더에 지정된 기본 서식 ➔ 3순위: Onrivi 기본서식(system-1)
+    void folderProfilesRevision;
     const fallbackProfile = resolveProfileByPriority({
       fileProfileIdOrName: null,
       fileTarget: activeFileTarget,

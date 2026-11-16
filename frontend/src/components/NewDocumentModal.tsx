@@ -66,7 +66,10 @@ export default function NewDocumentModal({
 
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const availableProfiles = useMemo(() => getAvailableProfilesSnapshot(), [isOpen]);
+  const availableProfiles = useMemo(
+    () => (isOpen ? getAvailableProfilesSnapshot() : []),
+    [isOpen]
+  );
   const userProfiles = useMemo(
     () => availableProfiles.filter(p => p.id !== 'default' && !isSystemProfileId(p.id)),
     [availableProfiles]

@@ -56,7 +56,7 @@ export default function PromptModal({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const availableProfiles = useMemo(() => {
-    return getAvailableProfilesSnapshot(profiles);
+    return isOpen ? getAvailableProfilesSnapshot(profiles) : [];
   }, [profiles, isOpen]);
 
   const userProfiles = useMemo(
