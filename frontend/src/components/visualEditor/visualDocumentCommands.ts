@@ -2,6 +2,9 @@
 // ⚙️ [OMD-CORE-VisualDocCommands-0001] visualDocumentCommands.ts ➔ 시각 에디터 전용 ProseMirror 커맨드 및 정규화 플러그인
 // 🎯 @KICK  : 제목/코드블록/인용구/리스트/구분선/미디어 등 블록 조작 커맨드 및 리스트 정규화 트랜잭션 플러그인 제공
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 VisualDocumentEditor 대형 컴포넌트 모듈화 표준 준수
+// 🚨 @PATCH : 2026-11-17 — [행 우측 빈 공간 클릭 시 해당 행 글자 끝 즉시 안착 정밀화]:
+//             1) paragraphLineEndAtClick에서 블록 전체 폭을 반환할 수 있는 range.selectNodeContents 대신 TreeWalker(텍스트 노드) + 인라인 원자 요소의 실제 getClientRects만 수집하여 행의 정확한 끝 좌표(right) 산출
+//             2) 에디터 우측 여백(surface.right 바깥 포함) 클릭 시에도 해당 Y행의 글자 끝으로 안착하도록 경계 완화
 // 🚨 @PATCH : 2026-11-14 — [리스트 정규화 플러그인에 인접 리스트 병합 및 ordered_list 순차 번호 동기화(normalizeTopLevelListsInTransaction) 연동]:
 //             1) createListNormalizationPlugin에서 문서 변경 시 normalizeTopLevelListsInTransaction을 함께 실행하여, 개별 분할된 번호 목록의 항목 추가/삭제 시에도 후속 번호 목록(order)이 자동으로 순차 재계산되도록 보장
 // 🚨 @PATCH : 2026-11-13 — [행 시작 Tab 들여쓰기 / Shift+Tab 내어쓰기 전용 paragraphIndent 커맨드 추가]:
@@ -503,7 +506,7 @@ export function emptyParagraphAtClick(currentView: EditorView, event: MouseEvent
 
 export function paragraphLineEndAtClick(currentView: EditorView, event: MouseEvent): number | null {
   const surface = currentView.dom.getBoundingClientRect();
-  if (event.clientX < surface.left || event.clientX > surface.right) return null;
+  if (event.clientX < surface.left) return null;
 
   const targetCell = (event.target as HTMLElement | null)?.closest('td, th') as HTMLElement | null;
   // 표 내부 빈 셀 클릭 시 행 끝 이동 판정을 배제하여 빈 셀 제자리 안착 보장
@@ -531,9 +534,38 @@ export function paragraphLineEndAtClick(currentView: EditorView, event: MouseEve
     // 마우스 Y가 해당 텍스트블록 요소의 상하 범위(상하 여유 4px) 안에 있는지 1차 확인
     if (event.clientY < elemRect.top - 4 || event.clientY > elemRect.bottom + 4) return;
 
-    const range = document.createRange();
-    range.selectNodeContents(element);
-    const textRects = Array.from(range.getClientRects()).filter(rect => rect.width > 0 && rect.height > 0);
+    // 블록 전체 너비 rect가 섞이지 않도록 텍스트 노드와 인라인 원자 요소의 실제 clientRect만 수집
+    const textRects: DOMRect[] = [];
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
+      acceptNode(textNode) {
+        const parentEl = textNode.parentElement;
+        if (parentEl?.closest('.visual-code-language, .onrivi-media-control')) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        return textNode.textContent ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP;
+      },
+    });
+    const probeRange = document.createRange();
+    let currentText: Node | null = walker.nextNode();
+    while (currentText) {
+      probeRange.selectNodeContents(currentText);
+      for (const rect of Array.from(probeRange.getClientRects())) {
+        if (rect.width > 0 && rect.height > 0) textRects.push(rect);
+      }
+      currentText = walker.nextNode();
+    }
+    element.querySelectorAll('sup, .visual-inline-math, input, img').forEach((atomEl) => {
+      if (atomEl.closest('.visual-code-language, .onrivi-media-control')) return;
+      const rect = atomEl.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) textRects.push(rect);
+    });
+    if (!textRects.length) {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      for (const rect of Array.from(range.getClientRects())) {
+        if (rect.width > 0 && rect.height > 0) textRects.push(rect);
+      }
+    }
     if (!textRects.length) return;
 
     // 각 라인별 Rect 그룹화 (Y 좌표가 비슷한 조각들을 한 라인으로 병합)
@@ -596,7 +628,7 @@ export function paragraphLineEndAtClick(currentView: EditorView, event: MouseEve
 
     // 🌟 [문단 중간 행 우측 빈 공간 클릭 시]: 해당 행의 글자 끝 좌표로 이동
     const targetY = (targetLine.top + targetLine.bottom) / 2;
-    const hit = currentView.posAtCoords({ left: targetLine.right - 2, top: targetY });
+    const hit = currentView.posAtCoords({ left: Math.max(targetLine.left, targetLine.right - 1), top: targetY });
     if (hit) {
       const $hit = currentView.state.doc.resolve(hit.pos);
       if ($hit.parent === node) {

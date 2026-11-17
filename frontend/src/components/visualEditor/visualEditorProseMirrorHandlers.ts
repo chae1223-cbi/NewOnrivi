@@ -1825,6 +1825,13 @@ export function createVisualEditorHandlers({
       const isCellInteractive = Boolean((event.target as HTMLElement | null)?.closest('a, button, input, select, textarea'));
       if (targetCell && !isCellInteractive && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
         event.preventDefault();
+        const cellLineEndPos = paragraphLineEndAtClick(currentView, event);
+        if (cellLineEndPos !== null) {
+          currentView.dispatch(currentView.state.tr.setSelection(TextSelection.create(currentView.state.doc, cellLineEndPos)));
+          currentView.focus();
+          caretRef.current?.schedule();
+          return true;
+        }
         try {
           const cellPos = currentView.posAtDOM(targetCell, 0);
           if (typeof cellPos === 'number' && cellPos >= 0) {
