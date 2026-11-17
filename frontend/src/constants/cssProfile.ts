@@ -141,7 +141,7 @@ export const SYSTEM_PROFILES: CssProfile[] = [
     "pageStyle": {
       "fontFamily": "'Roboto', 'Google Sans', 'Noto Sans KR', 'Noto Sans', -apple-system, BlinkMacSystemFont, sans-serif",
       "fontUrl": "https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Roboto+Mono:wght@400;500&family=Roboto:ital,wght@0,300;0,400;0,500;0,700;1,400&display=swap",
-      "fontSize": "16px",
+      "fontSize": "10pt",
       "lineHeight": "1.5",
       "letterSpacing": "0em",
       "backgroundColor": "#FFFFFF",
@@ -151,13 +151,13 @@ export const SYSTEM_PROFILES: CssProfile[] = [
       "marginLeft": "12mm",
       "marginRight": "12mm",
       "orientation": "portrait",
-      "headingSizeOffset": "3pt",
+      "headingSizeOffset": "2pt",
       "tabSize": "2",
       "exportPageBreakLevel": "none"
     },
     "rules": {
       "h1": {
-        "font-size": "34px",
+        "font-size": "22pt",
         "font-weight": "400",
         "color": "#202124",
         "padding-left": "0px",
@@ -173,7 +173,7 @@ export const SYSTEM_PROFILES: CssProfile[] = [
         "letter-spacing": "-0.01em"
       },
       "h2": {
-        "font-size": "24px",
+        "font-size": "20pt",
         "font-weight": "400",
         "color": "#202124",
         "padding-left": "0px",
@@ -191,7 +191,7 @@ export const SYSTEM_PROFILES: CssProfile[] = [
       "h3": {
         "text-align": "left",
         "font-weight": "400",
-        "font-size": "20px",
+        "font-size": "18pt",
         "padding-left": "0px",
         "margin-top": "32px",
         "margin-bottom": "16px",
@@ -203,7 +203,7 @@ export const SYSTEM_PROFILES: CssProfile[] = [
       "h4": {
         "text-align": "left",
         "font-weight": "500",
-        "font-size": "16px",
+        "font-size": "16pt",
         "margin-top": "24px",
         "margin-bottom": "12px",
         "color": "#202124",
@@ -214,7 +214,7 @@ export const SYSTEM_PROFILES: CssProfile[] = [
       "h5": {
         "text-align": "left",
         "font-weight": "500",
-        "font-size": "15px",
+        "font-size": "14pt",
         "margin-top": "20px",
         "margin-bottom": "8px",
         "color": "#202124",
@@ -225,7 +225,7 @@ export const SYSTEM_PROFILES: CssProfile[] = [
       "h6": {
         "text-align": "left",
         "font-weight": "500",
-        "font-size": "14px",
+        "font-size": "12pt",
         "margin-top": "16px",
         "margin-bottom": "8px",
         "color": "#5f6368",
@@ -303,7 +303,7 @@ export const SYSTEM_PROFILES: CssProfile[] = [
         "border-color": "#dadce0",
         "margin-top": "16px",
         "margin-bottom": "16px",
-        "font-size": "14px",
+        "font-size": "inherit",
         "border-radius": "8px",
         "overflow": "hidden"
       },
@@ -314,7 +314,7 @@ export const SYSTEM_PROFILES: CssProfile[] = [
         "border-width": "1px",
         "border-color": "#dadce0",
         "font-weight": "500",
-        "font-size": "14px",
+        "font-size": "inherit",
         "text-align": "left",
         "color": "#202124"
       },
@@ -324,7 +324,7 @@ export const SYSTEM_PROFILES: CssProfile[] = [
         "border-style": "solid",
         "border-width": "1px",
         "border-color": "#e8eaed",
-        "font-size": "14px",
+        "font-size": "inherit",
         "text-align": "left",
         "color": "#202124"
       },
@@ -338,14 +338,14 @@ export const SYSTEM_PROFILES: CssProfile[] = [
         "font-style": "normal",
         "font-weight": "normal",
         "border-left": "4px solid #1a73e8",
-        "font-size": "16px"
+        "font-size": "inherit"
       },
       "codeBlock": {
         "background-color": "#f1f3f4",
         "color": "#37474f",
         "padding": "16px 24px",
         "border-radius": "8px",
-        "font-size": "14px",
+        "font-size": "inherit",
         "line-height": "1.45",
         "margin-top": "16px",
         "margin-bottom": "16px",
@@ -514,7 +514,7 @@ SYSTEM_PROFILES.push(buildSystemProfile({
   description: "오늘 할 일, 약속, 루틴, 일상 메모 정리에 최적화된 산뜻한 체크리스트·구분선 중심의 생활 기록 서식입니다.",
   pageStyle: {
     fontFamily: "'Pretendard', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif",
-    fontSize: "15.5px",
+    fontSize: "10pt",
     lineHeight: "1.6",
     marginTop: "14mm",
     marginBottom: "14mm",
@@ -522,9 +522,9 @@ SYSTEM_PROFILES.push(buildSystemProfile({
     marginRight: "12mm",
   },
   rules: {
-    h1: { "font-size": "26px", "font-weight": "800", "color": "#0f172a", "border-bottom": "2px solid #0d9488", "padding-bottom": "8px", "margin-top": "20px", "margin-bottom": "16px" },
-    h2: { "font-size": "19px", "font-weight": "700", "color": "#0f766e", "border-left": "4px solid #0d9488", "padding-left": "10px", "margin-top": "24px", "margin-bottom": "12px" },
-    h3: { "font-size": "16.5px", "font-weight": "700", "color": "#334155", "margin-top": "18px", "margin-bottom": "8px" },
+    h1: { "font-size": "22pt", "font-weight": "800", "color": "#0f172a", "border-bottom": "2px solid #0d9488", "padding-bottom": "8px", "margin-top": "20px", "margin-bottom": "16px" },
+    h2: { "font-size": "20pt", "font-weight": "700", "color": "#0f766e", "border-left": "4px solid #0d9488", "padding-left": "10px", "margin-top": "24px", "margin-bottom": "12px" },
+    h3: { "font-size": "18pt", "font-weight": "700", "color": "#334155", "margin-top": "18px", "margin-bottom": "8px" },
     p: { "color": "#1e293b", "line-height": "1.6", "margin-bottom": "10px" },
     li: { "margin-bottom": "6px", "line-height": "1.6", "color": "#1e293b" },
     taskList: { "boxSize": "18px", "checkedEffect": "strike", "textGap": "10px", "color": "#1e293b" },
@@ -543,7 +543,7 @@ SYSTEM_PROFILES.push(buildSystemProfile({
   description: "생활비, 고정 지출, 구독료 및 영수증 이미지 관리에 최적화된 숫자 가독성·격자 정산표 중심 서식입니다.",
   pageStyle: {
     fontFamily: "'Pretendard', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif",
-    fontSize: "15px",
+    fontSize: "10pt",
     lineHeight: "1.55",
     marginTop: "15mm",
     marginBottom: "15mm",
@@ -551,11 +551,11 @@ SYSTEM_PROFILES.push(buildSystemProfile({
     marginRight: "12mm",
   },
   rules: {
-    h1: { "font-size": "26px", "font-weight": "800", "color": "#1e3a8a", "border-bottom": "2px solid #1d4ed8", "padding-bottom": "8px", "margin-top": "20px", "margin-bottom": "16px" },
-    h2: { "font-size": "18px", "font-weight": "700", "color": "#1d4ed8", "border-left": "4px solid #1d4ed8", "padding-left": "10px", "margin-top": "24px", "margin-bottom": "10px" },
-    h3: { "font-size": "16px", "font-weight": "700", "color": "#334155", "margin-top": "16px", "margin-bottom": "8px" },
+    h1: { "font-size": "22pt", "font-weight": "800", "color": "#1e3a8a", "border-bottom": "2px solid #1d4ed8", "padding-bottom": "8px", "margin-top": "20px", "margin-bottom": "16px" },
+    h2: { "font-size": "20pt", "font-weight": "700", "color": "#1d4ed8", "border-left": "4px solid #1d4ed8", "padding-left": "10px", "margin-top": "24px", "margin-bottom": "10px" },
+    h3: { "font-size": "18pt", "font-weight": "700", "color": "#334155", "margin-top": "16px", "margin-bottom": "8px" },
     p: { "color": "#1e293b", "line-height": "1.55", "margin-bottom": "10px" },
-    table: { "border-width": "1px", "border-color": "#cbd5e1", "border-radius": "6px", "font-size": "13.5px" },
+    table: { "border-width": "1px", "border-color": "#cbd5e1", "border-radius": "6px", "font-size": "inherit" },
     th: { "background-color": "#eff6ff", "color": "#1e3a8a", "font-weight": "700", "padding": "4px 12px", "border-color": "#cbd5e1" },
     td: { "padding": "4px 12px", "border-color": "#e2e8f0", "color": "#1e293b" },
     img: { "width": "360px", "border": "1px solid #cbd5e1", "border-radius": "6px", "box-shadow": "0 1px 4px rgba(0,0,0,0.06)" },
@@ -576,7 +576,7 @@ SYSTEM_PROFILES.push(buildSystemProfile({
   description: "직장 회의, 상담, 가족 간 결정 사항을 참석자·안건·결정사항·담당자 기한 순으로 명쾌하게 정리하는 회의록 표준 서식입니다.",
   pageStyle: {
     fontFamily: "'Pretendard', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif",
-    fontSize: "15.5px",
+    fontSize: "10pt",
     lineHeight: "1.65",
     marginTop: "16mm",
     marginBottom: "16mm",
@@ -584,9 +584,9 @@ SYSTEM_PROFILES.push(buildSystemProfile({
     marginRight: "12mm",
   },
   rules: {
-    h1: { "font-size": "28px", "font-weight": "800", "color": "#0f172a", "border-bottom": "2px solid #334155", "padding-bottom": "10px", "margin-top": "20px", "margin-bottom": "18px" },
-    h2: { "font-size": "20px", "font-weight": "700", "color": "#1d4ed8", "border-bottom": "1px solid #dbeafe", "padding-bottom": "6px", "margin-top": "26px", "margin-bottom": "12px" },
-    h3: { "font-size": "17px", "font-weight": "700", "color": "#1e40af", "border-left": "3px solid #3b82f6", "padding-left": "10px", "margin-top": "20px", "margin-bottom": "10px" },
+    h1: { "font-size": "22pt", "font-weight": "800", "color": "#0f172a", "border-bottom": "2px solid #334155", "padding-bottom": "10px", "margin-top": "20px", "margin-bottom": "18px" },
+    h2: { "font-size": "20pt", "font-weight": "700", "color": "#1d4ed8", "border-bottom": "1px solid #dbeafe", "padding-bottom": "6px", "margin-top": "26px", "margin-bottom": "12px" },
+    h3: { "font-size": "18pt", "font-weight": "700", "color": "#1e40af", "border-left": "3px solid #3b82f6", "padding-left": "10px", "margin-top": "20px", "margin-bottom": "10px" },
     p: { "color": "#1e293b", "line-height": "1.65", "margin-bottom": "12px" },
     table: { "border-width": "1px", "border-color": "#cbd5e1" },
     th: { "background-color": "#f1f5f9", "color": "#0f172a", "font-weight": "700", "padding": "4px 12px", "border-color": "#cbd5e1" },
@@ -606,7 +606,7 @@ SYSTEM_PROFILES.push(buildSystemProfile({
   description: "학교·회사·기관 제출용 신청서, 요청서 및 공식 안내문 작성에 적합한 단정한 A4 인쇄 표준 서식입니다.",
   pageStyle: {
     fontFamily: "'Noto Sans KR', 'Malgun Gothic', sans-serif",
-    fontSize: "15.5px",
+    fontSize: "10pt",
     lineHeight: "1.7",
     marginTop: "18mm",
     marginBottom: "18mm",
@@ -614,9 +614,9 @@ SYSTEM_PROFILES.push(buildSystemProfile({
     marginRight: "15mm",
   },
   rules: {
-    h1: { "font-size": "28px", "font-weight": "800", "color": "#111827", "text-align": "center", "border-bottom": "2px solid #111827", "padding-bottom": "12px", "margin-top": "16px", "margin-bottom": "24px" },
-    h2: { "font-size": "18px", "font-weight": "700", "color": "#1e293b", "border-left": "4px solid #334155", "padding-left": "10px", "margin-top": "24px", "margin-bottom": "12px" },
-    h3: { "font-size": "16px", "font-weight": "700", "color": "#334155", "margin-top": "18px", "margin-bottom": "8px" },
+    h1: { "font-size": "22pt", "font-weight": "800", "color": "#111827", "text-align": "center", "border-bottom": "2px solid #111827", "padding-bottom": "12px", "margin-top": "16px", "margin-bottom": "24px" },
+    h2: { "font-size": "20pt", "font-weight": "700", "color": "#1e293b", "border-left": "4px solid #334155", "padding-left": "10px", "margin-top": "24px", "margin-bottom": "12px" },
+    h3: { "font-size": "18pt", "font-weight": "700", "color": "#334155", "margin-top": "18px", "margin-bottom": "8px" },
     p: { "color": "#111827", "line-height": "1.7", "margin-bottom": "12px" },
     table: { "border-width": "1px", "border-color": "#9ca3af", "border-radius": "0px" },
     th: { "background-color": "#f3f4f6", "color": "#111827", "font-weight": "700", "padding": "4px 12px", "border-color": "#9ca3af" },
@@ -635,7 +635,7 @@ SYSTEM_PROFILES.push(buildSystemProfile({
   pageStyle: {
     fontFamily: "'Noto Serif KR', 'KoPubWorldBatang', 'NanumMyeongjo', 'Batang', serif",
     fontUrl: "https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;500;700&display=swap",
-    fontSize: "16.5px",
+    fontSize: "10pt",
     lineHeight: "1.88",
     letterSpacing: "-0.01em",
     backgroundColor: "#fcfbf7",
@@ -645,14 +645,14 @@ SYSTEM_PROFILES.push(buildSystemProfile({
     marginRight: "16mm",
   },
   rules: {
-    h1: { "font-size": "30px", "font-weight": "700", "color": "#1c1917", "text-align": "center", "margin-top": "32px", "margin-bottom": "26px", "line-height": "1.35" },
-    h2: { "font-size": "21px", "font-weight": "700", "color": "#44403c", "margin-top": "34px", "margin-bottom": "16px", "line-height": "1.45" },
-    h3: { "font-size": "17.5px", "font-weight": "700", "color": "#57534e", "margin-top": "24px", "margin-bottom": "12px" },
+    h1: { "font-size": "22pt", "font-weight": "700", "color": "#1c1917", "text-align": "center", "margin-top": "32px", "margin-bottom": "26px", "line-height": "1.35" },
+    h2: { "font-size": "20pt", "font-weight": "700", "color": "#44403c", "margin-top": "34px", "margin-bottom": "16px", "line-height": "1.45" },
+    h3: { "font-size": "18pt", "font-weight": "700", "color": "#57534e", "margin-top": "24px", "margin-bottom": "12px" },
     p: { "color": "#292524", "line-height": "1.88", "text-align": "justify", "text-indent": "1em", "margin-bottom": "6px", "sentence-gap": "2px" },
     li: { "color": "#292524", "line-height": "1.85" },
     hr: { "border-top-style": "solid", "border-top-width": "1px", "border-top-color": "#a8a29e", "width": "30%", "margin-top": "28px", "margin-bottom": "28px" },
     blockquote: { "border-left": "3px solid #a8a29e", "background-color": "#f5f2eb", "color": "#44403c", "padding": "14px 20px", "font-style": "italic" },
-    footnote: { "color": "#57534e", "font-size": "13px", "line-height": "1.6" },
+    footnote: { "color": "#57534e", "font-size": "inherit", "line-height": "1.6" },
   },
   hrStructure: { borderTopStyle: "solid", borderTopWidth: "1px", marginTopBottom: "28px", lineWidth: "30%" },
   customCss: ".custom-preview-container :is(h1,h2,h3,h4,h5,h6,hr) + p, .markdown-viewer-root :is(h1,h2,h3,h4,h5,h6,hr) + p { text-indent: 0px !important; }\n.custom-preview-container :is(blockquote,li,td,th) p, .markdown-viewer-root :is(blockquote,li,td,th) p { text-indent: 0px !important; }\n.custom-preview-container hr, .markdown-viewer-root hr { margin-left: auto !important; margin-right: auto !important; }",
@@ -665,7 +665,7 @@ SYSTEM_PROFILES.push(buildSystemProfile({
   description: "직장 업무 보고, 프로젝트 기획, 성과·분석 리포트용 완성형 보고서 서식입니다. 보고서 표준 번호(Ⅰ.➔1.➔가.), 요약 콜아웃, 블루 틴트 비교표를 제공합니다.",
   pageStyle: {
     fontFamily: "'Pretendard', 'Noto Sans KR', -apple-system, BlinkMacSystemFont, sans-serif",
-    fontSize: "15.5px",
+    fontSize: "10pt",
     lineHeight: "1.65",
     marginTop: "18mm",
     marginBottom: "18mm",
@@ -673,9 +673,9 @@ SYSTEM_PROFILES.push(buildSystemProfile({
     marginRight: "12mm",
   },
   rules: {
-    h1: { "font-size": "28px", "font-weight": "800", "color": "#1d4ed8", "border-bottom": "2px solid #1d4ed8", "padding-bottom": "10px", "margin-top": "24px", "margin-bottom": "18px" },
-    h2: { "font-size": "20px", "font-weight": "700", "color": "#1e40af", "border-bottom": "1px solid #bfdbfe", "padding-bottom": "6px", "margin-top": "28px", "margin-bottom": "14px" },
-    h3: { "font-size": "17px", "font-weight": "700", "color": "#0f172a", "border-left": "4px solid #2563eb", "padding-left": "12px", "margin-top": "22px", "margin-bottom": "10px" },
+    h1: { "font-size": "22pt", "font-weight": "800", "color": "#1d4ed8", "border-bottom": "2px solid #1d4ed8", "padding-bottom": "10px", "margin-top": "24px", "margin-bottom": "18px" },
+    h2: { "font-size": "20pt", "font-weight": "700", "color": "#1e40af", "border-bottom": "1px solid #bfdbfe", "padding-bottom": "6px", "margin-top": "28px", "margin-bottom": "14px" },
+    h3: { "font-size": "18pt", "font-weight": "700", "color": "#0f172a", "border-left": "4px solid #2563eb", "padding-left": "12px", "margin-top": "22px", "margin-bottom": "10px" },
     p: { "color": "#0f172a", "line-height": "1.65", "margin-bottom": "12px" },
     table: { "border-width": "1px", "border-color": "#bfdbfe" },
     th: { "background-color": "#eff6ff", "color": "#1e3a8a", "font-weight": "700", "padding": "4px 12px", "border-color": "#bfdbfe" },
@@ -699,7 +699,7 @@ SYSTEM_PROFILES.push(buildSystemProfile({
   pageStyle: {
     fontFamily: "'Noto Serif KR', 'KoPubBatang', 'Batang', 'Malgun Gothic', serif",
     fontUrl: "https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;500;700&display=swap",
-    fontSize: "16px",
+    fontSize: "10pt",
     lineHeight: "1.8",
     letterSpacing: "0em",
     backgroundColor: "#ffffff",
@@ -710,9 +710,9 @@ SYSTEM_PROFILES.push(buildSystemProfile({
     tabSize: "4",
   },
   rules: {
-    h1: { "font-size": "30px", "font-weight": "700", "color": "#111111", "text-align": "center", "margin-top": "24px", "margin-bottom": "24px", "line-height": "1.45", "letter-spacing": "-0.025em" },
-    h2: { "font-size": "18px", "font-weight": "700", "color": "#111111", "margin-top": "24px", "margin-bottom": "10px", "line-height": "1.6", "letter-spacing": "-0.02em" },
-    h3: { "font-size": "15.5px", "font-weight": "700", "color": "#111111", "margin-top": "16px", "margin-bottom": "8px", "line-height": "1.7" },
+    h1: { "font-size": "22pt", "font-weight": "700", "color": "#111111", "text-align": "center", "margin-top": "24px", "margin-bottom": "24px", "line-height": "1.45", "letter-spacing": "-0.025em" },
+    h2: { "font-size": "20pt", "font-weight": "700", "color": "#111111", "margin-top": "24px", "margin-bottom": "10px", "line-height": "1.6", "letter-spacing": "-0.02em" },
+    h3: { "font-size": "18pt", "font-weight": "700", "color": "#111111", "margin-top": "16px", "margin-bottom": "8px", "line-height": "1.7" },
     p: { "color": "#111111", "line-height": "1.8", "text-align": "justify", "margin-bottom": "8px", "sentence-gap": "4px" },
     table: { "border-width": "1px", "border-color": "#374151", "border-radius": "0px" },
     th: { "background-color": "#f3f4f6", "color": "#111111", "font-weight": "700", "padding": "4px 12px", "border-color": "#374151" },
@@ -737,18 +737,18 @@ export const HELP_PROFILE: CssProfile = (() => {
   help.description = "사용 설명서 전용 서식. 읽기 편한 본문, 파란 제목, 표와 코드 예제, 항목별 제목 번호.";
   help.headingNumbering = ["none", "decimal", "hangul", "decimal-paren", "hangul-paren", { type: "custom", number: "bullet", prefix: "", suffix: "", bullet: "•" }];
   delete help.layout;
-  help.pageStyle = { ...help.pageStyle, fontFamily: "'Noto Sans KR', 'Malgun Gothic', sans-serif", fontSize: "16px", lineHeight: "1.8", letterSpacing: "0", backgroundColor: "#ffffff", paperSize: "a4", orientation: "portrait", marginTop: "18mm", marginBottom: "18mm", marginLeft: "16mm", marginRight: "16mm", headingSizeOffset: "3pt" };
+  help.pageStyle = { ...help.pageStyle, fontFamily: "'Noto Sans KR', 'Malgun Gothic', sans-serif", fontSize: "10pt", lineHeight: "1.8", letterSpacing: "0", backgroundColor: "#ffffff", paperSize: "a4", orientation: "portrait", marginTop: "18mm", marginBottom: "18mm", marginLeft: "16mm", marginRight: "16mm", headingSizeOffset: "2pt" };
   for (const [index, key] of Array.from((["h1", "h2", "h3", "h4", "h5", "h6"] as const).entries())) {
-    help.rules[key] = { "font-size": [28, 24, 21, 19, 17, 16][index] + "px", "font-weight": "700", "line-height": "1.4", color: index < 2 ? "#1d4ed8" : "#1e293b", "text-align": "left", "text-indent": "0", "margin-top": index ? "28px" : "0", "margin-bottom": "12px", padding: "0", "background-color": "transparent", border: "none", "box-shadow": "none", "text-shadow": "none", "border-bottom": index === 1 ? "1px solid #dbeafe" : "none" };
+    help.rules[key] = { "font-size": [22, 20, 18, 16, 14, 12][index] + "pt", "font-weight": "700", "line-height": "1.4", color: index < 2 ? "#1d4ed8" : "#1e293b", "text-align": "left", "text-indent": "0", "margin-top": index ? "28px" : "0", "margin-bottom": "12px", padding: "0", "background-color": "transparent", border: "none", "box-shadow": "none", "text-shadow": "none", "border-bottom": index === 1 ? "1px solid #dbeafe" : "none" };
   }
-  Object.assign(help.rules.p, { "font-size": "16px", "line-height": "1.8", "text-align": "left", "text-indent": "0", "margin-top": "0", "margin-bottom": "14px", color: "#334155", "background-color": "transparent" });
-  Object.assign(help.rules.li, { "font-size": "16px", "line-height": "1.8", "margin-bottom": "6px", color: "#334155" });
+  Object.assign(help.rules.p, { "font-size": "inherit", "line-height": "1.8", "text-align": "left", "text-indent": "0", "margin-top": "0", "margin-bottom": "14px", color: "#334155", "background-color": "transparent" });
+  Object.assign(help.rules.li, { "font-size": "inherit", "line-height": "1.8", "margin-bottom": "6px", color: "#334155" });
   Object.assign(help.rules.ol, { "list-style-type": "decimal" });
-  Object.assign(help.rules.table, { width: "100%", "border-collapse": "collapse", "font-size": "14px", "margin-top": "16px", "margin-bottom": "20px", "border-color": "#cbd5e1" });
-  for (const key of ["th", "td"] as const) Object.assign(help.rules[key], { padding: "4px 12px", border: "1px solid #cbd5e1", "font-size": "14px", "line-height": "1.65", color: "#334155", "background-color": key === "th" ? "#eff6ff" : "transparent", "text-align": "left" });
+  Object.assign(help.rules.table, { width: "100%", "border-collapse": "collapse", "font-size": "inherit", "margin-top": "16px", "margin-bottom": "20px", "border-color": "#cbd5e1" });
+  for (const key of ["th", "td"] as const) Object.assign(help.rules[key], { padding: "4px 12px", border: "1px solid #cbd5e1", "font-size": "inherit", "line-height": "1.65", color: "#334155", "background-color": key === "th" ? "#eff6ff" : "transparent", "text-align": "left" });
   Object.assign(help.rules.a, { color: "#1d4ed8", "text-decoration": "underline" });
-  Object.assign(help.rules.blockquote, { "border-left": "3px solid #93c5fd", "background-color": "#eff6ff", padding: "12px 16px", color: "#334155" });
-  Object.assign(help.rules.codeBlock, { "background-color": "#f1f5f9", color: "#1e293b", padding: "16px", "font-size": "14px", "line-height": "1.6", "border-radius": "8px" });
+  Object.assign(help.rules.blockquote, { "border-left": "3px solid #93c5fd", "background-color": "#eff6ff", padding: "12px 16px", color: "#334155", "font-size": "inherit" });
+  Object.assign(help.rules.codeBlock, { "background-color": "#f1f5f9", color: "#1e293b", padding: "16px", "font-size": "inherit", "line-height": "1.6", "border-radius": "8px" });
   help.rules.code = { "background-color": "#eff6ff", color: "#1e40af", padding: "2px 5px", "border-radius": "4px", "font-size": "0.9em" };
   help.tableStructure = { outerBorderWidth: "1px", rowBorderWidth: "1px", colBorderWidth: "1px" };
   help.customCss = "";
@@ -778,7 +778,7 @@ export function createEmptyProfile(): CssProfile {
     pageStyle: {
       fontFamily: "'Roboto', 'Google Sans', 'Noto Sans KR', 'Noto Sans', -apple-system, BlinkMacSystemFont, sans-serif",
       fontUrl: 'https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Roboto+Mono:wght@400;500&family=Roboto:ital,wght@0,300;0,400;0,500;0,700;1,400&display=swap',
-      fontSize: '16px',
+      fontSize: '10pt',
       lineHeight: '1.5',
       letterSpacing: '0em',
       backgroundColor: '#ffffff',
@@ -788,7 +788,7 @@ export function createEmptyProfile(): CssProfile {
       marginLeft: '12mm',
       marginRight: '12mm',
       orientation: 'portrait',
-      headingSizeOffset: '3pt',
+      headingSizeOffset: '2pt',
       tabSize: '2',
       exportPageBreakLevel: 'none'
     },
@@ -885,7 +885,7 @@ export function normalizeCssProfile(
     ...DEFAULT_PROFILE.pageStyle,
     ...cleanPageStyle,
     fontFamily: cleanPageStyle.fontFamily || DEFAULT_PROFILE.pageStyle.fontFamily,
-    fontSize: cleanPageStyle.fontSize || DEFAULT_PROFILE.pageStyle.fontSize || '16px',
+    fontSize: cleanPageStyle.fontSize || DEFAULT_PROFILE.pageStyle.fontSize || '10pt',
     lineHeight: cleanPageStyle.lineHeight || DEFAULT_PROFILE.pageStyle.lineHeight || '1.75',
     letterSpacing: cleanPageStyle.letterSpacing || DEFAULT_PROFILE.pageStyle.letterSpacing || '-0.01em',
     paperSize: cleanPageStyle.paperSize || DEFAULT_PROFILE.pageStyle.paperSize || 'a4',
@@ -896,7 +896,7 @@ export function normalizeCssProfile(
     marginRight: cleanPageStyle.marginRight || DEFAULT_PROFILE.pageStyle.marginRight || '12mm',
     tabSize: cleanPageStyle.tabSize || DEFAULT_PROFILE.pageStyle.tabSize || '2',
     headingSizeOffset: (!cleanPageStyle.headingSizeOffset || String(cleanPageStyle.headingSizeOffset).trim() === '0px')
-      ? '3pt'
+      ? '2pt'
       : String(cleanPageStyle.headingSizeOffset),
     exportPageBreakLevel: cleanPageStyle.exportPageBreakLevel || DEFAULT_PROFILE.pageStyle.exportPageBreakLevel || 'none',
   };

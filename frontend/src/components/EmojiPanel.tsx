@@ -1,6 +1,7 @@
 // ====================================================================
 // 📊 [OMD-EDIT-EmojiPanel-0001] EmojiPanel.tsx ➔ EmojiPanel
 // 🎯 @KICK  : 에디터 우측 전용 이모지 보관함 패널 — 카테고리별 탐색, 한글/영문 검색, 원클릭 본문 삽입 및 최근 사용 자동 관리
+// 🚨 @PATCH : **2026-11-17** — [사용자 커스텀 이모지·기호 추가/삭제/검색 지원]: '내 커스텀' 탭 및 localStorage(onrivi_custom_emojis) 영구 저장 연동
 // 🚨 @PATCH : **2026-11-17** — [이모지 보관함 대폭 확충]: 표정·감정, 손짓·사람, 업무·상태배지, 개발·IT, 음식·카페, 날씨·자연·동물·여행 등 실무 이모지 200+종 추가
 // 🚨 @PATCH : **2026-10-11** — [전자책·블로그 출판 특화 특수문자 및 기호 6대 카테고리 대폭 확충]:
 //             1) 장식/특수기호(✦ ✧ ★ ☆ ✤ ☞ ➔ ▶ ▷ ◈ ◆ ◇ ❖ ✿ ❀ ❦ ❧ ※ § № ℡ ㈜ ㈀)
@@ -90,6 +91,31 @@ const EMOJI_CATEGORIES: { id: string; label: string; icon: string; items: EmojiI
       { char: '℡', keywords: ['전화', '전화번호', 'tel'] },
       { char: '㈜', keywords: ['주식회사', '법인', 'corp'] },
       { char: '㈀', keywords: ['괄호ㄱ', '한글기호'] },
+      { char: '•', keywords: ['불릿', '가운뎃점', '글머리', 'bullet', 'dot'] },
+      { char: '·', keywords: ['가운뎃점', '중점', '구분점', 'middot', 'dot'] },
+      { char: '◦', keywords: ['빈원불릿', '불릿', 'circle', 'bullet'] },
+      { char: '▪', keywords: ['작은사각', '불릿', 'square'] },
+      { char: '▫', keywords: ['빈작은사각', '불릿', 'square'] },
+      { char: '■', keywords: ['검은사각', '네모', 'square'] },
+      { char: '□', keywords: ['흰사각', '빈네모', '체크박스', 'square'] },
+      { char: '●', keywords: ['검은원', '동그라미', 'circle'] },
+      { char: '○', keywords: ['흰원', '빈동그라미', 'circle'] },
+      { char: '◎', keywords: ['이중원', '과녁', 'bullseye'] },
+      { char: '▲', keywords: ['검은위삼각', '상승', 'triangle', 'up'] },
+      { char: '△', keywords: ['흰위삼각', 'triangle'] },
+      { char: '▼', keywords: ['검은아래삼각', '하락', 'triangle', 'down'] },
+      { char: '▽', keywords: ['흰아래삼각', 'triangle'] },
+      { char: '✓', keywords: ['체크', '확인', 'check', 'tick'] },
+      { char: '✔', keywords: ['굵은체크', '확인', 'check', 'done'] },
+      { char: '✕', keywords: ['엑스', '취소', 'cross', 'close'] },
+      { char: '✖', keywords: ['굵은엑스', '곱하기', 'cross'] },
+      { char: '†', keywords: ['칼표', '각주', 'dagger'] },
+      { char: '‡', keywords: ['이중칼표', '각주', 'doubledagger'] },
+      { char: '¶', keywords: ['문단기호', '필크로우', 'pilcrow'] },
+      { char: '©', keywords: ['저작권', '카피라이트', 'copyright'] },
+      { char: '®', keywords: ['등록상표', 'registered'] },
+      { char: '™', keywords: ['상표', '트레이드마크', 'trademark'] },
+      { char: '°', keywords: ['도', '각도', '온도', 'degree'] },
     ]
   },
   {
@@ -152,6 +178,13 @@ const EMOJI_CATEGORIES: { id: string; label: string; icon: string; items: EmojiI
       { char: '〕', keywords: ['거북등괄호닫기', 'bracket'] },
       { char: '〘', keywords: ['이중거북등열기', 'bracket'] },
       { char: '〙', keywords: ['이중거북등닫기', 'bracket'] },
+      { char: '…', keywords: ['말줄임표', '생략', 'ellipsis', 'dots'] },
+      { char: '⋯', keywords: ['가운데말줄임표', '점점점', '생략', 'ellipsis', 'cdots'] },
+      { char: '⋮', keywords: ['세로말줄임표', '더보기', 'vdots', 'ellipsis'] },
+      { char: '‥', keywords: ['두점줄임표', '점점', 'ellipsis'] },
+      { char: '—', keywords: ['엠대시', '긴줄표', '대시', 'emdash', 'dash'] },
+      { char: '–', keywords: ['엔대시', '범위', '대시', 'endash', 'dash'] },
+      { char: '～', keywords: ['물결표', '범위', 'tilde', 'wave'] },
     ]
   },
   {
@@ -180,8 +213,33 @@ const EMOJI_CATEGORIES: { id: string; label: string; icon: string; items: EmojiI
       { char: '₩', keywords: ['원화', '원', '원화기호', 'won', 'krw'] },
       { char: '＄', keywords: ['달러', '달러기호', 'dollar', 'usd'] },
       { char: '€', keywords: ['유로', '유로화', 'euro'] },
-      { char: '￡', keywords: ['파운드', 'pound'] },
-      { char: '￥', keywords: ['엔화', '엔', '위안', 'yen'] },
+      { char: '￡', keywords: ['전각파운드', '영국', 'pound', 'gbp'] },
+      { char: '£', keywords: ['파운드', '영국파운드', '화폐', 'pound', 'gbp'] },
+      { char: '$', keywords: ['달러', '미국달러', '화폐', 'dollar', 'usd'] },
+      { char: '¥', keywords: ['엔화', '엔', '위안', 'yen', 'jpy', 'cny'] },
+      { char: '¢', keywords: ['센트', 'cent'] },
+      { char: '₿', keywords: ['비트코인', '가상화폐', 'bitcoin', 'btc'] },
+      { char: '￥', keywords: ['전각엔화', '엔', '위안', 'yen'] },
+      { char: '≈', keywords: ['근사값', '약', 'approx'] },
+      { char: '≡', keywords: ['항등', '합동', 'equiv'] },
+      { char: '∑', keywords: ['시그마', '합계', 'sum', 'sigma'] },
+      { char: '∏', keywords: ['파이', '곱', 'product'] },
+      { char: '√', keywords: ['루트', '제곱근', 'sqrt', 'root'] },
+      { char: '∫', keywords: ['적분', '인테그랄', 'integral'] },
+      { char: '∂', keywords: ['편미분', 'partial'] },
+      { char: '∇', keywords: ['나블라', '그래디언트', 'nabla'] },
+      { char: '∈', keywords: ['원소', '포함', 'element', 'in'] },
+      { char: '∉', keywords: ['원소아님', 'notin'] },
+      { char: '⊂', keywords: ['부분집합', 'subset'] },
+      { char: '∪', keywords: ['합집합', 'union'] },
+      { char: '∩', keywords: ['교집합', 'intersection'] },
+      { char: '∴', keywords: ['그러므로', '따라서', 'therefore'] },
+      { char: '∵', keywords: ['왜냐하면', '이유', 'because'] },
+      { char: '∠', keywords: ['각도', '각', 'angle'] },
+      { char: '⊥', keywords: ['수직', '직교', 'perp'] },
+      { char: '∥', keywords: ['평행', 'parallel'] },
+      { char: 'ℓ', keywords: ['리터', '부피', 'liter'] },
+      { char: '㏊', keywords: ['헥타르', '면적', 'hectare'] },
     ]
   },
   {
@@ -543,12 +601,28 @@ const EMOJI_CATEGORIES: { id: string; label: string; icon: string; items: EmojiI
       { char: '🧑‍💻', keywords: ['개발자', '담당자', '작업자', 'developer', 'worker'] },
       { char: '🧑‍🏫', keywords: ['강사', '발표자', '멘토', 'teacher', 'mentor'] },
       { char: '📣', keywords: ['공지', '발표', '홍보', 'announce', 'megaphone'] },
+      { char: '🚩', keywords: ['깃발', '중요', '마일스톤', 'flag', 'milestone'] },
+      { char: '🏁', keywords: ['체커기', '완료', '골인', 'finish', 'goal'] },
+      { char: '🗂️', keywords: ['색인카드', '분류', '정리', 'divider', 'index'] },
+      { char: '🗃️', keywords: ['카드함', '아카이브', '보관', 'archive', 'box'] },
+      { char: '🗑️', keywords: ['휴지통', '삭제', 'trash', 'delete'] },
+      { char: '🧠', keywords: ['뇌', '지식', '사고', 'AI', 'brain', 'smart'] },
+      { char: '🏥', keywords: ['병원', '의료', '건강', 'hospital', 'health'] },
+      { char: '🏫', keywords: ['학교', '교육', 'school', 'education'] },
+      { char: '🏭', keywords: ['공장', '제조', '산업', 'factory', 'industry'] },
+      { char: '🏗️', keywords: ['건설', '공사', '구축', 'construction', 'build'] },
+      { char: '⚽', keywords: ['축구', '스포츠', 'soccer', 'sport'] },
+      { char: '🏀', keywords: ['농구', '스포츠', 'basketball', 'sport'] },
+      { char: '⛳', keywords: ['골프', '목표', 'golf'] },
+      { char: '🎮', keywords: ['게임', '콘솔', 'game'] },
+      { char: '🎲', keywords: ['주사위', '랜덤', '운', 'dice', 'random'] },
     ]
   }
 ];
 
 const DEFAULT_RECENTS = ['✅', '💡', '📌', '🚀', '🔥', '✨', '📝', '⚠️', '👍', '🎯', '💻', '⭐', '❤️', '🎉', '🔍', '📊'];
 const STORAGE_KEY = 'onrivi_recent_emojis';
+const CUSTOM_STORAGE_KEY = 'onrivi_custom_emojis';
 
 interface EmojiPanelProps {
   onClose: () => void;
@@ -562,6 +636,9 @@ export default function EmojiPanel({ onClose, onInsert, isToolbarOpen: propIsToo
   const [activeCategory, setActiveCategory] = useState<string>('work');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [recentEmojis, setRecentEmojis] = useState<string[]>(DEFAULT_RECENTS);
+  const [customEmojis, setCustomEmojis] = useState<EmojiItem[]>([]);
+  const [customCharInput, setCustomCharInput] = useState<string>('');
+  const [customKeywordsInput, setCustomKeywordsInput] = useState<string>('');
   const [copiedEmoji, setCopiedEmoji] = useState<string | null>(null);
 
   useEffect(() => {
@@ -586,6 +663,50 @@ export default function EmojiPanel({ onClose, onInsert, isToolbarOpen: propIsToo
     } catch (e) {
       console.warn('[EmojiPanel] Failed to load recent emojis:', e);
     }
+    try {
+      const savedCustom = localStorage.getItem(CUSTOM_STORAGE_KEY);
+      if (savedCustom) {
+        const parsed = JSON.parse(savedCustom);
+        if (Array.isArray(parsed)) {
+          setCustomEmojis(parsed.filter((item) => item && typeof item.char === 'string'));
+        }
+      }
+    } catch (e) {
+      console.warn('[EmojiPanel] Failed to load custom emojis:', e);
+    }
+  }, []);
+
+  const handleAddCustomEmoji = useCallback((e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const char = customCharInput.trim();
+    if (!char) return;
+    const keywords = customKeywordsInput
+      .split(/[,\s]+/)
+      .map((k) => k.trim())
+      .filter(Boolean);
+    const nextItem: EmojiItem = {
+      char,
+      keywords: keywords.length > 0 ? keywords : [char, '커스텀', 'custom'],
+    };
+    setCustomEmojis((prev) => {
+      const next = [nextItem, ...prev.filter((item) => item.char !== char)];
+      try {
+        localStorage.setItem(CUSTOM_STORAGE_KEY, JSON.stringify(next));
+      } catch (_) {}
+      return next;
+    });
+    setCustomCharInput('');
+    setCustomKeywordsInput('');
+  }, [customCharInput, customKeywordsInput]);
+
+  const handleRemoveCustomEmoji = useCallback((char: string) => {
+    setCustomEmojis((prev) => {
+      const next = prev.filter((item) => item.char !== char);
+      try {
+        localStorage.setItem(CUSTOM_STORAGE_KEY, JSON.stringify(next));
+      } catch (_) {}
+      return next;
+    });
   }, []);
 
   // 2. 이모지 클릭 시 본문 커서 삽입 및 최근 목록 갱신
@@ -611,13 +732,21 @@ export default function EmojiPanel({ onClose, onInsert, isToolbarOpen: propIsToo
     setTimeout(() => setCopiedEmoji(null), 1000);
   }, [onInsert]);
 
+  const allCategories = useMemo(
+    () => [
+      ...EMOJI_CATEGORIES,
+      { id: 'custom', label: '내 커스텀', icon: '➕', items: customEmojis },
+    ],
+    [customEmojis]
+  );
+
   // 3. 실시간 검색 필터링
   const searchResults = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return null;
 
     const matched: EmojiItem[] = [];
-    EMOJI_CATEGORIES.forEach(cat => {
+    allCategories.forEach(cat => {
       cat.items.forEach(item => {
         if (item.char === q || item.keywords.some(k => k.toLowerCase().includes(q))) {
           if (!matched.some(m => m.char === item.char)) {
@@ -627,11 +756,11 @@ export default function EmojiPanel({ onClose, onInsert, isToolbarOpen: propIsToo
       });
     });
     return matched;
-  }, [searchQuery]);
+  }, [searchQuery, allCategories]);
 
   const currentCategoryData = useMemo(() => {
-    return EMOJI_CATEGORIES.find(c => c.id === activeCategory) || EMOJI_CATEGORIES[0];
-  }, [activeCategory]);
+    return allCategories.find(c => c.id === activeCategory) || allCategories[0];
+  }, [activeCategory, allCategories]);
 
   return (
     <aside
@@ -698,7 +827,7 @@ export default function EmojiPanel({ onClose, onInsert, isToolbarOpen: propIsToo
       {/* ── 3. 카테고리 네비게이션 탭 (검색 중이 아닐 때만 노출) ── */}
       {!searchQuery && (
         <div className="px-2 pt-2 pb-2 flex flex-wrap items-center gap-1 border-b border-zinc-100 dark:border-zinc-800/80 shrink-0">
-          {EMOJI_CATEGORIES.map(cat => {
+          {allCategories.map(cat => {
             const isActive = activeCategory === cat.id;
             return (
               <button
@@ -800,22 +929,74 @@ export default function EmojiPanel({ onClose, onInsert, isToolbarOpen: propIsToo
                   <span>{currentCategoryData.icon}</span> {currentCategoryData.label} ({currentCategoryData.items.length}개)
                 </span>
               </div>
+              {activeCategory === 'custom' && (
+                <form onSubmit={handleAddCustomEmoji} className="mb-3 p-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/70 border border-zinc-200 dark:border-zinc-700 space-y-2">
+                  <div className="flex gap-1.5">
+                    <input
+                      type="text"
+                      value={customCharInput}
+                      onChange={(e) => setCustomCharInput(e.target.value)}
+                      placeholder="이모지/기호 (예: ◈)"
+                      className="w-24 px-2 py-1 text-xs rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-100 outline-none focus:border-blue-500"
+                    />
+                    <input
+                      type="text"
+                      value={customKeywordsInput}
+                      onChange={(e) => setCustomKeywordsInput(e.target.value)}
+                      placeholder="검색어 (예: 별, 중요)"
+                      className="flex-1 min-w-0 px-2 py-1 text-xs rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-100 outline-none focus:border-blue-500"
+                    />
+                    <button
+                      type="submit"
+                      onMouseDown={(e) => e.preventDefault()}
+                      className="px-2.5 py-1 rounded-lg bg-[#1d4ed8] hover:bg-[#1e40af] text-white text-[11px] font-bold shrink-0 cursor-pointer"
+                    >
+                      추가
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-zinc-500 dark:text-zinc-400">
+                    Win + . 키 또는 복사한 특수문자·이모지를 붙여넣어 저장할 수 있습니다.
+                  </p>
+                </form>
+              )}
+              {activeCategory === 'custom' && currentCategoryData.items.length === 0 ? (
+                <div className="py-6 text-center text-xs text-zinc-400 dark:text-zinc-500">
+                  등록된 커스텀 이모지가 없습니다. 위 입력창에서 추가해 보세요.
+                </div>
+              ) : (
               <div className="grid grid-cols-6 gap-1">
                 {currentCategoryData.items.map(item => (
-                  <button
-                    key={item.char}
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => handleSelectEmoji(item.char)}
-                    className="w-10 h-10 flex items-center justify-center text-xl rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:scale-120 active:scale-95 transition-all cursor-pointer relative"
-                    title={item.keywords.join(', ')}
-                  >
-                    {item.char}
-                    {copiedEmoji === item.char && (
-                      <span className="absolute inset-0 bg-blue-500/20 rounded-lg animate-ping pointer-events-none" />
+                  <div key={item.char} className="relative group">
+                    <button
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => handleSelectEmoji(item.char)}
+                      className="w-10 h-10 flex items-center justify-center text-xl rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:scale-120 active:scale-95 transition-all cursor-pointer relative"
+                      title={item.keywords.join(', ')}
+                    >
+                      {item.char}
+                      {copiedEmoji === item.char && (
+                        <span className="absolute inset-0 bg-blue-500/20 rounded-lg animate-ping pointer-events-none" />
+                      )}
+                    </button>
+                    {activeCategory === 'custom' && (
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveCustomEmoji(item.char);
+                        }}
+                        title="커스텀 삭제"
+                        aria-label={`${item.char} 삭제`}
+                        className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] font-bold hidden group-hover:flex items-center justify-center shadow-xs cursor-pointer"
+                      >
+                        ×
+                      </button>
                     )}
-                  </button>
+                  </div>
                 ))}
               </div>
+              )}
             </div>
           </>
         )}

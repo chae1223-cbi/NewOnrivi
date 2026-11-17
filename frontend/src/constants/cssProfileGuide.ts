@@ -334,7 +334,7 @@ export const CSS_PROFILE_GUIDE_MD = `# 🎨 온리비 어서(Onrivi Author) 최�
   "pageStyle": {
     "fontFamily": "'Roboto', 'Google Sans', 'Noto Sans KR', 'Noto Sans', -apple-system, BlinkMacSystemFont, sans-serif",
     "fontUrl": "https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Roboto+Mono:wght@400;500&family=Roboto:ital,wght@0,300;0,400;0,500;0,700;1,400&display=swap",
-    "fontSize": "16px",
+    "fontSize": "10pt",
     "lineHeight": "1.5",
     "letterSpacing": "0em",
     "backgroundColor": "#FFFFFF",
@@ -344,7 +344,7 @@ export const CSS_PROFILE_GUIDE_MD = `# 🎨 온리비 어서(Onrivi Author) 최�
     "marginLeft": "12mm",
     "marginRight": "12mm",
     "orientation": "portrait",
-    "headingSizeOffset": "3pt",
+    "headingSizeOffset": "2pt",
     "tabSize": "2",
     "exportPageBreakLevel": "none"
   },

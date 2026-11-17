@@ -93,13 +93,13 @@ export function generateDynamicCss(
 }
 `;
     /* H2~H6 자동 크기 계산 (headingSizeOffset 기반, pt/px 단위 상호 변환 및 '0pt' 명시 지원) */
-    const h1SizeVal = (prof.rules.h1 && prof.rules.h1['font-size']) || '21pt';
+    const h1SizeVal = (prof.rules.h1 && prof.rules.h1['font-size']) || '22pt';
     const isPt = h1SizeVal.endsWith('pt') || (!h1SizeVal.endsWith('px') && !h1SizeVal.endsWith('rem') && !h1SizeVal.endsWith('em'));
     const h1Unit = isPt ? 'pt' : (h1SizeVal.endsWith('px') ? 'px' : 'pt');
-    const h1Size = parseFloat(h1SizeVal) || (isPt ? 21 : 28);
+    const h1Size = parseFloat(h1SizeVal) || (isPt ? 22 : 29.3);
     const rawOffsetStr = (ps.headingSizeOffset || '').trim();
     const offset = (() => {
-      if (!rawOffsetStr || rawOffsetStr === '0px') return isPt ? 3 : 4;
+      if (!rawOffsetStr || rawOffsetStr === '0px') return isPt ? 2 : 2.67;
       if (rawOffsetStr === '0pt' || rawOffsetStr === '0') return 0;
       const num = parseFloat(rawOffsetStr);
       if (isNaN(num)) return isPt ? 3 : 4;

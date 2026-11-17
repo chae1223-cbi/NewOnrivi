@@ -692,7 +692,7 @@ export default function StyleManagerModal({
    }
 3. 9대 문서 분위기 & 테마 컬러 및 5대 제목 장식 형식 반영:
    - 사용자가 특정 분위기 테마(온리비 기본[Google Developers DevSite], 코발트 신뢰, 대한민국 관보·먹색, 인텔리전스 틸, 키네틱 오렌지, 포레스트 에메랄드, 로열 버건디 와인, 크리에이티브 바이올렛, 따뜻한 출판 에세이)나 장식 형식(① 클린 헤딩 ② 하단 밑줄형 ③ 좌측 색깔바형 ④ H2밑줄+H3좌측바 하이브리드형 ⑤ 관보 이중선형 ⑥ 굵은글씨 형광펜 강조 strong.background-color)을 요청하면 아래 공식 가이드의 팔레트·장식 규격을 정확히 적용하세요.
-   - 제목(h1~h6)에 좌측 색깔바(border-left: "3px solid #색상" | "4px solid #색상" | "6px solid #색상")를 적용할 경우 반드시 "padding-left": "12px"를 함께 지정하고, 좌측 색깔바가 없을 때는 "border-left": "none", "padding-left": "0px"으로 지정하세요. 단계별 크기 감소폭(pageStyle.headingSizeOffset)은 미지정 시 기본 "3pt"로 설정하세요.
+   - 제목(h1~h6)에 좌측 색깔바(border-left: "3px solid #색상" | "4px solid #색상" | "6px solid #색상")를 적용할 경우 반드시 "padding-left": "12px"를 함께 지정하고, 좌측 색깔바가 없을 때는 "border-left": "none", "padding-left": "0px"으로 지정하세요. 기본 본문 글자 크기(pageStyle.fontSize)는 별도 요청이 없으면 표준 출판 크기 "10pt"로, 제목 단계별 크기 감소폭(pageStyle.headingSizeOffset)은 "2pt"로 설정하여 H6(12pt)~H1(22pt)을 구성하고, 표(table/th/td)·인용구(blockquote)·코드블록(codeBlock) 글자 크기는 본문과 동일한 "inherit"으로 통일하세요.
 4. 표(tableStructure) 구조체를 반드시 포함하여 외곽 테두리 및 행/열 두께를 명확히 지정하세요:
    "tableStructure": {
      "outerBorderWidth": "0px",  // 표 외곽 테두리 두께 (미니멀형 "0px", 가로선/격자형 "1px"~"2px")
