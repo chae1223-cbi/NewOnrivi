@@ -2,6 +2,7 @@
 // 📊 [OMD-API-gdrive-oauth-0001] functions/api/gdrive/_oauth.js
 // 🎯 @KICK  : Google Drive 서버 사이드 OAuth 인증 및 토큰 자동 연장 핸들러
 // 🛡️ @GUARD : Cloudflare Pages 미리보기(dev01 등 *.pages.dev) 및 프로덕션/로컬 다중 오리진 동적 허용, 리프레시 토큰 AES-GCM 암호화
+// 🚨 @PATCH : 2026-11-17 — [로컬 Next.js→Wrangler 프록시 redirect_uri_mismatch 해결]: 로컬 개발 시 내부 프록시 호스트(127.0.0.1:8788) 대신 x-forwarded-host 또는 GOOGLE_DRIVE_REDIRECT_URI 오리진 사용
 // 🚨 @PATCH : 2026-11-16 — [원격 MCP 연동] readDriveOAuthSession 헬퍼 내보내기 추가 (MCP 토큰 발급 시 Drive 리프레시 토큰 안전 연계)
 // 🚨 @PATCH : 2026-11-04 — [COOP(Cross-Origin-Opener-Policy) 대응 BroadcastChannel 연동]: 구글 OAuth 리디렉션 시 COOP에 의해 window.opener가 단절되더라도 동일 오리진 BroadcastChannel('onrivi-drive-oauth')을 통해 토큰 및 취소 이벤트를 즉시 전달하고 팝업 스스로 닫히도록 개선
 // 🚨 @PATCH : 2026-11-04 — [오류 진단 로깅 4단계]: 클라이언트 내부 스택 노출 차단(details 제거) 및 4xx 사전 로깅 정돈
@@ -195,10 +196,18 @@ export async function handleDriveOAuth(request, env) {
     return json({ error: '인증 서버 주소가 설정과 다릅니다.' }, 400);
   }
 
-  // 허용 도메인(미리보기 서브도메인 포함) 및 로컬 환경인 경우 요청 오리진에 맞추어 리디렉션 URI 동적 매핑
-  const redirect = (isAllowedDomain || isLocalDev)
+  const forwardedHost = (request.headers.get('x-forwarded-host') || '').split(',')[0].trim();
+  const forwardedProto = (request.headers.get('x-forwarded-proto') || '').split(',')[0].trim() || url.protocol.replace(':', '');
+  const localProxyOrigin = isLocalDev && /^(?:localhost|127\.0\.0\.1)(?::\d+)?$/i.test(forwardedHost)
+    ? `${forwardedProto}://${forwardedHost}`
+    : null;
+
+  // 허용 도메인(미리보기 서브도메인 포함) 및 로컬 환경(프록시 오리진 우선)인 경우 요청 오리진에 맞추어 리디렉션 URI 동적 매핑
+  const redirect = isAllowedDomain
     ? new URL(`${url.origin}${configuredRedirect.pathname}`)
-    : configuredRedirect;
+    : isLocalDev
+      ? new URL(`${localProxyOrigin || configuredRedirect.origin}${configuredRedirect.pathname}`)
+      : configuredRedirect;
   const origin = redirect.origin, secure = redirect.protocol === 'https:';
   const route = url.pathname.replace(/^\/api\/gdrive\//, '');
   const requestCookies = cookies(request);
