@@ -25,6 +25,8 @@
  *             1) 인용문(blockquote) 내에서 [!Note], [!참고], [!TIP], [!WARNING] 등 태그 직접 타이핑 시 닫는 괄호(']') 입력 즉시 콜아웃 박스로 자동 전환되도록 공백 강제 제약 제거 및 유연한 정규식 개선
  *             2) 일반 문단에서 '> [!태그]' 타이핑 시에도 즉시 해당 스타일의 콜아웃 알림 상자로 자동 생성되도록 개선
  *             3) 영문 태그(Note, tip, warning 등) 대소문자 무관 표준 대문자(NOTE, TIP, WARNING 등) 자동 정규화
+ * 🚨 @PATCH : **2026-11-17** — [인라인 코드(code) 마크 내부 마크다운 InputRule 발동 차단]:
+ *             1) 인라인 코드 내부에서 '3. ', '- ', '# ', '> ' 등을 입력할 때 번호 리스트·글머리기호·제목·인용문 등으로 강제 변환되던 결함 원천 차단
  * 🚨 @PATCH : **2026-10-14** — [글머리기호/체크리스트/번호 리스트 직접 타이핑 시 자동 변환(Auto-List InputRule) 및 문단 분할 완벽 지원]:
  *             1) 본문에서 '-', '*', '+', '1.', '- [ ]', '- [x]' 직접 타이핑 시 줄 시작 위치 및 줄바꿈 직후를 정밀 감지하여 bullet_list, ordered_list, task_list로 즉각 자동 변환
  *             2) 기존 텍스트 앞머리에서 리스트 마커 입력 시 해당 문단을 리스트 항목으로 즉각 래핑하고 커서 위치를 자연스럽게 유지
@@ -200,6 +202,20 @@ export function buildVisualMarkdownRules(): InputRule[] {
     return new InputRule(guarded.match, (state, match, start, end) => {
     if (state.selection.$from.parent.type !== nodes.paragraph || insideCell(state)) return null;
     return guarded.handler(state, match, start, end);
+    });
+  };
+  const insideInlineCode = (state: EditorState, start: number, end: number) => {
+    if (!marks.code) return false;
+    if (state.storedMarks?.some(m => m.type === marks.code)) return true;
+    if (state.selection.$from.marks().some(m => m.type === marks.code)) return true;
+    const safeEnd = Math.min(end, state.doc.content.size);
+    return start < safeEnd && state.doc.rangeHasMark(start, safeEnd, marks.code);
+  };
+  const guardNotInInlineCode = (rule: InputRule) => {
+    const raw = rule as InputRule & { match: RegExp; handler: (state: EditorState, match: RegExpMatchArray, start: number, end: number) => Transaction | null };
+    return new InputRule(raw.match, (state, match, start, end) => {
+      if (insideInlineCode(state, start, end)) return null;
+      return raw.handler(state, match, start, end);
     });
   };
   return [
@@ -474,7 +490,7 @@ export function buildVisualMarkdownRules(): InputRule[] {
       const tr = state.tr.replaceWith(from, end, [mathNode, spaceNode]);
       return tr.setSelection(TextSelection.create(tr.doc, from + mathNode.nodeSize + spaceNode.nodeSize));
     }, { inCodeMark: false }),
-  ];
+  ].map(guardNotInInlineCode);
 }
 
 export function visualMarkdownInputRules() {
