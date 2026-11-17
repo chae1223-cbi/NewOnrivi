@@ -2,6 +2,7 @@
 // 📊 [OMD-CORE-paperSizes-0001] paperSizes ➔ PAPER_SIZES
 // 🎯 @KICK  : 선택 가능한 용지 규격 상수 맵 — mm 단위 width/height 제공
 // 🛡️ @GUARD : 키는 jsPDF format 이름과 호환 ('a4' → jsPDF 'a4')
+// 🚨 @PATCH : **2026-11-17** — [신국판(shinguk 152×225mm) 출판 단행본 용지 규격 추가]
 // 🚨 @PATCH : **2026-10-27** — [SNS 카드뉴스 전용 용지 규격(sns_square 1:1 정사각, sns_portrait 4:5 세로형) 추가]:
 //             인스타그램·쓰레드·링크드인·블로그 카드뉴스 제작을 위한 1:1 정사각형(200×200mm) 및 4:5 세로형(200×250mm) 판형 탑재
 // 🚨 @PATCH : **2026-07-07** — 46판(saryuk) 출판 규격 추가
@@ -14,6 +15,7 @@ export const PAPER_SIZES: Record<string, { label: string; width: number; height:
   b4:           { label: 'B4',                      width: 250, height: 353 },
   b5:           { label: 'B5 (46판 변형)',          width: 176, height: 250 },
   saryuk:       { label: '46판',                    width: 188, height: 257 },
+  shinguk:      { label: '신국판 (단행본)',         width: 152, height: 225 },
   shinseo:      { label: '신서판 (단행본)',         width: 128, height: 188 },
   letter:       { label: 'Letter',                  width: 216, height: 279 },
   legal:        { label: 'Legal',                   width: 216, height: 356 },

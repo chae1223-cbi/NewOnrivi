@@ -1,5 +1,7 @@
 // ====================================================================
 // 📊 [OMD-STYLE-CssProfile-0001] cssProfile.ts ➔ 서식 프로필 및 타이포그래피/미디어 타입 정의
+// 🚨 @PATCH : **2026-11-17** — [그림책/사진앨범 테마(theme) 옵션 확장]:
+//             1) CssProfile.layout에 theme('storybook' | 'album-classic' | 'album-polaroid') 추가
 // 🚨 @PATCH : **2026-10-26** — [글머리 기호(불릿) 레벨별 계층 설정 구조체(BulletStructure) 신설]:
 //             1) 1단계/2단계/3단계별 불릿 기호 및 사용자 정의 커스텀 기호를 독립 저장 제어하는 BulletStructure 추가
 //             2) CssProfile에 bulletStructure 속성 연동
@@ -41,7 +43,7 @@ export interface CssRuleSet {
 export interface CssProfile {
   /** H1〜H6 automatic numbering. Missing entries mean no number. */
   headingNumbering?: import('@/lib/headingNumbering').HeadingNumberSetting[];
-  /** 고정 페이지 그림책 배치. 없으면 기존 연속 문서로 표시한다. */
+  /** 고정 페이지 그림책/사진앨범 배치. 없으면 기존 연속 문서로 표시한다. */
   layout?: {
     schemaVersion: 1;
     type: 'picturebook';
@@ -50,6 +52,7 @@ export interface CssProfile {
     imageFit: 'contain' | 'cover';
     gap: string;
     pageNumbers: boolean;
+    theme?: 'storybook' | 'album-classic' | 'album-polaroid';
   };
   /** 고유 식별자 (예: 'default', 'profile-1234567890') */
   id: string;

@@ -39,6 +39,7 @@ import CalendarModal from '@/components/CalendarModal';
 import DateTimeInsertPicker from '@/components/DateTimeInsertPicker';
 import PrintPaginationPreview from '@/components/PrintPaginationPreview';
 import { readPaginationSettings, writePaginationSettings, type PrintBreakAnchor } from '@/lib/documentPaginationSettings';
+import { resolvePageGeometry } from '@/lib/pageGeometry';
 import { browserAccountStorage as pageStorage } from '@/lib/browserAccountStorage';
 import { bulletNumbersAsText } from '@/lib/bulletNumberText';
 import { tableContext } from '@/lib/visualTableCommands';
@@ -1196,8 +1197,13 @@ export default function VisualDocumentEditor({
   }, [pageGuides, pageStyleKey, content, documentId]);
 
   useEffect(() => {
-    setPageGuides(pageStorage.getItem('onrivi_tabs_page_guides') === 'true');
+    const isInsidePicturebook = Boolean(host.current?.closest('[data-picturebook="true"]'));
+    setPageGuides(!isInsidePicturebook && pageStorage.getItem('onrivi_tabs_page_guides') === 'true');
     const handleToggle = (e: any) => {
+      if (host.current?.closest('[data-picturebook="true"]')) {
+        setPageGuides(false);
+        return;
+      }
       if (typeof e.detail === 'boolean') {
         setPageGuides(e.detail);
       } else {
@@ -1475,6 +1481,14 @@ export default function VisualDocumentEditor({
                   onToggle={togglePdfBreak}
                   onEscape={closePdfPages}
                   onTableResizeStart={closePdfPages}
+                  paperLabel={(() => {
+                    try {
+                      const g = resolvePageGeometry(pageStyle);
+                      return `${g.label} (${g.width}×${g.height}mm)`;
+                    } catch {
+                      return undefined;
+                    }
+                  })()}
                 />
               </div>
             )}

@@ -1,5 +1,9 @@
 // ====================================================================
 // 📊 [OMD-LIB-PICTUREBOOK-0001] picturebook.ts
+// 🚨 @PATCH : **2026-11-17** — [글 이어쓰기(text-only) 장면 및 사진앨범(theme/일괄 추가) 지원]:
+//             1) normalizeBookLayout에 theme('storybook' | 'album-classic' | 'album-polaroid') 지원 추가
+//             2) :::scene {text-only} 파싱 지원 및 그림 없음 오류 예외 처리
+//             3) 넘친 글 다음 페이지 분할(splitBookSceneText) 및 다중 사진 앨범 일괄 추가(appendAlbumScenes) 헬퍼 신설
 // 🚨 @PATCH : **2026-10-16** — [그림책 본문 편집 진입 시 선행 개행 제거로 즉시 변경/흔들림 방지]:
 //             sceneEditableBody에서 이미지 추출 후 남아있는 선행 줄바꿈(\n+)을 정제하여
 //             VisualDocumentEditor 마운트 시 불필요한 공백 생성 및 즉시 onChange 격발에 의한 화면 흔들림 방어
@@ -9,7 +13,7 @@ import { extractFrontmatter } from './frontmatter';
 
 export const DEFAULT_BOOK_LAYOUT: NonNullable<CssProfile['layout']> = {
   schemaVersion: 1, type: 'picturebook', cover: 'full-image',
-  imageRatio: 0.5, imageFit: 'cover', gap: '6mm', pageNumbers: true,
+  imageRatio: 0.5, imageFit: 'cover', gap: '6mm', pageNumbers: true, theme: 'storybook',
 };
 
 export function normalizeBookLayout(value: unknown): CssProfile['layout'] {
@@ -26,10 +30,11 @@ export function normalizeBookLayout(value: unknown): CssProfile['layout'] {
     imageFit: input.imageFit === 'contain' ? 'contain' : 'cover',
     gap: typeof input.gap === 'string' && /^\d+(?:\.\d+)?(?:mm|px)$/.test(input.gap) ? input.gap : '6mm',
     pageNumbers: input.pageNumbers !== false,
+    theme: input.theme === 'album-classic' || input.theme === 'album-polaroid' ? input.theme : 'storybook',
   };
 }
 
-export interface BookScene { image: string; body: string; cover: boolean; start: number; end: number; opening: string; raw: string }
+export interface BookScene { image: string; body: string; cover: boolean; textOnly?: boolean; start: number; end: number; opening: string; raw: string }
 export interface BookOutsideBlock { afterScene: number; startLine: number; endLine: number; text: string; location: string; ranges: { start: number; end: number }[] }
 
 export function replaceOutsideBookText(markdown: string, block: BookOutsideBlock, text: string): string {
@@ -81,6 +86,7 @@ export function parseBookScenes(markdown: string, sourceLineOffset = 0): { scene
   const errors: string[] = [];
   let block: string[] | null = null;
   let isCover = false;
+  let isTextOnly = false;
   let fence = '';
   let offset = 0;
   let start = 0;
@@ -106,16 +112,16 @@ export function parseBookScenes(markdown: string, sourceLineOffset = 0): { scene
       append(line);
       continue;
     }
-    if (!fence && /^:::scene(?:\s+\{[^}]*\})?\s*$/.test(line)) {
+    if (!fence && /^:::scene(?:\s+(?:\{[^}]*\}|[a-zA-Z0-9_-]+(?:\s+[a-zA-Z0-9_-]+)*))?\s*$/.test(line)) {
       if (block) { errors.push('장면 안에 다른 장면을 시작할 수 없습니다.'); continue; }
-      block = []; isCover = /\bcover\b/.test(line); start = lineStart; opening = line; continue;
+      block = []; isCover = /\bcover\b/.test(line); isTextOnly = /\btext-only\b/i.test(line); start = lineStart; opening = line; continue;
     }
     if (!fence && block && /^:::\s*$/.test(line)) {
       const content = block.join('\n');
       const imageMatch = content.match(/^\s*(!\[[^\]\n]*\](?:\([^\n]+\)|\[[^\]\n]*\]))\s*$/m);
       scenes.push({ image: imageMatch?.[1] || '', body: imageMatch
         ? content.slice(0, imageMatch.index) + '\n'.repeat((imageMatch[0].match(/\n/g)||[]).length) + content.slice(imageMatch.index! + imageMatch[0].length) : content,
-        cover: isCover, start, end: lineStart + line.length, opening, raw: content });
+        cover: isCover, textOnly: isTextOnly, start, end: lineStart + line.length, opening, raw: content });
       block = null; continue;
     }
     append(line);
@@ -139,8 +145,11 @@ export function parseBookScenes(markdown: string, sourceLineOffset = 0): { scene
     errors.push(`${location}, 원문 ${startLine}${endLine !== startLine ? `~${endLine}` : ''}행에 장면 밖 본문이 있습니다: “${excerpt}${entries[0].text.trim().length > 65 ? '…' : ''}”. 해당 글을 장면의 닫는 표시 ::: 앞에 넣거나 새 :::scene 장면으로 묶어 주세요.`);
   }
   for (const scene of scenes) {
-    if (!scene.image) errors.push(`${scenes.indexOf(scene) + 1}번째 장면에 그림이 없습니다.`);
-    if (definitions) { scene.image += '\n\n' + definitions; scene.body += '\n\n' + definitions; }
+    if (!scene.image && !scene.textOnly) errors.push(`${scenes.indexOf(scene) + 1}번째 장면에 그림이 없습니다.`);
+    if (definitions) {
+      if (scene.image) scene.image += '\n\n' + definitions;
+      scene.body += '\n\n' + definitions;
+    }
   }
   if (scenes.some((scene, i) => scene.cover && i !== 0)) errors.push('표지 장면은 첫 번째에만 배치해 주세요.');
   if (!scenes.length) errors.push(':::scene 블록을 추가해 그림과 본문을 작성해 주세요.');
@@ -227,6 +236,36 @@ export function replaceSceneBody(markdown:string,index:number,body:string,expect
   if(!scene || scene.raw!==expectedRaw)throw new Error('편집 중 장면이 변경되었습니다. 다시 선택해 주세요.');
   const image=scene.raw.match(/^\s*(!\[[^\]\n]*\](?:\([^\n]+\)|\[[^\]\n]*\]))[ \t]*$/m)?.[1];
   return replaceBookScene(markdown,scene,(image ? image+'\n\n' : '')+body.trim());
+}
+
+/** 넘친 본문을 현재 페이지와 다음 글 전용(::scene {text-only}) 페이지로 분할한다. */
+export function splitBookSceneText(markdown: string, index: number, keepBody: string, overflowBody: string): string {
+  const normalized = markdown.replace(/\r\n/g, '\n');
+  const scene = parseBookScenes(normalized).scenes[index];
+  if (!scene) return markdown;
+  const image = scene.raw.match(/^\s*(!\[[^\]\n]*\](?:\([^\n]+\)|\[[^\]\n]*\]))[ \t]*$/m)?.[1];
+  const updatedRaw = (image ? image + '\n\n' : '') + keepBody.trim();
+  const nextSceneBlock = `\n\n:::scene {text-only}\n${overflowBody.trim()}\n:::`;
+  const updatedCurrent = `${scene.opening}\n${updatedRaw}\n:::`;
+  return normalized.slice(0, scene.start) + updatedCurrent + nextSceneBlock + normalized.slice(scene.end);
+}
+
+/** 다중 사진으로 사진앨범 장면(::scene) 블록들을 일괄 생성해 문서 끝에 추가한다. */
+export function appendAlbumScenes(
+  markdown: string,
+  items: Array<{ imagePath: string; alt: string; reflection?: string }>,
+): string {
+  if (!items.length) return markdown;
+  const today = new Date().toISOString().slice(0, 10);
+  const blocks = items.map((item) => {
+    const cleanAlt = item.alt.replace(/[\[\]\r\n]/g, ' ').trim() || '추억 사진';
+    const caption = item.reflection?.trim()
+      ? item.reflection.trim()
+      : `### ${today} · 소중한 순간\n\n이 날의 기억과 소감을 간단히 적어보세요.`;
+    return `:::scene\n![${cleanAlt}](<${item.imagePath}>)\n\n${caption}\n:::`;
+  });
+  const base = markdown.replace(/\r\n/g, '\n').trimEnd();
+  return (base ? `${base}\n\n` : '') + blocks.join('\n\n') + '\n';
 }
 export function duplicateBookScene(markdown:string,index:number):string {
   const scene=parseBookScenes(markdown).scenes[index];

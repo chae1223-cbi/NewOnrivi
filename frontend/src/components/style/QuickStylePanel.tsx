@@ -2,6 +2,8 @@
 // 📊 [OMD-STYLE-QUICK-0001] frontend/src/components/style/QuickStylePanel.tsx
 // 🎯 @KICK  : 서식 관리 초보자 및 일반 사용자를 위한 한 페이지 핵심 간편 스타일링 패널
 // 🛡️ @GUARD : Rule 1(단일 주석 관리), Rule 3(컴포넌트 분리 원칙), Rule 6(LDSG & 고대비 가독성 보장)
+// 🚨 @PATCH : **2026-11-17** — [그림책 상세 옵션 내 사진앨범 스타일 테마(theme) 선택기 추가]:
+//             1) '그림책 기본', '클래식 사진앨범', '폴라로이드 앨범' 테마 전환 셀렉터 추가
 // 🚨 @PATCH : **2026-11-14** — [문서 분위기 & 테마 컬러 최상단에 '온리비 기본(Google Developers 표준)' 신설]:
 //             1) Onrivi 기본서식(Google Developers DevSite 표준: #202124 다크차콜 본문·클린 헤딩, #1A73E8/#E8F0FE Google Blue 콜아웃, #F1F3F4/#DADCE0 표 헤더)과 1:1 매칭되는 '온리비 기본' 테마 카드를 MOOD_THEMES 최상단(1번)에 탑재
 // 🚨 @PATCH : **2026-11-14** — [문서 분위기 & 테마 컬러 중복 색상 통폐합 및 차별화 컬러·5대 장식 형식(Format) 확장]:
@@ -1554,6 +1556,19 @@ export default function QuickStylePanel({
               📚 그림책 상세 옵션
             </span>
             <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="col-span-2">
+                <label className="text-[10px] text-zinc-600 dark:text-zinc-400 block mb-1">스타일 테마</label>
+                <select
+                  disabled={isSystemProfile}
+                  value={currentProfile.layout.theme || 'storybook'}
+                  onChange={(e) => updateBookLayout({ theme: e.target.value as any })}
+                  className="w-full p-1.5 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 font-bold"
+                >
+                  <option value="storybook">그림책 기본</option>
+                  <option value="album-classic">클래식 사진앨범 (크림지 · 인화지 테두리)</option>
+                  <option value="album-polaroid">폴라로이드 앨범 (폴라로이드 프레임)</option>
+                </select>
+              </div>
               <div>
                 <label className="text-[10px] text-zinc-600 dark:text-zinc-400 block mb-1">표지 배치</label>
                 <select

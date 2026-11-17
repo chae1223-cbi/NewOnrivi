@@ -4,6 +4,7 @@
  * 🏷️ 파일명 : PrintPaginationPreview.tsx
  * 🎭 역할(Role) : Core
  * 🎯 주요기능 : PDF 페이지 보기와 페이지 나누기 조작
+ * 🚨 @PATCH : 2026-11-17 — [용지 규격(paperLabel) 배지 표시]: 미리보기 툴바에 현재 적용된 용지 규격/크기(예: 신국판 152×225mm) 표시 추가
  * 🚨 @PATCH : 2026-11-03 — [표 열 조정 진입] 페이지 보기의 표 경계를 누르면 직접 편집 화면으로 전환
  * ====================================================================
  */
@@ -20,9 +21,10 @@ interface Props {
   onTableResizeStart?:()=>void;
   expanded?:boolean;
   onExpand?:()=>void;
+  paperLabel?:string;
 }
 /** The parent owns all controls; no script execution permission is added to the iframe. */
-export default function PrintPaginationPreview({html,editing,busy,onToggle,onEscape,onTableResizeStart,expanded=false,onExpand}:Props){
+export default function PrintPaginationPreview({html,editing,busy,onToggle,onEscape,onTableResizeStart,expanded=false,onExpand,paperLabel}:Props){
   const frame=useRef<HTMLIFrameElement>(null),cleanup=useRef<()=>void>(()=>{});
   const [pageNumber,setPageNumber]=useState(1),[pageTexts,setPageTexts]=useState<string[]>([]);
   const currentPage=useRef(1);
@@ -158,6 +160,11 @@ export default function PrintPaginationPreview({html,editing,busy,onToggle,onEsc
         <option value="page">페이지 전체 맞춤</option><option value="width">너비 맞춤</option>
         {[50,75,100,125,150,200].map(value=><option key={value} value={value}>{value}%</option>)}
       </select><span>{actualZoom}%</span>
+      {paperLabel && (
+        <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-semibold">
+          {paperLabel}
+        </span>
+      )}
       {onExpand && <button type="button" onClick={onExpand} className="border rounded px-2 py-1 ml-auto">{expanded?'확대 화면 닫기':'미리보기 크게 보기'}</button>}
     </div>
     <div style={{display:'flex',flex:1,minHeight:0}}>

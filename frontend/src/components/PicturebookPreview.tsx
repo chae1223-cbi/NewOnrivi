@@ -1,5 +1,8 @@
 // ====================================================================
 // 📊 [OMD-COMP-PicturebookPreview-0001] PicturebookPreview.tsx
+// 🚨 @PATCH : **2026-11-17** — [넘친 글 자동 페이지 넘김(Auto-Pagination) 및 글 전용 페이지·사진앨범 지원]:
+//             1) 장면 본문이 페이지 높이를 넘기면 [data-book-text] DOM 경계 기준으로 다음 페이지(.book-page-text-only)로 자동 분할 렌더링
+//             2) :::scene {text-only} 영구 분할(splitBookSceneText) 및 사진앨범 테마·다중 사진 일괄 추가 지원
 // 🚨 @PATCH : 2026-11-13 — [그림책 이미지 복사·편집 오버레이 버튼 소형 아이콘화]: 장면 이미지 우측 상단 복사·편집 버튼을 13x13 SVG 아이콘 전용 버튼으로 축소
 // 🚨 @PATCH : **2026-10-17** — [그림책 장면 문서보기 에디터 참조문헌 관리(ADD_REFERENCE) 연동]: VisualDocumentEditor에 onReferenceSettings 콜백을 연결하여 장면 편집 중에도 참조 파일 관리 모달(ReferenceManagerModal) 실행 지원
 // 🚨 @PATCH : **2026-10-16** — [그림책 본문편집/편집완료 시인성 직관화 및 장면 에디터 변환 시 화면 흔들림(CLS/Scroll Jump/타이포그래피 쉬프트) 원천 제거]:
@@ -29,9 +32,75 @@ import PicturebookSceneInput, { type PicturebookEditorOptions } from './Pictureb
 import { copyMediaSource, copyImageToClipboard } from '@/lib/mediaMarkup';
 import type { CssProfile } from '@/types/cssProfile';
 import { PAPER_SIZES } from '@/constants/paperSizes';
-import { parseBookScenes, replaceBookScene, replaceSceneImage, moveBookSceneUp, sceneEditableBody, replaceSceneBody, duplicateBookScene, replaceOutsideBookText, type BookOutsideBlock, BOOK_SAMPLE } from '@/lib/picturebook';
+import { parseBookScenes, replaceBookScene, replaceSceneImage, moveBookSceneUp, sceneEditableBody, replaceSceneBody, duplicateBookScene, replaceOutsideBookText, splitBookSceneText, appendAlbumScenes, type BookOutsideBlock, BOOK_SAMPLE } from '@/lib/picturebook';
 import { parseDroppedDataToBlob, fetchExternalImageFile } from '@/lib/resourceMedia';
 import { desktopClipboardImage } from '@/lib/desktopClipboard';
+
+/** DOM 높이를 기준으로 넘친 마크다운 본문을 [현재 페이지, 다음 페이지]로 분할 */
+function computeSplitAtDomBoundary(
+  textEl: HTMLElement | undefined,
+  rawText: string,
+): { keepBody: string; overflowBody: string } | null {
+  const bodyText = rawText.trim();
+  if (!bodyText) return null;
+
+  const paragraphs = bodyText.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+  let keepBody = '';
+  let overflowBody = '';
+
+  if (textEl && paragraphs.length >= 2) {
+    const rect = textEl.getBoundingClientRect();
+    const maxBottom = rect.bottom - 8;
+    const renderedRoot = textEl.querySelector<HTMLElement>('.markdown-viewer-root > div') || textEl;
+    const blocks = Array.from(renderedRoot.children).filter(
+      el => !(el as HTMLElement).hasAttribute('data-editor-controls'),
+    );
+    if (blocks.length >= 2) {
+      let fitCount = 0;
+      for (let idx = 0; idx < Math.min(blocks.length, paragraphs.length); idx++) {
+        if (blocks[idx].getBoundingClientRect().bottom <= maxBottom) {
+          fitCount = idx + 1;
+        } else {
+          break;
+        }
+      }
+      if (fitCount > 0 && fitCount < paragraphs.length) {
+        keepBody = paragraphs.slice(0, fitCount).join('\n\n');
+        overflowBody = paragraphs.slice(fitCount).join('\n\n');
+      }
+    }
+  }
+
+  if (!keepBody || !overflowBody) {
+    const controlsEl = textEl?.querySelector<HTMLElement>('[data-editor-controls]');
+    const controlsHeight = controlsEl ? controlsEl.offsetHeight + 10 : 0;
+    const availableHeight = textEl ? Math.max(40, textEl.clientHeight - controlsHeight) : 200;
+    const ratio = textEl && textEl.scrollHeight > 0
+      ? Math.max(0.2, Math.min(0.85, (availableHeight * 0.88) / textEl.scrollHeight))
+      : 0.6;
+    const lines = bodyText.split('\n');
+    if (lines.length >= 2) {
+      const splitLine = Math.max(1, Math.min(lines.length - 1, Math.floor(lines.length * ratio)));
+      keepBody = lines.slice(0, splitLine).join('\n').trim();
+      overflowBody = lines.slice(splitLine).join('\n').trim();
+    } else if (bodyText.length >= 20) {
+      const targetPos = Math.max(10, Math.min(bodyText.length - 10, Math.floor(bodyText.length * ratio)));
+      const sentenceBreak = bodyText.slice(0, targetPos + 40).search(/[.!?。]\s+(?=[^\s])/);
+      let cut = targetPos;
+      if (sentenceBreak > 10 && sentenceBreak < bodyText.length - 5) {
+        cut = sentenceBreak + 1;
+      } else {
+        const spaceIdx = bodyText.lastIndexOf(' ', targetPos);
+        if (spaceIdx > 10) cut = spaceIdx;
+      }
+      keepBody = bodyText.slice(0, cut).trim();
+      overflowBody = bodyText.slice(cut).trim();
+    }
+  }
+
+  if (!keepBody || !overflowBody) return null;
+  return { keepBody, overflowBody };
+}
 
 export default function PicturebookPreview({ content, profile, fingerprint, renderMarkdown, onChange, sourceLineOffset = 0, onImageEdit, editorOptions }: {
   content: string; profile: CssProfile; fingerprint: string;
@@ -42,6 +111,9 @@ export default function PicturebookPreview({ content, profile, fingerprint, rend
   editorOptions?: PicturebookEditorOptions;
 }) {
   const [editingScene,setEditingScene] = useState<number|null>(null);
+  const [overflowScenes, setOverflowScenes] = useState<number[]>([]);
+  const [albumImporting, setAlbumImporting] = useState<string>('');
+  const albumFileInputRef = useRef<HTMLInputElement | null>(null);
   const contentRef=useRef(content); contentRef.current=content;
   const editorOptionsRef=useRef(editorOptions);editorOptionsRef.current=editorOptions;
   const [editError,setEditError] = useState('');
@@ -69,6 +141,16 @@ export default function PicturebookPreview({ content, profile, fingerprint, rend
   });
   const [issues, setIssues] = useState<string[]>([]);
   const [hasLoadingMedia, setHasLoadingMedia] = useState(false);
+  const layoutKey = `${fingerprint}:${width}:${height}:${layout.imageRatio}:${layout.gap}:${layout.cover}:${profile.pageStyle.fontSize}:${profile.pageStyle.lineHeight}`;
+  const [autoPaginated, setAutoPaginated] = useState<{ key: string; map: Record<number, string[]> }>({ key: '', map: {} });
+  const activeAutoMap = useMemo(
+    () => (autoPaginated.key === layoutKey ? autoPaginated.map : {}),
+    [autoPaginated, layoutKey],
+  );
+  const activeAutoMapRef = useRef(activeAutoMap);
+  activeAutoMapRef.current = activeAutoMap;
+  const parsedScenesRef = useRef(parsed.scenes);
+  parsedScenesRef.current = parsed.scenes;
 
   // 스크롤 위치를 안전하게 유지하며 편집 모드 전환
   const toggleEditingScene = (targetIndex: number | null) => {
@@ -89,7 +171,7 @@ export default function PicturebookPreview({ content, profile, fingerprint, rend
       lastScrollTopRef.current = null;
     }
     if(editingScene===null)return;
-    const page=root.current?.querySelectorAll<HTMLElement>('.book-page')[editingScene];
+    const page=root.current?.querySelector<HTMLElement>(`.book-page[data-scene-page="${editingScene}"]`);
     page?.querySelector<HTMLElement>('.visual-document-surface')?.focus({preventScroll:true});
   },[editingScene]);
 
@@ -117,18 +199,49 @@ export default function PicturebookPreview({ content, profile, fingerprint, rend
         setScale(previous => Math.abs(previous - nextScale) > 0.005 ? nextScale : previous);
       }
       const next: string[] = [];
+      const nextOverflow: number[] = [];
+      let didAutoSplit = false;
       if (element.querySelector('[data-export-state="error"]')) next.push('그림을 불러오지 못했습니다. 파일 경로와 드라이브 연결을 확인해 주세요.');
-      element.querySelectorAll<HTMLElement>('[data-book-text]').forEach((text, i) => {
+      const textBoxes = Array.from(element.querySelectorAll<HTMLElement>('[data-book-text]'));
+      for (let boxIdx = 0; boxIdx < textBoxes.length; boxIdx++) {
+        const text = textBoxes[boxIdx];
+        const sceneIdx = Number(text.dataset.sceneIdx ?? boxIdx);
+        const subIdx = Number(text.dataset.subpageIdx ?? 0);
         // 현재 편집 중인 장면은 에디터 컨트롤/도구로 인해 일시적 높이 변동이 생기므로 배너 깜빡임(화면 진동) 방지
-        if (editingScene === i) {
+        if (editingScene === sceneIdx) {
           delete text.dataset.bookOverflow;
-          return;
+          continue;
         }
         if (text.scrollHeight > text.clientHeight + 2 || text.scrollWidth > text.clientWidth + 2) {
-          next.push(`${i + 1}페이지의 글이 영역을 넘습니다. 글을 줄이거나 장면을 나눠 주세요.`);
+          const currentChunks = activeAutoMapRef.current[sceneIdx] || [parsedScenesRef.current[sceneIdx]?.body || ''];
+          const targetChunk = currentChunks[subIdx] || '';
+          if (currentChunks.length < 10 && targetChunk.trim()) {
+            const split = computeSplitAtDomBoundary(text, targetChunk);
+            if (split) {
+              const updatedChunks = [
+                ...currentChunks.slice(0, subIdx),
+                split.keepBody,
+                split.overflowBody,
+                ...currentChunks.slice(subIdx + 1),
+              ];
+              setAutoPaginated(prev => ({
+                key: layoutKey,
+                map: { ...(prev.key === layoutKey ? prev.map : {}), [sceneIdx]: updatedChunks },
+              }));
+              didAutoSplit = true;
+              delete text.dataset.bookOverflow;
+              break;
+            }
+          }
+          next.push(`${sceneIdx + 1}페이지의 글이 영역을 넘습니다. 글을 줄이거나 장면을 나눠 주세요.`);
+          if (!nextOverflow.includes(sceneIdx)) nextOverflow.push(sceneIdx);
           text.dataset.bookOverflow = 'true';
-        } else delete text.dataset.bookOverflow;
-      });
+        } else {
+          delete text.dataset.bookOverflow;
+        }
+      }
+      if (didAutoSplit) return;
+      setOverflowScenes(prev => JSON.stringify(prev) === JSON.stringify(nextOverflow) ? prev : nextOverflow);
       let pendingMedia = Boolean(element.querySelector('[data-export-state="loading"]'));
       element.querySelectorAll<HTMLImageElement>('.book-image img').forEach((image, i) => {
         if (!image.complete) {
@@ -168,7 +281,7 @@ export default function PicturebookPreview({ content, profile, fingerprint, rend
     }catch(error){setEditError(error instanceof Error?error.message:'장면 그림 교체에 실패했습니다.');}
   };
   const goToScene = (index: number) => {
-    const page = root.current?.querySelectorAll<HTMLElement>('.book-page')[index];
+    const page = root.current?.querySelector<HTMLElement>(`.book-page[data-scene-page="${index}"]`);
     if (!page) return;
     page.focus({ preventScroll: true });
     page.scrollIntoView({
@@ -197,11 +310,87 @@ export default function PicturebookPreview({ content, profile, fingerprint, rend
     const next=current.slice(0,scene.end)+newScene+current.slice(scene.end);
     contentRef.current=next;setEditingScene(index+1);onChange(next);
     requestAnimationFrame(()=>{
-      root.current?.querySelectorAll<HTMLElement>('.book-page')[index+1]?.scrollIntoView({block:'start',inline:'nearest',behavior:'smooth'});
+      root.current?.querySelector<HTMLElement>(`.book-page[data-scene-page="${index + 1}"]`)?.scrollIntoView({block:'start',inline:'nearest',behavior:'smooth'});
     });
   };
+
+  /** 선택한 장면을 문서에서 안전하게 삭제 */
+  const deleteScene = (index: number) => {
+    if (!onChange) return;
+    const current = contentRef.current;
+    const target = parseBookScenes(current).scenes[index];
+    if (!target) return;
+    if (!window.confirm(`${target.cover ? '표지' : `장면 ${index + 1}`}을(를) 문서에서 삭제할까요?`)) return;
+    toggleEditingScene(null);
+    const before = current.slice(0, target.start).replace(/\n+$/, '');
+    const after = current.slice(target.end).replace(/^\n+/, '');
+    const next = before && after ? `${before}\n\n${after}` : (before || after);
+    contentRef.current = next;
+    onChange(next);
+  };
+
+  /** 넘친 본문을 현재 페이지와 다음 글 전용(::scene {text-only}) 페이지로 분할 */
+  const splitOverflowToNextPage = (index: number) => {
+    if (!onChange) return;
+    const current = contentRef.current;
+    const scene = parseBookScenes(current).scenes[index];
+    if (!scene) return;
+    const bodyText = sceneEditableBody(scene).trim();
+    if (!bodyText) return;
+
+    const textEl = root.current?.querySelector<HTMLElement>(`[data-book-text][data-scene-idx="${index}"][data-subpage-idx="0"]`) ?? undefined;
+    const split = computeSplitAtDomBoundary(textEl, bodyText);
+    if (!split) {
+      setEditError('분할할 본문이 충분하지 않습니다. 직접 본문을 나누어 주세요.');
+      return;
+    }
+
+    const next = splitBookSceneText(current, index, split.keepBody, split.overflowBody);
+    contentRef.current = next;
+    setEditingScene(null);
+    onChange(next);
+    setEditError('');
+    requestAnimationFrame(() => {
+      root.current?.querySelector<HTMLElement>(`.book-page[data-scene-page="${index + 1}"]`)?.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'smooth' });
+    });
+  };
+
+  /** 사진 여러 장을 선택해 사진앨범 장면을 일괄 생성 */
+  const handleBatchAlbumFiles = async (fileList: FileList | null) => {
+    if (!fileList || !fileList.length || !onChange || !editorOptions?.onImageFile) return;
+    const files = Array.from(fileList).filter(f => f.type.startsWith('image/'));
+    if (!files.length) {
+      setEditError('이미지 파일만 선택할 수 있습니다.');
+      return;
+    }
+    const startDocId = editorOptions?.documentId;
+    const uploaded: Array<{ imagePath: string; alt: string }> = [];
+    try {
+      for (let idx = 0; idx < files.length; idx++) {
+        const file = files[idx];
+        setAlbumImporting(`사진 불러오는 중 (${idx + 1}/${files.length})...`);
+        const path = await editorOptions.onImageFile(file);
+        if (!path) throw new Error(`'${file.name}' 저장에 실패했습니다.`);
+        if (!root.current?.isConnected || editorOptionsRef.current?.documentId !== startDocId) {
+          return;
+        }
+        uploaded.push({ imagePath: path, alt: file.name.replace(/\.[^.]+$/, '') });
+      }
+      const next = appendAlbumScenes(contentRef.current, uploaded);
+      contentRef.current = next;
+      onChange(next);
+      setEditError('');
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : '앨범 사진 일괄 추가에 실패했습니다.');
+    } finally {
+      setAlbumImporting('');
+      if (albumFileInputRef.current) albumFileInputRef.current.value = '';
+    }
+  };
+
+  const theme = layout.theme || 'storybook';
   return <div ref={root} className="markdown-viewer-root onrivi-content-root picturebook-root"
-    data-picturebook="true" data-book-invalid={(allIssues.length > 0 || hasLoadingMedia) ? 'true' : 'false'} data-export-content={fingerprint}>
+    data-picturebook="true" data-book-theme={theme} data-book-invalid={(allIssues.length > 0 || hasLoadingMedia) ? 'true' : 'false'} data-export-content={fingerprint}>
     <style>{`
       .picturebook-root .book-page { box-sizing:border-box; position:relative; flex:none; overflow:hidden; margin:0 auto 24px; outline:1px solid #cbd5e1; box-shadow:0 4px 16px rgba(15,23,42,.12); }
       .picturebook-root .book-image { min-width:0; min-height:0; overflow:hidden; }
@@ -256,8 +445,27 @@ export default function PicturebookPreview({ content, profile, fingerprint, rend
       .picturebook-btn-done { background:#059669!important; color:#ffffff!important; border:1px solid #047857!important; font-weight:800!important; box-shadow:0 0 0 2px rgba(16,185,129,0.35)!important; cursor:pointer; }
       .picturebook-btn-done:hover { background:#047857!important; }
 
+      /* 사진앨범 테마 스타일 (클래식 앨범 / 폴라로이드 앨범) */
+      .picturebook-root[data-book-theme="album-classic"] .book-page { background:#faf6ed!important; outline:1px solid #d6cbb5!important; box-shadow:0 6px 20px rgba(68,52,34,.14)!important; }
+      .picturebook-root[data-book-theme="album-classic"] .book-image { padding:10px; background:#ffffff; border:1px solid #e5dccb; box-shadow:0 2px 8px rgba(0,0,0,.08); border-radius:2px; }
+      .picturebook-root[data-book-theme="album-polaroid"] .book-page { background:#f8fafc!important; }
+      .picturebook-root[data-book-theme="album-polaroid"] .book-image { padding:12px 12px 28px 12px; background:#ffffff; border:1px solid #e2e8f0; box-shadow:0 8px 24px rgba(15,23,42,.14); border-radius:4px; }
+      .picturebook-root .book-page-text-only .book-text { padding:12px 16px; }
+
       @media print { .picturebook-root .book-page { zoom:1!important; margin:0!important; outline:none!important; box-shadow:none!important; break-after:page; break-inside:avoid; } .picturebook-root .book-page:last-of-type { break-after:auto; } .book-screen-only {display:none!important;} }
     `}</style>
+    {onChange && editorOptions?.onImageFile && (
+      <input
+        ref={albumFileInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        aria-label="사진 여러 장 선택하여 앨범 만들기"
+        onChange={event => void handleBatchAlbumFiles(event.target.files)}
+      />
+    )}
+    {albumImporting && <p className="book-screen-only p-3 mb-3 rounded-lg bg-blue-50 text-blue-700 text-xs font-bold" role="status">📸 {albumImporting}</p>}
     {editError && <p className="book-screen-only p-3 mb-3 rounded-lg bg-red-50 text-red-600 text-xs font-bold" role="alert">{editError}</p>}
     {copyError && <p className="book-screen-only p-3 mb-3 rounded-lg bg-amber-50 text-amber-700 text-xs font-bold" role="status">{copyError}</p>}
 
@@ -292,6 +500,16 @@ export default function PicturebookPreview({ content, profile, fingerprint, rend
                 >
                   표지·본문 예시 추가
                 </button>
+                {editorOptions?.onImageFile && (
+                  <button
+                    type="button"
+                    disabled={Boolean(albumImporting)}
+                    className="px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white font-bold text-xs shadow-xs transition-all active:scale-95 cursor-pointer"
+                    onClick={() => albumFileInputRef.current?.click()}
+                  >
+                    📸 사진 여러 장으로 앨범 만들기
+                  </button>
+                )}
               </>
             )}
             <span className="text-[11px] text-slate-500 dark:text-zinc-400 ml-auto font-medium">
@@ -317,8 +535,12 @@ export default function PicturebookPreview({ content, profile, fingerprint, rend
           <p className="text-xs text-slate-500 dark:text-zinc-400 mt-2 mb-3">
             그림은 기존 사진 넣기로 저장한 이미지의 참조를 사용하세요. 각 장면의 첫 이미지가 그림 영역에 표시됩니다.
           </p>
-          <div className="flex gap-2 mb-3">
+          <div className="flex flex-wrap gap-2 mb-3">
             <button type="button" className="border rounded px-3 py-1 text-xs font-bold" onClick={() => onChange(content + '\n\n:::scene\n![장면 그림](media/scene.png)\n\n새 장면의 내용을 입력하세요.\n:::\n')}>+ 장면 추가</button>
+            <button type="button" className="border rounded px-3 py-1 text-xs font-bold" onClick={() => onChange(content + '\n\n:::scene {text-only}\n이어지는 본문 내용을 입력하세요.\n:::\n')}>+ 글 전용 페이지 추가</button>
+            {editorOptions?.onImageFile && (
+              <button type="button" disabled={Boolean(albumImporting)} className="border border-teal-500 text-teal-700 dark:text-teal-300 rounded px-3 py-1 text-xs font-bold hover:bg-teal-50 dark:hover:bg-teal-950/30 disabled:opacity-50" onClick={() => albumFileInputRef.current?.click()}>📸 사진 여러 장 앨범 추가</button>
+            )}
           </div>
           {parsed.scenes.map((scene, i) => <div key={i} data-scene-list-item className="border-t py-3">
             <button type="button" className="mr-2 border rounded px-2" aria-label={`${scene.cover ? '표지' : `장면 ${i+1}`}으로 이동`} onClick={()=>goToScene(i)}>장면으로 이동</button>
@@ -357,6 +579,20 @@ export default function PicturebookPreview({ content, profile, fingerprint, rend
                 <span>{issue}</span>
               </div>
             ))}
+            {onChange && overflowScenes.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                {overflowScenes.map(sceneIdx => (
+                  <button
+                    key={sceneIdx}
+                    type="button"
+                    className="!bg-[#1d4ed8] !text-white !border-[#1e40af] rounded-lg px-3 py-1.5 text-xs font-bold shadow-xs hover:!bg-blue-700 transition-colors cursor-pointer"
+                    onClick={() => splitOverflowToNextPage(sceneIdx)}
+                  >
+                    ↪ {sceneIdx + 1}페이지 넘친 글 다음 페이지로 넘기기
+                  </button>
+                ))}
+              </div>
+            )}
             {parsed.outsideBlocks.map(block => <details key={block.startLine} className="pt-2">
               <summary className="cursor-pointer">{block.location} · 원문 {block.startLine}행의 문제 본문 확인</summary>
               {outsideEdit?.block.startLine === block.startLine ? <div data-editor-controls>
@@ -385,12 +621,18 @@ export default function PicturebookPreview({ content, profile, fingerprint, rend
             </details>)}
           </div>
         )}
-        {/* 장면 목록 렌더링 */}
-        {parsed.scenes.map((scene, i) => {
-          const full = scene.cover && layout.cover === 'full-image';
-          const startLine = sourceLineOffset + content.slice(0, scene.start).split('\n').length;
-          const endLine = sourceLineOffset + content.slice(0, scene.end).split('\n').length;
-          return <React.Fragment key={i}><section tabIndex={-1} aria-label={scene.cover ? '표지 장면' : `장면 ${i+1}`}
+        {/* 장면 목록 렌더링 (넘치는 본문은 자동으로 다음 페이지로 이어서 표시) */}
+        {(() => {
+          let physicalPage = 0;
+          return parsed.scenes.map((scene, i) => {
+            const full = scene.cover && layout.cover === 'full-image';
+            const startLine = sourceLineOffset + content.slice(0, scene.start).split('\n').length;
+            const endLine = sourceLineOffset + content.slice(0, scene.end).split('\n').length;
+            const chunks = editingScene === i ? [scene.body] : (activeAutoMap[i] || [scene.body]);
+            if (!scene.cover) physicalPage += 1;
+            const primaryPageNum = physicalPage;
+            return <React.Fragment key={i}><section tabIndex={-1} aria-label={scene.cover ? '표지 장면' : `장면 ${i+1}`}
+            data-scene-page={i}
             onDragOverCapture={event=>{
               if(onChange && editorOptions?.onImageFile && Array.from(event.dataTransfer.types).some(type=>['Files','text/html','text/uri-list'].includes(type))){event.preventDefault();event.stopPropagation();event.dataTransfer.dropEffect='copy';}
             }}
@@ -415,29 +657,31 @@ export default function PicturebookPreview({ content, profile, fingerprint, rend
               const file=desktopClipboardImage(event);
               if(file && onChange && editorOptions?.onImageFile){event.preventDefault();event.stopPropagation();void replaceScenePhoto(i,file);}
             }}
-            data-line={startLine} data-book-end-line={endLine} data-paper-width={width} data-paper-height={height} data-paper-orientation={landscape ? 'landscape' : 'portrait'} className={`book-page ${full ? 'book-cover-full' : ''}`} style={{
+            data-line={startLine} data-book-end-line={endLine} data-paper-width={width} data-paper-height={height} data-paper-orientation={landscape ? 'landscape' : 'portrait'} className={`book-page ${full ? 'book-cover-full' : ''} ${scene.textOnly ? 'book-page-text-only' : ''}`} style={{
             width: `${width}mm`, height: `${height}mm`, zoom: scale,
-            display: 'grid', gridTemplateRows: 'minmax(0, 1fr)', gridTemplateColumns: full ? '1fr' : scene.cover
+            display: 'grid', gridTemplateRows: 'minmax(0, 1fr)', gridTemplateColumns: full || scene.textOnly ? '1fr' : scene.cover
               ? `${(1 - layout.imageRatio) * 100}fr ${layout.imageRatio * 100}fr`
               : `${layout.imageRatio * 100}fr ${(1 - layout.imageRatio) * 100}fr`,
-            gap: full ? 0 : layout.gap,
+            gap: full || scene.textOnly ? 0 : layout.gap,
             padding: `${profile.pageStyle.marginTop} ${profile.pageStyle.marginRight} ${profile.pageStyle.marginBottom} ${profile.pageStyle.marginLeft}`,
             background: profile.pageStyle.backgroundColor, fontFamily: profile.pageStyle.fontFamily,
             fontSize: profile.pageStyle.fontSize, lineHeight: profile.pageStyle.lineHeight,
           }}>
-            <div className="book-image" style={{ order: scene.cover && !full ? 2 : 0 }}>
-              {renderMarkdown(scene.image)}
-              {(scene.image || onImageEdit) && (
-                <div className="book-image-controls book-screen-only no-print">
-                  {scene.image && <button type="button" className="onrivi-media-control book-image-edit book-image-copy" title={copiedScene === i ? '복사됨' : '이미지 복사'}
-                    aria-label={`${i + 1}페이지 사진 복사`} onClick={event => { event.stopPropagation(); void copyImageToClipboard(scene.image, event.currentTarget.closest('.book-image')?.querySelector('img')).then((ok) => { if (ok) { setCopiedScene(i); setCopyError(''); } else { setCopyError('이미지 복사에 실패했습니다.'); } }).catch(() => setCopyError('클립보드 복사에 실패했습니다.')); }}>{copiedScene === i ? <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg> : <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>}</button>}
-                  {onImageEdit && <button type="button" className="onrivi-media-control book-image-edit" title="사진 편집"
-                    aria-label={`${scene.cover ? '표지' : `${i + 1}페이지`} 사진 편집`}
-                    onClick={event => { event.stopPropagation(); onImageEdit(i); }}><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" /></svg></button>}
-                </div>
-              )}
-            </div>
-            <div className="book-text" data-book-text="true" data-editing={editingScene === i ? 'true' : 'false'}>
+            {!scene.textOnly && (
+              <div className="book-image" style={{ order: scene.cover && !full ? 2 : 0 }}>
+                {renderMarkdown(scene.image)}
+                {(scene.image || onImageEdit) && (
+                  <div className="book-image-controls book-screen-only no-print">
+                    {scene.image && <button type="button" className="onrivi-media-control book-image-edit book-image-copy" title={copiedScene === i ? '복사됨' : '이미지 복사'}
+                      aria-label={`${i + 1}페이지 사진 복사`} onClick={event => { event.stopPropagation(); void copyImageToClipboard(scene.image, event.currentTarget.closest('.book-image')?.querySelector('img')).then((ok) => { if (ok) { setCopiedScene(i); setCopyError(''); } else { setCopyError('이미지 복사에 실패했습니다.'); } }).catch(() => setCopyError('클립보드 복사에 실패했습니다.')); }}>{copiedScene === i ? <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4ade80" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg> : <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>}</button>}
+                    {onImageEdit && <button type="button" className="onrivi-media-control book-image-edit" title="사진 편집"
+                      aria-label={`${scene.cover ? '표지' : `${i + 1}페이지`} 사진 편집`}
+                      onClick={event => { event.stopPropagation(); onImageEdit(i); }}><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9" /><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" /></svg></button>}
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="book-text" data-book-text="true" data-scene-idx={i} data-subpage-idx={0} data-editing={editingScene === i ? 'true' : 'false'}>
               {onChange && <div className="book-screen-only no-print" data-editor-controls>
                 <button
                   type="button"
@@ -468,7 +712,24 @@ export default function PicturebookPreview({ content, profile, fingerprint, rend
                     편집 중
                   </span>
                 )}
-                <button type="button" className="onrivi-media-control ml-auto text-xs px-2.5 py-1 rounded border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors" onClick={() => returnToSceneList(i)}>↑ 장면 목록으로</button>
+                {overflowScenes.includes(i) && (
+                  <button
+                    type="button"
+                    className="onrivi-media-control px-2.5 py-1 text-xs rounded bg-amber-500 hover:bg-amber-600 text-white font-bold shadow-xs transition-colors cursor-pointer"
+                    onClick={() => splitOverflowToNextPage(i)}
+                  >
+                    ↪ 넘친 글 다음 페이지로
+                  </button>
+                )}
+                <button type="button" className="onrivi-media-control ml-auto text-xs px-2.5 py-1 rounded border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors cursor-pointer" onClick={() => returnToSceneList(i)}>↑ 장면 목록으로</button>
+                <button
+                  type="button"
+                  className="onrivi-media-control text-xs px-2.5 py-1 rounded border border-red-300 dark:border-red-800 bg-white dark:bg-zinc-800 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40 font-bold transition-colors cursor-pointer"
+                  aria-label={`${scene.cover ? '표지' : `장면 ${i + 1}`} 삭제`}
+                  onClick={() => deleteScene(i)}
+                >
+                  장면 삭제
+                </button>
               </div>}
               {editingScene === i && onChange ? <VisualDocumentEditor key={`scene-${i}`} renderImage={renderMarkdown} content={sceneEditableBody(scene)}
                 documentId={editorOptions?.documentId ? `${editorOptions.documentId}:scene-${i}` : `scene-${i}`}
@@ -494,15 +755,117 @@ export default function PicturebookPreview({ content, profile, fingerprint, rend
                 onChange={body => {
                   try { onChange(replaceSceneBody(contentRef.current, i, body, scene.raw)); setEditError(''); }
                   catch (error) { setEditError(error instanceof Error ? error.message : '장면 수정에 실패했습니다.'); }
-                }} /> : renderMarkdown(scene.body)}
+                }} /> : renderMarkdown(chunks[0])}
             </div>
-            {layout.pageNumbers && !scene.cover && <span style={{ position: 'absolute', bottom: '3mm', right: '6mm', fontSize: '10pt' }}>{i + 1}</span>}
+            {layout.pageNumbers && !scene.cover && <span style={{ position: 'absolute', bottom: '3mm', right: '6mm', fontSize: '10pt' }}>{primaryPageNum}</span>}
           </section>
+          {editingScene !== i && chunks.slice(1).map((extraChunk, extraIdx) => {
+            if (!scene.cover) physicalPage += 1;
+            const contPageNum = physicalPage;
+            const promoteWithImage = async (file: File) => {
+              if (!onChange || !editorOptions?.onImageFile) return;
+              try {
+                const path = await editorOptions.onImageFile(file);
+                if (!path) throw new Error('그림 저장에 실패했습니다.');
+                const keepBody = chunks.slice(0, extraIdx + 1).join('\n\n');
+                const restBody = chunks.slice(extraIdx + 1).join('\n\n');
+                const current = contentRef.current;
+                const targetScene = parseBookScenes(current).scenes[i];
+                if (!targetScene) return;
+                const imgMatch = targetScene.raw.match(/^\s*(!\[[^\]\n]*\](?:\([^\n]+\)|\[[^\]\n]*\]))[ \t]*$/m)?.[1];
+                const updatedRaw = (imgMatch ? imgMatch + '\n\n' : '') + keepBody.trim();
+                const alt = file.name.replace(/\.[^.]+$/, '').replace(/[\[\]\r\n]/g, ' ').trim() || '장면 그림';
+                const newSceneBlock = `\n\n:::scene\n![${alt}](<${path}>)\n\n${restBody.trim()}\n:::`;
+                const next = current.slice(0, targetScene.start) + `${targetScene.opening}\n${updatedRaw}\n:::` + newSceneBlock + current.slice(targetScene.end);
+                contentRef.current = next;
+                onChange(next);
+                setEditError('');
+              } catch (error) {
+                setEditError(error instanceof Error ? error.message : '사진을 추가하지 못했습니다.');
+              }
+            };
+            return (
+              <section
+                key={`cont-${i}-${extraIdx}`}
+                tabIndex={-1}
+                aria-label={`장면 ${i + 1} 다음 장표 ${extraIdx + 2}`}
+                data-paper-width={width}
+                data-paper-height={height}
+                data-paper-orientation={landscape ? 'landscape' : 'portrait'}
+                className="book-page book-page-auto-continued"
+                onDragOverCapture={event => {
+                  if (onChange && editorOptions?.onImageFile && Array.from(event.dataTransfer.types).some(type => ['Files', 'text/html', 'text/uri-list'].includes(type))) {
+                    event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = 'copy';
+                  }
+                }}
+                onDropCapture={event => {
+                  if (!onChange || !editorOptions?.onImageFile) return;
+                  const item = parseDroppedDataToBlob(event.dataTransfer); if (!item) return;
+                  event.preventDefault(); event.stopPropagation();
+                  void (async () => {
+                    try {
+                      const file = item.file || (item.webUrl ? await fetchExternalImageFile(item.webUrl) : null);
+                      if (!file) throw new Error('끌어온 사진을 읽지 못했습니다.');
+                      await promoteWithImage(file);
+                    } catch (error) { setEditError(error instanceof Error ? error.message : '사진을 읽지 못했습니다.'); }
+                  })();
+                }}
+                style={{
+                  width: `${width}mm`, height: `${height}mm`, zoom: scale,
+                  display: 'grid', gridTemplateRows: 'minmax(0, 1fr)',
+                  gridTemplateColumns: `${layout.imageRatio * 100}fr ${(1 - layout.imageRatio) * 100}fr`,
+                  gap: layout.gap,
+                  padding: `${profile.pageStyle.marginTop} ${profile.pageStyle.marginRight} ${profile.pageStyle.marginBottom} ${profile.pageStyle.marginLeft}`,
+                  background: profile.pageStyle.backgroundColor, fontFamily: profile.pageStyle.fontFamily,
+                  fontSize: profile.pageStyle.fontSize, lineHeight: profile.pageStyle.lineHeight,
+                }}
+              >
+                <div className="book-image flex flex-col items-center justify-center border-2 border-dashed border-slate-200 dark:border-zinc-700 rounded-lg bg-slate-50/60 dark:bg-zinc-900/40 text-slate-400 dark:text-zinc-500 p-6 text-center">
+                  <span className="text-2xl mb-2" aria-hidden="true">🖼️</span>
+                  <span className="text-xs font-semibold">사진을 끌어다 놓거나</span>
+                  <span className="text-[11px] mt-0.5">새 장면 장표로 분리할 수 있습니다</span>
+                  {onChange && editorOptions?.onImageFile && (
+                    <label className="book-screen-only no-print mt-3 px-3 py-1.5 rounded-lg bg-white dark:bg-zinc-800 border border-slate-300 dark:border-zinc-600 text-slate-700 dark:text-zinc-200 text-xs font-bold shadow-xs cursor-pointer hover:bg-slate-50 dark:hover:bg-zinc-700">
+                      사진 선택
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={event => {
+                          const file = event.target.files?.[0];
+                          if (file) void promoteWithImage(file);
+                          event.target.value = '';
+                        }}
+                      />
+                    </label>
+                  )}
+                </div>
+                <div className="book-text" data-book-text="true" data-scene-idx={i} data-subpage-idx={extraIdx + 1} data-editing="false">
+                  {onChange && (
+                    <div className="book-screen-only no-print" data-editor-controls>
+                      <button
+                        type="button"
+                        className="onrivi-media-control inline-flex items-center gap-1.5 px-3 py-1 text-xs rounded shadow-xs transition-all active:scale-95 picturebook-btn-edit"
+                        onMouseDown={event => event.preventDefault()}
+                        onClick={() => { toggleEditingScene(i); goToScene(i); }}
+                      >
+                        본문 편집
+                      </button>
+                      <button type="button" className="onrivi-media-control ml-auto text-xs px-2.5 py-1 rounded border border-slate-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 hover:bg-slate-50 dark:hover:bg-zinc-700 transition-colors" onClick={() => returnToSceneList(i)}>↑ 장면 목록으로</button>
+                    </div>
+                  )}
+                  {renderMarkdown(extraChunk)}
+                </div>
+                {layout.pageNumbers && !scene.cover && <span style={{ position: 'absolute', bottom: '3mm', right: '6mm', fontSize: '10pt' }}>{contPageNum}</span>}
+              </section>
+            );
+          })}
           {onChange && <div className="book-screen-only no-print flex justify-center mb-6" data-editor-controls>
             <button type="button" className="onrivi-media-control" aria-label={`${scene.cover?'표지':`장면 ${i+1}`} 다음 장면 추가`} onClick={()=>addSceneAfter(i)}>＋ 다음 장면 추가</button>
           </div>}
           </React.Fragment>;
-        })}
+          });
+        })()}
       </>
     )}
   </div>;

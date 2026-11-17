@@ -1,6 +1,7 @@
 // ====================================================================
 // 📊 [OMD-EDIT-StatusBar-0003] StatusBar.tsx ➔ StatusBar
 // 🎯 @KICK  : 하단 상태표시줄 - 글자 수, 단어 수, 서식 프로필, 저장 상태, 뷰포트 모드, 행/열 정보 및 지식 색인 실시간 진행률 표시
+// 🚨 @PATCH : **2026-11-17** — [그림책/사진앨범 모드에서 페이지 보기/나누기(pageGuides) 비활성화]: 이미 쪽이 나뉘어 있는 그림책 서식에서는 PDF 기준 페이지 보기 버튼을 비활성화하고 자동 해제
 // 🚨 @PATCH : **2026-10-20** — [하단 상태바 커서 좌표(Ln, Col) 불변 버그 해결 및 3중 실시간 동기화 체계 구축]:
 //             1) Context의 cursorLine/cursorColumn 변경 감지 useEffect 추가 및 onrivi:cursor-position 전역 이벤트 리스너 신설
 //             2) 문서보기(VisualDocumentEditor) 및 모나코 에디터 양방향에서 커서 이동 시 즉시 localCursor를 동기화하여 Ln 1, Col 1 동결 결함 완전 해소
@@ -158,7 +159,9 @@ function StatusBar() {
 
   const folderName = rootFolder?.name;
   const relativePath = currentFileNode?.path;
-  const activeProfileName = profiles?.find((p: any) => p.id === activeProfileId)?.name || DEFAULT_PROFILE?.name;
+  const activeProfile = profiles?.find((p: any) => p.id === activeProfileId) || DEFAULT_PROFILE;
+  const activeProfileName = activeProfile?.name;
+  const isPicturebookMode = activeProfile?.layout?.type === 'picturebook';
 
   // 💡 [서식 깜빡임 방지 리텐션 가드] 타이핑 도중 서식명이 undefined 가 되는 찰나에도 이전 이름을 유지
   const lastActiveProfileNameRef = React.useRef('기본 서식');
@@ -214,6 +217,10 @@ function StatusBar() {
   }, [pageGuides]);
 
   const handleTogglePageGuides = () => {
+    if (isPicturebookMode) {
+      showToast?.('그림책/사진앨범 모드에서는 이미 페이지가 나뉘어 있어 사용할 수 없습니다.', 'info');
+      return;
+    }
     const next = !pageGuides;
     setPageGuides(next);
     try {
@@ -221,6 +228,16 @@ function StatusBar() {
     } catch {}
     window.dispatchEvent(new CustomEvent('onrivi:toggle-page-guides', { detail: next }));
   };
+
+  useEffect(() => {
+    if (isPicturebookMode && pageGuides) {
+      setPageGuides(false);
+      try {
+        browserAccountStorage.setItem('onrivi_tabs_page_guides', 'false');
+      } catch {}
+      window.dispatchEvent(new CustomEvent('onrivi:toggle-page-guides', { detail: false }));
+    }
+  }, [isPicturebookMode, pageGuides]);
 
   const [localCursor, setLocalCursor] = useState({ line: cursorLine || 1, column: cursorColumn || 1 });
 
@@ -484,17 +501,30 @@ function StatusBar() {
     >
       {/* 1. 좌측 영역: 조판 액션 도구 & 서식 & 저장 상태 */}
       <div className="flex items-center gap-1.5 shrink-0">
-        {/* 📖 예상 페이지 경계 켜기/끄기 */}
+        {/* 📖 예상 페이지 경계 켜기/끄기 (그림책/사진앨범 모드에서는 이미 쪽이 나뉘어 있으므로 비활성화) */}
         <button
           type="button"
+          disabled={isPicturebookMode}
           onClick={handleTogglePageGuides}
-          className={`p-1.5 rounded-md transition-colors flex items-center justify-center ${
-            pageGuides
+          className={`p-1.5 rounded-md transition-colors flex items-center justify-center disabled:opacity-40 disabled:cursor-not-allowed ${
+            pageGuides && !isPicturebookMode
               ? 'text-blue-600 dark:text-blue-400 bg-blue-500/15 font-bold shadow-2xs'
               : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-black/5 dark:hover:bg-white/5'
           }`}
-          title={pageGuides ? "PDF 기준 페이지 보기 끄기" : "PDF 기준 페이지 보기 켜기"}
-          aria-label={pageGuides ? "PDF 기준 페이지 보기 끄기" : "PDF 기준 페이지 보기 켜기"}
+          title={
+            isPicturebookMode
+              ? '그림책/사진앨범 모드에서는 이미 페이지가 나뉘어 있어 사용할 수 없습니다.'
+              : pageGuides
+                ? 'PDF 기준 페이지 보기 끄기'
+                : 'PDF 기준 페이지 보기 켜기'
+          }
+          aria-label={
+            isPicturebookMode
+              ? '그림책 모드에서 페이지 나누기 비활성화'
+              : pageGuides
+                ? 'PDF 기준 페이지 보기 끄기'
+                : 'PDF 기준 페이지 보기 켜기'
+          }
         >
           <Icon name="Book" size={15} />
         </button>
