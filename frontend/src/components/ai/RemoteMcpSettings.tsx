@@ -2,6 +2,7 @@
 // 📊 [OMD-AI-RemoteMcpSettings-0001] src/components/ai/RemoteMcpSettings.tsx
 // 🎯 @KICK  : 통합 MCP 연동 설정 UI (구글 드라이브 원격 Streamable HTTP + 내 PC 로컬 OS 폴더 Stdio 전환 지원)
 // 🛡️ @GUARD : Rule 1(단일 주석 관리), Rule 3(Core/Manager 분리), Rule 6(Modern Technical Editorial), 토큰 1회성 노출
+// 🚨 @PATCH : 2026-11-17 — [MCP 설정 JSON 표준화 및 로컬+웹 통합 복사 지원]: localConfigSnippet을 ONRIVI_MCP_HOME/APPDATA 자동 경로 방식으로 통일하고, onrivi-author + onrivi-author-web 통합 mcpServers JSON 복사 버튼 추가
 // 🚨 @PATCH : 2026-11-16 — [구글 드라이브 + 로컬 OS 폴더 통합 MCP UI] 단일 카드 내 저장소 유형 전환 탭(구글 드라이브 / 로컬 폴더) 추가
 // 🚨 @PATCH : 2026-11-16 — [웹 원격 MCP 구축] 개인용 MCP 토큰 발급/재발급/폐기 및 연결 설정 복사 UI 신설
 // ====================================================================
@@ -170,31 +171,41 @@ export default function RemoteMcpSettings() {
     }
   };
 
-  const configSnippet = JSON.stringify(
-    {
-      mcpServers: {
-        'onrivi-author-web': {
-          url: mcpEndpoint,
-          headers: {
-            Authorization: `Bearer ${issuedToken || '<발급받은_ONRIVI_MCP_토큰>'}`,
-          },
-        },
-      },
+  const webMcpEntry = {
+    url: mcpEndpoint,
+    headers: {
+      Authorization: `Bearer ${issuedToken || '<발급받은_ONRIVI_MCP_토큰>'}`,
     },
+  };
+
+  const localMcpEntry = {
+    command: 'node',
+    args: [
+      '-e',
+      "import('file:///' + (process.env.ONRIVI_MCP_HOME || (process.env.APPDATA + '/Onrivi Author/plugins/onrivi-author')).replace(/\\\\/g, '/') + '/server/index.mjs')",
+    ],
+    ...(localWorkspacePath.trim()
+      ? { env: { ONRIVI_WORKSPACE_PATH: localWorkspacePath.trim() } }
+      : {}),
+  };
+
+  const configSnippet = JSON.stringify(
+    { mcpServers: { 'onrivi-author-web': webMcpEntry } },
     null,
     2
   );
 
   const localConfigSnippet = JSON.stringify(
+    { mcpServers: { 'onrivi-author': localMcpEntry } },
+    null,
+    2
+  );
+
+  const combinedConfigSnippet = JSON.stringify(
     {
       mcpServers: {
-        'onrivi-author': {
-          command: 'node',
-          args: ['<ONRIVI_설치경로>/plugins/onrivi-author/server/index.mjs'],
-          env: localWorkspacePath.trim()
-            ? { ONRIVI_WORKSPACE_PATH: localWorkspacePath.trim() }
-            : undefined,
-        },
+        'onrivi-author': localMcpEntry,
+        'onrivi-author-web': webMcpEntry,
       },
     },
     null,
@@ -306,15 +317,24 @@ export default function RemoteMcpSettings() {
         )}
 
         <div className="space-y-1.5 pt-2 border-t border-zinc-100 dark:border-zinc-800">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <span className="font-semibold text-zinc-600 dark:text-zinc-400">AI 에이전트 설정 예시 (`mcp_config.json`)</span>
-            <button
-              type="button"
-              onClick={() => void navigator.clipboard.writeText(configSnippet).then(() => setMessage('mcp_config.json 예시를 복사했습니다.'))}
-              className="text-blue-600 dark:text-blue-400 font-semibold hover:underline cursor-pointer"
-            >
-              JSON 복사
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => void navigator.clipboard.writeText(combinedConfigSnippet).then(() => setMessage('로컬+웹 통합 mcp_config.json을 복사했습니다.'))}
+                className="text-purple-600 dark:text-purple-400 font-semibold hover:underline cursor-pointer"
+              >
+                통합 JSON 복사 (로컬+웹)
+              </button>
+              <button
+                type="button"
+                onClick={() => void navigator.clipboard.writeText(configSnippet).then(() => setMessage('mcp_config.json 예시를 복사했습니다.'))}
+                className="text-blue-600 dark:text-blue-400 font-semibold hover:underline cursor-pointer"
+              >
+                JSON 복사
+              </button>
+            </div>
           </div>
           <pre className="p-2.5 rounded-lg bg-zinc-900 text-zinc-100 font-mono text-[11px] overflow-x-auto">
             {configSnippet}
@@ -340,15 +360,24 @@ export default function RemoteMcpSettings() {
             />
           </label>
           <div className="space-y-1.5 pt-1">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <span className="font-semibold text-zinc-600 dark:text-zinc-400">AI 에이전트 설정 예시 (`mcp_config.json`)</span>
-              <button
-                type="button"
-                onClick={() => void navigator.clipboard.writeText(localConfigSnippet).then(() => setMessage('로컬 MCP 설정 JSON을 복사했습니다.'))}
-                className="text-blue-600 dark:text-blue-400 font-semibold hover:underline cursor-pointer"
-              >
-                JSON 복사
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => void navigator.clipboard.writeText(combinedConfigSnippet).then(() => setMessage('로컬+웹 통합 mcp_config.json을 복사했습니다.'))}
+                  className="text-purple-600 dark:text-purple-400 font-semibold hover:underline cursor-pointer"
+                >
+                  통합 JSON 복사 (로컬+웹)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void navigator.clipboard.writeText(localConfigSnippet).then(() => setMessage('로컬 MCP 설정 JSON을 복사했습니다.'))}
+                  className="text-blue-600 dark:text-blue-400 font-semibold hover:underline cursor-pointer"
+                >
+                  JSON 복사
+                </button>
+              </div>
             </div>
             <pre className="p-2.5 rounded-lg bg-zinc-900 text-zinc-100 font-mono text-[11px] overflow-x-auto">
               {localConfigSnippet}
