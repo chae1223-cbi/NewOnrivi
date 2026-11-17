@@ -2,6 +2,7 @@
 // 📊 [OMD-AI-RemoteMcpSettings-0001] src/components/ai/RemoteMcpSettings.tsx
 // 🎯 @KICK  : 통합 MCP 연동 설정 UI (구글 드라이브 원격 Streamable HTTP + 내 PC 로컬 OS 폴더 Stdio 전환 지원)
 // 🛡️ @GUARD : Rule 1(단일 주석 관리), Rule 3(Core/Manager 분리), Rule 6(Modern Technical Editorial), 토큰 1회성 노출
+// 🚨 @PATCH : 2026-11-17 — [로컬 작업장 자동 감지 및 내 PC 로컬 폴더 탭 기본 전환]: 현재 활성 작업장이 로컬 PC/브라우저 폴더일 경우 '내 PC 로컬 폴더' 탭을 기본 선택하고 작업장 경로를 자동 채움. 구글 드라이브 미연결 시 원격 토큰 불필요 안내 배너 추가
 // 🚨 @PATCH : 2026-11-17 — [MCP 설정 JSON 표준화 및 로컬+웹 통합 복사 지원]: localConfigSnippet을 ONRIVI_MCP_HOME/APPDATA 자동 경로 방식으로 통일하고, onrivi-author + onrivi-author-web 통합 mcpServers JSON 복사 버튼 추가
 // 🚨 @PATCH : 2026-11-16 — [구글 드라이브 + 로컬 OS 폴더 통합 MCP UI] 단일 카드 내 저장소 유형 전환 탭(구글 드라이브 / 로컬 폴더) 추가
 // 🚨 @PATCH : 2026-11-16 — [웹 원격 MCP 구축] 개인용 MCP 토큰 발급/재발급/폐기 및 연결 설정 복사 UI 신설
@@ -29,8 +30,27 @@ interface TokenStatus {
  * ==========================================================================================
  */
 export default function RemoteMcpSettings() {
-  const [targetMode, setTargetMode] = useState<'gdrive' | 'local'>('gdrive');
-  const [localWorkspacePath, setLocalWorkspacePath] = useState('');
+  const [targetMode, setTargetMode] = useState<'gdrive' | 'local'>(() => {
+    if (typeof window === 'undefined') return 'gdrive';
+    try {
+      const lastMode = localStorage.getItem('onrivi_last_workspace_mode') || window.localStorage.getItem('onrivi_last_workspace_mode') || '';
+      const localPath = localStorage.getItem('onrivi_workspace_path') || window.localStorage.getItem('onrivi_workspace_path') || '';
+      if (lastMode === 'local' || lastMode === 'browser' || (localPath && lastMode !== 'gdrive' && lastMode !== 'cloud')) {
+        return 'local';
+      }
+    } catch {
+      // ignore
+    }
+    return 'gdrive';
+  });
+  const [localWorkspacePath, setLocalWorkspacePath] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    try {
+      return localStorage.getItem('onrivi_workspace_path') || window.localStorage.getItem('onrivi_workspace_path') || '';
+    } catch {
+      return '';
+    }
+  });
   const [status, setStatus] = useState<TokenStatus | null>(null);
   const [issuedToken, setIssuedToken] = useState('');
   const [busy, setBusy] = useState(false);
@@ -247,6 +267,20 @@ export default function RemoteMcpSettings() {
 
       {targetMode === 'gdrive' ? (
         <>
+          {status && !status.hasDriveConnected && (
+            <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/70 flex flex-wrap items-center justify-between gap-2 text-xs">
+              <span className="text-amber-900 dark:text-amber-200 font-medium">
+                💡 현재 구글 드라이브가 연결되어 있지 않습니다. <strong>내 PC 로컬 폴더</strong>를 사용 중이시라면 원격 토큰 발급 없이 바로 연동할 수 있습니다.
+              </span>
+              <button
+                type="button"
+                onClick={() => setTargetMode('local')}
+                className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold shrink-0 cursor-pointer"
+              >
+                💻 내 PC 로컬 폴더로 전환 →
+              </button>
+            </div>
+          )}
           <div className="flex items-center justify-between gap-2">
             <p className="text-[12px] text-on-surface-variant leading-relaxed">
               웹·데스크톱 어디서든 연결한 <strong>구글 드라이브 작업장·리소스 폴더(문서, AI 템플릿, 서식 프로필)</strong>를 외부 AI 에이전트(Antigravity, Claude 등)에서 바로 읽고 수정할 수 있습니다. (활성 유료 구독 필요)
