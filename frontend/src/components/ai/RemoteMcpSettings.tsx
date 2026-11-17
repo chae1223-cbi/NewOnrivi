@@ -2,6 +2,7 @@
 // 📊 [OMD-AI-RemoteMcpSettings-0001] src/components/ai/RemoteMcpSettings.tsx
 // 🎯 @KICK  : 통합 MCP 연동 설정 UI (구글 드라이브 원격 Streamable HTTP + 내 PC 로컬 OS 폴더 Stdio 전환 지원)
 // 🛡️ @GUARD : Rule 1(단일 주석 관리), Rule 3(Core/Manager 분리), Rule 6(Modern Technical Editorial), 토큰 1회성 노출
+// 🚨 @PATCH : 2026-11-17 — [로컬 작업장 + 환경설정 리소스 폴더 자동 반영]: 내 PC 로컬 폴더 MCP JSON 생성 시 현재 접속한 작업장(ONRIVI_WORKSPACE_PATH)과 환경설정 리소스 폴더(ONRIVI_RESOURCE_PATH)를 자동 읽어 env에 동적 생성
 // 🚨 @PATCH : 2026-11-17 — [로컬 작업장 자동 감지 및 내 PC 로컬 폴더 탭 기본 전환]: 현재 활성 작업장이 로컬 PC/브라우저 폴더일 경우 '내 PC 로컬 폴더' 탭을 기본 선택하고 작업장 경로를 자동 채움. 구글 드라이브 미연결 시 원격 토큰 불필요 안내 배너 추가
 // 🚨 @PATCH : 2026-11-17 — [MCP 설정 JSON 표준화 및 로컬+웹 통합 복사 지원]: localConfigSnippet을 ONRIVI_MCP_HOME/APPDATA 자동 경로 방식으로 통일하고, onrivi-author + onrivi-author-web 통합 mcpServers JSON 복사 버튼 추가
 // 🚨 @PATCH : 2026-11-16 — [구글 드라이브 + 로컬 OS 폴더 통합 MCP UI] 단일 카드 내 저장소 유형 전환 탭(구글 드라이브 / 로컬 폴더) 추가
@@ -47,6 +48,21 @@ export default function RemoteMcpSettings() {
     if (typeof window === 'undefined') return '';
     try {
       return localStorage.getItem('onrivi_workspace_path') || window.localStorage.getItem('onrivi_workspace_path') || '';
+    } catch {
+      return '';
+    }
+  });
+  const [localResourcePath, setLocalResourcePath] = useState(() => {
+    if (typeof window === 'undefined') return '';
+    try {
+      const resSettings = getResourceSettings('local');
+      return (
+        resSettings?.path ||
+        localStorage.getItem('onrivi_resource_folder_path') ||
+        localStorage.getItem('resourceFolder') ||
+        window.localStorage.getItem('resourceFolder') ||
+        ''
+      );
     } catch {
       return '';
     }
@@ -198,15 +214,17 @@ export default function RemoteMcpSettings() {
     },
   };
 
+  const localEnv: Record<string, string> = {};
+  if (localWorkspacePath.trim()) localEnv.ONRIVI_WORKSPACE_PATH = localWorkspacePath.trim();
+  if (localResourcePath.trim()) localEnv.ONRIVI_RESOURCE_PATH = localResourcePath.trim();
+
   const localMcpEntry = {
     command: 'node',
     args: [
       '-e',
       "import('file:///' + (process.env.ONRIVI_MCP_HOME || (process.env.APPDATA + '/Onrivi Author/plugins/onrivi-author')).replace(/\\\\/g, '/') + '/server/index.mjs')",
     ],
-    ...(localWorkspacePath.trim()
-      ? { env: { ONRIVI_WORKSPACE_PATH: localWorkspacePath.trim() } }
-      : {}),
+    ...(Object.keys(localEnv).length > 0 ? { env: localEnv } : {}),
   };
 
   const configSnippet = JSON.stringify(
@@ -383,16 +401,31 @@ export default function RemoteMcpSettings() {
           <p className="text-[12px] text-on-surface-variant leading-relaxed">
             <strong>내 PC 로컬 폴더</strong>를 공유 폴더로 사용할 때는 AI 에이전트(Antigravity, Claude 등)가 PC의 로컬 MCP 서버(`Stdio`)를 직접 실행해 문서를 읽고 씁니다.
           </p>
-          <label className="block space-y-1">
-            <span className="font-semibold text-zinc-600 dark:text-zinc-400">공유할 로컬 폴더 경로 (선택)</span>
-            <input
-              type="text"
-              value={localWorkspacePath}
-              onChange={(e) => setLocalWorkspacePath(e.target.value)}
-              placeholder="예: D:\MyDocs\OnriviWorkspace"
-              className="w-full p-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 font-mono"
-            />
-          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            <label className="block space-y-1">
+              <span className="font-semibold text-zinc-600 dark:text-zinc-400">현재 작업장 폴더 경로 (`ONRIVI_WORKSPACE_PATH`)</span>
+              <input
+                type="text"
+                value={localWorkspacePath}
+                onChange={(e) => setLocalWorkspacePath(e.target.value)}
+                placeholder="예: D:\Onrivi_mcp"
+                className="w-full p-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 font-mono"
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="font-semibold text-zinc-600 dark:text-zinc-400">환경설정 리소스 폴더 경로 (`ONRIVI_RESOURCE_PATH`)</span>
+              <input
+                type="text"
+                value={localResourcePath}
+                onChange={(e) => setLocalResourcePath(e.target.value)}
+                placeholder="예: D:\Onrivi_Asset"
+                className="w-full p-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 font-mono"
+              />
+            </label>
+          </div>
+          <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+            위 경로가 폴더명만 표시되는 경우(브라우저 보안 제약) 전체 절대경로(예: <code>D:\...</code>)로 보완해 복사하면 온리비 앱을 켜지 않아도 MCP가 바로 동작합니다.
+          </p>
           <div className="space-y-1.5 pt-1">
             <div className="flex items-center justify-between gap-2">
               <span className="font-semibold text-zinc-600 dark:text-zinc-400">AI 에이전트 설정 예시 (`mcp_config.json`)</span>
