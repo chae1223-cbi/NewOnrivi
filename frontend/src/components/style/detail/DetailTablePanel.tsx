@@ -180,19 +180,40 @@ export default function DetailTablePanel({
     triggerUpdate(updated, 'table', '표(Table) 테두리');
   };
 
-  const updateCellPadding = (value: string) => {
+  const parseCellPadding = (thRules: Record<string, any>, tdRules: Record<string, any>) => {
+    const raw = String(thRules['padding'] || tdRules['padding'] || '').trim();
+    const parts = raw ? raw.split(/\s+/).map((p) => parseFloat(p)).filter((n) => Number.isFinite(n)) : [];
+    const fallbackY = parseFloat(String(thRules['padding-top'] || tdRules['padding-top'] || '')) || 6;
+    const fallbackX = parseFloat(String(thRules['padding-left'] || tdRules['padding-left'] || '')) || 12;
+    if (parts.length === 1) return { y: parts[0], x: parts[0] };
+    if (parts.length >= 2) return { y: parts[0], x: parts[1] };
+    return { y: fallbackY, x: fallbackX };
+  };
+
+  const updateCellPaddingAxis = (axis: 'y' | 'x', pxValue: number) => {
     if (isSystemProfile) return;
-    const thRules = getTagRules('th');
-    const tdRules = getTagRules('td');
+    const thRules = { ...getTagRules('th') };
+    const tdRules = { ...getTagRules('td') };
+    const current = parseCellPadding(thRules, tdRules);
+    const nextY = axis === 'y' ? pxValue : current.y;
+    const nextX = axis === 'x' ? pxValue : current.x;
+    const nextPadding = `${nextY}px ${nextX}px`;
+    for (const rule of [thRules, tdRules]) {
+      delete rule['padding-top'];
+      delete rule['padding-bottom'];
+      delete rule['padding-left'];
+      delete rule['padding-right'];
+      rule['padding'] = nextPadding;
+    }
     const updated = {
       ...currentProfile,
       rules: {
         ...currentProfile.rules,
-        th: { ...thRules, padding: value },
-        td: { ...tdRules, padding: value },
+        th: thRules,
+        td: tdRules,
       }
     };
-    triggerUpdate(updated, 'table', '표(Table) 셀 여백');
+    triggerUpdate(updated, 'table', axis === 'y' ? '표(Table) 셀 상하 여백' : '표(Table) 셀 좌우 여백');
   };
 
   const updateTableFontSize = (value: string) => {
@@ -411,15 +432,31 @@ export default function DetailTablePanel({
           />
         </div>
 
-        <SliderWidget
-          label="셀 내부 여백 (Padding)"
-          min={0}
-          max={24}
-          value={getNumValue(getTagRules('th')['padding'], 8)}
-          unit="px"
-          disabled={isSystemProfile}
-          onChange={(v) => updateCellPadding(v + 'px')}
-        />
+        {(() => {
+          const cellPadding = parseCellPadding(getTagRules('th'), getTagRules('td'));
+          return (
+            <div className="grid grid-cols-2 gap-2.5">
+              <SliderWidget
+                label="셀 상하 여백"
+                min={0}
+                max={24}
+                value={cellPadding.y}
+                unit="px"
+                disabled={isSystemProfile}
+                onChange={(v) => updateCellPaddingAxis('y', Number(v) || 0)}
+              />
+              <SliderWidget
+                label="셀 좌우 여백"
+                min={0}
+                max={32}
+                value={cellPadding.x}
+                unit="px"
+                disabled={isSystemProfile}
+                onChange={(v) => updateCellPaddingAxis('x', Number(v) || 0)}
+              />
+            </div>
+          );
+        })()}
 
         <FontSizeControl
           label="표 글자 크기"

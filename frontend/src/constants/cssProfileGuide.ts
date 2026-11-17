@@ -124,7 +124,7 @@ export const STYLE_15_CATEGORY_SPECS: StyleCategorySpecItem[] = [
     properties:
       'table(width, border-collapse, border-style, border-width, border-color, margin-top, margin-bottom, font-size, border-radius, overflow) / th(background-color, padding, border-style/width/color, font-weight, text-align, color) / td(padding, border-style/width/color, text-align, color, background-color) / tableStructure(outerBorderWidth, rowBorderWidth, colBorderWidth)',
     presetsAndNotes:
-      '3대 프리셋: ① 미니멀 가로선형(Onrivi 기본서식: outer 0px, row 1px, col 0px, th #f1f3f4) ② 가로선 강조형(논문/보고서: outer 1~2px, row 1px, col 0px) ③ 모든 테두리 격자형(KS/엑셀: outer 1px, row 1px, col 1px). 주의: th/td에 border-left: none 금지.',
+      '3대 프리셋: ① 미니멀 가로선형(Onrivi 기본서식: outer 0px, row 1px, col 0px, th #f1f3f4) ② 가로선 강조형(논문/보고서: outer 1~2px, row 1px, col 0px) ③ 모든 테두리 격자형(KS/엑셀: outer 1px, row 1px, col 1px). 기본 셀 내부 여백(th/td padding) 표준은 "6px 12px"(상하 6px · 좌우 12px)이며 상하/좌우 개별 조정 가능. 주의: th/td에 border-left: none 금지.',
   },
   {
     no: 4,
@@ -467,7 +467,7 @@ export const CSS_PROFILE_GUIDE_MD = `# 🎨 온리비 어서(Onrivi Author) 최�
     },
     "th": {
       "background-color": "#f1f3f4",
-      "padding": "12px 16px",
+      "padding": "6px 12px",
       "border-style": "solid",
       "border-width": "1px",
       "border-color": "#dadce0",
@@ -478,7 +478,7 @@ export const CSS_PROFILE_GUIDE_MD = `# 🎨 온리비 어서(Onrivi Author) 최�
     },
     "td": {
       "background-color": "#ffffff",
-      "padding": "12px 16px",
+      "padding": "6px 12px",
       "border-style": "solid",
       "border-width": "1px",
       "border-color": "#e8eaed",

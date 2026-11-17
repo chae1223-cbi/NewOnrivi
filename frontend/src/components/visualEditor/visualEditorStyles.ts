@@ -231,7 +231,7 @@ export const VISUAL_EDITOR_STYLES = `
   .visual-document-surface .visual-editable-table :is(th, td):not(:first-child)::before { left:-10px; }
   .visual-document-surface .visual-editable-table :is(th, td):not(:last-child):hover::after,
   .visual-document-surface .visual-editable-table :is(th, td):not(:first-child):hover::before { opacity:1; }
-  .visual-document-surface .visual-editable-table th, .visual-document-surface .visual-editable-table td { border:1px solid #cbd5e1!important; padding:8px 10px!important; min-width:0!important; vertical-align:top!important; overflow-wrap:anywhere!important; word-break:break-word!important; box-sizing:border-box!important; }
+  .visual-document-surface .visual-editable-table th, .visual-document-surface .visual-editable-table td { border:1px solid #cbd5e1!important; padding:6px 12px!important; min-width:0!important; vertical-align:top!important; overflow-wrap:anywhere!important; word-break:break-word!important; box-sizing:border-box!important; }
   .visual-document-surface table th p, .visual-document-surface table td p { margin:0!important; padding:0!important; overflow-wrap:anywhere!important; word-break:break-word!important; white-space:pre-wrap!important; }
   .visual-document-surface .visual-editable-table th { background:#f1f5f9!important; text-align:center!important; }
   .visual-document-surface .visual-editable-table :is(th, td) code { white-space:pre-wrap!important; overflow-wrap:anywhere!important; word-break:break-all!important; display:inline!important; box-decoration-break:clone; -webkit-box-decoration-break:clone; }
