@@ -697,7 +697,7 @@ export default function EmojiPanel({ onClose, onInsert, isToolbarOpen: propIsToo
 
       {/* ── 3. 카테고리 네비게이션 탭 (검색 중이 아닐 때만 노출) ── */}
       {!searchQuery && (
-        <div className="px-2 pt-2 pb-1.5 flex items-center gap-1 border-b border-zinc-100 dark:border-zinc-800/80 shrink-0 overflow-x-auto [scrollbar-width:none]">
+        <div className="px-2 pt-2 pb-2 flex flex-wrap items-center gap-1 border-b border-zinc-100 dark:border-zinc-800/80 shrink-0">
           {EMOJI_CATEGORIES.map(cat => {
             const isActive = activeCategory === cat.id;
             return (
