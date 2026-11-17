@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 프로그램명 : OnriviAuthor
  * 파일명 : StyleManagerModal.tsx
  * 🚨 @PATCH : **2026-11-14** — [서식 관리 센터 가이드(v2026.11)·내장/외부 AI 생성 프롬프트 전면 현행화]:
@@ -700,7 +700,7 @@ export default function StyleManagerModal({
      "colBorderWidth": "0px"     // 표 열(세로선) 구분선 두께 (모든 테두리 격자형은 "1px", 미니멀/가로선 강조형/논문형은 "0px")
    }
    표 셀(th, td)에 'border-left: none' 또는 'border-right: none' 같은 레거시 방향별 테두리를 절대 개별 선언하지 마세요.
-   표 셀(th, td)의 기본 내부 여백(padding)은 별도 요청이 없으면 표준값 "6px 12px"(상하 6px, 좌우 12px)로 지정하세요.
+   표 셀(th, td)의 기본 내부 여백(padding)은 별도 요청이 없으면 표준값 "4px 12px"(상하 4px, 좌우 12px)로 지정하세요.
 5. 구분선(hrStructure - 28px/1px/solid/100%), 체크박스(checkboxStructure - boxSize: "16px", checkedEffect: "none", textGap: "9px", color: 본문색과 동일), 글머리 기호 1~3단계 계층(bulletStructure - level1/level2/level3: disc, circle, square, white-square, diamond, white-diamond, dash, hyphen, arrow, check, star, dot, custom, none 및 필요시 custom1~3), 미디어·표 캡션 구조체(mediaCaptionStructure - position: "top"|"bottom", format: "standard"|"bracket"|"angle"|"plain"|"title-only"|"custom", 필요시 kindOverrides), 제목 번호 체계(headingNumbering - 별도 번호 요청이 없으면 기본 [] 빈 배열, 요청 시 decimal-outline, 보고서 표준 roman➔decimal➔hangul, 장절 체계, 개조식 기호 등 설정)를 포함하세요.
 6. 미디어 객체(rules.img, rules.video, rules.map)는 너비를 100%("width": "100%")로 설정하고, video는 "height": "315px", map은 "height": "400px"으로 지정하세요.
 7. 설명이나 마크다운 코드블록(\`\`\`) 없이 오직 유효한 단일 JSON 객체({ ... })만 출력하세요.

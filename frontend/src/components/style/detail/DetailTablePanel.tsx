@@ -183,7 +183,7 @@ export default function DetailTablePanel({
   const parseCellPadding = (thRules: Record<string, any>, tdRules: Record<string, any>) => {
     const raw = String(thRules['padding'] || tdRules['padding'] || '').trim();
     const parts = raw ? raw.split(/\s+/).map((p) => parseFloat(p)).filter((n) => Number.isFinite(n)) : [];
-    const fallbackY = parseFloat(String(thRules['padding-top'] || tdRules['padding-top'] || '')) || 6;
+    const fallbackY = parseFloat(String(thRules['padding-top'] || tdRules['padding-top'] || '')) || 4;
     const fallbackX = parseFloat(String(thRules['padding-left'] || tdRules['padding-left'] || '')) || 12;
     if (parts.length === 1) return { y: parts[0], x: parts[0] };
     if (parts.length >= 2) return { y: parts[0], x: parts[1] };

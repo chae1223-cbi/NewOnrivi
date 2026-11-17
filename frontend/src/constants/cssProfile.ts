@@ -1,4 +1,4 @@
-import { CssProfile } from '../types/cssProfile';
+﻿import { CssProfile } from '../types/cssProfile';
 import { normalizeBookLayout } from '../lib/picturebook';
 
 // ====================================================================
@@ -309,7 +309,7 @@ export const SYSTEM_PROFILES: CssProfile[] = [
       },
       "th": {
         "background-color": "#f1f3f4",
-        "padding": "6px 12px",
+        "padding": "4px 12px",
         "border-style": "solid",
         "border-width": "1px",
         "border-color": "#dadce0",
@@ -320,7 +320,7 @@ export const SYSTEM_PROFILES: CssProfile[] = [
       },
       "td": {
         "background-color": "#ffffff",
-        "padding": "6px 12px",
+        "padding": "4px 12px",
         "border-style": "solid",
         "border-width": "1px",
         "border-color": "#e8eaed",
@@ -556,8 +556,8 @@ SYSTEM_PROFILES.push(buildSystemProfile({
     h3: { "font-size": "16px", "font-weight": "700", "color": "#334155", "margin-top": "16px", "margin-bottom": "8px" },
     p: { "color": "#1e293b", "line-height": "1.55", "margin-bottom": "10px" },
     table: { "border-width": "1px", "border-color": "#cbd5e1", "border-radius": "6px", "font-size": "13.5px" },
-    th: { "background-color": "#eff6ff", "color": "#1e3a8a", "font-weight": "700", "padding": "6px 12px", "border-color": "#cbd5e1" },
-    td: { "padding": "6px 12px", "border-color": "#e2e8f0", "color": "#1e293b" },
+    th: { "background-color": "#eff6ff", "color": "#1e3a8a", "font-weight": "700", "padding": "4px 12px", "border-color": "#cbd5e1" },
+    td: { "padding": "4px 12px", "border-color": "#e2e8f0", "color": "#1e293b" },
     img: { "width": "360px", "border": "1px solid #cbd5e1", "border-radius": "6px", "box-shadow": "0 1px 4px rgba(0,0,0,0.06)" },
     blockquote: { "border-left": "4px solid #2563eb", "background-color": "#f8fafc", "color": "#0f172a", "padding": "12px 16px", "font-weight": "600" },
   },
@@ -589,8 +589,8 @@ SYSTEM_PROFILES.push(buildSystemProfile({
     h3: { "font-size": "17px", "font-weight": "700", "color": "#1e40af", "border-left": "3px solid #3b82f6", "padding-left": "10px", "margin-top": "20px", "margin-bottom": "10px" },
     p: { "color": "#1e293b", "line-height": "1.65", "margin-bottom": "12px" },
     table: { "border-width": "1px", "border-color": "#cbd5e1" },
-    th: { "background-color": "#f1f5f9", "color": "#0f172a", "font-weight": "700", "padding": "6px 12px", "border-color": "#cbd5e1" },
-    td: { "padding": "6px 12px", "border-color": "#e2e8f0", "color": "#1e293b" },
+    th: { "background-color": "#f1f5f9", "color": "#0f172a", "font-weight": "700", "padding": "4px 12px", "border-color": "#cbd5e1" },
+    td: { "padding": "4px 12px", "border-color": "#e2e8f0", "color": "#1e293b" },
     blockquote: { "border-left": "4px solid #1d4ed8", "background-color": "#eff6ff", "color": "#0f172a", "padding": "14px 18px", "font-weight": "500" },
     taskList: { "boxSize": "16px", "checkedEffect": "strike", "textGap": "9px", "color": "#1e293b" },
   },
@@ -619,8 +619,8 @@ SYSTEM_PROFILES.push(buildSystemProfile({
     h3: { "font-size": "16px", "font-weight": "700", "color": "#334155", "margin-top": "18px", "margin-bottom": "8px" },
     p: { "color": "#111827", "line-height": "1.7", "margin-bottom": "12px" },
     table: { "border-width": "1px", "border-color": "#9ca3af", "border-radius": "0px" },
-    th: { "background-color": "#f3f4f6", "color": "#111827", "font-weight": "700", "padding": "6px 12px", "border-color": "#9ca3af" },
-    td: { "padding": "6px 12px", "border-color": "#d1d5db", "color": "#111827" },
+    th: { "background-color": "#f3f4f6", "color": "#111827", "font-weight": "700", "padding": "4px 12px", "border-color": "#9ca3af" },
+    td: { "padding": "4px 12px", "border-color": "#d1d5db", "color": "#111827" },
     blockquote: { "border-left": "3px solid #4b5563", "background-color": "#f9fafb", "color": "#1f2937", "padding": "12px 16px" },
   },
   tableStructure: { outerBorderWidth: "1px", rowBorderWidth: "1px", colBorderWidth: "1px" },
@@ -678,8 +678,8 @@ SYSTEM_PROFILES.push(buildSystemProfile({
     h3: { "font-size": "17px", "font-weight": "700", "color": "#0f172a", "border-left": "4px solid #2563eb", "padding-left": "12px", "margin-top": "22px", "margin-bottom": "10px" },
     p: { "color": "#0f172a", "line-height": "1.65", "margin-bottom": "12px" },
     table: { "border-width": "1px", "border-color": "#bfdbfe" },
-    th: { "background-color": "#eff6ff", "color": "#1e3a8a", "font-weight": "700", "padding": "6px 12px", "border-color": "#bfdbfe" },
-    td: { "padding": "6px 12px", "border-color": "#e2e8f0", "color": "#0f172a" },
+    th: { "background-color": "#eff6ff", "color": "#1e3a8a", "font-weight": "700", "padding": "4px 12px", "border-color": "#bfdbfe" },
+    td: { "padding": "4px 12px", "border-color": "#e2e8f0", "color": "#0f172a" },
     blockquote: { "border-left": "4px solid #1d4ed8", "background-color": "#eff6ff", "color": "#0f172a", "padding": "14px 18px", "font-weight": "600" },
   },
   headingNumbering: ["roman", "decimal", "hangul", "decimal-paren", "hangul-paren", "none"],
@@ -715,8 +715,8 @@ SYSTEM_PROFILES.push(buildSystemProfile({
     h3: { "font-size": "15.5px", "font-weight": "700", "color": "#111111", "margin-top": "16px", "margin-bottom": "8px", "line-height": "1.7" },
     p: { "color": "#111111", "line-height": "1.8", "text-align": "justify", "margin-bottom": "8px", "sentence-gap": "4px" },
     table: { "border-width": "1px", "border-color": "#374151", "border-radius": "0px" },
-    th: { "background-color": "#f3f4f6", "color": "#111111", "font-weight": "700", "padding": "6px 12px", "border-color": "#374151" },
-    td: { "padding": "6px 12px", "border-color": "#4b5563", "color": "#111111" },
+    th: { "background-color": "#f3f4f6", "color": "#111111", "font-weight": "700", "padding": "4px 12px", "border-color": "#374151" },
+    td: { "padding": "4px 12px", "border-color": "#4b5563", "color": "#111111" },
     blockquote: { "border": "1px solid #d1d5db", "border-left": "4px solid #111111", "background-color": "#f9fafb", "color": "#111111", "padding": "12px 16px" },
   },
   tableStructure: { outerBorderWidth: "1px", rowBorderWidth: "1px", colBorderWidth: "1px" },
@@ -745,7 +745,7 @@ export const HELP_PROFILE: CssProfile = (() => {
   Object.assign(help.rules.li, { "font-size": "16px", "line-height": "1.8", "margin-bottom": "6px", color: "#334155" });
   Object.assign(help.rules.ol, { "list-style-type": "decimal" });
   Object.assign(help.rules.table, { width: "100%", "border-collapse": "collapse", "font-size": "14px", "margin-top": "16px", "margin-bottom": "20px", "border-color": "#cbd5e1" });
-  for (const key of ["th", "td"] as const) Object.assign(help.rules[key], { padding: "6px 12px", border: "1px solid #cbd5e1", "font-size": "14px", "line-height": "1.65", color: "#334155", "background-color": key === "th" ? "#eff6ff" : "transparent", "text-align": "left" });
+  for (const key of ["th", "td"] as const) Object.assign(help.rules[key], { padding: "4px 12px", border: "1px solid #cbd5e1", "font-size": "14px", "line-height": "1.65", color: "#334155", "background-color": key === "th" ? "#eff6ff" : "transparent", "text-align": "left" });
   Object.assign(help.rules.a, { color: "#1d4ed8", "text-decoration": "underline" });
   Object.assign(help.rules.blockquote, { "border-left": "3px solid #93c5fd", "background-color": "#eff6ff", padding: "12px 16px", color: "#334155" });
   Object.assign(help.rules.codeBlock, { "background-color": "#f1f5f9", color: "#1e293b", padding: "16px", "font-size": "14px", "line-height": "1.6", "border-radius": "8px" });
@@ -953,7 +953,7 @@ export function normalizeCssProfile(
       const cellRule = incomingRules[tag];
       const hasAxisPadding = cellRule['padding-top'] || cellRule['padding-bottom'] || cellRule['padding-left'] || cellRule['padding-right'];
       if (hasAxisPadding && !cellRule['padding']) {
-        const py = cellRule['padding-top'] || cellRule['padding-bottom'] || '6px';
+        const py = cellRule['padding-top'] || cellRule['padding-bottom'] || '4px';
         const px = cellRule['padding-left'] || cellRule['padding-right'] || '12px';
         cellRule['padding'] = `${py} ${px}`;
       }
