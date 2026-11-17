@@ -338,7 +338,8 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
   const pendingVisualExportRef = useRef<EditorCommandType | null>(null);
   const [isA4GuardEnabled, setIsA4GuardEnabled] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('isA4GuardEnabled') === 'true';
+      const saved = localStorage.getItem('isA4GuardEnabled') ?? window.localStorage.getItem('isA4GuardEnabled');
+      return saved === 'true';
     }
     return false;
   });
@@ -2232,6 +2233,7 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     editorFontWeight,
     editorHighContrast,
     isA4GuardEnabled,
+    setIsA4GuardEnabled,
     isLicenseChecking,
     isDuplicateInstance,
     isRestrictedUser,
@@ -2261,7 +2263,8 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     tabs, setTabs,
     activeTabId, setActiveTabId,
     previewMode, setPreviewMode,
-    isA4GuardEnabled, setIsA4GuardEnabled,
+    isA4GuardEnabled,
+    setIsA4GuardEnabled, setIsA4GuardEnabled,
     currentFileName, setCurrentFileName,
     currentFileNode, setCurrentFileNode,
     workspaceType, setWorkspaceType,

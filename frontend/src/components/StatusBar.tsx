@@ -605,14 +605,14 @@ function StatusBar() {
             {setIsA4GuardEnabled && (
               <button
                 onClick={() => setIsA4GuardEnabled(!isA4GuardEnabled)}
-                title={isA4GuardEnabled ? "조판 가드 끄기 (Disable Layout Guard)" : "조판 가드 켜기 (Enable Layout Guard)"}
+                title={isA4GuardEnabled ? "조판 가드 끄기" : "조판 가드 켜기"}
                 className={`px-3 py-1.5 text-[12px] font-bold transition-colors select-none border-r border-black/10 dark:border-white/10 ${
                   isA4GuardEnabled
                     ? 'bg-amber-500 text-white'
                     : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 hover:bg-black/8 dark:hover:bg-white/8'
                 }`}
               >
-                Layout Guard {isA4GuardEnabled ? 'ON' : 'OFF'}
+                조판 가드 {isA4GuardEnabled ? 'ON' : 'OFF'}
               </button>
             )}
             {(() => {

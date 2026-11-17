@@ -59,6 +59,7 @@ export interface UseEditorLifecycleEffectsProps {
   editorFontWeight: string;
   editorHighContrast: boolean;
   isA4GuardEnabled: boolean;
+  setIsA4GuardEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   isLicenseChecking: boolean;
   isDuplicateInstance: boolean;
   isRestrictedUser: boolean;
@@ -117,6 +118,7 @@ export function useEditorLifecycleEffects(props: UseEditorLifecycleEffectsProps)
     editorFontWeight,
     editorHighContrast,
     isA4GuardEnabled,
+    setIsA4GuardEnabled,
     isLicenseChecking,
     isDuplicateInstance,
     isRestrictedUser,
@@ -537,14 +539,26 @@ export function useEditorLifecycleEffects(props: UseEditorLifecycleEffectsProps)
   // 📊 [OMD-IO-MainEditorApp-0041] MainEditorApp.tsx ➔ a4_guard_auto_save
   // 🎯 @KICK  : isA4GuardEnabled 가드 상태가 변경될 때마다 localStorage에 즉시 보존.
   // 🛡️ @GUARD : Electron 및 일반 브라우저 환경 지원
+  // 🚨 @PATCH : **2026-11-17** — [조판 가드(isA4GuardEnabled) 초기 마운트 덮어쓰기 방지 및 영구 복원 보장]: 첫 마운트 시 기본값 false로 기존 저장값을 덮어쓰지 않고, 저장된 최종 설정을 우선 복원한 뒤 변경 시 계정·전역 localStorage에 동시 저장
   // 🚨 @PATCH : **2026-08-12** — 초기 생성 (A4 가드 레이아웃 보존 기능)
   // 🔗 @CALLS : 없음
   // ====================================================================
+  const a4GuardHydratedRef = useRef(false);
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('isA4GuardEnabled', String(isA4GuardEnabled));
+    if (typeof window === 'undefined') return;
+    if (!a4GuardHydratedRef.current) {
+      a4GuardHydratedRef.current = true;
+      const saved = localStorage.getItem('isA4GuardEnabled') ?? window.localStorage.getItem('isA4GuardEnabled');
+      if (saved === 'true' && !isA4GuardEnabled) {
+        setIsA4GuardEnabled(true);
+      }
+      return;
     }
-  }, [isA4GuardEnabled]);
+    localStorage.setItem('isA4GuardEnabled', String(isA4GuardEnabled));
+    try {
+      window.localStorage.setItem('isA4GuardEnabled', String(isA4GuardEnabled));
+    } catch {}
+  }, [isA4GuardEnabled, setIsA4GuardEnabled]);
 
 
 
