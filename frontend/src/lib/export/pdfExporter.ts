@@ -2,6 +2,7 @@
 // 📊 [OMD-IO-export-pdf-0001] frontend/src/lib/export/pdfExporter.ts
 // 🎯 @KICK  : PagedJS 조판 및 브라우저/Electron 인쇄 기반 PDF 내보내기 엔진
 // 🛡️ @GUARD : 페이지 나누기 마커 정규화, 워터마크 안전 폴백, 원격 폰트/이미지 장애 내결함성
+// 🚨 @PATCH : 2026-11-18 — [서식 용지 인쇄 보정] 서식 판형을 Electron 규격 이름 또는 회전 전 사용자 용지 크기로 전달하여 A4 외 용지와 가로 인쇄 오류 방지
 // 🚨 @PATCH : **2026-11-15** — [paginatedPrint 정적 import 전환]: 개발 서버 HMR/리빌드 시 동적 청크 404(ChunkLoadError) 방지를 위해 paginatedPrint 및 documentPaginationSettings를 정적 import로 변경
 // 🚨 @PATCH : **2026-11-04** — [모듈화 분리 & 에러/주석 표준화]: exportHandlers.ts에서 PDF 내보내기 전용 모듈 분리 및 2단계 함수 JSDoc·logError 적용
 // 🔗 @CALLS : Paged.js, clonePreview, injectExportStyles, generateExportCss
@@ -231,8 +232,8 @@ export async function exportPDF({
     // 💡 미리보기에 적용된 dynamicCssString이 있으면 그대로 우선 적용하여 100% 화면 일치 보장
     const activeCss = dynamicCssString ? dynamicCssString : (activeProfile ? generateExportCss(activeProfile) : '');
 
-    const paperKey = (paperSize || 'a4').toLowerCase();
-    const paperSpec = PAPER_SIZES[paperKey] || PAPER_SIZES.a4;
+    const paperKey = String(activeProfile?.pageStyle?.paperSize || paperSize || 'a4').toLowerCase();
+    const paperSpec = PAPER_SIZES[paperKey];
     const isLandscape = orientation === 'landscape';
     const geometry=resolvePageGeometry(activeProfile?.pageStyle || {paperSize,orientation,marginTop,marginBottom,marginLeft,marginRight});
     const pageWidth = geometry.width;
@@ -722,9 +723,8 @@ export async function exportPDF({
         margins: {
           marginType: 'none'
         },
-        pageSize: ['A3', 'A4', 'A5', 'LEGAL', 'LETTER', 'TABLOID'].includes(paperKey.toUpperCase())
-          ? paperKey.toUpperCase()
-          : { width: pageWidth * 1000, height: pageHeight * 1000 },
+        pageSize: ({ a3: 'A3', a4: 'A4', a5: 'A5', legal: 'Legal', letter: 'Letter' } as Record<string, string>)[paperKey]
+          || { width: Math.round(paperSpec.width * 1000), height: Math.round(paperSpec.height * 1000) },
         printBackground: true
       });
 
