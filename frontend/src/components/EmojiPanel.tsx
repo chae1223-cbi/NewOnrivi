@@ -1,6 +1,8 @@
 // ====================================================================
 // 📊 [OMD-EDIT-EmojiPanel-0001] EmojiPanel.tsx ➔ EmojiPanel
 // 🎯 @KICK  : 에디터 우측 전용 이모지 보관함 패널 — 카테고리별 탐색, 한글/영문 검색, 원클릭 본문 삽입 및 최근 사용 자동 관리
+// 🚨 @PATCH : **2026-11-18** — [문장부호/괄호 보강]: 전각 괄호·인용부호·교정 및 강조 기호를 중복 없이 추가
+// 🚨 @PATCH : **2026-11-18** — [문장부호 기호 추가]: 문장부호/괄호 목록에 가운뎃점(·)과 불릿(•) 추가
 // 🚨 @PATCH : **2026-11-17** — [사용자 커스텀 이모지·기호 추가/삭제/검색 지원]: '내 커스텀' 탭 및 localStorage(onrivi_custom_emojis) 영구 저장 연동
 // 🚨 @PATCH : **2026-11-17** — [이모지 보관함 대폭 확충]: 표정·감정, 손짓·사람, 업무·상태배지, 개발·IT, 음식·카페, 날씨·자연·동물·여행 등 실무 이모지 200+종 추가
 // 🚨 @PATCH : **2026-10-11** — [전자책·블로그 출판 특화 특수문자 및 기호 6대 카테고리 대폭 확충]:
@@ -178,10 +180,37 @@ const EMOJI_CATEGORIES: { id: string; label: string; icon: string; items: EmojiI
       { char: '〕', keywords: ['거북등괄호닫기', 'bracket'] },
       { char: '〘', keywords: ['이중거북등열기', 'bracket'] },
       { char: '〙', keywords: ['이중거북등닫기', 'bracket'] },
+      { char: '（', keywords: ['전각소괄호열기', '괄호', 'fullwidth parenthesis'] },
+      { char: '）', keywords: ['전각소괄호닫기', '괄호', 'fullwidth parenthesis'] },
+      { char: '［', keywords: ['전각대괄호열기', '괄호', 'fullwidth bracket'] },
+      { char: '］', keywords: ['전각대괄호닫기', '괄호', 'fullwidth bracket'] },
+      { char: '｛', keywords: ['전각중괄호열기', '괄호', 'fullwidth brace'] },
+      { char: '｝', keywords: ['전각중괄호닫기', '괄호', 'fullwidth brace'] },
+      { char: '〖', keywords: ['흰거북등괄호열기', '괄호', 'bracket'] },
+      { char: '〗', keywords: ['흰거북등괄호닫기', '괄호', 'bracket'] },
+      { char: '«', keywords: ['겹화살따옴표열기', '인용', 'guillemet'] },
+      { char: '»', keywords: ['겹화살따옴표닫기', '인용', 'guillemet'] },
+      { char: '‹', keywords: ['화살따옴표열기', '인용', 'guillemet'] },
+      { char: '›', keywords: ['화살따옴표닫기', '인용', 'guillemet'] },
+      { char: '〝', keywords: ['겹인용부호열기', '인용', 'quote'] },
+      { char: '〞', keywords: ['겹인용부호닫기', '인용', 'quote'] },
+      { char: '〃', keywords: ['동일기호', '반복기호', 'ditto'] },
       { char: '…', keywords: ['말줄임표', '생략', 'ellipsis', 'dots'] },
       { char: '⋯', keywords: ['가운데말줄임표', '점점점', '생략', 'ellipsis', 'cdots'] },
       { char: '⋮', keywords: ['세로말줄임표', '더보기', 'vdots', 'ellipsis'] },
       { char: '‥', keywords: ['두점줄임표', '점점', 'ellipsis'] },
+      { char: '·', keywords: ['가운뎃점', '중점', 'middle dot', 'interpunct'] },
+      { char: '•', keywords: ['불릿', '글머리표', 'bullet', 'bullet point'] },
+      { char: '‧', keywords: ['하이픈점', '연결점', 'hyphenation point'] },
+      { char: '‣', keywords: ['삼각불릿', '글머리표', 'bullet'] },
+      { char: '⁃', keywords: ['하이픈불릿', '글머리표', 'bullet'] },
+      { char: '⁂', keywords: ['별표삼각형', '문단구분', 'asterism'] },
+      { char: '⁎', keywords: ['낮은별표', '각주', 'asterisk'] },
+      { char: '‽', keywords: ['물음느낌표', '강조', 'interrobang'] },
+      { char: '‼', keywords: ['이중느낌표', '강조', 'double exclamation'] },
+      { char: '⁉', keywords: ['느낌물음표', '강조', 'exclamation question'] },
+      { char: '′', keywords: ['프라임', '분', '각도', 'prime'] },
+      { char: '″', keywords: ['더블프라임', '초', '각도', 'double prime'] },
       { char: '—', keywords: ['엠대시', '긴줄표', '대시', 'emdash', 'dash'] },
       { char: '–', keywords: ['엔대시', '범위', '대시', 'endash', 'dash'] },
       { char: '～', keywords: ['물결표', '범위', 'tilde', 'wave'] },
