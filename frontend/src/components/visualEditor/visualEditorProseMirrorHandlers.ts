@@ -2,6 +2,7 @@
 // 📊 [OMD-CORE-VisualEditor-ProseMirrorHandlers] frontend/src/components/visualEditor/visualEditorProseMirrorHandlers.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 ProseMirror Keymap, 키보드/텍스트 입력, 스마트 붙여넣기(handlePaste), 드롭(handleDrop), 마우스 클릭/링크 이동(handleClick) 및 DOM 이벤트 핸들러 팩토리
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 클립보드 이미지/HTML 붙여넣기 정제, 5대 정밀 진단 로깅(logError/logWarn) 준수
+// 🚨 @PATCH : 2026-11-18 — [인용문 내부 Tab 동작 수정] 인용문 컨테이너 이동을 중단하고 문단 시작은 첫 줄 들여쓰기, 문구 중간은 커서 위치 공백 삽입으로 처리
 // 🚨 @PATCH : 2026-11-14 — [태그 취소 기본 단축키 Ctrl+. 변경]: 비주얼 에디터 기본 clearCommand 직통 단축키를 Ctrl+\에서 Ctrl+.으로 변경
 // 🚨 @PATCH : 2026-11-14 — [괄호 자동 완성 중 닫는 대괄호(']') 통과 시 콜아웃 태그([!IMPORTANT], [!WARNING], [!CAUTION] 등) 즉시 변환]:
 //             1) autoClosingBrackets에서 ']' 입력으로 커서만 이동시킬 때 tryConvertCalloutAtCursor를 연쇄 실행하여 인용문 콜아웃 태그가 일반 텍스트로 남지 않도록 개선
@@ -152,8 +153,6 @@ import {
   findClickedHorizontalRulePos,
   emptyParagraphAtClick,
   paragraphLineEndAtClick,
-  indentBlockquote,
-  outdentBlockquote,
   safeListIndent,
   paragraphIndent,
   indentDocument,
@@ -383,14 +382,15 @@ export function createVisualEditorKeymap({
     ),
     Tab: chainCommands(
       moveTableCell(),
-      indentBlockquote,
       withIndependentQuotes(independentIndentListItem),
-      safeListIndent
+      safeListIndent,
+      paragraphIndent(false),
+      indentDocument(false)
     ),
     'Shift-Tab': chainCommands(
       moveTableCell(true),
-      outdentBlockquote,
       withIndependentQuotes(independentLiftListItem),
+      paragraphIndent(true),
       indentDocument(true)
     ),
   });
@@ -1192,14 +1192,7 @@ export function createVisualEditorHandlers({
           const isEmpty = currentView.state.selection.empty;
           if ((isEmpty && position.parentOffset === 0) || !isEmpty) {
             event.preventDefault();
-            let handled = paragraphIndent(event.shiftKey)(currentView.state, currentView.dispatch, currentView);
-            if (!handled && inQuote) {
-              const cmd = event.shiftKey ? outdentBlockquote : indentBlockquote;
-              handled = cmd(currentView.state, currentView.dispatch, currentView);
-              if (!handled && event.shiftKey) {
-                handled = indentDocument(true)(currentView.state, currentView.dispatch, currentView);
-              }
-            }
+            paragraphIndent(event.shiftKey)(currentView.state, currentView.dispatch, currentView);
             caretRef.current?.schedule();
             return true;
           }
@@ -1210,8 +1203,8 @@ export function createVisualEditorHandlers({
               const beforeText = position.parent.textBetween(0, position.parentOffset, '\n', '\n');
               if (/[ \t\u00a0]$/.test(beforeText)) {
                 indentDocument(true)(currentView.state, currentView.dispatch, currentView);
-              } else if (!paragraphIndent(true)(currentView.state, currentView.dispatch, currentView) && inQuote) {
-                outdentBlockquote(currentView.state, currentView.dispatch, currentView);
+              } else {
+                paragraphIndent(true)(currentView.state, currentView.dispatch, currentView);
               }
               caretRef.current?.schedule();
               return true;
@@ -1222,7 +1215,7 @@ export function createVisualEditorHandlers({
             }
             if (inQuote) {
               event.preventDefault();
-              indentBlockquote(currentView.state, currentView.dispatch, currentView);
+              indentDocument(false)(currentView.state, currentView.dispatch, currentView);
               caretRef.current?.schedule();
               return true;
             }

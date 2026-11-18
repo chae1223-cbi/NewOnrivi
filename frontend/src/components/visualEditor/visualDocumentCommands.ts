@@ -2,6 +2,7 @@
 // ⚙️ [OMD-CORE-VisualDocCommands-0001] visualDocumentCommands.ts ➔ 시각 에디터 전용 ProseMirror 커맨드 및 정규화 플러그인
 // 🎯 @KICK  : 제목/코드블록/인용구/리스트/구분선/미디어 등 블록 조작 커맨드 및 리스트 정규화 트랜잭션 플러그인 제공
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 VisualDocumentEditor 대형 컴포넌트 모듈화 표준 준수
+// 🚨 @PATCH : 2026-11-18 — [인용문 커서 위치 들여쓰기] 인용문 내부 Tab 공백을 비분리 공백으로 삽입하여 렌더링 시 들여쓰기 폭 보존
 // 🚨 @PATCH : 2026-11-17 — [행 우측 빈 공간 클릭 시 해당 행 글자 끝 즉시 안착 정밀화]:
 //             1) paragraphLineEndAtClick에서 블록 전체 폭을 반환할 수 있는 range.selectNodeContents 대신 TreeWalker(텍스트 노드) + 인라인 원자 요소의 실제 getClientRects만 수집하여 행의 정확한 끝 좌표(right) 산출
 //             2) 에디터 우측 여백(surface.right 바깥 포함) 클릭 시에도 해당 Y행의 글자 끝으로 안착하도록 경계 완화
@@ -870,7 +871,9 @@ export const indentDocument = (backward = false): Command => (state, dispatch, c
   const before = $from.parent.textBetween(0, $from.parentOffset, '\n', '\n');
   if (!backward) {
     const gap = size;
-    const spaces = ' '.repeat(gap);
+    const inQuote = Array.from({ length: $from.depth }, (_, index) => $from.node(index + 1))
+      .some(node => node.type === visualSchema.nodes.blockquote);
+    const spaces = (inQuote ? '\u00a0' : ' ').repeat(gap);
     if (dispatch) dispatch(state.tr.insertText(spaces, from, to).scrollIntoView());
     return true;
   }
