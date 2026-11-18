@@ -2,6 +2,7 @@
 // 📊 [OMD-CORE-VisualEditor-ProseMirrorHandlers] frontend/src/components/visualEditor/visualEditorProseMirrorHandlers.ts
 // 🎯 @KICK  : 시각 에디터(VisualDocumentEditor)의 ProseMirror Keymap, 키보드/텍스트 입력, 스마트 붙여넣기(handlePaste), 드롭(handleDrop), 마우스 클릭/링크 이동(handleClick) 및 DOM 이벤트 핸들러 팩토리
 // 🛡️ @GUARD : Rule 3(역할 기반 분리) 및 클립보드 이미지/HTML 붙여넣기 정제, 5대 정밀 진단 로깅(logError/logWarn) 준수
+// 🚨 @PATCH : 2026-11-18 — [인용문 문장·문단 입력 정리] Enter는 문장 줄바꿈, Shift+Enter는 인용문 안의 문단 분리, 빈 문장 재 Enter는 문단으로 전환
 // 🚨 @PATCH : 2026-11-18 — [인용문 내부 Tab 동작 수정] 인용문 컨테이너 이동을 중단하고 문단 시작은 첫 줄 들여쓰기, 문구 중간은 커서 위치 공백 삽입으로 처리
 // 🚨 @PATCH : 2026-11-14 — [태그 취소 기본 단축키 Ctrl+. 변경]: 비주얼 에디터 기본 clearCommand 직통 단축키를 Ctrl+\에서 Ctrl+.으로 변경
 // 🚨 @PATCH : 2026-11-14 — [괄호 자동 완성 중 닫는 대괄호(']') 통과 시 콜아웃 태그([!IMPORTANT], [!WARNING], [!CAUTION] 등) 즉시 변환]:
@@ -638,6 +639,35 @@ export function createVisualEditorHandlers({
           const nodeType = $from.node(d).type;
           if (nodeType.name === 'list_item') insideListItem = true;
           if (nodeType === visualSchema.nodes.blockquote || nodeType.name === 'blockquote') insideBlockquote = true;
+        }
+
+        // 인용문의 직접 문단은 줄바꿈과 문단 분리를 인용문 내부에서 처리한다.
+        if (
+          insideBlockquote && !insideListItem && !tableContext(currentView.state) &&
+          !event.ctrlKey && !event.altKey && !event.metaKey && !slashOpenRef.current &&
+          empty && $from.parent.type === visualSchema.nodes.paragraph &&
+          $from.node($from.depth - 1).type === visualSchema.nodes.blockquote &&
+          !/^\s*\[![^\]]+\]/.test($from.parent.textContent)
+        ) {
+          const nodeBefore = $from.nodeBefore;
+          const emptySentence = nodeBefore?.type === visualSchema.nodes.hard_break;
+          if (event.shiftKey || emptySentence) {
+            event.preventDefault();
+            let tr = currentView.state.tr;
+            const splitPos = emptySentence ? $from.pos - nodeBefore.nodeSize : $from.pos;
+            if (emptySentence) tr = tr.delete(splitPos, $from.pos);
+            tr = tr.split(splitPos);
+            tr = tr.setSelection(TextSelection.create(tr.doc, splitPos + 2));
+            currentView.dispatch(tr.scrollIntoView());
+            caretRef.current?.schedule();
+            return true;
+          }
+          if ($from.parent.content.size > 0) {
+            event.preventDefault();
+            currentView.dispatch(currentView.state.tr.replaceSelectionWith(visualSchema.nodes.hard_break.create(), false).scrollIntoView());
+            caretRef.current?.schedule();
+            return true;
+          }
         }
 
         // 🌟 [문단 시작 Enter 입력 시 Shift+Enter와 동일한 문단 분할(split) 실행]:
