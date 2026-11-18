@@ -1,6 +1,7 @@
 // ====================================================================
 // 📊 [OMD-CORE-ToolbarConfig-0001] toolbarConfig.ts ➔ Toolbar Items Configuration
 // 🎯 @KICK  : 에디터 툴바, 플로팅 툴바 및 단축키/슬래시 커맨드 전역 설정 메타데이터
+// 🚨 @PATCH : 2026-11-18 — [온리비 이모지 단축키] 이모지 패널 기본 단축키 Ctrl+` 등록 및 Backquote 물리 키 정규화
 // 🚨 @PATCH : **2026-11-16** — [서식관리(/style) 및 AI 글쓰기 도우미(/ai) 슬래시 명령어 제거]: styleSettings, aiHelp의 defaultCommand를 빈 문자열('')로 전환하고 EXCLUDED_FROM_SLASH에 추가
 // 🚨 @PATCH : **2026-11-16** — [현재 날짜/시간 슬래시 명령어 변경]: now defaultCommand를 'now'에서 'datetime'으로 변경
 // 🚨 @PATCH : **2026-11-16** — [수식 기본 단축키 변경]: math defaultHotkey를 'Ctrl+Shift+T'에서 'Ctrl+Alt+M'으로 변경
@@ -56,6 +57,7 @@ export const TOOLBAR_ITEMS = [
   { id: 'image', icon: '🖼️', name: '이미지', group: '미디어', tagFormat: '![대체 텍스트](URL)', defaultHotkey: '', defaultCommand: 'image', insertText: '![대체 텍스트](이미지_URL)', kind: 15 },
   { id: 'youtube', icon: '🎞️', name: '동영상삽입', group: '미디어', tagFormat: '동영상 삽입', defaultHotkey: '', defaultCommand: 'video', insertText: '동영상 삽입', kind: 15 },
   { id: 'map', icon: '🌏', name: '지도', group: '미디어', tagFormat: '지도 삽입', defaultHotkey: '', defaultCommand: 'map', insertText: '지도 삽입', kind: 15 },
+  { id: 'emoji', icon: '😀', name: '온리비 이모지', group: '미디어', tagFormat: '이모지 선택', defaultHotkey: 'Ctrl+`', defaultCommand: '', insertText: '', kind: 17 },
   { id: 'add_reference', icon: '📚', name: '바이브(참조관리)', group: '미디어', tagFormat: '바이브', defaultHotkey: 'Ctrl+Shift+V', defaultCommand: 'vibe', insertText: '', kind: 17 },
 
   // 5. 코드 및 고급 (Code & Advanced)
@@ -155,6 +157,8 @@ export function configuredHotkeyItem(event: KeyboardEvent, custom: Record<string
     ? '\\'
     : event.code === 'Period' || event.key === '.'
     ? '.'
+    : event.code === 'Backquote'
+    ? '`'
     : event.key.toUpperCase();
   const parts = [];
   if (event.ctrlKey || (mac && event.metaKey)) parts.push('CTRL');

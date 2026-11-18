@@ -3,6 +3,7 @@
  * 📊 [OMD-TYPE-EditorCommandType] editorCommand.ts
  * 🎯 @KICK  : Onrivi Author 에디터 통합 명령어 타입(EditorCommandType) 및 툴바 ID 매핑 유틸
  * 🛡️ @GUARD : UPPER_SNAKE_CASE 표준 준수 및 camelCase ID 자동 폴백 지원
+ * 🚨 @PATCH : 2026-11-18 — [온리비 이모지 단축키] emoji 항목을 기존 TOGGLE_EMOJI_PANEL 명령에 연결
  * 🚨 @PATCH : 2026-11-04 - [MainEditorApp 모듈화] MainEditorApp에서 독립 타입 및 매퍼로 분리
  * ====================================================================
  */
@@ -59,6 +60,7 @@ const EXPLICIT_MAP: Record<string, EditorCommandType> = {
   chart: 'CHART',
   codeblock: 'CODE_BLOCK',
   math: 'MATH',
+  emoji: 'TOGGLE_EMOJI_PANEL',
   styleSettings: 'TOGGLE_CSS_STYLE',
   table: 'TABLE',
   footnote: 'FOOTNOTE',

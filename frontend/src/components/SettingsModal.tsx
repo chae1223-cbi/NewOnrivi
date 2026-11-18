@@ -5,6 +5,7 @@
 // 🚨 @PATCH : 2026-11-16 — [웹 원격 MCP 연동 UI 추가] AI 및 MCP 연동 탭에 RemoteMcpSettings(Streamable HTTP 토큰 발급/관리) 마운트
 // 🚨 @PATCH : 2026-11-16 — [직접 연결(OpenAI 호환 · Custom) 지원] 저장 시 AI 연결 활성 여부 판정에 readCustomConnections() 포함
 // 🚨 @PATCH : 2026-11-16 — [LG K-EXAONE 2.5 지원] 저장 시 AI 연결 활성 여부 판정에 'exaone' 제공사 포함
+// 🚨 @PATCH : 2026-11-18 — [온리비 이모지 단축키 설정] Ctrl+` 기본값 표시 및 Backquote 키 입력 정규화
 // 🚨 @PATCH : 2026-11-14 — [단축키 테이블 '인라인 태그 중지(Shift+Space)' 기록 추가 및 각주/참조문헌 슬래시 미지원 표기·Period 키 정규화]
 // 🚨 @PATCH : 2026-11-14 — [마크다운 에디터 글꼴/고대비 라벨 명확화] 환경설정의 글꼴 크기·굵기·고대비 텍스트가 마크다운 원본 편집기 전용임을 명시하여 서식 관리 본문 폰트와의 혼동 방지
 // 🚨 @PATCH : 2026-11-12 — [AI 키 백업 제외] 백업 키 포함 선택지를 제거하고 복원 시 키가 이전되지 않음을 안내
@@ -1144,6 +1145,7 @@ export default function SettingsModal({
                           <label className="block text-[14px] font-semibold text-on-surface mb-1">워터마크 문구</label>
                           <input
                             type="text"
+                            data-onrivi-hotkey-input
                             maxLength={200}
                             placeholder="워터마크 문구를 입력하세요 (기본값: Onrivi Author)"
                             value={watermarkSettings.text}
@@ -1564,6 +1566,7 @@ export default function SettingsModal({
                               if (e.code && e.code.startsWith('Key')) key = e.code.substring(3).toUpperCase();
                               else if (e.code && e.code.startsWith('Digit')) key = e.code.substring(5);
                               else if (e.code === 'Period' || e.key === '.') key = '.';
+                              else if (e.code === 'Backquote') key = '`';
                               else if (e.code === 'Backslash' || e.key === '\\' || e.key === '₩') key = '\\';
                               
                               const parts = [];

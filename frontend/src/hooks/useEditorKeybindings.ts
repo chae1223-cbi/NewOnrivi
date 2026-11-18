@@ -5,6 +5,7 @@
  *   - Monaco 에디터 단축키 액션 등록(customHotkeys) 및 전역 키보드 이벤트(handleGlobalKeyDown) 분기 라우팅 제어 훅
  *   - Windows Meta(Win) 키 가드, Shift+방향키 선택 보호, 비주얼 에디터/그림책 단축키 연동
  * 🚨 @PATCH :
+ *   - 2026-11-18 : [온리비 이모지 단축키] Ctrl+` 조합을 Monaco와 전역 키보드에서 Backquote 물리 키 기준으로 처리
  *   - 2026-11-14 : [태그 취소 단축키 Ctrl+. 한글 IME 호환 정규화]: handleGlobalKeyDown에서 event.code === 'Period'를 '.'로 정규화
  *   - 2026-11-08 : [플로팅 툴바 ESC 서식 보존]: Escape 키 입력 시 서식 상태를 취소하지 않고 플로팅 툴바만 닫고 에디터로 포커스 반환
  *   - 2026-11-07 : [플로팅 툴바 커서 반환]: Escape 키 입력 시 closeFloatingToolbarAndRestoreCursor 호출 연동
@@ -147,6 +148,8 @@ export function useEditorKeybindings({
         binding |= monaco.KeyCode.Comma;
       } else if (keyPart === '.') {
         binding |= monaco.KeyCode.Period;
+      } else if (keyPart === '`') {
+        binding |= monaco.KeyCode.Backquote;
       } else if (keyPart === '/') {
         binding |= monaco.KeyCode.Slash;
       } else if (keyPart === 'SPACE') {
@@ -218,6 +221,7 @@ export function useEditorKeybindings({
   // 2. 전역 키보드 이벤트 리스너 (capture 단계)
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement)?.closest?.('[data-onrivi-hotkey-input]')) return;
       const findModifier = e.ctrlKey || (e.metaKey && /Mac|iPod|iPhone|iPad/i.test(navigator.userAgent));
       if (!e.isComposing && findModifier && !e.altKey && !e.shiftKey && previewModeRef.current !== 'edit' && ['f', 'h'].includes(e.key.toLowerCase())) {
         e.preventDefault(); e.stopPropagation();
@@ -336,6 +340,8 @@ export function useEditorKeybindings({
           key = '\\';
         } else if (e.code === 'Period' || e.key === '.') {
           key = '.';
+        } else if (e.code === 'Backquote') {
+          key = '`';
         }
       }
 
