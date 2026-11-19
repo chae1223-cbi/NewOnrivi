@@ -2,6 +2,7 @@
 // 📊 [OMD-MCP-CONTEXT-0001] plugins/onrivi-author/server/context.mjs
 // 🎯 @KICK  : PC 하이브리드 MCP의 작업장·리소스 폴더(LOCAL/GDRIVE) 영구 상태 관리 및 경로 무결성 검증
 // 🛡️ @GUARD : Rule 1(단일 주석 관리), Rule 2(코드값 대문자 통일), Rule 9(임의 폴백 원천 금지), 심볼릭 링크 차단
+// 🚨 @PATCH : 2026-11-19 — [리소스 폴더 표준 스캐폴드 자동 생성] setLocalFolder('RESOURCE') 호출 시 대상 폴더 및 하위 디렉터리(profiles/prompt/media/settings/backups/bible/db)와 기본 JSON 파일(userCssProfiles.json, ai_presets.json, ai_prompts.json, shortcodes.json) 미존재 시 자동 생성
 // 🚨 @PATCH : 2026-11-19 — [PC 하이브리드 MCP 전환] 명령어 기반 작업장·리소스 폴더(LOCAL/GDRIVE) 영구 저장(mcp-folders.json) 및 동적 전환 기능 구현
 // 🔗 @CALLS : node:crypto, node:fs/promises, node:os, node:path
 // ====================================================================
@@ -19,6 +20,14 @@ export const FOLDER_ROLE = Object.freeze({
   WORKSPACE: 'WORKSPACE',
   RESOURCE: 'RESOURCE',
 });
+
+const RESOURCE_SUBDIRS = Object.freeze(['profiles', 'prompt', 'media', 'settings', 'backups', 'bible', 'db']);
+const RESOURCE_DEFAULT_FILES = Object.freeze([
+  { relativePath: path.join('profiles', 'userCssProfiles.json'), content: '[]\n' },
+  { relativePath: path.join('prompt', 'ai_presets.json'), content: '[]\n' },
+  { relativePath: path.join('prompt', 'ai_prompts.json'), content: '{}\n' },
+  { relativePath: path.join('settings', 'shortcodes.json'), content: '[]\n' },
+]);
 
 const hash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
@@ -294,12 +303,86 @@ function assertConfigVersion(persisted, expectedConfigVersion) {
 
 /**
  * ========================================================================================
+ * [함수명] ensureResourceFolderScaffold - 로컬 리소스 폴더 및 필수 하위 디렉터리·기본 JSON 설정 파일을 안전하게 초기화합니다.
+ * (기존 폴더나 파일이 이미 존재하는 경우 절대 덮어쓰지 않고 없는 항목만 생성합니다.)
+ *
+ * @param {string} resourcePath - 리소스 폴더 절대경로
+ * @returns {Promise<{ path: string, createdDirs: string[], createdFiles: string[] }>} 생성된 항목 요약
+ * @throws {Error} 절대경로가 아니거나 심볼릭 링크·일반 파일과 충돌하는 경우
+ * ==========================================================================================
+ */
+export async function ensureResourceFolderScaffold(resourcePath) {
+  if (typeof resourcePath !== 'string' || !resourcePath.trim()) {
+    throw new Error('로컬 리소스 폴더 경로를 입력해 주세요.');
+  }
+  const normalized = path.resolve(resourcePath.trim());
+  if (!path.isAbsolute(normalized)) {
+    throw new Error('로컬 리소스 폴더는 절대경로로 지정해야 합니다.');
+  }
+
+  const createdDirs = [];
+  const createdFiles = [];
+
+  try {
+    const rootStat = await fs.lstat(normalized);
+    if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
+      throw new Error('지정한 리소스 경로가 일반 로컬 디렉터리가 아닙니다.');
+    }
+  } catch (err) {
+    if (err?.code === 'ENOENT') {
+      await fs.mkdir(normalized, { recursive: true });
+      createdDirs.push('.');
+    } else {
+      throw err;
+    }
+  }
+
+  for (const sub of RESOURCE_SUBDIRS) {
+    const dir = path.join(normalized, sub);
+    try {
+      const stat = await fs.lstat(dir);
+      if (!stat.isDirectory() || stat.isSymbolicLink()) {
+        throw new Error(`리소스 하위 폴더(${sub})가 일반 디렉터리가 아닙니다.`);
+      }
+    } catch (err) {
+      if (err?.code === 'ENOENT') {
+        await fs.mkdir(dir, { recursive: true });
+        createdDirs.push(sub);
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  for (const item of RESOURCE_DEFAULT_FILES) {
+    const filePath = path.join(normalized, item.relativePath);
+    try {
+      const stat = await fs.lstat(filePath);
+      if (!stat.isFile() || stat.isSymbolicLink()) {
+        throw new Error(`리소스 기본 설정 파일(${item.relativePath})이 일반 파일이 아닙니다.`);
+      }
+    } catch (err) {
+      if (err?.code === 'ENOENT') {
+        await fs.writeFile(filePath, item.content, { encoding: 'utf8', flag: 'wx' });
+        createdFiles.push(item.relativePath.split(path.sep).join('/'));
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  return { path: normalized, createdDirs, createdFiles };
+}
+
+/**
+ * ========================================================================================
  * [함수명] setLocalFolder - 작업장 또는 리소스 폴더를 로컬 PC 디렉터리로 등록·변경합니다.
+ * (RESOURCE 역할인 경우 대상 폴더 및 필수 하위 디렉터리·기본 JSON 설정 파일을 함께 자동 초기화합니다.)
  *
  * @param {'WORKSPACE'|'RESOURCE'} role - 변경할 폴더 역할
  * @param {string} dirPath - 로컬 PC 절대경로
  * @param {number} [expectedConfigVersion] - 동시성 확인용 설정 버전 (선택)
- * @returns {Promise<object>} 갱신된 폴더 컨텍스트
+ * @returns {Promise<object>} 갱신된 폴더 컨텍스트 (RESOURCE일 때 scaffold 포함)
  * ==========================================================================================
  */
 export async function setLocalFolder(role, dirPath, expectedConfigVersion) {
@@ -307,7 +390,14 @@ export async function setLocalFolder(role, dirPath, expectedConfigVersion) {
   if (normalizedRole !== FOLDER_ROLE.WORKSPACE && normalizedRole !== FOLDER_ROLE.RESOURCE) {
     throw new Error('role은 WORKSPACE 또는 RESOURCE여야 합니다.');
   }
-  const validPath = await validateLocalDirectory(dirPath);
+  let scaffold = null;
+  let validPath;
+  if (normalizedRole === FOLDER_ROLE.RESOURCE) {
+    scaffold = await ensureResourceFolderScaffold(dirPath);
+    validPath = scaffold.path;
+  } else {
+    validPath = await validateLocalDirectory(dirPath);
+  }
   const persisted = await readPersistedState();
   assertConfigVersion(persisted, expectedConfigVersion);
 
@@ -331,7 +421,8 @@ export async function setLocalFolder(role, dirPath, expectedConfigVersion) {
   persisted.updatedAt = now;
 
   await writePersistedState(persisted);
-  return getCurrentFolders();
+  const latest = await getCurrentFolders();
+  return scaffold ? { ...latest, scaffold } : latest;
 }
 
 /**

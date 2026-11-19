@@ -2,6 +2,7 @@
 // 📊 [OMD-MCP-SERVER-0001] plugins/onrivi-author/server/index.mjs
 // 🎯 @KICK  : 온리비 어서 PC 하이브리드 MCP 서버 진입점 (로컬 OS 폴더 + Google Drive 명령어 동적 전환)
 // 🛡️ @GUARD : Rule 1(단일 주석 관리), Rule 2(코드값 대문자 통일), Rule 9(임의 폴백 원천 금지), 원자적 I/O
+// 🚨 @PATCH : 2026-11-19 — [리소스 폴더 표준 스캐폴드 자동 생성 연동] set_mcp_resource_folder 실행 시 생성된 하위 폴더/기본 설정 파일 요약(scaffold) 응답 포함
 // 🚨 @PATCH : 2026-11-19 — [PC 하이브리드 MCP 전환] 중계 서버 없이 PC MCP 단일 진입점에서 로컬 OS ↔ Google Drive 작업장·리소스 폴더 동적 전환(get_mcp_connection_status, get_mcp_folders, list_mcp_folder_candidates, set_mcp_workspace, set_mcp_resource_folder, clear_mcp_folder) 구현
 // 🚨 @PATCH : 2026-11-16 — [AI/서식 템플릿 CRUD 완성] delete_style_profile, update_ai_template, delete_ai_template MCP 도구 등록
 // 🚨 @PATCH : 2026-10-31 — [AI 프롬프트 템플릿 신규 등록 create_ai_template MCP 도구 등록 및 디스패치 연동]
@@ -348,6 +349,7 @@ async function handleSetFolder(role, args = {}) {
       contextSha256: updated.contextSha256,
       workspace: updated.workspace,
       resource: updated.resource,
+      ...(updated.scaffold ? { scaffold: updated.scaffold } : {}),
       updatedAt: updated.updatedAt,
     };
   }

@@ -2,6 +2,7 @@
 // 📊 [OMD-MCP-REMOTE-HTTP-0001] functions/api/mcp/index.js
 // 🎯 @KICK  : 온리비 어서 웹 사용자용 원격 Streamable HTTP MCP 서버 (/api/mcp)
 // 🛡️ @GUARD : Rule 1(단일 주석 관리), Bearer MCP 토큰 SHA-256 검증, 활성 유료 구독 검증, Google Drive 작업장/리소스 격리
+// 🚨 @PATCH : 2026-11-19 — [리소스 폴더 표준 스캐폴드 자동 생성] set_mcp_resource_folder(GDRIVE) 등록 시 필수 하위 폴더(profiles/prompt/media/settings) 및 기본 JSON 파일 미존재 시 자동 초기화
 // 🚨 @PATCH : 2026-11-19 — [Google Drive 토큰 자동 동기화 반영] get_mcp_connection_status에서 사용자 최신 Drive 자격증명(getUserDriveCredentials) 실시간 반영
 // 🚨 @PATCH : 2026-11-19 — [MCP 하이브리드 단계 4: 로컬 장치 상태 조회(get_mcp_device_status) 및 단일 연결 GDRIVE/LOCAL 하이브리드 라우팅 구현]:
 //             1) set_mcp_workspace / set_mcp_resource_folder에서 GDRIVE·LOCAL(deviceId+rootId) 전환 지원
@@ -658,12 +659,42 @@ export async function executeTool(name, args, { env, record, paidSub = null, ver
       permissions: args?.permissions,
       expectedConfigVersion: args?.expectedConfigVersion,
     });
+    let scaffold = null;
+    if (role === 'RESOURCE') {
+      const createdDirs = [];
+      const createdFiles = [];
+      const ensureSub = async (subName) => {
+        const existingSub = await findDriveFileByName(accessToken, meta.id, subName, true);
+        if (existingSub?.id) return existingSub.id;
+        const createdId = await findOrCreateDriveSubfolder(accessToken, meta.id, subName);
+        createdDirs.push(subName);
+        return createdId;
+      };
+      const profilesId = await ensureSub('profiles');
+      const promptId = await ensureSub('prompt');
+      await ensureSub('media');
+      const settingsId = await ensureSub('settings');
+
+      const ensureJsonFile = async (parentId, subName, fileName, defaultContent) => {
+        const existingFile = await findDriveFileByName(accessToken, parentId, fileName, false);
+        if (!existingFile?.id) {
+          await createDriveTextFile(accessToken, parentId, fileName, defaultContent, 'application/json');
+          createdFiles.push(`${subName}/${fileName}`);
+        }
+      };
+      await ensureJsonFile(profilesId, 'profiles', 'userCssProfiles.json', '[]\n');
+      await ensureJsonFile(promptId, 'prompt', 'ai_presets.json', '[]\n');
+      await ensureJsonFile(promptId, 'prompt', 'ai_prompts.json', '{}\n');
+      await ensureJsonFile(settingsId, 'settings', 'shortcodes.json', '[]\n');
+      scaffold = { createdDirs, createdFiles };
+    }
     return {
       success: true,
       connectionId: updated.connectionId,
       configVersion: updated.configVersion,
       workspace: { ...updated.workspace, configured: isSlotConfigured(updated.workspace) },
       resource: { ...updated.resource, configured: isSlotConfigured(updated.resource) },
+      ...(scaffold ? { scaffold } : {}),
     };
   }
 
