@@ -2,6 +2,7 @@
 // 📊 [OMD-AI-RemoteMcpSettings-0001] src/components/ai/RemoteMcpSettings.tsx
 // 🎯 @KICK  : 온리비 어서 통합 하이브리드 MCP 연동 설정 UI (단일 원격 엔드포인트로 Google Drive + 로컬 PC 에이전트 공용 지원)
 // 🛡️ @GUARD : Rule 1(단일 주석 관리), Rule 6(Modern Technical Editorial), Rule 8(고대비 시인성), 편집기 폴더 자동 복사 금지, 토큰 1회성 노출
+// 🚨 @PATCH : 2026-11-19 — [Google Drive 자동 동기화 UI 연동] loadStatus 시 기존 MCP 토큰은 있으나 Drive 미동기화 상태이면 /api/gdrive/oauth/mcp-ticket → PATCH /api/mcp/token을 자동 호출해 토큰 재발급 없이 Drive 인증 반영
 // 🚨 @PATCH : 2026-11-19 — [구버전 2탭(구글드라이브/로컬 Stdio) 및 편집기 경로 입력 화면 제거 · 단일 하이브리드 통합 UI 일원화]:
 //             1) 혼란을 주던 '구글 드라이브 (원격) / 내 PC 로컬 폴더' 탭과 편집기 폴더 경로(ONRIVI_WORKSPACE_PATH) 복사 UI 제거
 //             2) 단일 통합 MCP 연결 발급·다중 연결 관리·로컬 PC 에이전트 장치 상태 확인으로 화면 간결화
@@ -75,10 +76,38 @@ export default function RemoteMcpSettings() {
       if (!res.ok) return;
       const data = await res.json();
       if (data?.success) {
+        let hasDriveConnected = Boolean(data.hasDriveConnected);
+        // 기존 MCP 토큰은 있으나 Drive가 미동기화 상태이면 /api/gdrive 쿠키 티켓으로 자동 동기화 (토큰 재발급 불필요)
+        if (Boolean(data.hasToken) && !hasDriveConnected) {
+          try {
+            const ticketRes = await fetch('/api/gdrive/oauth/mcp-ticket', {
+              method: 'POST',
+              credentials: 'include',
+            });
+            if (ticketRes.ok) {
+              const ticketData = await ticketRes.json().catch(() => ({}));
+              if (ticketData?.ticket) {
+                const syncRes = await fetch('/api/mcp/token', {
+                  method: 'PATCH',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${session.access_token}`,
+                  },
+                  body: JSON.stringify({ driveTicket: ticketData.ticket }),
+                });
+                if (syncRes.ok) {
+                  hasDriveConnected = true;
+                }
+              }
+            }
+          } catch {
+            // 구글 드라이브 미연결 상태는 정상 시나리오이므로 무시
+          }
+        }
         setStatus({
           hasToken: Boolean(data.hasToken),
           maskedToken: data.maskedToken || '',
-          hasDriveConnected: Boolean(data.hasDriveConnected),
+          hasDriveConnected,
           updatedAt: data.updatedAt || '',
           connections: Array.isArray(data.connections) ? data.connections : [],
           devices: Array.isArray(data.devices) ? data.devices : [],
