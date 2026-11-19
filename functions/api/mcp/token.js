@@ -2,6 +2,7 @@
 // 📊 [OMD-MCP-TOKEN-0001] functions/api/mcp/token.js
 // 🎯 @KICK  : 웹 사용자용 개인 MCP API 토큰 발급·조회·폐기 엔드포인트 (/api/mcp/token)
 // 🛡️ @GUARD : Rule 1(단일 주석 관리), Supabase JWT 인증, 유료 구독 검증, SHA-256 해시 저장 및 Drive Refresh Token AES-GCM 연계
+// 🚨 @PATCH : 2026-11-19 — [Google Drive 자동 동기화(토큰 재발급 불필요)] GET/POST 시 계정 Drive OAuth 세션 자동 저장 및 PATCH /api/mcp/token 동기화 엔드포인트 추가
 // 🚨 @PATCH : 2026-11-19 — [MCP 하이브리드: 구글 드라이브 미연결 상태에서도 MCP 토큰 발급 허용]: 로컬 PC 에이전트 단독 사용자도 Drive OAuth 없이 독립 MCP 연결 토큰 발급 가능하도록 DRIVE_AUTH_REQUIRED 강제 차단 해제
 // 🚨 @PATCH : 2026-11-19 — [MCP 하이브리드 단계 2: 다중 연결(connections) 목록 조회·개별 연결 생성/폐기 지원]
 // 🚨 @PATCH : 2026-11-19 — [MCP 하이브리드 단계 1: MCP 전용 연결 폴더 설정 분리 연계]: GET/POST에서 connectionId·configVersion 기반 전용 설정 조회 및 재발급 시 기존 전용 폴더 보존
@@ -15,10 +16,12 @@ import {
   generateMcpToken,
   getMcpConnectionConfig,
   getMcpTokenByUser,
+  getUserDriveCredentials,
   getUserMcpDevices,
   listUserMcpConnections,
   revokeMcpToken,
   saveMcpTokenRecord,
+  saveUserDriveCredentials,
   sha256Hex,
   verifyActivePaidPlan,
 } from './_shared.js';
@@ -27,7 +30,7 @@ const corsHeaders = {
   'Content-Type': 'application/json; charset=utf-8',
   'Cache-Control': 'no-store',
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
@@ -51,6 +54,16 @@ export async function onRequestGet({ request, env }) {
     if (!user?.id) return json({ success: false, code: 'UNAUTHORIZED', message: '로그인이 필요합니다.' }, 401);
 
     const record = await getMcpTokenByUser(env, user.id);
+    // 웹에서 Google Drive가 연결된 상태라면 기존 MCP 토큰을 재발급하지 않아도 자동 동기화
+    const liveDriveSession = await readDriveOAuthSession(request, env).catch(() => null);
+    if (liveDriveSession?.refreshToken) {
+      await saveUserDriveCredentials(env, user.id, {
+        driveRefreshToken: liveDriveSession.refreshToken,
+        driveAccessToken: liveDriveSession.accessToken || '',
+        driveAccessExpires: liveDriveSession.accessExpires || 0,
+      }).catch(() => {});
+    }
+    const userDrive = await getUserDriveCredentials(env, user.id);
     const config = record ? await getMcpConnectionConfig(env, record) : null;
     const rawConnections = await listUserMcpConnections(env, user.id);
     const connections = await Promise.all(
@@ -77,7 +90,7 @@ export async function onRequestGet({ request, env }) {
       maskedToken: record?.maskedToken || connections[0]?.maskedToken || '',
       workspaceFolderId: config?.workspace?.folderId || '',
       resourceFolderId: config?.resource?.folderId || '',
-      hasDriveConnected: Boolean(record?.driveRefreshToken),
+      hasDriveConnected: Boolean(record?.driveRefreshToken || userDrive?.driveRefreshToken),
       updatedAt: config?.updatedAt || record?.updatedAt || '',
       connections,
       devices,
@@ -121,8 +134,16 @@ export async function onRequestPost({ request, env }) {
     const hasExplicitResource = Object.prototype.hasOwnProperty.call(body || {}, 'resourceFolderId');
     const workspaceFolderId = hasExplicitWorkspace ? String(body.workspaceFolderId || '').trim() : undefined;
     const resourceFolderId = hasExplicitResource ? String(body.resourceFolderId || '').trim() : undefined;
-    const driveRefreshToken = String(driveSession?.refreshToken || existing?.driveRefreshToken || '').trim();
+    const existingUserDrive = await getUserDriveCredentials(env, user.id);
+    const driveRefreshToken = String(driveSession?.refreshToken || existing?.driveRefreshToken || existingUserDrive?.driveRefreshToken || '').trim();
     const hasDriveConnected = Boolean(driveRefreshToken);
+    if (driveRefreshToken) {
+      await saveUserDriveCredentials(env, user.id, {
+        driveRefreshToken,
+        driveAccessToken: driveSession?.accessToken || '',
+        driveAccessExpires: driveSession?.accessExpires || 0,
+      });
+    }
 
     const rawToken = generateMcpToken();
     const tokenHash = await sha256Hex(rawToken);
@@ -159,6 +180,54 @@ export async function onRequestPost({ request, env }) {
       doing: '원격 MCP 토큰 발급 및 Google Drive 세션 연계 중',
       target: 'MCP_TOKEN',
       message: 'MCP 토큰을 발급하지 못했습니다.',
+    });
+  }
+}
+
+/**
+ * ========================================================================================
+ * [함수명] onRequestPatch - 기존 MCP 토큰을 재발급하지 않고 현재 Google Drive OAuth 세션만 계정에 자동 동기화합니다.
+ *
+ * @param {object} context - Cloudflare Pages context
+ * @param {Request} context.request - HTTP 요청 객체
+ * @param {object} context.env - Cloudflare 환경 변수 및 R2 바인딩
+ * @returns {Promise<Response>} 동기화 결과 JSON 응답
+ * ==========================================================================================
+ */
+export async function onRequestPatch({ request, env }) {
+  try {
+    const user = await sessionUser(request, env);
+    if (!user?.id) return json({ success: false, code: 'UNAUTHORIZED', message: '로그인이 필요합니다.' }, 401);
+
+    const body = await request.json().catch(() => ({}));
+    const ticketSession = body?.driveTicket ? await consumeMcpDriveTicket(env, body.driveTicket) : null;
+    const driveSession = ticketSession || (await readDriveOAuthSession(request, env, body?.driveSessionToken));
+    if (!driveSession?.refreshToken) {
+      return json({
+        success: false,
+        code: 'DRIVE_AUTH_REQUIRED',
+        message: '동기화할 Google Drive 인증 세션이 없습니다. 먼저 Google Drive를 연결해 주세요.',
+      }, 400);
+    }
+
+    await saveUserDriveCredentials(env, user.id, {
+      driveRefreshToken: driveSession.refreshToken,
+      driveAccessToken: driveSession.accessToken || '',
+      driveAccessExpires: driveSession.accessExpires || 0,
+    });
+
+    return json({
+      success: true,
+      hasDriveConnected: true,
+      message: 'Google Drive 인증이 기존 MCP 연결에 자동 반영되었습니다. MCP 토큰을 재발급하지 않아도 됩니다.',
+    });
+  } catch (error) {
+    return serverError(request, error, {
+      source: 'functions/api/mcp/token.js',
+      stage: 'sync_mcp_drive',
+      doing: '기존 MCP 연결에 Google Drive 인증 자동 동기화 중',
+      target: 'MCP_DRIVE_SYNC',
+      message: 'Google Drive 인증을 MCP에 동기화하지 못했습니다.',
     });
   }
 }

@@ -1,28 +1,118 @@
 // ====================================================================
 // 📊 [OMD-MCP-REMOTE-CLIENT-0001] plugins/onrivi-author/server/remote-client.mjs
-// 🎯 @KICK  : PC 로컬 MCP에서 원격 웹 MCP(/api/mcp)를 호출하는 경량 JSON-RPC 2.0 클라이언트
-// 🛡️ @GUARD : Rule 1(단일 주석 관리), Rule 2(코드값 대문자 통일), Bearer 토큰 로그 마스킹, 타임아웃 보호
+// 🎯 @KICK  : PC 로컬 MCP에서 원격 웹 MCP(/api/mcp)를 호출하는 경량 JSON-RPC 2.0 클라이언트 및 로컬 인증 파일(mcp-auth.json) 실시간 자동 로드
+// 🛡️ @GUARD : Rule 1(단일 주석 관리), Rule 2(코드값 대문자 통일), Bearer 토큰 로그 마스킹, mtime 기반 자동 재로딩, 심볼릭 링크 차단
+// 🚨 @PATCH : 2026-11-19 — [토큰 자동 갱신 지원] mcp_config.json 하드코딩 대신 %APPDATA%\Onrivi Author\mcp-auth.json을 mtime 기반으로 실시간 자동 로드하도록 개선
 // 🚨 @PATCH : 2026-11-19 — [PC 하이브리드 MCP 신설] 중계 서버 없이 PC MCP에서 Google Drive 및 원격 계정 인증을 직접 프록시하는 클라이언트 추가
-// 🔗 @CALLS : globalThis.fetch
+// 🔗 @CALLS : globalThis.fetch, node:fs, node:os, node:path
 // ====================================================================
+import fsSync from 'node:fs';
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 let rpcSequence = 1;
+let cachedAuthFile = { filePath: '', mtimeMs: -1, url: '', token: '' };
 
 /**
  * ========================================================================================
- * [함수명] getRemoteMcpConfig - 환경변수에서 원격 웹 MCP URL 및 Bearer 토큰 설정을 조회합니다.
+ * [함수명] getDefaultAuthFilePath - PC MCP 원격 인증 파일(mcp-auth.json)의 기본 경로를 반환합니다.
  *
- * @returns {{ configured: boolean, url: string, token: string }} 원격 MCP 설정 정보
+ * @returns {string} mcp-auth.json 절대경로
+ * ==========================================================================================
+ */
+export function getDefaultAuthFilePath() {
+  if (process.env.ONRIVI_MCP_AUTH_FILE) return path.resolve(process.env.ONRIVI_MCP_AUTH_FILE);
+  const base = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+  return path.join(base, 'Onrivi Author', 'mcp-auth.json');
+}
+
+/**
+ * ========================================================================================
+ * [함수명] readAuthFileSync - mcp-auth.json을 mtime 변경 감지 기반으로 동기 조회합니다.
+ * (파일이 갱신되면 MCP 서버 재시작 없이 즉시 새 토큰을 반영합니다.)
+ *
+ * @returns {{ url: string, token: string, source: string }} 파일에서 읽은 원격 인증 정보
+ * ==========================================================================================
+ */
+function readAuthFileSync() {
+  const filePath = getDefaultAuthFilePath();
+  try {
+    const stat = fsSync.lstatSync(filePath);
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 8192) {
+      return { url: '', token: '', source: '' };
+    }
+    if (cachedAuthFile.filePath === filePath && cachedAuthFile.mtimeMs === stat.mtimeMs) {
+      return { url: cachedAuthFile.url, token: cachedAuthFile.token, source: 'AUTH_FILE' };
+    }
+    const raw = JSON.parse(fsSync.readFileSync(filePath, 'utf8'));
+    const url = String(raw.remoteUrl || raw.url || '').trim().replace(/\/$/, '');
+    const token = String(raw.token || raw.mcpToken || '').trim();
+    cachedAuthFile = { filePath, mtimeMs: stat.mtimeMs, url, token };
+    return { url, token, source: 'AUTH_FILE' };
+  } catch (err) {
+    if (err?.code !== 'ENOENT') {
+      console.error(JSON.stringify({
+        event: 'MCP_AUTH_FILE_READ_ERROR',
+        file: 'plugins/onrivi-author/server/remote-client.mjs',
+        func: 'readAuthFileSync',
+        doing: 'PC MCP 자동 인증 파일(mcp-auth.json) 읽기 중',
+        target: 'mcp-auth.json',
+        error: err?.message || String(err),
+      }));
+    }
+    return { url: '', token: '', source: '' };
+  }
+}
+
+/**
+ * ========================================================================================
+ * [함수명] saveRemoteMcpAuth - 원격 웹 MCP URL과 토큰을 mcp-auth.json에 원자적으로 저장합니다.
+ *
+ * @param {{ url: string, token: string }} params - 저장할 원격 URL 및 Bearer 토큰
+ * @returns {Promise<{ authFilePath: string, updatedAt: string }>} 저장 결과 메타데이터
+ * ==========================================================================================
+ */
+export async function saveRemoteMcpAuth({ url, token }) {
+  const cleanUrl = String(url || '').trim().replace(/\/$/, '');
+  const cleanToken = String(token || '').trim();
+  if (!cleanUrl || !cleanToken) {
+    throw new Error('원격 MCP URL과 토큰이 모두 필요합니다.');
+  }
+  const filePath = getDefaultAuthFilePath();
+  const updatedAt = new Date().toISOString();
+  const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(
+    tmpPath,
+    JSON.stringify({ version: 1, remoteUrl: cleanUrl, token: cleanToken, updatedAt }, null, 2),
+    'utf8',
+  );
+  await fs.rename(tmpPath, filePath);
+  cachedAuthFile = { filePath: '', mtimeMs: -1, url: '', token: '' };
+  return { authFilePath: filePath, updatedAt };
+}
+
+/**
+ * ========================================================================================
+ * [함수명] getRemoteMcpConfig - mcp-auth.json(우선) 및 환경변수에서 원격 웹 MCP URL 및 Bearer 토큰을 조회합니다.
+ *
+ * @returns {{ configured: boolean, url: string, token: string, source: string }} 원격 MCP 설정 정보
  * ==========================================================================================
  */
 export function getRemoteMcpConfig() {
-  const url = String(process.env.ONRIVI_REMOTE_MCP_URL || '').trim().replace(/\/$/, '');
-  const token = String(process.env.ONRIVI_MCP_TOKEN || '').trim();
+  const fromFile = readAuthFileSync();
+  const envUrl = String(process.env.ONRIVI_REMOTE_MCP_URL || '').trim().replace(/\/$/, '');
+  const envToken = String(process.env.ONRIVI_MCP_TOKEN || '').trim();
+  const url = fromFile.url || envUrl;
+  const token = fromFile.token || envToken;
+  const source = fromFile.token ? 'AUTH_FILE' : envToken ? 'ENV' : 'NONE';
   return {
     configured: Boolean(url && token),
     url,
     token,
+    source,
   };
 }
 
@@ -75,7 +165,7 @@ function parseJsonRpcPayload(rawText, contentType) {
 export async function callRemoteMcpTool(toolName, args = {}) {
   const { configured, url, token } = getRemoteMcpConfig();
   if (!configured) {
-    throw new Error('원격 웹 MCP 연결 정보(ONRIVI_REMOTE_MCP_URL, ONRIVI_MCP_TOKEN)가 설정되어 있지 않습니다.');
+    throw new Error('원격 웹 MCP 연결 정보(mcp-auth.json 또는 ONRIVI_MCP_TOKEN)가 설정되어 있지 않습니다.');
   }
 
   const id = rpcSequence++;

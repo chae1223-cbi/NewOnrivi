@@ -2,6 +2,7 @@
 // 📊 [OMD-MCP-REMOTE-0001] functions/api/mcp/_shared.js
 // 🎯 @KICK  : 웹 원격 MCP(Streamable HTTP) 전용 토큰 암호화 저장·구독 권한 검증·Google Drive API 유틸리티
 // 🛡️ @GUARD : Rule 1(단일 주석 관리), Rule 2(코드값 대문자 통일), AES-GCM 토큰 암호화 및 SHA-256 해시 조회
+// 🚨 @PATCH : 2026-11-19 — [Google Drive 토큰 자동 동기화] 사용자별 최신 Drive 자격증명(_mcp-tokens/drive-by-user) 저장·조회 추가 및 getValidDriveAccessToken 자동 연계(MCP 토큰 재발급 불필요)
 // 🚨 @PATCH : 2026-11-19 — [MCP 하이브리드 단계 4: 로컬 장치 등록·상태 조회 및 아웃바운드 Local Agent 작업 라우터(dispatchLocalAgentJob) 신설]
 // 🚨 @PATCH : 2026-11-19 — [MCP 하이브리드 단계 3: Drive 페이지네이션(listDriveChildrenPage) 및 재귀 탐색(listDriveTreeRecursive) 헬퍼 신설]
 // 🚨 @PATCH : 2026-11-19 — [MCP 하이브리드 단계 2: 다중 연결 목록 관리(listUserMcpConnections/revokeMcpConnection) 및 쓰기 직전 실시간 인가 재검증 지원]
@@ -544,12 +545,71 @@ export async function dispatchLocalAgentJob(env, userId, { deviceId, job, timeou
 
 /**
  * ========================================================================================
- * [함수명] getValidDriveAccessToken - MCP 토큰 레코드의 Refresh Token으로 유효한 Google Drive Access Token을 확보합니다.
+ * [함수명] saveUserDriveCredentials - 사용자 계정의 최신 Google Drive Refresh Token을 암호화 저장하여 모든 기존 MCP 연결에 자동 공유합니다.
+ *
+ * @param {object} env - Cloudflare 바인딩 환경 변수 (R2_BUCKET)
+ * @param {string} userId - 사용자 UUID
+ * @param {{ driveRefreshToken: string, driveAccessToken?: string, driveAccessExpires?: number }} creds - Google Drive OAuth 토큰 정보
+ * @returns {Promise<object|null>} 저장된 자격증명 객체 (Refresh Token 누락 시 null)
+ * ==========================================================================================
+ */
+export async function saveUserDriveCredentials(env, userId, creds = {}) {
+  if (!env?.R2_BUCKET || !userId || !creds?.driveRefreshToken) return null;
+  const payload = {
+    userId,
+    driveRefreshToken: String(creds.driveRefreshToken),
+    driveAccessToken: String(creds.driveAccessToken || ''),
+    driveAccessExpires: Number(creds.driveAccessExpires || 0),
+    updatedAt: new Date().toISOString(),
+  };
+  await env.R2_BUCKET.put(`_mcp-tokens/drive-by-user/${userId}`, await sealJson(env, payload));
+  return payload;
+}
+
+/**
  * ========================================================================================
+ * [함수명] getUserDriveCredentials - 사용자 계정에 자동 동기화된 최신 Google Drive 자격증명을 조회합니다.
+ *
+ * @param {object} env - Cloudflare 바인딩 환경 변수 (R2_BUCKET)
+ * @param {string} userId - 사용자 UUID
+ * @returns {Promise<object|null>} 복호화된 자격증명 객체 또는 null
+ * ==========================================================================================
+ */
+export async function getUserDriveCredentials(env, userId) {
+  if (!env?.R2_BUCKET || !userId) return null;
+  const obj = await env.R2_BUCKET.get(`_mcp-tokens/drive-by-user/${userId}`);
+  if (!obj) return null;
+  try {
+    return await openJson(env, await obj.text());
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * ========================================================================================
+ * [함수명] getValidDriveAccessToken - MCP 토큰 레코드 또는 사용자 최신 Drive 자격증명으로 유효한 Google Drive Access Token을 확보합니다.
+ * (기존 MCP 토큰을 재발급하지 않아도 웹에서 나중에 연결한 Google Drive 인증을 자동으로 반영합니다.)
+ *
+ * @param {object} env - Cloudflare 바인딩 환경 변수
+ * @param {object} record - MCP 토큰 레코드
+ * @returns {Promise<string>} 유효한 Google Drive Access Token
+ * ==========================================================================================
  */
 export async function getValidDriveAccessToken(env, record) {
+  let userDrive = null;
+  if (!record?.driveRefreshToken && record?.userId) {
+    userDrive = await getUserDriveCredentials(env, record.userId);
+    if (userDrive?.driveRefreshToken) {
+      record.driveRefreshToken = userDrive.driveRefreshToken;
+      if (userDrive.driveAccessToken && userDrive.driveAccessExpires > Date.now() + 120_000) {
+        record.driveAccessToken = userDrive.driveAccessToken;
+        record.driveAccessExpires = userDrive.driveAccessExpires;
+      }
+    }
+  }
   if (!record?.driveRefreshToken) {
-    throw new Error('연결된 Google Drive 인증 정보가 없습니다. 온리비어서 웹에서 구글 드라이브를 연결한 뒤 MCP 토큰을 다시 발급해 주세요.');
+    throw new Error('연결된 Google Drive 인증 정보가 없습니다. 온리비어서 웹에서 구글 드라이브를 연결해 주세요.');
   }
   if (record.driveAccessToken && record.driveAccessExpires - Date.now() > 120_000) {
     return record.driveAccessToken;
@@ -557,28 +617,54 @@ export async function getValidDriveAccessToken(env, record) {
   if (!env.GOOGLE_CLIENT_ID || !env.GOOGLE_CLIENT_SECRET) {
     throw new Error('서버 Google OAuth 설정이 누락되었습니다.');
   }
-  const res = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: env.GOOGLE_CLIENT_ID,
-      client_secret: env.GOOGLE_CLIENT_SECRET,
-      grant_type: 'refresh_token',
-      refresh_token: record.driveRefreshToken,
-    }),
-    signal: AbortSignal.timeout(15000),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || !data.access_token) {
-    throw new Error('Google Drive 인증이 만료되었습니다. 온리비어서 웹에서 구글 드라이브를 다시 연결한 뒤 MCP 토큰을 재발급해 주세요.');
+
+  const refreshWith = async (refreshToken) => {
+    const res = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: env.GOOGLE_CLIENT_ID,
+        client_secret: env.GOOGLE_CLIENT_SECRET,
+        grant_type: 'refresh_token',
+        refresh_token: refreshToken,
+      }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok && Boolean(data.access_token), data };
+  };
+
+  let refreshed = await refreshWith(record.driveRefreshToken);
+  if (!refreshed.ok && record?.userId) {
+    // 기존 토큰 레코드의 Refresh Token이 만료된 경우, 계정의 최신 동기화 Drive 토큰으로 1회 자동 재시도
+    const latestDrive = userDrive || (await getUserDriveCredentials(env, record.userId));
+    if (latestDrive?.driveRefreshToken && latestDrive.driveRefreshToken !== record.driveRefreshToken) {
+      refreshed = await refreshWith(latestDrive.driveRefreshToken);
+      if (refreshed.ok) {
+        record.driveRefreshToken = latestDrive.driveRefreshToken;
+      }
+    }
   }
-  record.driveAccessToken = data.access_token;
-  record.driveAccessExpires = Date.now() + Number(data.expires_in || 3600) * 1000;
-  if (data.refresh_token) record.driveRefreshToken = data.refresh_token;
+  if (!refreshed.ok) {
+    throw new Error('Google Drive 인증이 만료되었습니다. 온리비어서 웹에서 구글 드라이브를 다시 연결해 주세요.');
+  }
+
+  record.driveAccessToken = refreshed.data.access_token;
+  record.driveAccessExpires = Date.now() + Number(refreshed.data.expires_in || 3600) * 1000;
+  if (refreshed.data.refresh_token) record.driveRefreshToken = refreshed.data.refresh_token;
 
   const sealed = await sealJson(env, record);
-  await env.R2_BUCKET.put(`_mcp-tokens/by-hash/${record.tokenHash}`, sealed);
-  await env.R2_BUCKET.put(`_mcp-tokens/by-user/${record.userId}`, sealed);
+  if (record.tokenHash) {
+    await env.R2_BUCKET.put(`_mcp-tokens/by-hash/${record.tokenHash}`, sealed);
+  }
+  if (record.userId) {
+    await env.R2_BUCKET.put(`_mcp-tokens/by-user/${record.userId}`, sealed);
+    await saveUserDriveCredentials(env, record.userId, {
+      driveRefreshToken: record.driveRefreshToken,
+      driveAccessToken: record.driveAccessToken,
+      driveAccessExpires: record.driveAccessExpires,
+    });
+  }
   return record.driveAccessToken;
 }
 

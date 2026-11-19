@@ -2,6 +2,7 @@
 // 📊 [OMD-MCP-REMOTE-HTTP-0001] functions/api/mcp/index.js
 // 🎯 @KICK  : 온리비 어서 웹 사용자용 원격 Streamable HTTP MCP 서버 (/api/mcp)
 // 🛡️ @GUARD : Rule 1(단일 주석 관리), Bearer MCP 토큰 SHA-256 검증, 활성 유료 구독 검증, Google Drive 작업장/리소스 격리
+// 🚨 @PATCH : 2026-11-19 — [Google Drive 토큰 자동 동기화 반영] get_mcp_connection_status에서 사용자 최신 Drive 자격증명(getUserDriveCredentials) 실시간 반영
 // 🚨 @PATCH : 2026-11-19 — [MCP 하이브리드 단계 4: 로컬 장치 상태 조회(get_mcp_device_status) 및 단일 연결 GDRIVE/LOCAL 하이브리드 라우팅 구현]:
 //             1) set_mcp_workspace / set_mcp_resource_folder에서 GDRIVE·LOCAL(deviceId+rootId) 전환 지원
 //             2) 작업장이 LOCAL일 때 dispatchLocalAgentJob으로 라우팅하고 Google Drive 토큰 조회를 지연(lazy) 분리하여 Drive 철회 시에도 로컬 도구 정상 동작 보장
@@ -26,6 +27,7 @@ import {
   getDriveItemMeta,
   getMcpConnectionConfig,
   getMcpTokenByHash,
+  getUserDriveCredentials,
   getUserMcpDevices,
   getValidDriveAccessToken,
   listDriveChildren,
@@ -528,8 +530,12 @@ export async function executeTool(name, args, { env, record, paidSub = null, ver
   const resourceId = resourceSlot.folderId;
 
   if (name === 'get_mcp_connection_status') {
-    let driveStatus = record?.driveRefreshToken ? 'CONNECTED' : 'DISCONNECTED';
-    if (record?.driveRefreshToken) {
+    const userDrive = !record?.driveRefreshToken && record?.userId
+      ? await getUserDriveCredentials(env, record.userId)
+      : null;
+    const hasDriveToken = Boolean(record?.driveRefreshToken || userDrive?.driveRefreshToken);
+    let driveStatus = hasDriveToken ? 'CONNECTED' : 'DISCONNECTED';
+    if (hasDriveToken) {
       try {
         await getValidDriveAccessToken(env, record);
         driveStatus = 'CONNECTED';
