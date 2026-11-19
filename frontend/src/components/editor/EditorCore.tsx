@@ -3,6 +3,7 @@
  * 🏷️ 파일명 : EditorCore.tsx
  * 🎭 역할(Role) : Core (핵심 도메인 뷰 — 마크다운 편집기 및 미리보기 스플릿뷰 렌더링)
  * 🎯 주요기능 : Monaco Editor, MarkdownViewer/VisualDocumentEditor 스플릿뷰, 브레드크럼, 탭바, 플로팅 툴바, 문서 링크 픽커 렌더링
+ * 🚨 @PATCH : 2026-11-19 — [웹드라이브 연결 끊김 시 읽기 전용(Read-Only) 보호]: isWebDriveReadOnly일 때 Monaco/VisualDocumentEditor/그림책/미디어 편집 및 치환을 차단하고 열려 있는 문서 읽기·복사만 허용
  * 🚨 @PATCH : 2026-11-08 — [플로팅 툴바 서식 적용 후 툴바 유지 & ESC 닫기]: 엔터/클릭 시 툴바를 닫지 않고 서식만 연속 적용하도록 유지하고 ESC 입력 시에만 툴바를 닫도록 개선
  * 🚨 @PATCH : 2026-11-08 — [플로팅 툴바 키보드 네비게이션 & 엔터 에디터 복귀]: 방향키(좌/우/상/하)로 툴바 버튼 순환 이동 및 엔터/스페이스 입력 시 현재 커서 서식 적용 후 에디터로 즉시 복귀 지원
  * 🚨 @PATCH : 2026-11-08 — [플로팅 툴바 ESC 서식 보존 및 포커스 복원]: Escape 키 입력 시 서식 상태를 취소하지 않고 플로팅 툴바만 닫고 에디터로 포커스 안전 반환
@@ -282,11 +283,13 @@ export default function EditorCore(props: EditorCoreProps) {
     isDarkMode,
     themePalette,
     isRestrictedUser,
+    isWebDriveReadOnly,
     editorRef,
     previewRef,
     showToast,
     driveLetter,
   } = useEditorContext();
+  const isWriteBlocked = Boolean(isRestrictedUser || isWebDriveReadOnly);
 
   const activeTab = useMemo(() => (tabs || []).find((t: any) => t.id === activeTabId), [tabs, activeTabId]);
 
@@ -693,8 +696,8 @@ export default function EditorCore(props: EditorCoreProps) {
                         }}
                         onMount={handleMount}
                         options={{
-                          readOnly: tabs.length === 0 || isRestrictedUser || previewMode === 'both',
-                          domReadOnly: tabs.length === 0 || isRestrictedUser || previewMode === 'both',
+                          readOnly: tabs.length === 0 || isWriteBlocked || previewMode === 'both',
+                          domReadOnly: tabs.length === 0 || isWriteBlocked || previewMode === 'both',
                           padding: { top: 28, bottom: 28 },
                           scrollBeyondLastLine: false, // 마지막 줄 아래 과도한 여백 제거
                           glyphMargin: false, // 글리프 좌측 여백 제거
@@ -1510,7 +1513,7 @@ export default function EditorCore(props: EditorCoreProps) {
                         previewContainerRef={previewRef}
                         isOpen={isPreviewFindOpen}
                         replaceMode={previewFindReplaceMode}
-                        replaceEnabled={!isRestrictedUser && !!activeTabId && currentFileName !== '도움말.md'}
+                        replaceEnabled={!isWriteBlocked && !!activeTabId && currentFileName !== '도움말.md'}
                         documentKey={activeTabId}
                         onClose={() => setIsPreviewFindOpen(false)}
                       />
@@ -1866,7 +1869,7 @@ export default function EditorCore(props: EditorCoreProps) {
                                     복사
                                   </button>
                                 </div>
-                                {directEditEnabled && !isRestrictedUser && activeTabId && currentFileName !== '도움말.md' && !activeProfile.layout ? (
+                                {directEditEnabled && !isWriteBlocked && activeTabId && currentFileName !== '도움말.md' && !activeProfile.layout ? (
                                    <VisualDocumentEditor key={activeTabId} documentId={activeTabId} headingNumbering={activeProfile.headingNumbering} bibContent={bibContent} onCitation={()=>setIsCitationModalOpen(true)} onReferenceSettings={() => setIsReferenceModalOpen(true)} pageStyle={resolveEffectiveDocumentProfile(content).pageStyle} onPdfPagePreview={signal=>handlersRef.current.print(true,undefined,signal)} spellCheck={spellCheck} tabSize={editorTabSize} autoClosingBrackets={autoClosingBrackets} onToast={showToast} onStyleSettings={() => setIsStyleModalOpen(true)}
                                      onSourceScroll={offset => {
                                        const editor = editorRef.current;
@@ -1976,7 +1979,7 @@ export default function EditorCore(props: EditorCoreProps) {
                                         ? prev : { visible, top, left: position.left });
                                     }}
                                     onSourceAction={(id, source, from, to) => {
-                                      if (!activeTabId || isRestrictedUser) return;
+                                      if (!activeTabId || isWriteBlocked) return;
                                       const changed = source !== contentRef.current;
                                       visualSourceActionRef.current = { id, source, from, to, tabId: activeTabId };
                                       contentRef.current = source;
@@ -1989,7 +1992,7 @@ export default function EditorCore(props: EditorCoreProps) {
                                   }} />
                                 ) : <MarkdownViewer
                                 content={processedContent}
-                                onMediaEdit={isRestrictedUser ? undefined : editDocumentMedia}
+                                onMediaEdit={isWriteBlocked ? undefined : editDocumentMedia}
                                 picturebookProfile={activeProfile}
                                 picturebookEditorOptions={{documentId:activeTabId,tabSize:editorTabSize,spellCheck,customCommands:customSlashCommands,customHotkeys,commandRef:visualCommandRef,
                                   bibContent,onCitation:()=>setIsCitationModalOpen(true),
@@ -2025,7 +2028,7 @@ export default function EditorCore(props: EditorCoreProps) {
                                   setEditingImageInfo({path:image.path || '',alt:image.alt || '',width:'',height:'',align:'center',range:{bookSceneIndex:index, documentId:activeTabIdRef.current, originalSceneRaw:scene.raw}});
                                   setIsImageModalOpen(true);
                                 }}
-                                onPicturebookChange={!isRestrictedUser && directEditEnabled && currentFileName !== '도움말.md' ? (next) => {
+                                onPicturebookChange={!isWriteBlocked && directEditEnabled && currentFileName !== '도움말.md' ? (next) => {
                                   contentRef.current=next;
                                   updateContent(next, false, true);
                                   setTabs(prev => prev.map(tab => tab.id === activeTabId ? { ...tab, content: next, isModified: true } : tab));

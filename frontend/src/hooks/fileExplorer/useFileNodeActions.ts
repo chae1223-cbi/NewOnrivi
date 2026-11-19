@@ -2,6 +2,7 @@
  * ====================================================================
  * 🏷️ 파일명 : useFileNodeActions.ts
  * 🎯 주요기능 : 파일 탐색기 개별 노드(FileTreeItem)의 생성·이름변경·삭제·드래그앤드롭 이동·컨텍스트 액션 제어 훅
+ * 🚨 @PATCH : 2026-11-19 — [웹드라이브 연결 끊김 시 읽기 전용(Read-Only) 보호]: 웹드라이브 미연결/토큰 만료 시 하위 폴더의 새 파일·새 폴더 생성(triggerCreateFile/triggerCreateFolder) 차단
  * 🚨 @PATCH : 2026-11-14 — [폴더 생성/이름변경/삭제 및 컨텍스트 메뉴 폴더 기본 서식 설정 연동]:
  *             1) 하위 폴더 생성(createFolder) 및 폴더 서식 설정(folderStyle) 시 setFolderDefaultProfile로 폴더별 디폴트 서식 저장·관리
  *             2) 폴더 이름 변경(renameFolderDefaultProfile) 및 폴더 삭제(removeFolderDefaultProfile) 시 매핑 자동 동기화
@@ -19,6 +20,7 @@ import { getApiUrl } from '@/lib/apiUrlBuilder';
 import { vfsCreateFile, vfsCreateFolder, vfsRename, vfsDelete, vfsReadFile } from '@/lib/virtualFileSystem';
 import {
   getSavedDriveToken,
+  hasValidDriveToken,
   getSavedWorkspaceInfo,
   trashDriveItem,
   renameDriveItem,
@@ -976,20 +978,47 @@ export function useFileNodeActions({
     });
   }, [node, showToast, localChildren, askConfirm, workspaceType, parentHandle, refreshParent]);
 
+  const isGdriveReadOnly = Boolean(
+    (workspaceType === 'cloud' || workspaceType === 'gdrive' || Boolean((node as any)?.driveId || (node as any)?.driveFileId)) &&
+    !hasValidDriveToken()
+  );
+
   const triggerCreateFile = useCallback((e?: any) => {
     if (e?.stopPropagation) e.stopPropagation();
     setContextMenu(null);
+    if (isGdriveReadOnly) {
+      logWarn({
+        file: 'frontend/src/hooks/fileExplorer/useFileNodeActions.ts',
+        func: 'triggerCreateFile',
+        doing: '웹드라이브 연결 끊김 상태에서 하위 새 파일 생성 차단',
+        target: node.name,
+        error: 'WEBDRIVE_READ_ONLY',
+      });
+      showToast('웹드라이브 연결이 끊어져 읽기 전용 상태입니다. 다시 연결한 뒤 새 파일을 만들어 주세요.', 'warning');
+      return;
+    }
     setPromptConfig({
       isOpen: true,
       title: `[${node.name}]에 생성할 새 파일의 이름을 입력하세요.`,
       defaultValue: 'untitled.md',
       type: 'createFile',
     });
-  }, [node.name, setContextMenu]);
+  }, [isGdriveReadOnly, node.name, setContextMenu, showToast]);
 
   const triggerCreateFolder = useCallback((e?: any) => {
     if (e?.stopPropagation) e.stopPropagation();
     setContextMenu(null);
+    if (isGdriveReadOnly) {
+      logWarn({
+        file: 'frontend/src/hooks/fileExplorer/useFileNodeActions.ts',
+        func: 'triggerCreateFolder',
+        doing: '웹드라이브 연결 끊김 상태에서 하위 새 폴더 생성 차단',
+        target: node.name,
+        error: 'WEBDRIVE_READ_ONLY',
+      });
+      showToast('웹드라이브 연결이 끊어져 읽기 전용 상태입니다. 다시 연결한 뒤 새 폴더를 만들어 주세요.', 'warning');
+      return;
+    }
     const parentProfileId = getFolderDefaultProfileId(node) || 'system-1';
     setPromptConfig({
       isOpen: true,
@@ -998,7 +1027,7 @@ export function useFileNodeActions({
       type: 'createFolder',
       initialProfileId: parentProfileId,
     });
-  }, [node, setContextMenu]);
+  }, [isGdriveReadOnly, node, setContextMenu, showToast]);
 
   const triggerFolderStyle = useCallback((e?: any) => {
     if (e?.stopPropagation) e.stopPropagation();

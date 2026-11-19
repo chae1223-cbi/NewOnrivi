@@ -7,6 +7,7 @@
  *   - EditorProvider 컨텍스트 공급 및 하위 역할 컴포넌트(EditorLayout, EditorCore, EditorOverlayManager, GuestPaywallOverlay) 렌더링 위임
  *   - 보기 모드(edit / both / preview / css-style) 전환 가드, 탭 닫기, 다중 파일 병합 선택, 플로팅 툴바 실행 제어
  * 🚨 @PATCH :
+ *   - 2026-11-19 : [웹드라이브 연결 끊김 시 읽기 전용(Read-Only) 보호]: 웹드라이브 작업장에서 연결 끊김·만료 상태일 때 isWebDriveReadOnly를 계산해 EditorContext로 전파(열린 문서 읽기 유지, 편집·저장·새 파일/폴더 생성 차단)
  *   - 2026-11-10 : 서명/발신인 대화상자(isSignatureModalOpen) 및 visualCommandRef/previewRef 매니저 전달 연동
  *   - 2026-11-08 : [플로팅 툴바 서식 적용 후 툴바 유지 & ESC 닫기]: 서식 선택/엔터 시 툴바를 닫지 않고 연속 서식 선택이 가능하도록 포커스를 유지하고, ESC 입력 시에만 툴바를 닫고 에디터로 포커스 복원하도록 개선
  *   - 2026-11-08 : [플로팅 툴바 키보드 포커스 & 방향키 네비게이션 & 엔터 에디터 복귀]: 툴바 오픈 시 버튼으로 포커스를 전달하여 좌우상하 방향키로 순환 탐색 가능하게 하고, 엔터 입력 시 현재 커서에 서식을 적용한 후 에디터로 즉시 복귀하여 타이핑 가능하도록 개선
@@ -2301,7 +2302,11 @@ export default function MainEditorApp() {                  // @MainEditorApp : M
     connectGoogleDrive,
     disconnectGoogleDrive,
     isDriveConnected,
-    isDriveAuthExpired
+    isDriveAuthExpired,
+    isWebDriveReadOnly: Boolean(
+      (workspaceType === 'cloud' || workspaceType === 'gdrive' || rootFolder?.type === 'GDRIVE') &&
+      (isDriveAuthExpired || !isDriveConnected)
+    )
   };
 
   const { handleMount } = useMonacoSetup({

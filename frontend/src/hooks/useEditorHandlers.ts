@@ -1,6 +1,7 @@
 // @ts-nocheck
 // ====================================================================
 // 📊 [OMD-HOOK-useEditorHandlers-0001] useEditorHandlers.ts ➔ 에디터 액션 핸들러 훅
+// 🚨 @PATCH : **2026-11-19** — [웹드라이브 연결 끊김 시 읽기 전용(Read-Only) 보호]: handleSaveCurrentFile에서 웹드라이브 미연결/토큰 만료 시 기존 문서 저장 및 새 문서 생성 프롬프트 차단
 // 🚨 @PATCH : **2026-11-15** — [마크다운 복사 시 페이지 나누기 메타정보(onrivi_pagination) 제외]: copyAll에서 stripPaginationSettings 적용
 // 🚨 @PATCH : **2026-11-11** — [모나코 각주 삽입 후 커서 다음 칼럼 전진 및 본문 포커스 유지]: 하단으로 커서 강제 이동하던 로직을 제거하고 본문 각주 직후(다음 칼럼)로 커서 위치 유지
 // 🚨 @PATCH : **2026-11-11** — [각주 생성 시 기본 플레이스홀더 텍스트 통일]: 모나코 핸들러의 새 각주 생성 시 '각주 내용을 입력하세요' 기본 문구를 삽입하여 비주얼 에디터 플로팅 툴바 형식과 100% 동기화
@@ -17,7 +18,7 @@
 // ====================================================================
 import { isBundledDocumentPath } from '@/lib/bundledDocument';
 import { reportClientLog } from '@/lib/clientLogs';
-import { logError } from '@/lib/errorDiagnostics';
+import { logError, logWarn } from '@/lib/errorDiagnostics';
 import { browserPickerStartIn } from '@/lib/browserPickerStartIn';
 import { useCallback } from 'react';
 import { waitForExportContent } from '@/lib/exportPreparation';
@@ -39,6 +40,7 @@ import { cleanMarkdownDocument } from '@/utils/markdownCleaner';
 import { openAndFocusFindWidget } from '@/utils/findWidgetHelper';
 import {
   getSavedDriveToken,
+  hasValidDriveToken,
   saveDriveFileContent,
   saveEmergencyDriveDrafts,
   getSavedWorkspaceInfo
@@ -635,11 +637,24 @@ export const useEditorHandlers = ({
         fileNode?.driveId || 
         (activeTab as any)?.driveFileId || 
         (activeTab as any)?.driveId;
-      const isCloudWorkspace = wType === 'cloud' || rootFolderRef.current?.type === 'GDRIVE';
+      const isCloudWorkspace = wType === 'cloud' || wType === 'gdrive' || rootFolderRef.current?.type === 'GDRIVE';
 
       if (isCloudWorkspace || driveFileId) {
+        const token = hasValidDriveToken() ? getSavedDriveToken() : null;
+        if (!token) {
+          setSaveStatus('unsaved');
+          logWarn({
+            file: 'frontend/src/hooks/useEditorHandlers.ts',
+            func: 'handleSaveCurrentFile',
+            doing: '웹드라이브 연결 끊김 상태에서 문서 저장/쓰기 차단',
+            target: fileName || driveFileId || 'GDRIVE',
+            error: 'WEBDRIVE_READ_ONLY'
+          });
+          reportClientLog('웹드라이브 연결 끊김으로 읽기 전용 모드(쓰기 차단)', 'WARN', 'DOCUMENT_SAVE');
+          showToast("웹드라이브 연결이 끊어져 읽기 전용 상태입니다. 다시 연결한 뒤 저장해 주세요.", 'warning');
+          return;
+        }
         if (driveFileId) {
-          const token = getSavedDriveToken();
           if (token) {
             try {
               await saveDriveFileContent(token, driveFileId, currentVal);

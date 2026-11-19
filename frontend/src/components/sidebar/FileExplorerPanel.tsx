@@ -3,6 +3,7 @@
  * 🏷️ 파일명 : FileExplorerPanel.tsx
  * 🎭 역할(Role) : Core (핵심 도메인 뷰 — 좌측 사이드바 파일 탐색기 패널)
  * 🎯 주요기능 : 워크스페이스 폴더 트리 탐색, 루트 파일/폴더 생성, 지연 로딩 및 하위 훅/컨텍스트 메뉴 위임
+ * 🚨 @PATCH : 2026-11-19 — [웹드라이브 연결 끊김 시 읽기 전용(Read-Only) 보호]: 웹드라이브 연결 끊김/만료 상태(isGdriveAuthNeeded)에서 루트 새 파일·새 폴더 생성, 단축키, 컨텍스트 메뉴 쓰기 액션을 차단하고 읽기만 허용
  * 🚨 @PATCH : 2026-11-16 — [구글 드라이브 동명 파일 React key 중복 경고 해결] FileTreeItem key를 고유 ID(driveId/id) 우선 및 인덱스 결합으로 변경
  * 🚨 @PATCH : 2026-11-14 — [루트 폴더 생성 시 디폴트 서식 지정 및 저장 연동]:
  *             1) 루트에서 새 폴더 생성 시 PromptModal의 폴더 기본 서식 선택(showStyleSelector)을 활성화하고 생성 완료 즉시 setFolderDefaultProfile로 저장
@@ -69,11 +70,17 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
     setIsMergeMode, setSelectedMergeNodes,
     geminiApiKey,
     connectGoogleDrive, disconnectGoogleDrive,
-    isDriveAuthExpired
+    isDriveConnected,
+    isDriveAuthExpired,
+    isWebDriveReadOnly
   } = useEditorContext();
 
   const [isReconnectingDrive, setIsReconnectingDrive] = useState(false);
-  const isGdriveAuthNeeded = rootFolder?.type === 'GDRIVE' && (isDriveAuthExpired || !hasValidDriveToken());
+  const isGdriveAuthNeeded = Boolean(
+    isWebDriveReadOnly ||
+    ((workspaceType === 'cloud' || workspaceType === 'gdrive' || rootFolder?.type === 'GDRIVE') &&
+      (isDriveAuthExpired || !isDriveConnected || !hasValidDriveToken()))
+  );
 
   const handleReconnectDrive = async () => {
     if (isReconnectingDrive) return;
@@ -383,23 +390,45 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
   // ⌨️ [루트 액션 트리거]
   const triggerCreateRootFile = useCallback(() => {
     setContextMenu(null);
+    if (isGdriveAuthNeeded) {
+      logWarn({
+        file: 'frontend/src/components/sidebar/FileExplorerPanel.tsx',
+        func: 'triggerCreateRootFile',
+        doing: '웹드라이브 연결 끊김 상태에서 루트 새 파일 생성 차단',
+        target: rootFolder?.name || 'GDRIVE',
+        error: 'WEBDRIVE_READ_ONLY'
+      });
+      showToast?.('웹드라이브 연결이 끊어져 읽기 전용 상태입니다. 다시 연결한 뒤 새 파일을 만들어 주세요.', 'warning');
+      return;
+    }
     setPromptConfig({
       isOpen: true,
       title: '루트 워크스페이스에 생성할 새 파일의 이름을 입력하세요.',
       defaultValue: 'untitled.md',
       type: 'createFile'
     });
-  }, []);
+  }, [isGdriveAuthNeeded, rootFolder?.name, showToast]);
 
   const triggerCreateRootFolder = useCallback(() => {
     setContextMenu(null);
+    if (isGdriveAuthNeeded) {
+      logWarn({
+        file: 'frontend/src/components/sidebar/FileExplorerPanel.tsx',
+        func: 'triggerCreateRootFolder',
+        doing: '웹드라이브 연결 끊김 상태에서 루트 새 폴더 생성 차단',
+        target: rootFolder?.name || 'GDRIVE',
+        error: 'WEBDRIVE_READ_ONLY'
+      });
+      showToast?.('웹드라이브 연결이 끊어져 읽기 전용 상태입니다. 다시 연결한 뒤 새 폴더를 만들어 주세요.', 'warning');
+      return;
+    }
     setPromptConfig({
       isOpen: true,
       title: '루트 워크스페이스에 생성할 새 폴더의 이름을 입력하세요.',
       defaultValue: '',
       type: 'createFolder'
     });
-  }, []);
+  }, [isGdriveAuthNeeded, rootFolder?.name, showToast]);
 
   const triggerCopyRoot = useCallback(() => {
     setContextMenu(null);
@@ -914,7 +943,7 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
                     triggerRefreshRoot();
                     return;
                   }
-                  if (isRestrictedUser) return;
+                  if (isRestrictedUser || isGdriveAuthNeeded) return;
                   if (isCtrl && !e.shiftKey && !e.altKey && (e.key === 'o' || e.key === 'O')) {
                     e.preventDefault();
                     e.stopPropagation();
@@ -974,7 +1003,7 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
                   <ExplorerRootContextMenu
                     contextMenu={contextMenu}
                     setContextMenu={setContextMenu}
-                    isRestrictedUser={isRestrictedUser}
+                    isRestrictedUser={isRestrictedUser || isGdriveAuthNeeded}
                     clipboardNode={clipboardNode}
                     hasUndoableMove={hasUndoableMove}
                     lastUndoType={lastUndoType}
@@ -1085,8 +1114,9 @@ export default function FileExplorerPanel({ isActive, isDarkMode }: FileExplorer
                       )}
                       <button
                         type="button"
+                        disabled={isGdriveAuthNeeded}
                         onClick={() => triggerCreateRootFile()}
-                        className="w-full px-3 py-1.5 border border-slate-300 dark:border-zinc-700 hover:bg-black/5 dark:hover:bg-white/5 text-zinc-700 dark:text-zinc-300 rounded-lg text-[11px] font-medium transition-all cursor-pointer"
+                        className="w-full px-3 py-1.5 border border-slate-300 dark:border-zinc-700 hover:bg-black/5 dark:hover:bg-white/5 text-zinc-700 dark:text-zinc-300 rounded-lg text-[11px] font-medium transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         + 새 문서 만들기
                       </button>

@@ -2,6 +2,7 @@
 // 📊 [OMD-HOOK-useLocalVfs-0001] frontend/src/hooks/fileExplorer/useLocalVfs.ts
 // 🎯 @KICK  : 로컬 폴더/브라우저 FSA/VFS/웹드라이브 파일 트리 스캔(refreshFileList), 워크스페이스 선택(selectRootFolder), 물리적 파일 저장(saveFile)
 // 🛡️ @GUARD : 지식 보관함 자동 재색인(triggerKnowledgeAutoSyncOnSave), 디바운스 새로고침, Electron 네이티브 API 및 브라우저 FSA 3중 호환
+// 🚨 @PATCH : 2026-11-19 — [웹드라이브 연결 끊김 시 읽기 전용(Read-Only) 보호]: saveFile에서 workspaceType('cloud'|'gdrive') 및 hasValidDriveToken 검증을 강제해 미연결 시 쓰기 차단
 // 🚨 @PATCH : 2026-11-12 — [구글 드라이브 파일 목록 갱신 시 force 플래그 연동]:
 //             1) refreshFileList(force)의 force 플래그를 fetchDriveFileNodes에 전달하여 단기 캐시 무효화 및 신속 갱신 지원
 // 🚨 @PATCH : 2026-11-10 — [로컬 작업장 연결 시 로컬 리소스 폴더 지정 강제 유도]:
@@ -534,8 +535,8 @@ export function useLocalVfs({
         (currentFileNode as any)?.driveFileId || 
         (currentFileNode as any)?.driveId;
 
-      if (driveFileId || (!targetFile.path && !targetFile.handle && (rootFolderRef.current?.type === 'GDRIVE' || workspaceType === 'cloud'))) {
-        const token = getSavedDriveToken();
+      if (driveFileId || (!targetFile.path && !targetFile.handle && (rootFolderRef.current?.type === 'GDRIVE' || workspaceType === 'cloud' || workspaceType === 'gdrive'))) {
+        const token = hasValidDriveToken() ? getSavedDriveToken() : null;
         if (token && driveFileId) {
           try {
             await saveDriveFileContent(token, driveFileId, targetContent);

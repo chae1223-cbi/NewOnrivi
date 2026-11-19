@@ -24,6 +24,7 @@ interface TableModalProps {
 // 📊 [OMD-EDIT-TableModal-0003] TableModal ➔ TableModal
 // 🎯 @KICK  : 표 삽입 모달 - 10x10 그리드 UI로 마우스 표 크기 선택 후 마크다운 코드 생성
 // 🛡️ @GUARD : isOpen false 또는 mounted false 시 null 반환으로 조기 종료
+// 🚨 @PATCH : **2026-11-19** — [표 삽입 모달 2단 가로 확장 레이아웃 전환]: 작은 모니터에서 세로 스크롤 없이 모든 항목(10×10 그리드, 크기 직접 입력, 표 제목/번호, 열 정렬 프리셋, 병합 TIP, 삽입 버튼)이 한 화면에 보이도록 max-w-[700px] 2단 배치로 개편
 // 🚨 @PATCH : **2026-11-08** — [표 삽입 모달 10열·10행 초과 직접 입력 기능 신설]:
 //             1) 기존 10x10 마우스 드래그 그리드 하단에 열(최대 50열)과 행(최대 100행) 수를 숫자로 직접 지정할 수 있는 입력 필드 추가
 //             2) 10개 이상의 다열(12열, 15열, 20열 등) 대형 표도 모달에서 즉시 지정하여 생성할 수 있도록 UX 개선
@@ -151,237 +152,271 @@ export default function TableModal({ isOpen, onClose, onInsert, isDarkMode, next
       
       {/* MainModalContainer */}
       <div 
-        className={`relative w-full max-w-[360px] shadow-2xl rounded-2xl border flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden ${
+        className={`relative w-full max-w-[700px] shadow-2xl rounded-2xl border flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden ${
           isDarkMode 
             ? 'bg-zinc-950 border-zinc-800 text-zinc-100' 
             : 'bg-white border-[#EFEFEF] text-slate-800'
         }`} 
-        style={{ maxHeight: "90dvh", fontFamily: "Pretendard, sans-serif" }}
+        style={{ maxHeight: "94dvh", fontFamily: "Pretendard, sans-serif" }}
       >
         {/* ModalHeader */}
-        <header className={`flex items-center justify-between px-6 py-4 border-b shrink-0 ${
+        <header className={`flex items-center justify-between px-5 py-3 border-b shrink-0 ${
           isDarkMode ? 'border-zinc-800 bg-zinc-900/50' : 'border-[#EFEFEF] bg-slate-50/40'
         }`}>
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-[#1d4ed8]/15 text-[#1d4ed8]">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center bg-[#1d4ed8]/15 text-[#1d4ed8]">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round"></path>
               </svg>
             </div>
             <h1 className="text-base font-bold tracking-tight text-[#1d4ed8]">표 삽입</h1>
           </div>
-          <span className="text-[#1d4ed8] font-extrabold text-base tracking-wide">
-            {selectedPos.c} × {selectedPos.r}
-          </span>
+          <div className="flex items-center gap-3">
+            <span className="text-[#1d4ed8] font-extrabold text-sm tracking-wide">
+              {selectedPos.c} × {selectedPos.r}
+            </span>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
+              aria-label="닫기"
+            >
+              <X size={16} />
+            </button>
+          </div>
         </header>
 
-        {/* GridContent */}
-        <main className="flex-1 flex flex-col items-center py-6 px-6 bg-white dark:bg-zinc-950 min-h-0 overflow-y-auto">
-          {/* Table Grid Visualization Container */}
-          <div 
-            className={`p-4 rounded-xl mb-5 border shadow-sm ${
-              isDarkMode ? 'bg-zinc-900/40 border-zinc-800' : 'bg-slate-50/50 border-slate-100'
-            }`} 
-            data-purpose="grid-visualization"
-          >
+        {/* GridContent — 2단 가로 배치로 작은 모니터에서도 세로 스크롤 없이 한눈에 표시 */}
+        <main className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-5 p-5 bg-white dark:bg-zinc-950 min-h-0 overflow-y-auto items-start">
+          {/* 좌측 칼럼: 10×10 그리드 + 직접 크기 입력 */}
+          <div className="flex flex-col items-center">
             <div 
-              className="grid grid-cols-10 gap-1"
-              onMouseLeave={() => setHoverPos(selectedPos)}
+              className={`p-3 rounded-xl mb-2.5 border shadow-sm ${
+                isDarkMode ? 'bg-zinc-900/40 border-zinc-800' : 'bg-slate-50/50 border-slate-100'
+              }`} 
+              data-purpose="grid-visualization"
             >
-              {[...Array(100)].map((_, i) => {
-                const row = Math.floor(i / 10) + 1;
-                const col = (i % 10) + 1;
-                const isHover = col <= hoverPos.c && row <= hoverPos.r;
-                const isSelected = col <= selectedPos.c && row <= selectedPos.r;
+              <div 
+                className="grid grid-cols-10 gap-1"
+                onMouseLeave={() => setHoverPos(selectedPos)}
+              >
+                {[...Array(100)].map((_, i) => {
+                  const row = Math.floor(i / 10) + 1;
+                  const col = (i % 10) + 1;
+                  const isHover = col <= hoverPos.c && row <= hoverPos.r;
+                  const isSelected = col <= selectedPos.c && row <= selectedPos.r;
 
-                return (
-                  <div
-                    key={i}
-                    onMouseEnter={() => setHoverPos({ r: row, c: col })}
-                    onClick={() => {
-                      setSelectedPos({ r: row, c: col });
-                      setHoverPos({ r: row, c: col });
+                  return (
+                    <div
+                      key={i}
+                      onMouseEnter={() => setHoverPos({ r: row, c: col })}
+                      onClick={() => {
+                        setSelectedPos({ r: row, c: col });
+                        setHoverPos({ r: row, c: col });
+                      }}
+                      className={`w-6 h-6 rounded-[2px] transition-all cursor-pointer ${
+                        isHover 
+                          ? 'bg-[#1d4ed8] scale-105 shadow-sm z-10' 
+                          : isSelected 
+                            ? 'bg-[#1d4ed8]/60' 
+                            : isDarkMode ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-slate-100 hover:bg-slate-200'
+                      }`}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+
+            <p className="text-slate-600 dark:text-zinc-400 text-[11px] mb-2.5 text-center font-medium">
+              그리드를 클릭하거나 아래에서 열·행 수를 직접 입력하세요
+            </p>
+
+            {/* 직접 크기 입력 컨트롤 (10열 이상 지원) */}
+            <div className="w-full p-2.5 rounded-xl border bg-slate-50/70 dark:bg-zinc-900/60 border-slate-200 dark:border-zinc-800 flex items-center justify-between text-xs">
+              <span className="font-bold text-slate-700 dark:text-zinc-300">
+                크기 직접 입력 <span className="font-normal text-[11px] text-slate-500 dark:text-zinc-400">(10개 이상)</span>
+              </span>
+              <div className="flex items-center gap-1.5">
+                <label className="flex items-center gap-1 font-medium text-slate-600 dark:text-zinc-400">
+                  <span>열</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={selectedPos.c}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      const c = isNaN(val) ? 1 : Math.max(1, Math.min(50, val));
+                      setSelectedPos((prev) => ({ ...prev, c }));
+                      setHoverPos((prev) => ({ ...prev, c }));
                     }}
-                    className={`w-6 h-6 rounded-[2px] transition-all cursor-pointer ${
-                      isHover 
-                        ? 'bg-[#1d4ed8] scale-105 shadow-sm z-10' 
-                        : isSelected 
-                          ? 'bg-[#1d4ed8]/60' 
-                          : isDarkMode ? 'bg-zinc-800 hover:bg-zinc-700' : 'bg-slate-100 hover:bg-slate-200'
-                    }`}
+                    className="w-12 px-1.5 py-0.5 text-center font-bold text-blue-700 dark:text-blue-400 bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
                   />
-                );
-              })}
+                </label>
+                <span className="text-slate-400 font-bold">×</span>
+                <label className="flex items-center gap-1 font-medium text-slate-600 dark:text-zinc-400">
+                  <span>행</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={selectedPos.r}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value, 10);
+                      const r = isNaN(val) ? 1 : Math.max(1, Math.min(100, val));
+                      setSelectedPos((prev) => ({ ...prev, r }));
+                      setHoverPos((prev) => ({ ...prev, r }));
+                    }}
+                    className="w-12 px-1.5 py-0.5 text-center font-bold text-blue-700 dark:text-blue-400 bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </label>
+              </div>
             </div>
           </div>
 
-          {/* Guide Text */}
-          <p className="text-slate-400 dark:text-zinc-500 italic text-xs mb-3 text-center font-medium">
-            그리드를 클릭하거나 아래에서 열·행 수를 직접 입력하세요
-          </p>
+          {/* 우측 칼럼: 표 제목/번호 + 열 정렬 프리셋 + 표 병합 TIP */}
+          <div className="flex flex-col gap-3.5">
+            <div className="w-full space-y-2">
+              <div className="flex gap-2">
+                <label className="flex-1 block text-xs font-semibold text-slate-700 dark:text-zinc-200">
+                  표 제목 (선택)
+                  <input
+                    aria-label="표 제목"
+                    value={tableTitle}
+                    onChange={e => setTableTitle(e.target.value)}
+                    placeholder="예: 추진 일정"
+                    className="mt-1 w-full rounded-lg border border-slate-300 dark:border-zinc-700 px-2.5 py-1.5 text-xs bg-transparent focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </label>
+                <label className="w-20 shrink-0 block text-xs font-semibold text-slate-700 dark:text-zinc-200">
+                  표 번호
+                  <input
+                    aria-label="표 번호"
+                    type="number"
+                    min={1}
+                    value={tableNumber}
+                    onChange={e => setTableNumber(Math.max(1, Number(e.target.value) || 1))}
+                    className="mt-1 w-full rounded-lg border border-slate-300 dark:border-zinc-700 px-2 py-1.5 text-xs text-center bg-transparent focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </label>
+              </div>
+              <p className="text-[11px] text-slate-600 dark:text-zinc-400 leading-snug">
+                제목을 입력하면 ‘표 {tableNumber}. 제목’을 함께 저장합니다. 번호는 삽입 후에도 수정할 수 있습니다.
+              </p>
+            </div>
 
-          {/* 직접 크기 입력 컨트롤 (10열 이상 지원) */}
-          <div className="w-full mb-4 p-2.5 rounded-xl border bg-slate-50/70 dark:bg-zinc-900/60 border-slate-200 dark:border-zinc-800 flex items-center justify-between text-xs">
-            <span className="font-bold text-slate-700 dark:text-zinc-300">
-              크기 직접 입력 <span className="font-normal text-[11px] text-slate-500 dark:text-zinc-400">(10개 이상)</span>
-            </span>
-            <div className="flex items-center gap-1.5">
-              <label className="flex items-center gap-1 font-medium text-slate-600 dark:text-zinc-400">
-                <span>열</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={50}
-                  value={selectedPos.c}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    const c = isNaN(val) ? 1 : Math.max(1, Math.min(50, val));
-                    setSelectedPos((prev) => ({ ...prev, c }));
-                    setHoverPos((prev) => ({ ...prev, c }));
-                  }}
-                  className="w-12 px-1.5 py-0.5 text-center font-bold text-blue-700 dark:text-blue-400 bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
+            {/* Column Alignment Presets */}
+            <div className="w-full">
+              <label className="text-[11px] font-bold text-slate-700 dark:text-zinc-300 mb-1.5 block">
+                헤더는 중앙 정렬 · 본문 열 정렬 프리셋
               </label>
-              <span className="text-slate-400 font-bold">×</span>
-              <label className="flex items-center gap-1 font-medium text-slate-600 dark:text-zinc-400">
-                <span>행</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={selectedPos.r}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    const r = isNaN(val) ? 1 : Math.max(1, Math.min(100, val));
-                    setSelectedPos((prev) => ({ ...prev, r }));
-                    setHoverPos((prev) => ({ ...prev, r }));
-                  }}
-                  className="w-12 px-1.5 py-0.5 text-center font-bold text-blue-700 dark:text-blue-400 bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700 rounded-lg text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
-              </label>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setAlignPreset('default')}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                    alignPreset === 'default'
+                      ? 'bg-[#1d4ed8]/15 border-[#1d4ed8] text-[#1d4ed8] dark:text-blue-400 font-bold'
+                      : isDarkMode
+                        ? 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:bg-zinc-800'
+                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  <span>⬅️</span>
+                  <span>기본 (왼쪽)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAlignPreset('center')}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                    alignPreset === 'center'
+                      ? 'bg-[#1d4ed8]/15 border-[#1d4ed8] text-[#1d4ed8] dark:text-blue-400 font-bold'
+                      : isDarkMode
+                        ? 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:bg-zinc-800'
+                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  <span>↔️</span>
+                  <span>전체 중앙</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAlignPreset('numeric')}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                    alignPreset === 'numeric'
+                      ? 'bg-[#1d4ed8]/15 border-[#1d4ed8] text-[#1d4ed8] dark:text-blue-400 font-bold'
+                      : isDarkMode
+                        ? 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:bg-zinc-800'
+                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  <span>📊</span>
+                  <span>회계형 (좌+우)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAlignPreset('summary')}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                    alignPreset === 'summary'
+                      ? 'bg-[#1d4ed8]/15 border-[#1d4ed8] text-[#1d4ed8] dark:text-blue-400 font-bold'
+                      : isDarkMode
+                        ? 'bg-zinc-900 border-zinc-800 text-zinc-300 hover:bg-zinc-800'
+                        : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                  }`}
+                >
+                  <span>📑</span>
+                  <span>요약/통계형</span>
+                </button>
+              </div>
             </div>
-          </div>
 
-          <div className="w-full mb-4 space-y-2">
-            <label className="block text-xs font-semibold">표 제목 (선택)
-              <input aria-label="표 제목" value={tableTitle} onChange={e=>setTableTitle(e.target.value)} placeholder="예: 추진 일정" className="mt-1 w-full rounded border p-2 bg-transparent" />
-            </label>
-            <label className="flex items-center gap-2 text-xs">표 번호
-              <input aria-label="표 번호" type="number" min={1} value={tableNumber} onChange={e=>setTableNumber(Math.max(1,Number(e.target.value)||1))} className="w-20 rounded border p-2 bg-transparent" />
-            </label>
-            <p className="text-xs text-slate-500">제목을 입력하면 표 위에 ‘표 {tableNumber}. 제목’을 원문으로 저장합니다. 번호는 삽입 후에도 직접 수정할 수 있습니다. 표 안의 표와 복잡한 병합은 피하세요.</p>
+            {/* TipBox */}
+            <section className={`w-full border rounded-xl p-3 ${
+              isDarkMode ? 'bg-zinc-900/50 border-zinc-800' : 'bg-slate-50/50 border-slate-200/60'
+            }`} data-purpose="usage-tips">
+              <h2 className="text-[#1d4ed8] dark:text-blue-400 text-xs font-black mb-2 flex items-center gap-1">
+                <span>💡</span> 표 병합 TIP
+              </h2>
+              <ul className="text-[11px] text-slate-700 dark:text-zinc-300 space-y-1.5 font-medium leading-normal">
+                <li className="flex items-center gap-2">
+                  <span className="w-1 h-1 bg-slate-400 dark:bg-zinc-500 rounded-full shrink-0"></span>
+                  <span>
+                    가로 병합: 병합 시작 셀에 
+                    <span className="mx-1 px-1.5 py-0.5 bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded font-mono text-[10px] font-bold text-[#1d4ed8] dark:text-blue-400">{">"}</span> 
+                    입력
+                  </span>
+                </li>
+                <li className="flex items-center gap-2">
+                  <span className="w-1 h-1 bg-slate-400 dark:bg-zinc-500 rounded-full shrink-0"></span>
+                  <span>
+                    세로 병합: 병합될 대상 셀에 
+                    <span className="mx-1 px-1.5 py-0.5 bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded font-mono text-[10px] font-bold text-[#1d4ed8] dark:text-blue-400">^</span> 
+                    입력
+                  </span>
+                </li>
+              </ul>
+            </section>
           </div>
-          {/* Column Alignment Presets */}
-          <div className="w-full mb-4">
-            <label className="text-[11px] font-bold text-slate-500 dark:text-zinc-400 mb-2 block text-center">
-              헤더는 중앙 정렬 · 본문 열 정렬 프리셋
-            </label>
-            <div className="grid grid-cols-2 gap-1.5">
-              <button
-                type="button"
-                onClick={() => setAlignPreset('default')}
-                className={`px-2.5 py-2 rounded-lg text-xs font-semibold border transition-all flex items-center justify-center gap-1.5 ${
-                  alignPreset === 'default'
-                    ? 'bg-[#1d4ed8]/15 border-[#1d4ed8] text-[#1d4ed8] font-bold'
-                    : isDarkMode
-                      ? 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:bg-zinc-800'
-                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                <span>⬅️</span>
-                <span>기본 (왼쪽)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setAlignPreset('center')}
-                className={`px-2.5 py-2 rounded-lg text-xs font-semibold border transition-all flex items-center justify-center gap-1.5 ${
-                  alignPreset === 'center'
-                    ? 'bg-[#1d4ed8]/15 border-[#1d4ed8] text-[#1d4ed8] font-bold'
-                    : isDarkMode
-                      ? 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:bg-zinc-800'
-                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                <span>↔️</span>
-                <span>전체 중앙</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setAlignPreset('numeric')}
-                className={`px-2.5 py-2 rounded-lg text-xs font-semibold border transition-all flex items-center justify-center gap-1.5 ${
-                  alignPreset === 'numeric'
-                    ? 'bg-[#1d4ed8]/15 border-[#1d4ed8] text-[#1d4ed8] font-bold'
-                    : isDarkMode
-                      ? 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:bg-zinc-800'
-                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                <span>📊</span>
-                <span>회계형 (좌+우)</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setAlignPreset('summary')}
-                className={`px-2.5 py-2 rounded-lg text-xs font-semibold border transition-all flex items-center justify-center gap-1.5 ${
-                  alignPreset === 'summary'
-                    ? 'bg-[#1d4ed8]/15 border-[#1d4ed8] text-[#1d4ed8] font-bold'
-                    : isDarkMode
-                      ? 'bg-zinc-900 border-zinc-800 text-zinc-400 hover:bg-zinc-800'
-                      : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-                }`}
-              >
-                <span>📑</span>
-                <span>요약/통계형</span>
-              </button>
-            </div>
-          </div>
-
-          {/* TipBox */}
-          <section className={`w-full border rounded-xl p-4 ${
-            isDarkMode ? 'bg-zinc-900/50 border-zinc-800' : 'bg-slate-50/50 border-slate-200/60'
-          }`} data-purpose="usage-tips">
-            <h2 className="text-[#1d4ed8] text-xs font-black text-center mb-3 flex items-center justify-center gap-1">
-              <span>💡</span> 표 병합 TIP
-            </h2>
-            <ul className="text-[11px] text-slate-600 dark:text-zinc-400 space-y-2.5 font-medium leading-normal">
-              <li className="flex items-center gap-2">
-                <span className="w-1 h-1 bg-slate-400 dark:bg-zinc-600 rounded-full shrink-0"></span>
-                <span>
-                  가로 병합: 병합 시작 셀에 
-                  <span className="mx-1 px-1.5 py-0.5 bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded font-mono text-[9px] font-bold text-[#1d4ed8]">{">"}</span> 
-                  입력
-                </span>
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="w-1 h-1 bg-slate-400 dark:bg-zinc-600 rounded-full shrink-0"></span>
-                <span>
-                  세로 병합: 병합될 대상 셀에 
-                  <span className="mx-1 px-1.5 py-0.5 bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded font-mono text-[9px] font-bold text-[#1d4ed8]">^</span> 
-                  입력
-                </span>
-              </li>
-            </ul>
-          </section>
         </main>
 
         {/* ActionZone */}
-        <footer className={`p-6 border-t flex flex-col gap-3 ${
+        <footer className={`px-5 py-3 border-t flex items-center justify-end gap-2.5 shrink-0 ${
           isDarkMode ? 'bg-zinc-900/30 border-zinc-800/80' : 'bg-slate-50/30 border-slate-150'
         }`}>
           <button 
-            onClick={handleInsert}
-            className="w-full bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-bold py-3 px-4 rounded-xl shadow-md shadow-[#1d4ed8]/20 transition-all flex items-center justify-center gap-2 text-xs active:scale-[0.98]"
-            data-purpose="submit-button"
-          >
-            <Plus size={15} />
-            {selectedPos.c} x {selectedPos.r} 표 삽입하기
-          </button>
-          <button 
             onClick={onClose}
-            className="w-full text-slate-400 dark:text-zinc-500 hover:text-slate-700 dark:hover:text-zinc-200 text-xs font-bold py-2 transition-colors active:scale-[0.98]"
+            className="px-4 py-2 rounded-xl text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 text-xs font-bold transition-colors cursor-pointer"
             data-purpose="cancel-button"
           >
             취소
+          </button>
+          <button 
+            onClick={handleInsert}
+            className="bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-bold py-2 px-5 rounded-xl shadow-md shadow-[#1d4ed8]/20 transition-all flex items-center justify-center gap-1.5 text-xs active:scale-[0.98] cursor-pointer"
+            data-purpose="submit-button"
+          >
+            <Plus size={15} />
+            {selectedPos.c} × {selectedPos.r} 표 삽입하기
           </button>
         </footer>
       </div>

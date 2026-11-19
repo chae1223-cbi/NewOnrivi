@@ -1,6 +1,10 @@
 // ====================================================================
 // 📊 [OMD-EDIT-EmojiPanel-0001] EmojiPanel.tsx ➔ EmojiPanel
 // 🎯 @KICK  : 에디터 우측 전용 이모지 보관함 패널 — 카테고리별 탐색, 한글/영문 검색, 원클릭 본문 삽입 및 최근 사용 자동 관리
+// 🚨 @PATCH : **2026-11-19** — [최근 및 자주 쓰는 이모지 전용 분류 탭 분리·최대 30개·패널 닫힘 시 지연 반영]:
+//             1) '최근·자주'를 최상단 독립 카테고리 탭으로 분리하고 초기 활성 탭으로 지정(타 카테고리 선택 시 스크롤 잘림 해소)
+//             2) 최근 및 자주 쓰는 이모지 최대 개수를 30개(MAX_RECENT_EMOJIS)로 확장
+//             3) 이모지 클릭 시 화면 목록을 즉시 재정렬하지 않고 pendingRecentRef에 누적했다가 패널을 닫을 때(언마운트/닫기) localStorage에 일괄 반영
 // 🚨 @PATCH : **2026-11-18** — [문장부호/괄호 보강]: 전각 괄호·인용부호·교정 및 강조 기호를 중복 없이 추가
 // 🚨 @PATCH : **2026-11-18** — [문장부호 기호 추가]: 문장부호/괄호 목록에 가운뎃점(·)과 불릿(•) 추가
 // 🚨 @PATCH : **2026-11-17** — [사용자 커스텀 이모지·기호 추가/삭제/검색 지원]: '내 커스텀' 탭 및 localStorage(onrivi_custom_emojis) 영구 저장 연동
@@ -20,7 +24,7 @@
 "use client";
 
 import { browserAccountStorage as localStorage } from '@/lib/browserAccountStorage';
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Icon } from '@/components/icons/Icon';
 import { useEditorContext } from '@/context/EditorContext';
 
@@ -650,6 +654,7 @@ const EMOJI_CATEGORIES: { id: string; label: string; icon: string; items: EmojiI
 ];
 
 const DEFAULT_RECENTS = ['✅', '💡', '📌', '🚀', '🔥', '✨', '📝', '⚠️', '👍', '🎯', '💻', '⭐', '❤️', '🎉', '🔍', '📊'];
+const MAX_RECENT_EMOJIS = 30;
 const STORAGE_KEY = 'onrivi_recent_emojis';
 const CUSTOM_STORAGE_KEY = 'onrivi_custom_emojis';
 
@@ -662,31 +667,62 @@ interface EmojiPanelProps {
 export default function EmojiPanel({ onClose, onInsert, isToolbarOpen: propIsToolbarOpen }: EmojiPanelProps) {
   const { isToolbarOpen: contextIsToolbarOpen } = useEditorContext();
   const isToolbarOpen = propIsToolbarOpen ?? contextIsToolbarOpen ?? true;
-  const [activeCategory, setActiveCategory] = useState<string>('work');
+  const [activeCategory, setActiveCategory] = useState<string>('recent');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [recentEmojis, setRecentEmojis] = useState<string[]>(DEFAULT_RECENTS);
   const [customEmojis, setCustomEmojis] = useState<EmojiItem[]>([]);
   const [customCharInput, setCustomCharInput] = useState<string>('');
   const [customKeywordsInput, setCustomKeywordsInput] = useState<string>('');
   const [copiedEmoji, setCopiedEmoji] = useState<string | null>(null);
+  const recentEmojisRef = useRef<string[]>(DEFAULT_RECENTS);
+  const pendingRecentRef = useRef<string[] | null>(null);
+
+  recentEmojisRef.current = recentEmojis;
+
+  /**
+   * ========================================================================================
+   * [함수명] flushPendingRecents - 패널이 열린 동안 선택된 이모지 이력을 닫힐 때 localStorage에 일괄 반영합니다.
+   * ==========================================================================================
+   */
+  const flushPendingRecents = useCallback(() => {
+    const pending = pendingRecentRef.current;
+    if (!pending) return;
+    pendingRecentRef.current = null;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(pending.slice(0, MAX_RECENT_EMOJIS)));
+    } catch (_) {}
+  }, []);
+
+  const handleClose = useCallback(() => {
+    flushPendingRecents();
+    onClose();
+  }, [flushPendingRecents, onClose]);
+
+  useEffect(() => {
+    return () => {
+      flushPendingRecents();
+    };
+  }, [flushPendingRecents]);
 
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
-      event.preventDefault(); event.stopImmediatePropagation(); onClose();
+      event.preventDefault(); event.stopImmediatePropagation(); handleClose();
     };
     window.addEventListener('keydown', closeOnEscape, true);
     return () => window.removeEventListener('keydown', closeOnEscape, true);
-  }, [onClose]);
+  }, [handleClose]);
 
-  // 1. 최근 사용 이모지 localStorage 로드
+  // 1. 최근 사용 이모지 localStorage 로드 (최대 30개)
   useEffect(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          setRecentEmojis(parsed.slice(0, 24));
+          const loaded = parsed.slice(0, MAX_RECENT_EMOJIS);
+          setRecentEmojis(loaded);
+          recentEmojisRef.current = loaded;
         }
       }
     } catch (e) {
@@ -738,7 +774,7 @@ export default function EmojiPanel({ onClose, onInsert, isToolbarOpen: propIsToo
     });
   }, []);
 
-  // 2. 이모지 클릭 시 본문 커서 삽입 및 최근 목록 갱신
+  // 2. 이모지 클릭 시 본문 커서 삽입 및 닫힘 시 반영할 최근 목록 버퍼링 (열려 있는 동안 순서 고정)
   const handleSelectEmoji = useCallback((char: string) => {
     // A. 에디터 커서 위치 삽입
     if (onInsert) {
@@ -747,35 +783,37 @@ export default function EmojiPanel({ onClose, onInsert, isToolbarOpen: propIsToo
       window.dispatchEvent(new CustomEvent('app:insert-at-cursor', { detail: char }));
     }
 
-    // C. 최근 사용 목록 맨 앞 추가
-    setRecentEmojis(prev => {
-      const next = [char, ...prev.filter(e => e !== char)].slice(0, 24);
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      } catch (_) {}
-      return next;
-    });
+    // B. 패널이 열려 있는 동안에는 화면 순서를 바꾸지 않고 버퍼에만 누적 (닫힐 때 일괄 저장)
+    const base = pendingRecentRef.current ?? recentEmojisRef.current;
+    pendingRecentRef.current = [char, ...base.filter((e) => e !== char)].slice(0, MAX_RECENT_EMOJIS);
 
-    // D. 시각적 클릭 피드백
+    // C. 시각적 클릭 피드백
     setCopiedEmoji(char);
     setTimeout(() => setCopiedEmoji(null), 1000);
   }, [onInsert]);
 
+  const recentCategoryItems = useMemo<EmojiItem[]>(
+    () => recentEmojis.slice(0, MAX_RECENT_EMOJIS).map((char) => ({ char, keywords: [char, '최근', '자주'] })),
+    [recentEmojis]
+  );
+
   const allCategories = useMemo(
     () => [
+      { id: 'recent', label: '최근·자주', icon: '⭐', items: recentCategoryItems },
       ...EMOJI_CATEGORIES,
       { id: 'custom', label: '내 커스텀', icon: '➕', items: customEmojis },
     ],
-    [customEmojis]
+    [recentCategoryItems, customEmojis]
   );
 
-  // 3. 실시간 검색 필터링
+  // 3. 실시간 검색 필터링 (최근 탭 중복 제외, 실제 카테고리 + 커스텀에서 검색)
   const searchResults = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return null;
 
     const matched: EmojiItem[] = [];
     allCategories.forEach(cat => {
+      if (cat.id === 'recent') return;
       cat.items.forEach(item => {
         if (item.char === q || item.keywords.some(k => k.toLowerCase().includes(q))) {
           if (!matched.some(m => m.char === item.char)) {
@@ -819,7 +857,7 @@ export default function EmojiPanel({ onClose, onInsert, isToolbarOpen: propIsToo
         </div>
         <button
           onMouseDown={(e) => e.preventDefault()}
-          onClick={onClose}
+          onClick={handleClose}
           className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-zinc-200/70 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
           title="이모지 패널 닫기 (Ctrl+Shift+E)"
         >
@@ -913,50 +951,30 @@ export default function EmojiPanel({ onClose, onInsert, isToolbarOpen: propIsToo
           </div>
         ) : (
           <>
-            {/* B. 최근 / 자주 쓰는 이모지 섹션 */}
-            {recentEmojis.length > 0 && (
-              <div className="pb-2 border-b border-zinc-100 dark:border-zinc-800/80">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[11px] font-bold text-zinc-600 dark:text-zinc-400 flex items-center gap-1">
-                    <span>⭐</span> 최근 및 자주 쓰는 이모지
-                  </span>
+            {/* B. 현재 활성 카테고리 이모지 그리드 ('최근·자주' 포함 독립 분류) */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-bold text-zinc-700 dark:text-zinc-300 flex items-center gap-1">
+                  <span>{currentCategoryData.icon}</span>{' '}
+                  {activeCategory === 'recent'
+                    ? `최근 및 자주 쓰는 이모지 (${currentCategoryData.items.length}/${MAX_RECENT_EMOJIS})`
+                    : `${currentCategoryData.label} (${currentCategoryData.items.length}개)`}
+                </span>
+                {activeCategory === 'recent' && (
                   <button
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => {
+                      pendingRecentRef.current = null;
                       setRecentEmojis(DEFAULT_RECENTS);
+                      recentEmojisRef.current = DEFAULT_RECENTS;
                       try { localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_RECENTS)); } catch (_) {}
                     }}
-                    className="text-[10px] text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 underline"
+                    className="text-[10px] text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200 underline cursor-pointer"
                     title="기본값으로 재설정"
                   >
                     초기화
                   </button>
-                </div>
-                <div className="grid grid-cols-6 gap-1">
-                  {recentEmojis.map(emoji => (
-                    <button
-                      key={emoji}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => handleSelectEmoji(emoji)}
-                      className="w-10 h-10 flex items-center justify-center text-xl rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:scale-120 active:scale-95 transition-all cursor-pointer relative"
-                      title={`${emoji} (클릭하여 삽입)`}
-                    >
-                      {emoji}
-                      {copiedEmoji === emoji && (
-                        <span className="absolute inset-0 bg-blue-500/20 rounded-lg animate-ping pointer-events-none" />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* C. 현재 활성 카테고리 이모지 그리드 */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] font-bold text-zinc-700 dark:text-zinc-300 flex items-center gap-1">
-                  <span>{currentCategoryData.icon}</span> {currentCategoryData.label} ({currentCategoryData.items.length}개)
-                </span>
+                )}
               </div>
               {activeCategory === 'custom' && (
                 <form onSubmit={handleAddCustomEmoji} className="mb-3 p-2.5 rounded-xl bg-zinc-50 dark:bg-zinc-800/70 border border-zinc-200 dark:border-zinc-700 space-y-2">
