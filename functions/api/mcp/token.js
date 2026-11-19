@@ -2,6 +2,7 @@
 // 📊 [OMD-MCP-TOKEN-0001] functions/api/mcp/token.js
 // 🎯 @KICK  : 웹 사용자용 개인 MCP API 토큰 발급·조회·폐기 엔드포인트 (/api/mcp/token)
 // 🛡️ @GUARD : Rule 1(단일 주석 관리), Supabase JWT 인증, 유료 구독 검증, SHA-256 해시 저장 및 Drive Refresh Token AES-GCM 연계
+// 🚨 @PATCH : 2026-11-19 — [MCP 하이브리드: 구글 드라이브 미연결 상태에서도 MCP 토큰 발급 허용]: 로컬 PC 에이전트 단독 사용자도 Drive OAuth 없이 독립 MCP 연결 토큰 발급 가능하도록 DRIVE_AUTH_REQUIRED 강제 차단 해제
 // 🚨 @PATCH : 2026-11-19 — [MCP 하이브리드 단계 2: 다중 연결(connections) 목록 조회·개별 연결 생성/폐기 지원]
 // 🚨 @PATCH : 2026-11-19 — [MCP 하이브리드 단계 1: MCP 전용 연결 폴더 설정 분리 연계]: GET/POST에서 connectionId·configVersion 기반 전용 설정 조회 및 재발급 시 기존 전용 폴더 보존
 // 🚨 @PATCH : 2026-11-16 — [웹 원격 MCP 구축] 개인용 MCP 전용 토큰 발급/조회/폐기 API 신설
@@ -121,14 +122,7 @@ export async function onRequestPost({ request, env }) {
     const workspaceFolderId = hasExplicitWorkspace ? String(body.workspaceFolderId || '').trim() : undefined;
     const resourceFolderId = hasExplicitResource ? String(body.resourceFolderId || '').trim() : undefined;
     const driveRefreshToken = String(driveSession?.refreshToken || existing?.driveRefreshToken || '').trim();
-
-    if (!driveRefreshToken) {
-      return json({
-        success: false,
-        code: 'DRIVE_AUTH_REQUIRED',
-        message: '먼저 구글 드라이브를 연결한 뒤 원격 MCP 토큰을 발급해 주세요.',
-      }, 400);
-    }
+    const hasDriveConnected = Boolean(driveRefreshToken);
 
     const rawToken = generateMcpToken();
     const tokenHash = await sha256Hex(rawToken);
@@ -155,7 +149,7 @@ export async function onRequestPost({ request, env }) {
       configVersion: config.configVersion,
       workspaceFolderId: config.workspace.folderId,
       resourceFolderId: config.resource.folderId,
-      hasDriveConnected: true,
+      hasDriveConnected,
       planName: paidSub.plan_name,
     });
   } catch (error) {

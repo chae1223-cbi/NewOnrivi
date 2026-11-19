@@ -207,10 +207,13 @@ export default function RemoteMcpSettings() {
       }
       setIssuedToken(data.token || '');
       if (createNewConnection) setNewClientName('');
+      const driveHint = data.hasDriveConnected
+        ? '구글 드라이브 및 로컬 PC 에이전트를 모두 연결할 수 있습니다.'
+        : '현재 구글 드라이브 미연결 상태이므로 로컬 PC 에이전트용으로 바로 사용할 수 있으며, 구글 드라이브는 필요 시 나중에 연결하세요.';
       setMessage(
         createNewConnection
-          ? `✅ 새 독립 MCP 연결(${data.clientName || '새 클라이언트'}) 토큰이 발급되었습니다. MCP 클라이언트에서 폴더를 자유롭게 선택하세요.`
-          : `✅ 원격 MCP 토큰이 발급되었습니다. (${data.planName || '유료 플랜'} 확인됨) 아래 토큰은 지금 한 번만 표시되므로 안전하게 복사해 두세요.`
+          ? `✅ 새 독립 MCP 연결(${data.clientName || '새 클라이언트'}) 토큰이 발급되었습니다. ${driveHint}`
+          : `✅ 원격 MCP 토큰이 발급되었습니다. (${data.planName || '유료 플랜'} 확인됨) ${driveHint} 아래 토큰은 지금 한 번만 표시되므로 안전하게 복사해 두세요.`
       );
       await loadStatus();
     } catch (error) {
