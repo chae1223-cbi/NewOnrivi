@@ -2,6 +2,7 @@
 // 📊 [OMD-MCP-SERVER-0001] plugins/onrivi-author/server/index.mjs
 // 🎯 @KICK  : 온리비 어서 PC 하이브리드 MCP 서버 진입점 (로컬 OS 폴더 + Google Drive 명령어 동적 전환)
 // 🛡️ @GUARD : Rule 1(단일 주석 관리), Rule 2(코드값 대문자 통일), Rule 9(임의 폴백 원천 금지), 원자적 I/O
+// 🚨 @PATCH : 2026-11-19 — [GDRIVE 프록시 파라미터 매핑 수정] create_markdown(name/parentFolderId), edit_markdown_section(targetHeading), read_markdown(relativePath), list_workspace_files(pageSize), search_workspace(maxItems), list_ai_templates 원격 스키마 정합성 보정
 // 🚨 @PATCH : 2026-11-19 — [리소스 폴더 표준 스캐폴드 자동 생성 연동] set_mcp_resource_folder 실행 시 생성된 하위 폴더/기본 설정 파일 요약(scaffold) 응답 포함
 // 🚨 @PATCH : 2026-11-19 — [PC 하이브리드 MCP 전환] 중계 서버 없이 PC MCP 단일 진입점에서 로컬 OS ↔ Google Drive 작업장·리소스 폴더 동적 전환(get_mcp_connection_status, get_mcp_folders, list_mcp_folder_candidates, set_mcp_workspace, set_mcp_resource_folder, clear_mcp_folder) 구현
 // 🚨 @PATCH : 2026-11-16 — [AI/서식 템플릿 CRUD 완성] delete_style_profile, update_ai_template, delete_ai_template MCP 도구 등록
@@ -107,6 +108,7 @@ const tools = [
       properties: {
         path: { type: 'string', description: 'LOCAL일 때 마크다운 파일의 절대경로' },
         fileId: { type: 'string', description: 'GDRIVE일 때 Google Drive 파일 ID' },
+        relativePath: { type: 'string', description: 'GDRIVE일 때 작업장 기준 파일명 또는 상대경로' },
       },
       additionalProperties: false,
     },
@@ -165,8 +167,10 @@ const tools = [
     inputSchema: {
       type: 'object',
       properties: {
+        name: { type: 'string', description: 'GDRIVE일 때 생성할 파일명 (예: 문서.md)' },
+        fileName: { type: 'string', description: 'name 별칭 (호환용)' },
         relativePath: { type: 'string', description: 'LOCAL일 때 작업장 기준 새 파일 상대경로' },
-        fileName: { type: 'string', description: 'GDRIVE일 때 생성할 파일명 (예: 문서.md)' },
+        parentFolderId: { type: 'string', description: 'GDRIVE일 때 하위 폴더 ID (생략 시 작업장 루트)' },
         content: { type: 'string' },
         expectedContextSha256: { type: 'string', description: 'LOCAL일 때 get_current_folders에서 받은 컨텍스트 SHA-256' },
       },
@@ -183,11 +187,12 @@ const tools = [
         path: { type: 'string', description: 'LOCAL일 때 마크다운 파일 절대경로' },
         fileId: { type: 'string', description: 'GDRIVE일 때 Google Drive 파일 ID' },
         expectedSha256: { type: 'string' },
-        heading: { type: 'string' },
+        heading: { type: 'string', description: '수정할 마크다운 제목' },
+        targetHeading: { type: 'string', description: 'GDRIVE용 heading 별칭' },
         oldText: { type: 'string' },
         newText: { type: 'string' },
       },
-      required: ['expectedSha256', 'heading', 'oldText', 'newText'],
+      required: ['expectedSha256', 'newText'],
       additionalProperties: false,
     },
   },
@@ -457,7 +462,10 @@ async function executeToolCall(name, args = {}) {
   if (name === 'list_workspace_files') {
     const ctx = await requireWorkspaceContext();
     if (ctx.workspace.storageType === STORAGE_TYPE.GDRIVE) {
-      return callRemoteMcpTool('list_workspace_files', args);
+      return callRemoteMcpTool('list_workspace_files', {
+        ...(args.cursor ? { cursor: args.cursor } : {}),
+        ...(args.limit ? { pageSize: args.limit } : {}),
+      });
     }
     return listWorkspaceFiles(ctx.workspace.path, args);
   }
@@ -465,7 +473,10 @@ async function executeToolCall(name, args = {}) {
   if (name === 'search_workspace') {
     const ctx = await requireWorkspaceContext();
     if (ctx.workspace.storageType === STORAGE_TYPE.GDRIVE) {
-      return callRemoteMcpTool('search_workspace', args);
+      return callRemoteMcpTool('search_workspace', {
+        query: args.query,
+        ...(args.limit ? { maxItems: args.limit } : {}),
+      });
     }
     return searchWorkspace(ctx.workspace.path, args);
   }
@@ -474,11 +485,12 @@ async function executeToolCall(name, args = {}) {
     const ctx = await requireWorkspaceContext(args.expectedContextSha256);
     if (ctx.workspace.storageType === STORAGE_TYPE.GDRIVE) {
       return callRemoteMcpTool('create_markdown', {
-        fileName: args.fileName || args.relativePath,
+        name: args.name || args.fileName || args.relativePath,
         content: args.content,
+        ...(args.parentFolderId ? { parentFolderId: args.parentFolderId } : {}),
       });
     }
-    const targetRelative = args.relativePath || args.fileName;
+    const targetRelative = args.relativePath || args.fileName || args.name;
     return createMarkdown(ctx.workspace.path, { ...args, relativePath: targetRelative }, async () => {
       await requireMcpAccess();
       await requireWorkspaceContext(ctx.contextSha256);
@@ -488,7 +500,14 @@ async function executeToolCall(name, args = {}) {
   if (name === 'read_markdown') {
     const ctx = await requireWorkspaceContext();
     if (args.fileId || ctx.workspace.storageType === STORAGE_TYPE.GDRIVE) {
-      return callRemoteMcpTool('read_markdown', { fileId: args.fileId || args.path });
+      return callRemoteMcpTool('read_markdown', {
+        ...(args.fileId ? { fileId: args.fileId } : {}),
+        ...(args.relativePath
+          ? { relativePath: args.relativePath }
+          : !args.fileId && args.path
+            ? { relativePath: args.path }
+            : {}),
+      });
     }
     return readDocument(args.path, resolveAllowedLocalRoots(ctx));
   }
@@ -511,12 +530,13 @@ async function executeToolCall(name, args = {}) {
 
   if (name === 'edit_markdown_section') {
     const ctx = await requireWorkspaceContext();
+    const resolvedHeading = args.targetHeading || args.heading;
     if (args.fileId || ctx.workspace.storageType === STORAGE_TYPE.GDRIVE) {
       return callRemoteMcpTool('edit_markdown_section', {
         fileId: args.fileId || args.path,
         expectedSha256: args.expectedSha256,
-        heading: args.heading,
-        oldText: args.oldText,
+        ...(resolvedHeading ? { targetHeading: resolvedHeading } : {}),
+        ...(args.oldText ? { oldText: args.oldText } : {}),
         newText: args.newText,
       });
     }
@@ -524,7 +544,7 @@ async function executeToolCall(name, args = {}) {
     return editMarkdownSection(
       args.path,
       args.expectedSha256,
-      args.heading,
+      resolvedHeading,
       args.oldText,
       args.newText,
       roots,
@@ -591,7 +611,10 @@ async function executeToolCall(name, args = {}) {
   if (name === 'list_ai_templates') {
     const ctx = await requireResourceContext();
     if (ctx.resource.storageType === STORAGE_TYPE.GDRIVE) {
-      return callRemoteMcpTool('list_ai_templates', args);
+      return callRemoteMcpTool('list_ai_templates', {
+        ...(args.kind ? { kind: args.kind } : {}),
+        ...(args.query ? { query: args.query } : {}),
+      });
     }
     return listAITemplates(ctx.resource.path, args);
   }
