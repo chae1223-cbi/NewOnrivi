@@ -2,6 +2,8 @@
 // 📊 [OMD-MCP-TOKEN-0001] functions/api/mcp/token.js
 // 🎯 @KICK  : 웹 사용자용 개인 MCP API 토큰 발급·조회·폐기 엔드포인트 (/api/mcp/token)
 // 🛡️ @GUARD : Rule 1(단일 주석 관리), Supabase JWT 인증, 유료 구독 검증, SHA-256 해시 저장 및 Drive Refresh Token AES-GCM 연계
+// 🚨 @PATCH : 2026-11-19 — [MCP 하이브리드 단계 2: 다중 연결(connections) 목록 조회·개별 연결 생성/폐기 지원]
+// 🚨 @PATCH : 2026-11-19 — [MCP 하이브리드 단계 1: MCP 전용 연결 폴더 설정 분리 연계]: GET/POST에서 connectionId·configVersion 기반 전용 설정 조회 및 재발급 시 기존 전용 폴더 보존
 // 🚨 @PATCH : 2026-11-16 — [웹 원격 MCP 구축] 개인용 MCP 전용 토큰 발급/조회/폐기 API 신설
 // 🔗 @CALLS : functions/api/license/_sessionAuth.js, functions/api/gdrive/_oauth.js, functions/api/mcp/_shared.js
 // ====================================================================
@@ -10,7 +12,10 @@ import { sessionUser } from '../license/_sessionAuth.js';
 import { consumeMcpDriveTicket, readDriveOAuthSession } from '../gdrive/_oauth.js';
 import {
   generateMcpToken,
+  getMcpConnectionConfig,
   getMcpTokenByUser,
+  getUserMcpDevices,
+  listUserMcpConnections,
   revokeMcpToken,
   saveMcpTokenRecord,
   sha256Hex,
@@ -45,14 +50,36 @@ export async function onRequestGet({ request, env }) {
     if (!user?.id) return json({ success: false, code: 'UNAUTHORIZED', message: '로그인이 필요합니다.' }, 401);
 
     const record = await getMcpTokenByUser(env, user.id);
+    const config = record ? await getMcpConnectionConfig(env, record) : null;
+    const rawConnections = await listUserMcpConnections(env, user.id);
+    const connections = await Promise.all(
+      rawConnections.map(async (conn) => {
+        const cfg = await getMcpConnectionConfig(env, { connectionId: conn.connectionId, userId: user.id, tokenHash: conn.tokenHash });
+        return {
+          connectionId: conn.connectionId,
+          clientName: conn.clientName || 'DEFAULT',
+          maskedToken: conn.maskedToken || '',
+          configVersion: cfg.configVersion,
+          workspace: cfg.workspace,
+          resource: cfg.resource,
+          createdAt: conn.createdAt || '',
+          lastUsedAt: conn.lastUsedAt || '',
+        };
+      })
+    );
+    const devices = await getUserMcpDevices(env, user.id);
     return json({
       success: true,
-      hasToken: Boolean(record?.tokenHash),
-      maskedToken: record?.maskedToken || '',
-      workspaceFolderId: record?.workspaceFolderId || '',
-      resourceFolderId: record?.resourceFolderId || '',
+      hasToken: Boolean(record?.tokenHash) || connections.length > 0,
+      connectionId: config?.connectionId || connections[0]?.connectionId || '',
+      configVersion: config?.configVersion || connections[0]?.configVersion || 0,
+      maskedToken: record?.maskedToken || connections[0]?.maskedToken || '',
+      workspaceFolderId: config?.workspace?.folderId || '',
+      resourceFolderId: config?.resource?.folderId || '',
       hasDriveConnected: Boolean(record?.driveRefreshToken),
-      updatedAt: record?.updatedAt || '',
+      updatedAt: config?.updatedAt || record?.updatedAt || '',
+      connections,
+      devices,
     });
   } catch (error) {
     return serverError(request, error, {
@@ -89,8 +116,10 @@ export async function onRequestPost({ request, env }) {
     const driveSession = ticketSession || (await readDriveOAuthSession(request, env, body?.driveSessionToken));
     const existing = await getMcpTokenByUser(env, user.id);
 
-    const workspaceFolderId = String(body?.workspaceFolderId || existing?.workspaceFolderId || '').trim();
-    const resourceFolderId = String(body?.resourceFolderId || existing?.resourceFolderId || '').trim();
+    const hasExplicitWorkspace = Object.prototype.hasOwnProperty.call(body || {}, 'workspaceFolderId');
+    const hasExplicitResource = Object.prototype.hasOwnProperty.call(body || {}, 'resourceFolderId');
+    const workspaceFolderId = hasExplicitWorkspace ? String(body.workspaceFolderId || '').trim() : undefined;
+    const resourceFolderId = hasExplicitResource ? String(body.resourceFolderId || '').trim() : undefined;
     const driveRefreshToken = String(driveSession?.refreshToken || existing?.driveRefreshToken || '').trim();
 
     if (!driveRefreshToken) {
@@ -105,21 +134,27 @@ export async function onRequestPost({ request, env }) {
     const tokenHash = await sha256Hex(rawToken);
     const maskedToken = `${rawToken.slice(0, 15)}...${rawToken.slice(-4)}`;
 
-    await saveMcpTokenRecord(env, {
+    const savedRecord = await saveMcpTokenRecord(env, {
       userId: user.id,
       tokenHash,
       maskedToken,
       workspaceFolderId,
       resourceFolderId,
       driveRefreshToken,
+      clientName: body?.clientName ? String(body.clientName).trim() : 'DEFAULT',
+      createNewConnection: Boolean(body?.createNewConnection),
     });
+    const config = await getMcpConnectionConfig(env, savedRecord);
 
     return json({
       success: true,
       token: rawToken,
       maskedToken,
-      workspaceFolderId,
-      resourceFolderId,
+      connectionId: config.connectionId,
+      clientName: savedRecord.clientName,
+      configVersion: config.configVersion,
+      workspaceFolderId: config.workspace.folderId,
+      resourceFolderId: config.resource.folderId,
       hasDriveConnected: true,
       planName: paidSub.plan_name,
     });
@@ -144,8 +179,14 @@ export async function onRequestDelete({ request, env }) {
     const user = await sessionUser(request, env);
     if (!user?.id) return json({ success: false, code: 'UNAUTHORIZED', message: '로그인이 필요합니다.' }, 401);
 
-    await revokeMcpToken(env, user.id);
-    return json({ success: true, message: '원격 MCP 토큰이 폐기되었습니다.' });
+    const url = new URL(request.url);
+    const targetConnectionId = String(url.searchParams.get('connectionId') || '').trim();
+    await revokeMcpToken(env, user.id, targetConnectionId);
+    return json({
+      success: true,
+      revokedConnectionId: targetConnectionId || 'ALL',
+      message: targetConnectionId ? '지정한 원격 MCP 연결이 폐기되었습니다.' : '원격 MCP 토큰이 폐기되었습니다.',
+    });
   } catch (error) {
     return serverError(request, error, {
       source: 'functions/api/mcp/token.js',

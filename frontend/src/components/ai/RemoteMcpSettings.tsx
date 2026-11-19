@@ -2,6 +2,9 @@
 // 📊 [OMD-AI-RemoteMcpSettings-0001] src/components/ai/RemoteMcpSettings.tsx
 // 🎯 @KICK  : 통합 MCP 연동 설정 UI (구글 드라이브 원격 Streamable HTTP + 내 PC 로컬 OS 폴더 Stdio 전환 지원)
 // 🛡️ @GUARD : Rule 1(단일 주석 관리), Rule 3(Core/Manager 분리), Rule 6(Modern Technical Editorial), 토큰 1회성 노출
+// 🚨 @PATCH : 2026-11-19 — [MCP 하이브리드 단계 5: 다중 연결 목록·개별 폐기·로컬 PC 에이전트 장치 상태 UI 연동]:
+//             1) 클라이언트 이름 지정 기반 '새 독립 연결 추가(createNewConnection)' 및 연결별 작업장/리소스 슬롯 상태·개별 연결 해제 UI 추가
+//             2) 등록된 로컬 PC 에이전트 장치(ONLINE/OFFLINE 및 승인 폴더) 현황 카드 표시
 // 🚨 @PATCH : 2026-11-17 — [로컬 작업장 + 환경설정 리소스 폴더 자동 반영]: 내 PC 로컬 폴더 MCP JSON 생성 시 현재 접속한 작업장(ONRIVI_WORKSPACE_PATH)과 환경설정 리소스 폴더(ONRIVI_RESOURCE_PATH)를 자동 읽어 env에 동적 생성
 // 🚨 @PATCH : 2026-11-17 — [로컬 작업장 자동 감지 및 내 PC 로컬 폴더 탭 기본 전환]: 현재 활성 작업장이 로컬 PC/브라우저 폴더일 경우 '내 PC 로컬 폴더' 탭을 기본 선택하고 작업장 경로를 자동 채움. 구글 드라이브 미연결 시 원격 토큰 불필요 안내 배너 추가
 // 🚨 @PATCH : 2026-11-17 — [MCP 설정 JSON 표준화 및 로컬+웹 통합 복사 지원]: localConfigSnippet을 ONRIVI_MCP_HOME/APPDATA 자동 경로 방식으로 통일하고, onrivi-author + onrivi-author-web 통합 mcpServers JSON 복사 버튼 추가
@@ -16,6 +19,35 @@ import { getResourceSettings } from '@/lib/resourceSettings';
 import { browserAccountStorage as localStorage } from '@/lib/browserAccountStorage';
 import { logError } from '@/lib/errorDiagnostics';
 
+interface McpFolderSlotSummary {
+  role: 'WORKSPACE' | 'RESOURCE';
+  storageType: 'GDRIVE' | 'LOCAL' | null;
+  folderId?: string;
+  deviceId?: string;
+  rootId?: string;
+  folderName?: string;
+  permissions?: string[];
+}
+
+interface McpConnectionSummary {
+  connectionId: string;
+  clientName: string;
+  maskedToken: string;
+  configVersion: number;
+  workspace?: McpFolderSlotSummary;
+  resource?: McpFolderSlotSummary;
+  createdAt?: string;
+  lastUsedAt?: string;
+}
+
+interface McpDeviceSummary {
+  deviceId: string;
+  deviceName: string;
+  status: 'ONLINE' | 'OFFLINE';
+  lastHeartbeatAt?: string;
+  approvedRoots: Array<{ rootId: string; name: string; permissions?: string[] }>;
+}
+
 interface TokenStatus {
   hasToken: boolean;
   maskedToken: string;
@@ -23,6 +55,8 @@ interface TokenStatus {
   resourceFolderId: string;
   hasDriveConnected: boolean;
   updatedAt: string;
+  connections: McpConnectionSummary[];
+  devices: McpDeviceSummary[];
 }
 
 /**
@@ -69,6 +103,7 @@ export default function RemoteMcpSettings() {
   });
   const [status, setStatus] = useState<TokenStatus | null>(null);
   const [issuedToken, setIssuedToken] = useState('');
+  const [newClientName, setNewClientName] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
 
@@ -109,6 +144,8 @@ export default function RemoteMcpSettings() {
           resourceFolderId: data.resourceFolderId || '',
           hasDriveConnected: Boolean(data.hasDriveConnected),
           updatedAt: data.updatedAt || '',
+          connections: Array.isArray(data.connections) ? data.connections : [],
+          devices: Array.isArray(data.devices) ? data.devices : [],
         });
       }
     } catch {
@@ -120,7 +157,7 @@ export default function RemoteMcpSettings() {
     void loadStatus();
   }, [loadStatus]);
 
-  const handleIssue = async () => {
+  const handleIssue = async (createNewConnection = false) => {
     setBusy(true);
     setMessage('');
     setIssuedToken('');
@@ -145,13 +182,23 @@ export default function RemoteMcpSettings() {
         // 기존 저장된 refreshToken이 있으면 서버에서 폴백 사용
       }
 
+      const payload: Record<string, unknown> = {
+        driveTicket,
+        createNewConnection,
+        clientName: newClientName.trim() || (createNewConnection ? '새 AI 클라이언트' : 'DEFAULT'),
+      };
+      if (!createNewConnection) {
+        payload.workspaceFolderId = workspaceFolderId;
+        payload.resourceFolderId = resourceFolderId;
+      }
+
       const res = await fetch('/api/mcp/token', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({ workspaceFolderId, resourceFolderId, driveTicket }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.success) {
@@ -159,7 +206,12 @@ export default function RemoteMcpSettings() {
         return;
       }
       setIssuedToken(data.token || '');
-      setMessage(`✅ 원격 MCP 토큰이 발급되었습니다. (${data.planName || '유료 플랜'} 확인됨) 아래 토큰은 지금 한 번만 표시되므로 안전하게 복사해 두세요.`);
+      if (createNewConnection) setNewClientName('');
+      setMessage(
+        createNewConnection
+          ? `✅ 새 독립 MCP 연결(${data.clientName || '새 클라이언트'}) 토큰이 발급되었습니다. MCP 클라이언트에서 폴더를 자유롭게 선택하세요.`
+          : `✅ 원격 MCP 토큰이 발급되었습니다. (${data.planName || '유료 플랜'} 확인됨) 아래 토큰은 지금 한 번만 표시되므로 안전하게 복사해 두세요.`
+      );
       await loadStatus();
     } catch (error) {
       logError({
@@ -175,13 +227,14 @@ export default function RemoteMcpSettings() {
     }
   };
 
-  const handleRevoke = async () => {
+  const handleRevoke = async (connectionId?: string) => {
     setBusy(true);
     setMessage('');
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) return;
-      const res = await fetch('/api/mcp/token', {
+      const endpoint = connectionId ? `/api/mcp/token?connectionId=${encodeURIComponent(connectionId)}` : '/api/mcp/token';
+      const res = await fetch(endpoint, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${session.access_token}` },
       });
@@ -190,15 +243,15 @@ export default function RemoteMcpSettings() {
         setMessage(`❌ ${data?.message || '토큰 폐기에 실패했습니다.'}`);
         return;
       }
-      setIssuedToken('');
-      setMessage('원격 MCP 토큰이 폐기되었습니다.');
+      if (!connectionId) setIssuedToken('');
+      setMessage(connectionId ? '선택한 MCP 연결이 해제되었습니다.' : '원격 MCP 토큰이 폐기되었습니다.');
       await loadStatus();
     } catch (error) {
       logError({
         file: 'frontend/src/components/ai/RemoteMcpSettings.tsx',
         func: 'handleRevoke',
         doing: '웹 원격 MCP 개인용 토큰 폐기 중',
-        target: 'MCP_TOKEN',
+        target: connectionId || 'MCP_TOKEN',
         error,
       });
       setMessage('❌ 토큰 폐기 중 오류가 발생했습니다.');
@@ -329,26 +382,121 @@ export default function RemoteMcpSettings() {
           </button>
         </div>
 
-        <div className="flex flex-wrap gap-2 pt-1">
+        <div className="flex flex-wrap items-center gap-2 pt-1">
           <button
             type="button"
             disabled={busy}
-            onClick={() => void handleIssue()}
+            onClick={() => void handleIssue(false)}
             className="px-3.5 py-2 rounded-xl bg-[#1d4ed8] hover:bg-[#1e40af] text-white font-bold disabled:opacity-40 cursor-pointer shadow-xs"
           >
-            {busy ? '처리 중…' : status?.hasToken ? 'MCP 토큰 재발급' : 'MCP 전용 토큰 발급'}
+            {busy ? '처리 중…' : status?.hasToken ? '기본 토큰 재발급' : 'MCP 전용 토큰 발급'}
+          </button>
+          <input
+            type="text"
+            value={newClientName}
+            onChange={(e) => setNewClientName(e.target.value)}
+            placeholder="클라이언트 이름 (예: Claude, ChatGPT)"
+            className="px-2.5 py-1.5 rounded-xl border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-950 text-xs text-zinc-800 dark:text-zinc-200 w-52"
+          />
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void handleIssue(true)}
+            className="px-3 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold disabled:opacity-40 cursor-pointer shadow-xs"
+          >
+            ＋ 새 독립 연결 추가
           </button>
           {status?.hasToken && (
             <button
               type="button"
               disabled={busy}
               onClick={() => void handleRevoke()}
-              className="px-3 py-2 rounded-xl border border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 font-bold disabled:opacity-40 cursor-pointer"
+              className="px-3 py-2 rounded-xl border border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/20 font-bold disabled:opacity-40 cursor-pointer ml-auto"
             >
-              토큰 폐기
+              전체 폐기
             </button>
           )}
         </div>
+
+        {status && status.connections.length > 0 && (
+          <div className="space-y-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+            <span className="font-bold text-zinc-700 dark:text-zinc-200 block">
+              활성 MCP 연결 목록 ({status.connections.length}개 · 연결별 독립 폴더 설정)
+            </span>
+            <div className="space-y-1.5">
+              {status.connections.map((conn) => {
+                const wsLabel = conn.workspace?.storageType
+                  ? `${conn.workspace.storageType} · ${conn.workspace.folderName || conn.workspace.folderId || conn.workspace.rootId}`
+                  : '미설정';
+                const resLabel = conn.resource?.storageType
+                  ? `${conn.resource.storageType} · ${conn.resource.folderName || conn.resource.folderId || conn.resource.rootId}`
+                  : '미설정';
+                return (
+                  <div
+                    key={conn.connectionId}
+                    className="p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-slate-50/70 dark:bg-zinc-950/50 flex flex-wrap items-center justify-between gap-2"
+                  >
+                    <div className="space-y-0.5 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-bold text-zinc-800 dark:text-zinc-100">{conn.clientName}</span>
+                        <code className="font-mono text-[11px] text-zinc-700 dark:text-zinc-300">{conn.maskedToken}</code>
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-950 text-blue-700 dark:text-blue-300 font-bold">
+                          v{conn.configVersion}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-zinc-700 dark:text-zinc-300 font-medium">
+                        작업장: <span className="font-mono font-bold">{wsLabel}</span> · 리소스: <span className="font-mono font-bold">{resLabel}</span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void handleRevoke(conn.connectionId)}
+                      className="px-2.5 py-1 rounded-lg border border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 font-bold text-[11px] cursor-pointer shrink-0"
+                    >
+                      연결 해제
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {status && status.devices.length > 0 && (
+          <div className="space-y-2 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+            <span className="font-bold text-zinc-700 dark:text-zinc-200 block">
+              등록된 로컬 PC 에이전트 장치 ({status.devices.length}대)
+            </span>
+            <div className="space-y-1.5">
+              {status.devices.map((dev) => (
+                <div
+                  key={dev.deviceId}
+                  className="p-2.5 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-slate-50/70 dark:bg-zinc-950/50 flex flex-wrap items-center justify-between gap-2"
+                >
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-zinc-800 dark:text-zinc-100">{dev.deviceName}</span>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          dev.status === 'ONLINE'
+                            ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                            : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300'
+                        }`}
+                      >
+                        {dev.status === 'ONLINE' ? '● ONLINE' : '○ OFFLINE'}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-zinc-700 dark:text-zinc-300 font-medium">
+                      승인 폴더: {dev.approvedRoots.length > 0 ? dev.approvedRoots.map((r) => r.name).join(', ') : '없음'}
+                    </div>
+                  </div>
+                  <code className="font-mono text-[11px] text-zinc-700 dark:text-zinc-300">{dev.deviceId}</code>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {issuedToken && (
           <div className="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 space-y-2">
